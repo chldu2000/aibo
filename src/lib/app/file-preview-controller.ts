@@ -1,7 +1,8 @@
-import {toErrorMessage} from './error-utils.ts';
+import type {LocalizedText} from '../../../packages/i18n/index.js';
+import {toErrorText} from './error-utils.ts';
 
 export type FilePreview = {path:string;content:string;startLine:number;totalLines:number;truncated:boolean;targetLine:number};
-export type FilePreviewState = {sessionId:string|null;path:string|null;line:number|null;preview:FilePreview|null;loading:boolean;error:string|null};
+export type FilePreviewState = {sessionId:string|null;path:string|null;line:number|null;preview:FilePreview|null;loading:boolean;error:LocalizedText|null};
 export const emptyFilePreview = (): FilePreviewState => ({sessionId:null,path:null,line:null,preview:null,loading:false,error:null});
 
 export function createFilePreviewController(read:(sessionId:string,path:string,line:number|null)=>Promise<FilePreview>, publish:(state:FilePreviewState)=>void) {
@@ -16,7 +17,7 @@ export function createFilePreviewController(read:(sessionId:string,path:string,l
         const preview = await read(sessionId,path,line);
         if (ticket === generation) publish({...state,preview});
       } catch (error) {
-        if (ticket === generation) publish({...state,error:toErrorMessage(error)});
+        if (ticket === generation) publish({...state,error:toErrorText(error)});
       }
     },
   };

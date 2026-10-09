@@ -4,6 +4,9 @@ use sha2::{Digest, Sha256};
 use std::{path::Path, time::{Duration, Instant}};
 use tokio::{io::AsyncReadExt, process::Command};
 
+fn invalid_owned(key: &str, diagnostic: &str) -> CoreError {
+    crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic(key,serde_json::json!({}),diagnostic))
+}
 fn invalid(message: impl Into<String>) -> CoreError { CoreError::InvalidWorkspacePath(message.into()) }
 
 /// Inspection avoids worktree status/diff: those reads can run clean filters or
@@ -18,11 +21,11 @@ pub(crate) fn read_command(path: &str, args: &[&str]) -> Command {
 
 async fn read(path: &str, args: &[&str], deadline: Instant) -> Result<Vec<u8>, CoreError> {
     let remaining = deadline.saturating_duration_since(Instant::now());
-    if remaining.is_zero() { return Err(invalid("Git approval inspection timed out")); }
+    if remaining.is_zero() { return Err(invalid_owned("native.gitApproval.timeout", "Git approval inspection timed out")); }
     let output = crate::controlled_process::execute(read_command(path, args), remaining, 8 * 1024 * 1024 + 1).await
-        .map_err(|error| invalid(format!("Git approval inspection failed: {error}")))?;
+        .map_err(|error| crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.gitApproval.inspectionFailed",serde_json::json!({"error":error.to_string()}),format!("Git approval inspection failed: {error}"))))?;
     if !output.success || output.timed_out || output.stdout.len() > 8 * 1024 * 1024 || output.stderr.len() > 8 * 1024 * 1024 {
-        return Err(invalid("Git approval inspection failed or exceeded its bounds (Git must support --no-lazy-fetch)"));
+        return Err(invalid_owned("native.gitApproval.bounds", "Git approval inspection failed or exceeded its bounds (Git must support --no-lazy-fetch)"));
     }
     Ok(output.stdout)
 }
@@ -35,7 +38,7 @@ async fn hash_entry(hash: &mut Sha256, file: &Path, deadline: Instant, budget: &
         let metadata = match tokio::fs::symlink_metadata(file).await {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => { frame(hash, b"absent"); return Ok(false); }
-            Err(error) => return Err(invalid(format!("Git approval file inspection failed: {error}"))),
+            Err(error) => return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.gitApproval.fileFailed",serde_json::json!({"error":error.to_string()}),format!("Git approval file inspection failed: {error}")))),
         };
         #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; frame(hash, &metadata.permissions().mode().to_le_bytes()); }
         #[cfg(not(unix))] frame(hash, &[u8::from(metadata.permissions().readonly())]);
@@ -46,7 +49,7 @@ async fn hash_entry(hash: &mut Sha256, file: &Path, deadline: Instant, budget: &
             consume(budget, bytes.len() as u64)?; frame(hash, bytes); return Ok(false);
         }
         if metadata.is_dir() { frame(hash, b"directory"); return Ok(true); }
-        if !metadata.is_file() { return Err(invalid("unsupported Git working-tree file type")); }
+        if !metadata.is_file() { return Err(invalid_owned("native.gitApproval.fileType", "unsupported Git working-tree file type")); }
         frame(hash, b"file");
         let mut input = tokio::fs::File::open(file).await.map_err(|error| invalid(error.to_string()))?;
         let mut content = Sha256::new(); let mut length = 0_u64; let mut buffer = vec![0; 64 * 1024];
@@ -56,37 +59,37 @@ async fn hash_entry(hash: &mut Sha256, file: &Path, deadline: Instant, budget: &
             consume(budget, read as u64)?; content.update(&buffer[..read]); length += read as u64;
         }
         frame(hash, &length.to_le_bytes()); frame(hash, &content.finalize()); Ok(false)
-    }).await.map_err(|_| invalid("Git approval file inspection timed out"))?
+    }).await.map_err(|_| invalid_owned("native.gitApproval.fileTimeout", "Git approval file inspection timed out"))?
 }
 fn consume(budget: &mut Option<u64>, count: u64) -> Result<(), CoreError> {
     if let Some(remaining) = budget {
-        if count > *remaining { return Err(invalid("Git approval untracked data exceeds 16 MiB")); }
+        if count > *remaining { return Err(invalid_owned("native.gitApproval.untrackedLimit", "Git approval untracked data exceeds 16 MiB")); }
         *remaining -= count;
     }
     Ok(())
 }
 fn relative_path(root: &Path, raw: &[u8]) -> Result<std::path::PathBuf, CoreError> {
-    let path = std::str::from_utf8(raw).map_err(|_| invalid("Git path is not UTF-8"))?;
-    if path.is_empty() || Path::new(path).components().any(|part| !matches!(part, std::path::Component::Normal(_))) { return Err(invalid("Git listed an invalid relative path")); }
+    let path = std::str::from_utf8(raw).map_err(|_| invalid_owned("native.gitApproval.pathEncoding", "Git path is not UTF-8"))?;
+    if path.is_empty() || Path::new(path).components().any(|part| !matches!(part, std::path::Component::Normal(_))) { return Err(invalid_owned("native.gitApproval.relativePath", "Git listed an invalid relative path")); }
     // A final symlink is hashed as a link. Never follow a symlink in its parents.
     let candidate = root.join(path);
-    let parent = candidate.parent().ok_or_else(|| invalid("Git path has no parent"))?;
-    let resolved = crate::workspace_guard::canonicalize_target(root, parent).map_err(invalid)?;
-    if resolved != parent { return Err(invalid("Git approval path traverses a symbolic directory")); }
+    let parent = candidate.parent().ok_or_else(|| invalid_owned("native.gitApproval.noParent", "Git path has no parent"))?;
+    let resolved = crate::workspace_guard::canonicalize_target_message(root, parent).map_err(crate::ui_i18n::invalid_path_message)?;
+    if resolved != parent { return Err(invalid_owned("native.gitApproval.symbolicDirectory", "Git approval path traverses a symbolic directory")); }
     Ok(candidate)
 }
 
 pub(crate) async fn fingerprint(path: &str) -> Result<String, CoreError> {
     let deadline = Instant::now() + Duration::from_secs(15);
     let root = read(path, &["rev-parse", "--show-toplevel"], deadline).await?;
-    let root = String::from_utf8(root).map_err(|_| invalid("Git root is not UTF-8"))?;
+    let root = String::from_utf8(root).map_err(|_| invalid_owned("native.gitApproval.rootEncoding", "Git root is not UTF-8"))?;
     let root = tokio::fs::canonicalize(root.trim_end_matches(['\r', '\n'])).await.map_err(|error| invalid(error.to_string()))?;
     let mut pending = std::collections::VecDeque::from([(root, 0)]);
     let mut seen = std::collections::HashSet::new(); let mut hash = Sha256::new();
     let mut untracked = Some(16 * 1024 * 1024_u64);
     while let Some((root, depth)) = pending.pop_front() {
-        if depth > 8 || seen.len() >= 128 || !seen.insert(root.clone()) { return Err(invalid("Git approval nested repository limit or cycle")); }
-        let path = root.to_str().ok_or_else(|| invalid("Git root is not UTF-8"))?;
+        if depth > 8 || seen.len() >= 128 || !seen.insert(root.clone()) { return Err(invalid_owned("native.gitApproval.nestedLimit", "Git approval nested repository limit or cycle")); }
+        let path = root.to_str().ok_or_else(|| invalid_owned("native.gitApproval.rootEncoding", "Git root is not UTF-8"))?;
         frame(&mut hash, path.as_bytes());
         for args in [
             vec!["for-each-ref", "--format=%(refname) %(objectname)"],
@@ -97,25 +100,25 @@ pub(crate) async fn fingerprint(path: &str) -> Result<String, CoreError> {
         // and sparse patterns are otherwise absent from a config --list result.
         for name in ["HEAD", "info/attributes", "info/exclude", "info/sparse-checkout"] {
             let location = read(path, &["rev-parse", "--path-format=absolute", "--git-path", name], deadline).await?;
-            let location = String::from_utf8(location).map_err(|_| invalid("Git administrative path is not UTF-8"))?;
+            let location = String::from_utf8(location).map_err(|_| invalid_owned("native.gitApproval.administrativeEncoding", "Git administrative path is not UTF-8"))?;
             frame(&mut hash, name.as_bytes());
             hash_entry(&mut hash, Path::new(location.trim_end_matches(['\r', '\n'])), deadline, &mut None).await?;
         }
         let index = read(path, &["ls-files", "--stage", "-v", "-z"], deadline).await?;
         frame(&mut hash, &index);
         for entry in index.split(|byte| *byte == 0).filter(|entry| !entry.is_empty()) {
-            let tab = entry.iter().position(|byte| *byte == b'\t').ok_or_else(|| invalid("invalid Git index entry"))?;
+            let tab = entry.iter().position(|byte| *byte == b'\t').ok_or_else(|| invalid_owned("native.gitApproval.indexEntry", "invalid Git index entry"))?;
             let file = relative_path(&root, &entry[tab + 1..])?;
             frame(&mut hash, &entry[tab + 1..]);
             let directory = hash_entry(&mut hash, &file, deadline, &mut None).await?;
             let gitlink = entry[..tab].split(|byte| *byte == b' ').nth(1) == Some(b"160000".as_slice());
             if gitlink && directory {
-                let nested = read(file.to_str().ok_or_else(|| invalid("Git path is not UTF-8"))?, &["rev-parse", "--show-toplevel"], deadline).await?;
-                let nested = String::from_utf8(nested).map_err(|_| invalid("Git root is not UTF-8"))?;
+                let nested = read(file.to_str().ok_or_else(|| invalid_owned("native.gitApproval.pathEncoding", "Git path is not UTF-8"))?, &["rev-parse", "--show-toplevel"], deadline).await?;
+                let nested = String::from_utf8(nested).map_err(|_| invalid_owned("native.gitApproval.rootEncoding", "Git root is not UTF-8"))?;
                 let nested = tokio::fs::canonicalize(nested.trim_end_matches(['\r', '\n'])).await.map_err(|error| invalid(error.to_string()))?;
                 if nested == file { pending.push_back((nested, depth + 1)); }
                 else if tokio::fs::read_dir(&file).await.map_err(|error| invalid(error.to_string()))?.next_entry().await.map_err(|error| invalid(error.to_string()))?.is_some() {
-                    return Err(invalid("uninitialized Git submodule is not empty"));
+                    return Err(invalid_owned("native.gitApproval.submoduleNotEmpty", "uninitialized Git submodule is not empty"));
                 }
             }
         }
@@ -124,7 +127,7 @@ pub(crate) async fn fingerprint(path: &str) -> Result<String, CoreError> {
         for raw in files.split(|byte| *byte == 0).filter(|raw| !raw.is_empty()) {
             let file = relative_path(&root, raw)?;
             if hash_entry(&mut hash, &file, deadline, &mut untracked).await? {
-                return Err(invalid("untracked nested repository requires explicit registration"));
+                return Err(invalid_owned("native.gitApproval.unregisteredRepository", "untracked nested repository requires explicit registration"));
             }
         }
     }
@@ -146,6 +149,38 @@ mod tests {
         std::fs::write(root.join("file"), "before\n").unwrap(); git(&root, &["add", "--", "file"]);
         git(&root, &["commit", "-qm", "Baseline\n\nCo-authored-by: Codex <codex@openai.com>"]);
         (directory, root)
+    }
+
+    #[tokio::test]
+    async fn approval_display_preserves_read_limits_and_path_guards_before_any_write() {
+        use crate::ui_i18n::{Locale, render};
+        let directory = tempfile::tempdir_in("/tmp").unwrap();
+        let canonical=std::fs::canonicalize(directory.path()).unwrap();
+        let root=canonical.as_path();std::fs::write(root.join("原文{path}.txt"),"原始正文").unwrap();
+        let verify=|error:CoreError,key:&str,raw:&str|{
+            let value=serde_json::to_value(error).unwrap();assert_eq!(value["code"],"invalid_workspace_path");assert_eq!(value["message"],format!("invalid workspace path: {raw}"));assert_eq!(value["localized"]["key"],key);assert_eq!(render(Locale::En,&value["localized"]),raw);
+        };
+        verify(read(root.to_str().unwrap(),&["rev-parse","--show-toplevel"],Instant::now()).await.unwrap_err(),"native.gitApproval.timeout","Git approval inspection timed out");
+        verify(read(root.to_str().unwrap(),&["rev-parse","--show-toplevel"],Instant::now()+Duration::from_secs(3)).await.unwrap_err(),"native.gitApproval.bounds","Git approval inspection failed or exceeded its bounds (Git must support --no-lazy-fetch)");
+        verify(relative_path(root,&[0xff]).unwrap_err(),"native.gitApproval.pathEncoding","Git path is not UTF-8");
+        for path in [b"".as_slice(),b"../escape",b"/absolute",b"dir/../escape"] {
+            verify(relative_path(root,path).unwrap_err(),"native.gitApproval.relativePath","Git listed an invalid relative path");
+        }
+        #[cfg(unix)] {
+            std::fs::create_dir(root.join("real")).unwrap();
+            assert_eq!(relative_path(root,b"real/file").unwrap(),root.join("real/file"));
+            std::os::unix::fs::symlink(root.join("real"),root.join("link")).unwrap();
+            verify(relative_path(root,b"link/file").unwrap_err(),"native.gitApproval.symbolicDirectory","Git approval path traverses a symbolic directory");
+            let socket=root.join("socket");let listener=std::os::unix::net::UnixListener::bind(&socket).unwrap();
+            verify(hash_entry(&mut Sha256::new(),&socket,Instant::now()+Duration::from_secs(3),&mut None).await.unwrap_err(),"native.gitApproval.fileType","unsupported Git working-tree file type");
+            drop(listener);std::fs::remove_file(socket).unwrap();std::fs::remove_file(root.join("link")).unwrap();std::fs::remove_dir(root.join("real")).unwrap();
+        }
+        assert_eq!(std::fs::read_to_string(root.join("原文{path}.txt")).unwrap(),"原始正文");
+        assert!(!root.join("escape").exists());
+        git(root,&["init","-q"]);
+        let first=fingerprint(root.to_str().unwrap()).await.unwrap();assert_eq!(fingerprint(root.to_str().unwrap()).await.unwrap(),first);
+        assert_eq!(std::fs::read_to_string(root.join("原文{path}.txt")).unwrap(),"原始正文");
+        assert!(git(root,&["ls-files"]).is_empty());
     }
 
     #[cfg(unix)]
@@ -276,7 +311,10 @@ mod tests {
             assert_ne!(fingerprint(path).await.unwrap(), before);
         }
         std::fs::File::create(root.join("oversized")).unwrap().set_len(16 * 1024 * 1024 + 1).unwrap();
-        assert!(fingerprint(path).await.unwrap_err().to_string().contains("16 MiB"));
+        let error=serde_json::to_value(fingerprint(path).await.unwrap_err()).unwrap();
+        assert!(error["message"].as_str().unwrap().contains("16 MiB"));
+        assert_eq!(error["code"],"invalid_workspace_path");assert_eq!(error["localized"]["key"],"native.gitApproval.untrackedLimit");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&error["localized"]),"Git 审批检查的未跟踪数据超出 16 MiB。");
         std::fs::remove_dir_all(root).unwrap();
     }
 }

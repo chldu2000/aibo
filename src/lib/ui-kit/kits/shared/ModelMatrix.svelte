@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import type { UiModelMatrixProps } from '../../contract';
   import Icon from '../../runtime/Icon.svelte';
 
@@ -26,10 +27,10 @@
         onclick={() => onSelectServiceTier(fastTier.active ? 'default' : fastTier.id)}><Icon name="bolt" size={15} /><span>{fastTier.label}</span></button>
     </div>
   {/if}
-  <table class="ui-model-matrix" aria-label="模型与推理强度">
+  <table class="ui-model-matrix" aria-label={$t('matrix.title')}>
     <thead>
       <tr>
-        <th scope="col">模型</th>
+        <th scope="col">{$t('composer.model')}</th>
         <th scope="col" title={defaultTitle}>{defaultLabel}</th>
         {#each columns as column, columnIndex (column.id)}
           <th scope="col" data-intensity={effortIntensity(columnIndex, columns.length)} title={column.description ?? column.label}>{column.label}</th>
@@ -41,7 +42,7 @@
         <tr class:active-row={row.active}>
           <th scope="row" title={`${row.label} · ${row.reference}`}>
             <span>{row.label}</span>
-            {#if row.isDefault}<small>默认</small>{/if}
+            {#if row.isDefault}<small>{$t('composer.default')}</small>{/if}
           </th>
           <td>
             <button
@@ -62,7 +63,7 @@
                 aria-label={`${row.label}，${cell.label}`}
                 aria-pressed={cell.active}
                 disabled={!cell.available || disabled}
-                title={cell.available ? `${row.label} · ${cell.label}` : `${row.label} 不支持 ${cell.label}`}
+                title={cell.available ? `${row.label} · ${cell.label}` : $t('matrix.unsupported', { model: row.label, effort: cell.label })}
                 onclick={() => onSelect(row.reference, cell.id)}
               >
                 {#if cell.active}

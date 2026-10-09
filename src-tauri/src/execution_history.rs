@@ -18,7 +18,7 @@ impl Kind { pub(crate) fn as_str(&self) -> &'static str { match self { Self::Git
 impl Cursor {
     pub(crate) fn validate(&self, workspace_id: &str) -> Result<(), CoreError> {
         if self.schema != "aibo.execution-cursor/v1" || self.workspace_id != workspace_id || self.id.is_empty() || self.id.len() > 256 || self.started_at.is_empty() || self.started_at.len() > 64 {
-            return Err(CoreError::InvalidWorkspacePath("invalid execution history cursor or workspace".into()));
+            return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.execution.cursor",serde_json::json!({}),"invalid execution history cursor or workspace")));
         }
         Ok(())
     }
@@ -74,8 +74,14 @@ mod tests {
         assert_eq!(seen.len(), 130); assert_eq!(page_number, 7);
         assert_eq!(page(&db, None).await[0]["run"]["id"], "new");
         let wrong: Cursor = serde_json::from_value(json!({"schema":"aibo.execution-cursor/v1","workspaceId":"other","startedAt":"before","kind":"git","id":"same-000"})).unwrap();
-        assert!(crate::workspace_write_runs::list_page(&db, "w".into(), None, Some(&wrong)).await.is_err());
-        assert!(crate::project_actions::list_project_action_runs_page(&db, "w".into(), None, Some(&wrong)).await.is_err());
+        for error in [crate::workspace_write_runs::list_page(&db, "w".into(), None, Some(&wrong)).await.err().unwrap(),
+            crate::project_actions::list_project_action_runs_page(&db, "w".into(), None, Some(&wrong)).await.err().unwrap()] {
+            let payload=serde_json::to_value(error).unwrap();
+            assert_eq!(payload["code"],"invalid_workspace_path");assert_eq!(payload["message"],"invalid workspace path: invalid execution history cursor or workspace");
+            assert_eq!(payload["localized"]["key"],"native.execution.cursor");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]),"执行历史分页参数或工作区无效。");
+        }
+        assert_eq!(wrong.workspace_id,"other");assert_eq!(wrong.id,"same-000");
         assert!(crate::workspace_write_runs::list_page(&db, "other".into(), None, None).await.unwrap().is_empty());
         db.close().await; std::fs::remove_dir_all(root).unwrap();
     }

@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
@@ -44,7 +45,7 @@ test('partial history failures stay visible and Git stops require the originatin
       cancelWrite: async (...args) => { calls.push(args); return true; }, publish: next => state = next,
     }, 60000);
     controller.open('w', 'main'); await controller.refresh();
-    assert.equal(state.entries.length, 2); assert.match(state.errors[0], /offline/);
+    assert.equal(state.entries.length, 2); assert.match(translateMessage('zh-CN',state.errors[0]), /offline/);
     await controller.stop('git:other'); assert.equal(calls.length, 0);
     await controller.stop('git:own'); await controller.stop('git:own'); assert.deepEqual(calls, [['w','own']]);
     assert.equal(executionStatus(state.entries.find(entry => entry.id === 'own')), '已请求停止');

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { onMount, tick, untrack, type Snippet } from 'svelte';
   import { Button, Card, WorkbenchChrome } from '$lib/ui-kit';
   import { preflightDefaultPresentation, defaultWorkbenchSlots, defaultLayouts } from './plugins/default-presentation';
@@ -138,8 +139,8 @@
   export function switchPresentation(layout: string, failMount = false) { return switchLayout(layout, failMount); }
 </script>
 {#if failure}
-  <Card><p role="alert">呈现错误：{failure}</p>
-    <Button variant="ghost" onclick={restoreDefault} aria-label="恢复默认呈现" aria-keyshortcuts="Control+Shift+Backspace Meta+Shift+Backspace">恢复默认呈现</Button>
+  <Card><p role="alert">{$t('workbench.presentationError', {error: failure})}</p>
+    <Button variant="ghost" onclick={restoreDefault} aria-label={$t('workbench.restorePresentation')} aria-keyshortcuts="Control+Shift+Backspace Meta+Shift+Backspace">{$t('workbench.restorePresentation')}</Button>
   </Card>
 {/if}
 <div bind:this={target} onfocusin={rememberFocus} class="workbench-presentation" data-presentation-focus-target={focus} data-presentation-layout={instance?.layout} data-presentation-generation={instance?.generation} inert={switching || suspended} aria-busy={switching} style:display={suspended && hideWhenSuspended ? 'none' : 'flex'}>

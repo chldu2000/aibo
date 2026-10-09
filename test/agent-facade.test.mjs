@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
@@ -23,11 +24,17 @@ test('capability facade uses the bound plugin and never falls through to legacy 
     await facade.invoke(session, capability, input);
     assert.deepEqual(calls.at(-1), [session.id, capability, input]);
   }
-  await assert.rejects(facade.invoke(session, 'model.select'), /capability_unsupported/);
+  await assert.rejects(facade.invoke(session, 'model.select'), error => {
+    assert.equal(error.message,'capability_unsupported: model.select');
+    assert.equal(translateMessage('en',error.localized),'This session does not support model.select.');
+    assert.equal(translateMessage('zh-CN',error.localized),'此会话不支持 model.select。');
+    return true;
+  });
   assert.equal(calls.length, 2);
-  const unavailable = createAgentFacade({ invokeAgentCapability: async () => { throw new Error('provider_unavailable'); },
+  const providerError=new Error('provider_unavailable');
+  const unavailable = createAgentFacade({ invokeAgentCapability: async () => { throw providerError; },
     legacyCapability: async () => assert.fail('failed plugins must not fall back') });
-  await assert.rejects(unavailable.invoke(session, 'session.tree'), /provider_unavailable/);
+  await assert.rejects(unavailable.invoke(session, 'session.tree'), error => {assert.equal(error,providerError);assert.equal(error.localized,undefined);return true;});
 });
 
 test('non-Pi tree navigation uses the same production controller and rejects unbound impostors', async () => {
@@ -57,7 +64,9 @@ test('non-Pi tree navigation uses the same production controller and rejects unb
     assert.equal(result.leafId, 'branch-b');
     selected = { ...session, pluginInstallationId: null }; pending = 'branch-b';
     assert.equal(await controller.confirmNavigation({ mode: 'none' }), false);
-    assert.match(error, /provider_unavailable/);
+    assert.equal(error.key,'native.session.bindingMissing');
+    assert.equal(translateMessage('en',error),'The session binding is missing.');
+    assert.equal(translateMessage('zh-CN',error),'会话绑定缺失。');
   } finally { await server.close(); }
 });
 
@@ -67,6 +76,10 @@ test("unbound historical sessions cannot invoke either capability or legacy exec
     legacyCapability: async () => assert.fail("history must not execute a legacy runtime"),
   });
   for (const agent of ["codex", "pi", "dev.example.agent"]) {
-    await assert.rejects(facade.invoke({ ...session, agent, pluginInstallationId: null }, "session.tree"), /provider_unavailable/);
+    await assert.rejects(facade.invoke({ ...session, agent, pluginInstallationId: null }, "session.tree"), error => {
+      assert.equal(error.message,'provider_unavailable: session has no plugin binding');
+      assert.equal(error.localized.key,'native.session.bindingMissing');
+      return true;
+    });
   }
 });

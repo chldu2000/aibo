@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
@@ -64,7 +65,7 @@ test('accepted sends and queued messages stay accepted when the following refres
       assert.equal(composer, '', 'accepted draft must be consumed despite refresh failure');
       assert.ok(!failed.includes(true), 'a refresh error cannot label the send failed');
       assert.ok(errors.every(error => error === null));
-      assert.ok(notices.some(notice => notice.message.includes('刷新') && notice.type === 'warning'));
+      assert.ok(notices.some(notice => translateMessage('zh-CN',notice.message).includes('刷新') && notice.type === 'warning'));
     }
   } finally { await server.close(); }
 });
@@ -115,6 +116,6 @@ test('sending during native startup preserves the draft without invoking a turn'
   const {createMessageController}=await server.ssrLoadModule('/src/lib/app/message-controller.ts');let notice;
   const controller=createMessageController({getComposerText:()=> 'draft',getSelectedWorkspace:()=>({id:'w'}),getSelectedSession:()=>({id:'s',state:'starting'}),
    setNotice:value=>notice=value,api:{sendAgentPrompt:()=>assert.fail('startup cannot send')},consumeDraft:()=>assert.fail('startup cannot consume draft')});
-  await controller.sendPrompt();assert.match(notice,/初始化/);
+  await controller.sendPrompt();assert.match(translateMessage('zh-CN',notice),/初始化/);
  }finally{await server.close()}
 });

@@ -24,7 +24,7 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
     let target = crate::session_by_id(db, target_id).await?;
     let source = crate::session_by_id(db, source_id).await?;
     if target.workspace_id != source.workspace_id || target_id == source_id || target.archived {
-        return Err(CoreError::InvalidWorkspacePath("只能引用当前工作区的其他会话，且目标会话不能已归档。".into()));
+        return Err(crate::ui_i18n::invalid_path_error("native.reference.scopeInvalid", serde_json::json!({})));
     }
     // One SQLite read transaction freezes membership and streaming content.
     // Bound allocation before loading a potentially very large history.
@@ -33,7 +33,7 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
         .fetch_one(&mut *tx).await?;
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE session_id=?")
         .bind(source_id).fetch_one(&mut *tx).await?;
-    if count == 0 { return Err(CoreError::InvalidWorkspacePath("该会话暂无已保存的消息可供引用。".into())); }
+    if count == 0 { return Err(crate::ui_i18n::invalid_path_error("native.reference.empty", serde_json::json!({}))); }
     let through: String = sqlx::query_scalar("SELECT id FROM messages WHERE session_id=? ORDER BY created_at DESC,sequence DESC,id DESC LIMIT 1")
         .bind(source_id).fetch_one(&mut *tx).await?;
     let tool_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages WHERE session_id=? AND role='tool'")
@@ -44,7 +44,7 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
     let selected_bytes: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(bytes),0) FROM (SELECT length(CAST(content AS BLOB))+length(CAST(id AS BLOB))+length(status)+100 AS bytes FROM messages WHERE session_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,sequence DESC,id DESC LIMIT ?)")
         .bind(source_id).bind(limit).fetch_one(&mut *tx).await?;
     if selected_bytes > MAX_SNAPSHOT_BYTES as i64 {
-        return Err(CoreError::InvalidWorkspacePath("会话引用超过 128 KiB 上限，请在设置中减少消息条数。未添加引用。".into()));
+        return Err(crate::ui_i18n::invalid_path_error("native.reference.selectedTooLarge", serde_json::json!({})));
     }
     let rows = sqlx::query("SELECT id,role,content,status FROM messages WHERE session_id=? AND role IN ('user','assistant') ORDER BY created_at DESC,sequence DESC,id DESC LIMIT ?")
         .bind(source_id).bind(limit).fetch_all(&mut *tx).await?;
@@ -73,7 +73,7 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
         "messages":items
     }).to_string();
     if snapshot.len() > MAX_SNAPSHOT_BYTES {
-        return Err(CoreError::InvalidWorkspacePath("会话引用超过 128 KiB 上限，请减少消息条数或引用数量。未添加引用。".into()));
+        return Err(crate::ui_i18n::invalid_path_error("native.reference.snapshotTooLarge", serde_json::json!({})));
     }
     let hash = format!("sha256:{:x}", Sha256::digest(snapshot.as_bytes()));
     let path = format!("会话：{}", source.label);
@@ -92,6 +92,13 @@ pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn assert_display(error: CoreError, diagnostic: &str, english: &str) {
+        assert_eq!(error.to_string(),format!("invalid workspace path: {diagnostic}"));
+        let payload=serde_json::to_value(&error).unwrap();
+        assert_eq!(payload["code"],"invalid_workspace_path");
+        assert_eq!(payload["localized"]["schema"],"aibo.host-message/v1");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&crate::ui_i18n::error_display(&error)),english);
+    }
     #[tokio::test]
     async fn configured_count_selects_conversation_messages_and_freezes_each_reference() {
         let root = std::env::temp_dir().join(format!("aibo-reference-count-{}", ulid::Ulid::new()));
@@ -149,8 +156,13 @@ mod tests {
                 .bind(id).bind(w).bind(id).bind(archived).execute(&db).await.unwrap();
         }
         sqlx::query("INSERT INTO messages(id,session_id,role,content,status,sequence,created_at,updated_at) VALUES ('m','source','assistant','原始回答','streaming',1,'now','now')").execute(&db).await.unwrap();
-        for source in ["target","foreign","empty","missing"] { assert!(capture(&db,"target",source).await.is_err()); }
-        assert!(capture(&db,"source","target").await.is_err());
+        for source in ["target","foreign"] {
+            assert_display(capture(&db,"target",source).await.unwrap_err(),"只能引用当前工作区的其他会话，且目标会话不能已归档。","Only other sessions in the current workspace can be referenced, and the target session must not be archived.");
+        }
+        assert!(capture(&db,"target","missing").await.is_err());
+        assert_display(capture(&db,"target","empty").await.unwrap_err(),"该会话暂无已保存的消息可供引用。","This session has no saved messages to reference.");
+        assert_display(capture(&db,"source","target").await.unwrap_err(),"只能引用当前工作区的其他会话，且目标会话不能已归档。","Only other sessions in the current workspace can be referenced, and the target session must not be archived.");
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM attachments").fetch_one(&db).await.unwrap(),0);
         let attachment = capture(&db,"target","source").await.unwrap();
         let original = attachment.inline_context.unwrap();
         let value: serde_json::Value = serde_json::from_str(&original).unwrap();
@@ -171,7 +183,10 @@ mod tests {
         sqlx::query("UPDATE messages SET content=? WHERE id='m'").bind("界".repeat(MAX_SNAPSHOT_BYTES)).execute(&db).await.unwrap();
         sqlx::query("INSERT INTO messages(id,session_id,role,content,status,sequence,created_at,updated_at) VALUES ('tool','source','tool',?,'completed',2,'now','now')")
             .bind("PRIVATE_TOOL_OUTPUT".repeat(100000)).execute(&db).await.unwrap();
-        assert!(capture(&db,"target","source").await.is_err());
+        assert_display(capture(&db,"target","source").await.unwrap_err(),"会话引用超过 128 KiB 上限，请在设置中减少消息条数。未添加引用。","The session reference exceeds the 128 KiB limit. Reduce the message count in settings. No reference was added.");
+        sqlx::query("UPDATE messages SET content=? WHERE id='m'").bind("\"".repeat(MAX_SNAPSHOT_BYTES * 3 / 4)).execute(&db).await.unwrap();
+        assert_display(capture(&db,"target","source").await.unwrap_err(),"会话引用超过 128 KiB 上限，请减少消息条数或引用数量。未添加引用。","The session reference exceeds the 128 KiB limit. Reduce the message or reference count. No reference was added.");
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM attachments").fetch_one(&db).await.unwrap(),2);
         sqlx::query("UPDATE messages SET content=? WHERE id='m'").bind("界".repeat(2000)).execute(&db).await.unwrap();
         let compact = capture(&db,"target","source").await.unwrap();
         let compact_text = compact.inline_context.unwrap();

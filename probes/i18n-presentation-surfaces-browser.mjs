@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
+import {createServer} from 'vite';
+import {chromium} from 'playwright';
+const packageOf=(source,surface)=>({release:{digest:createHash('sha256').update(source).digest('hex'),enabled:true,manifest:{schema:'aibo.presentation-package/v1',id:'dev.example.locale',displayName:'Locale probe',version:'1.0.0',hostApi:'1.0.0',coreSemantics:'1.0.0',snapshotSchemas:['aibo.semantic-view/v1','aibo.semantic-view/v1.1','aibo.semantic-view/experimental-v1'],entry:'skin.js',surfaces:[surface],resources:[{path:'skin.js',bytes:Buffer.byteLength(source),sha256:createHash('sha256').update(source).digest('hex'),mediaType:'text/javascript'}]}},resources:{'skin.js':Buffer.from(source).toString('base64')}});
+const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});await server.listen();
+const browser=await chromium.launch({headless:true});
+const setLanguage=(page,locale)=>page.evaluate(async locale=>{
+ const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:locale,locale});
+},locale);
+try {
+ for(const kit of ['material3','ak-ui']) for(const theme of ['light','dark']) {
+  const context=await browser.newContext();const errors=[];
+  const page=await context.newPage();page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(({kit,theme})=>{if(window===window.top&&location.protocol==='http:')localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:kit,themeId:theme}));},{kit,theme});
+  const url=`http://127.0.0.1:${server.httpServer.address().port}`;
+  await page.goto(url+'/probes/presentation-controls.html');await page.waitForFunction(()=>window.controlPackageProbe);
+  await setLanguage(page,'zh-CN');
+  const source="self.aiboPresentation={render(input){if(input.data.control!=='ModelMatrix')return null;if(input.data.props.disabled)throw Error('locale control failure');return {tag:'section',key:'matrix',children:[{tag:'h2',key:'title',text:input.locale==='en'?'Localized control':'本地化控件'},...input.data.actions.map(a=>({tag:'button',key:a.token,text:a.reasoningEffort||'Default',events:{click:a.token}}))]}}};";
+  await page.evaluate(pkg=>window.controlPackageProbe.select(pkg),packageOf(source,'controls'));
+  const control=page.frameLocator('#replaceable .external-control:not([hidden]) iframe');
+  await control.getByRole('heading',{name:'本地化控件',exact:true}).waitFor();
+  const iframe=page.locator('#replaceable .external-control:not([hidden]) iframe');
+  await iframe.evaluate(el=>el.dataset.probeIdentity='same-control');
+  await setLanguage(page,'en');
+  await control.getByRole('heading',{name:'Localized control',exact:true}).waitFor();
+  assert.equal(await iframe.getAttribute('data-probe-identity'),'same-control');
+  await control.getByRole('button',{name:'high',exact:true}).click();
+  await page.waitForFunction(()=>window.controlPackageProbe.result().length===1);
+  assert.deepEqual(await page.evaluate(()=>window.controlPackageProbe.result()),[['model-a','high']]);
+  await page.locator('#replaceable').getByRole('img',{name:'Inherited mark'}).waitFor();
+  await page.evaluate(()=>window.controlPackageProbe.setDisabled(true));
+  await page.locator('#replaceable').getByRole('table',{name:'Models and reasoning effort',exact:true}).waitFor();
+  await setLanguage(page,'zh-CN');
+  await page.locator('#replaceable').getByRole('table',{name:'模型与推理强度',exact:true}).waitFor();
+  await page.goto(url+'/probes/presentation-semantic.html');await page.waitForFunction(()=>window.semanticPackageProbe);
+  await setLanguage(page,'zh-CN');
+  const semanticSource="let expanded=false;self.aiboPresentation={handle(){expanded=!expanded},render(input){if(input.data.snapshot.view.content==='fail')throw Error('locale semantic failure');return {tag:'section',key:'semantic',children:[{tag:'h1',key:'title',text:(input.locale==='en'?'Localized view':'本地化视图')+(expanded?' expanded':'')},{tag:'button',key:'toggle',text:'Toggle detail',localEvents:{click:'toggle'}},...input.data.actions.map(a=>({tag:'button',key:a.token,text:a.label,events:{click:a.token}}))]}}};";
+  await page.evaluate(pkg=>window.semanticPackageProbe.select(pkg),packageOf(semanticSource,'semantic'));
+  const semantic=page.frameLocator('.external-semantic iframe');
+  await semantic.getByRole('heading',{name:'本地化视图',exact:true}).waitFor();
+  await semantic.getByRole('button',{name:'Toggle detail',exact:true}).click();
+  await semantic.getByRole('heading',{name:'本地化视图 expanded',exact:true}).waitFor();
+  await page.locator('.external-semantic iframe').evaluate(el=>el.dataset.probeIdentity='same-semantic');
+  await setLanguage(page,'en');
+  await semantic.getByRole('heading',{name:'Localized view expanded',exact:true}).waitFor();
+  assert.equal(await page.locator('.external-semantic iframe').getAttribute('data-probe-identity'),'same-semantic');
+  const detail=JSON.parse(await readFile('fixtures/semantic-git/detail.json','utf8'));
+  const action=detail.actions.find(a=>a.enabled);
+  await semantic.getByRole('button',{name:action.label,exact:true}).click();
+  await page.waitForFunction(()=>window.semanticPackageProbe.result().length===1);
+  assert.equal(await page.evaluate(()=>window.semanticPackageProbe.result()[0].actionId),action.id);
+  detail.view.content='fail';await page.evaluate(snapshot=>window.semanticPackageProbe.update(snapshot),detail);
+  await page.locator('.external-semantic iframe').waitFor({state:'detached'});
+  await page.locator('[data-presentation-mode="core"]').waitFor();
+  await setLanguage(page,'zh-CN');
+  assert.deepEqual(errors,[]);
+  await context.close();console.log(`external i18n ${kit} ${theme}: controls, semantic local state, actions, inheritance and failure passed`);
+ }
+} finally {await browser.close();await server.close();}

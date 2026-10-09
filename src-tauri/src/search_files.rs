@@ -48,7 +48,7 @@ struct Scan {
     seen: HashSet<String>,
     changes: Vec<Changed>,
     complete: bool,
-    warnings: Vec<String>,
+    warnings: Vec<crate::ui_i18n::HostMessage>,
 }
 fn scan(
     root: PathBuf,
@@ -56,6 +56,7 @@ fn scan(
     known: HashMap<String, String>,
     sequence: Arc<AtomicU64>,
     revision: u64,
+    max_files: usize,
 ) -> Result<Scan, CoreError> {
     let root = std::fs::canonicalize(root).map_err(error)?;
     let mut builder = ignore::WalkBuilder::new(&root);
@@ -90,12 +91,12 @@ fn scan(
     let mut bytes = 0usize;
     for entry in builder.build() {
         if sequence.load(Ordering::SeqCst) != revision {
-            return Err(error("搜索已取消"));
+            return Err(crate::ui_i18n::read_error("native.search.cancelled",serde_json::json!({})));
         }
-        if scan.seen.len() >= MAX_FILES || started.elapsed().as_secs() >= 15 {
+        if scan.seen.len() >= max_files || started.elapsed().as_secs() >= 15 {
             scan.complete = false;
             scan.warnings
-                .push("目录过大，文件索引尚未覆盖全部内容；请缩小工作区范围".into());
+                .push(crate::ui_i18n::HostMessage::new("native.search.directoryLimit",serde_json::json!({})));
             break;
         }
         let entry = match entry {
@@ -157,11 +158,11 @@ fn scan(
     }
     if !scan.complete && scan.warnings.is_empty() {
         scan.warnings
-            .push("部分目录无法读取，文件结果可能不完整".into());
+            .push(crate::ui_i18n::HostMessage::new("native.search.directoryUnreadable",serde_json::json!({})));
     }
     if bytes >= 64 * 1024 * 1024 {
         scan.warnings
-            .push("本次文本索引达到 64 MiB；其余文件可按名称搜索".into());
+            .push(crate::ui_i18n::HostMessage::new("native.search.indexBudget",serde_json::json!({})));
     }
     Ok(scan)
 }
@@ -177,6 +178,7 @@ pub(crate) async fn search(
             items: vec![],
             has_more: false,
             warnings: vec![],
+            localized_warnings: None,
         });
     }
     if request.query.trim().is_empty() {
@@ -186,7 +188,7 @@ pub(crate) async fn search(
     let sequence = counter(request_key);
     let revision = 0;
     if sequence.load(Ordering::SeqCst) != revision {
-        return Err(error("搜索已取消"));
+        return Err(crate::ui_i18n::read_error("native.search.cancelled",serde_json::json!({})));
     }
     let workspaces = sqlx::query("SELECT id,path,label FROM workspaces WHERE ? IS NULL OR id=?")
         .bind(&request.workspace_id)
@@ -206,17 +208,17 @@ pub(crate) async fn search(
         let workspace_id = id.clone();
         let current = sequence.clone();
         let scanned = tauri::async_runtime::spawn_blocking(move || {
-            scan(root, workspace_id, known, current, revision)
+            scan(root, workspace_id, known, current, revision, MAX_FILES)
         })
         .await
         .map_err(error)?;
         if sequence.load(Ordering::SeqCst) != revision {
-            return Err(error("搜索已取消"));
+            return Err(crate::ui_i18n::read_error("native.search.cancelled",serde_json::json!({})));
         }
         let scan = match scanned {
             Ok(scan) => scan,
             Err(reason) => {
-                warnings.push(format!("{label}：{reason}"));
+                warnings.push(crate::ui_i18n::named_read_warning(&label, &reason));
                 continue;
             }
         };
@@ -232,7 +234,7 @@ pub(crate) async fn search(
         }
         for change in scan.changes {
             if sequence.load(Ordering::SeqCst) != revision {
-                return Err(error("搜索已取消"));
+                return Err(crate::ui_i18n::read_error("native.search.cancelled",serde_json::json!({})));
             }
             sqlx::query("INSERT INTO search_documents(id,kind,source,target_id,workspace_id,title,body,updated_at) VALUES (?,'file','file',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at")
                 .bind(&change.id).bind(&change.path).bind(&id).bind(&change.path).bind(&change.content).bind(crate::now_iso()).execute(&mut *tx).await?;
@@ -253,19 +255,20 @@ pub(crate) async fn search(
         warnings.extend(
             scan.warnings
                 .into_iter()
-                .map(|warning| format!("{label}：{warning}")),
+                .map(|warning| crate::ui_i18n::HostMessage::new("native.search.namedWarning",serde_json::json!({"name":label,"warning":warning.localized.unwrap_or(serde_json::json!(warning.diagnostic))}))),
         );
     }
     request.kind = Some("file".into());
     let mut page = global_search::search(db, caller, request).await?;
-    page.warnings = warnings;
+    page.localized_warnings = Some(warnings.iter().map(|warning|warning.localized.clone().unwrap_or(serde_json::Value::Null)).collect());
+    page.warnings = warnings.into_iter().map(|warning|warning.diagnostic).collect();
     Ok(page)
 }
 pub(crate) async fn detail(db: &SqlitePool, target: Target) -> Result<Detail, CoreError> {
     let workspace = target
         .workspace_id
         .as_deref()
-        .ok_or_else(|| error("缺少工作区"))?;
+        .ok_or_else(|| crate::ui_i18n::read_error("native.search.workspaceMissing",serde_json::json!({})))?;
     let root: String = sqlx::query_scalar("SELECT path FROM workspaces WHERE id=?")
         .bind(workspace)
         .fetch_one(db)
@@ -278,8 +281,10 @@ pub(crate) async fn detail(db: &SqlitePool, target: Target) -> Result<Detail, Co
     .await
     .map_err(error)??;
     Ok(Detail {
+        localized_suffix: None,
         title,
         content,
+        localized_content: None,
         target,
         truncated,
     })
@@ -288,6 +293,19 @@ pub(crate) async fn detail(db: &SqlitePool, target: Target) -> Result<Detail, Co
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bounded_walk_warns_in_both_languages_without_claiming_a_complete_index() {
+        let root = std::env::temp_dir().join(format!("aibo-search-budget-{}",ulid::Ulid::new()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("原文{path}.txt"),"用户正文").unwrap();
+        std::fs::write(root.join("other.txt"),"another file").unwrap();
+        let scan = scan(root.clone(),"w".into(),HashMap::new(),Arc::new(AtomicU64::new(0)),0,1).unwrap();
+        assert!(!scan.complete);assert_eq!(scan.seen.len(),1);assert_eq!(scan.changes.len(),1);
+        let warning = &scan.warnings[0];assert_eq!(warning.diagnostic,"目录过大，文件索引尚未覆盖全部内容；请缩小工作区范围");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,warning.localized.as_ref().unwrap()),"The directory is too large to index completely. Narrow the workspace scope.");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[tokio::test]
     async fn file_index_respects_ignore_refresh_delete_unicode_and_workspace_boundary() {
         let directory =
@@ -328,6 +346,8 @@ mod tests {
             .unwrap();
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].target.line, Some(2));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,page.items[0].localized_description.as_ref().unwrap()),"Files · Line 2");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,page.items[0].localized_description.as_ref().unwrap()),page.items[0].description);
         let preview = detail(&db, page.items[0].target.clone()).await.unwrap();
         assert!(preview.content.contains("唯一中文"));
         assert!(

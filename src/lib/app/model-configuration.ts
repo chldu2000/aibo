@@ -1,3 +1,4 @@
+import { LocalizedError } from './error-utils.ts';
 import type { SessionExecutionProfile, SessionModelCatalog } from '$lib/types';
 import type { CapabilitySession, createAgentFacade } from './agent-facade';
 
@@ -51,47 +52,47 @@ export function createModelConfigurationService(ports: {
     async apply(session: CapabilitySession, change: ModelConfigurationChange,
       catalog: SessionModelCatalog | null, profile: SessionExecutionProfile | null) {
       if (!session.pluginInstallationId) {
-        throw new Error("history_only: old session configuration is read-only");
+        throw new LocalizedError('native.controls.historyOnly', {}, 'history_only: old session configuration is read-only');
       }
       if (change.kind === 'contextWindow') {
-        if (!session.capabilities.includes('model.context-window')) throw new Error('capability_unsupported: model.context-window');
+        if (!session.capabilities.includes('model.context-window')) throw new LocalizedError('native.session.unsupportedCapability', { capability: 'model.context-window' }, 'capability_unsupported: model.context-window');
         // Refresh before applying: the open selector may belong to an older model.
         const latest = await ports.getSessionModels(session.id);
-        if (latest.current?.reference !== change.modelReference) throw new Error('当前模型已变化，请重新选择上下文大小。');
-        if (!latest.current.contextWindows?.some(option => option.id === change.contextWindow)) throw new Error('当前模型不支持此上下文大小。');
+        if (latest.current?.reference !== change.modelReference) throw new LocalizedError('error.modelChanged');
+        if (!latest.current.contextWindows?.some(option => option.id === change.contextWindow)) throw new LocalizedError('error.contextUnsupported');
         await ports.facade.invoke(session, 'model.context-window', { action: 'set', contextWindow: change.contextWindow });
         const updated = await ports.getSessionModels(session.id);
-        if (updated.current?.reference !== change.modelReference || updated.currentContextWindow !== change.contextWindow) throw new Error('插件未确认所选上下文大小，请刷新模型配置。');
+        if (updated.current?.reference !== change.modelReference || updated.currentContextWindow !== change.contextWindow) throw new LocalizedError('error.contextUnconfirmed');
         return { catalog: updated, profile: await ports.getSessionExecutionProfile(session.id) };
       }
       const changesTier = change.kind === 'serviceTier';
       const changesModel = !changesTier && change.kind !== 'reasoning';
       const level = change.kind === 'model' || changesTier ? null : change.reasoningEffort;
       // Check the whole intent before the first mutation. A combined operation is not atomic.
-      if (changesModel && !session.capabilities.includes('model.select')) throw new Error('capability_unsupported: model.select');
+      if (changesModel && !session.capabilities.includes('model.select')) throw new LocalizedError('native.session.unsupportedCapability', { capability: 'model.select' }, 'capability_unsupported: model.select');
       if ((level !== null || change.kind === 'reasoning') && !session.capabilities.includes('model.reasoning')) {
-        throw new Error('capability_unsupported: model.reasoning');
+        throw new LocalizedError('native.session.unsupportedCapability', { capability: 'model.reasoning' }, 'capability_unsupported: model.reasoning');
       }
-      if (changesTier && !session.capabilities.includes('model.service-tier')) throw new Error('capability_unsupported: model.service-tier');
-      if (change.kind === 'reasoning' && level === null) throw new Error('此插件未提供恢复默认推理强度的能力。');
-      if (changesModel && !change.model) throw new Error('此插件未提供恢复默认模型的能力。');
+      if (changesTier && !session.capabilities.includes('model.service-tier')) throw new LocalizedError('native.session.unsupportedCapability', { capability: 'model.service-tier' }, 'capability_unsupported: model.service-tier');
+      if (change.kind === 'reasoning' && level === null) throw new LocalizedError('error.reasoningDefaultUnsupported');
+      if (changesModel && !change.model) throw new LocalizedError('error.modelDefaultUnsupported');
       const available = !catalog || catalog.parameterScope === 'current-model'
         ? await ports.getSessionModels(session.id) : catalog;
       if (changesTier) {
         const supported = change.serviceTier === 'default'
           || available.current?.serviceTiers.some(option => option.id === change.serviceTier);
-        if (!supported) throw new Error('当前模型不支持此服务层级。');
+        if (!supported) throw new LocalizedError('error.serviceTierUnsupported');
         await ports.facade.invoke(session, 'model.service-tier', { action: 'set', tier: change.serviceTier });
         return { catalog: await ports.getSessionModels(session.id), profile: await ports.getSessionExecutionProfile(session.id) };
       }
       const selected = changesModel ? available.models.find(option => option.reference === change.model) : available.current;
-      if (changesModel && !selected) throw new Error('所选模型不在当前模型目录中，请刷新后重试。');
+      if (changesModel && !selected) throw new LocalizedError('error.modelUnavailable');
       const sequential = available.parameterScope === 'current-model';
       if (sequential && level !== null && selected?.reference !== available.current?.reference) {
-        throw new Error('请先切换模型，读取该模型的推理选项后再选择强度。');
+        throw new LocalizedError('error.reasoningSequential');
       }
       if (level !== null && !(selected?.reasoningEfforts ?? available.reasoningEfforts).some(option => option.id === level)) {
-        throw new Error('所选模型不支持此推理强度。');
+        throw new LocalizedError('error.reasoningUnsupported');
       }
       if (changesModel && selected && !(sequential && level !== null)) {
         await ports.facade.invoke(session, 'model.select', selected.provider
@@ -102,7 +103,7 @@ export function createModelConfigurationService(ports: {
       const updatedCatalog = await ports.getSessionModels(session.id);
       if (sequential && (updatedCatalog.current?.reference !== selected?.reference
         || level !== null && updatedCatalog.currentReasoningEffort !== level)) {
-        throw new Error('插件未确认所选模型或推理强度，请刷新模型配置。');
+        throw new LocalizedError('error.modelUnconfirmed');
       }
       return { catalog: updatedCatalog, profile: await ports.getSessionExecutionProfile(session.id) };
     },

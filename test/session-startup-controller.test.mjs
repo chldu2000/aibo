@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSessionStartupController} from '../src/lib/app/session-startup-controller.ts';
@@ -18,7 +19,7 @@ test('slow native startup exposes a host session immediately and does not lock n
 });
 test('startup failure stays attached to the original session and late success cannot restore a removed session',async()=>{
  const f=fixture(),pending=f.controller.create('w','external','p');await Promise.resolve();f.native.reject(Error('authentication failed'));await pending;
- assert.equal(f.sessions.size,1);assert.equal(f.sessions.get('s').state,'failed');assert.match(f.error,/authentication failed/);
+ assert.equal(f.sessions.size,1);assert.equal(f.sessions.get('s').state,'failed');assert.match(translateMessage('en',f.error),/authentication failed/);
  const removed=fixture(),work=removed.controller.create('w','external','p');await Promise.resolve();removed.sessions.delete('s');removed.native.resolve({...removed.starting,state:'idle'});await work;
  assert.equal(removed.sessions.size,0);
 });

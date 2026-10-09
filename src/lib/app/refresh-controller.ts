@@ -1,3 +1,5 @@
+import type { LocalizedText } from '../../../packages/i18n/index.js';
+import { localizedMessage } from '../../../packages/i18n/index.js';
 import type { SetNotice } from './notifications';
 import type {
   AgentDiagnostic,
@@ -18,7 +20,7 @@ import type {
 import type { PersistedSelection } from './selection-storage';
 import { withTimeout } from './async-timeout';
 import { ensureWorkspaceExpanded, reconcileSessionRefresh, workspaceIdsForRefresh } from './session-transitions';
-import { toErrorMessage } from './error-utils';
+import { toErrorText, LocalizedError } from './error-utils';
 import { createLatestRequestTracker } from './latest-request-tracker';
 
 const SESSION_LIST_TIMEOUT_MS = 10_000;
@@ -49,7 +51,7 @@ export type RefreshControllerContext = {
   setWorkspaceSessionMap: (value: Record<string, Session[]>) => void;
   setSessionsLoadingWorkspaceIds: (value: string[]) => void;
   setBusy: (value: boolean) => void;
-  setErrorMessage: (value: string | null) => void;
+  setErrorMessage: (value: LocalizedText | null) => void;
   setNotice: SetNotice;
   clearSelectedSessionContext: () => void;
   refreshTimeline: (sessionId: string) => Promise<void>;
@@ -102,7 +104,7 @@ export function createRefreshController(context: RefreshControllerContext) {
       // Session list rendering must not be held hostage by a slow or failed
       // context request. The individual context panels keep their own
       // fallbacks; surface a timeline failure without re-entering loading.
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     }
   }
 
@@ -126,7 +128,7 @@ export function createRefreshController(context: RefreshControllerContext) {
           statusFilter: context.getSessionFilter(),
         }),
         SESSION_LIST_TIMEOUT_MS,
-        '加载会话超时；已保留当前会话列表，请稍后重试。',
+        new LocalizedError('error.sessionListTimeout'),
       );
       if (!sessionRequests.isLatest(workspaceId, generation)) return;
       const reconciledSessions = reconcileSessionRefresh(
@@ -176,7 +178,7 @@ export function createRefreshController(context: RefreshControllerContext) {
       }
     } catch (error) {
       if (sessionRequests.isLatest(workspaceId, generation)) {
-        context.setErrorMessage(toErrorMessage(error));
+        context.setErrorMessage(toErrorText(error));
       }
     } finally {
       // Covers list_sessions failures and early returns before the list is
@@ -187,7 +189,7 @@ export function createRefreshController(context: RefreshControllerContext) {
 
   async function refresh(): Promise<void> {
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；请在 Tauri 桌面模式中刷新本机诊断。', 'warning');
+      context.setNotice(localizedMessage('runtime.diagnosticsDesktopOnly'), 'warning');
       return;
     }
     context.setBusy(true);
@@ -240,7 +242,7 @@ export function createRefreshController(context: RefreshControllerContext) {
         context.setPiNavigationEntryId(null);
       }
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }

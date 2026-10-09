@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
+use crate::ui_i18n::HostMessage;
 
 pub(crate) const EXECUTION_PROFILE_SCHEMA: &str = "aibo.execution-profile/v1";
 
@@ -124,20 +125,18 @@ pub(crate) fn default_requested_profile(agent: &str) -> Result<ExecutionProfile,
     Ok(default_profile(agent))
 }
 
-fn validate_choice(field: &str, value: &str, choices: &[&str]) -> Result<(), String> {
+fn validate_choice(field: &str, value: &str, choices: &[&str]) -> Result<(), HostMessage> {
     if choices.contains(&value) {
         Ok(())
     } else {
-        Err(format!("invalid execution profile {field}: {value}"))
+        Err(HostMessage::with_diagnostic("native.profile.choice",serde_json::json!({"field":field,"value":value}),format!("invalid execution profile {field}: {value}")))
     }
 }
 
-fn validate_profile(profile: &ExecutionProfile) -> Result<(), String> {
+fn validate_profile(profile: &ExecutionProfile) -> Result<(), HostMessage> {
     if profile.schema != EXECUTION_PROFILE_SCHEMA {
-        return Err(format!(
-            "unsupported execution profile schema: {}",
-            profile.schema
-        ));
+        return Err(HostMessage::with_diagnostic("native.profile.schema",serde_json::json!({"schema":profile.schema}),
+            format!("unsupported execution profile schema: {}",profile.schema)));
     }
     validate_choice(
         "interactionMode",
@@ -172,7 +171,7 @@ pub(crate) fn resolve(
     agent: &str,
     requested: Option<ExecutionProfile>,
     resolved_at: String,
-) -> Result<ResolvedExecutionProfile, String> {
+) -> Result<ResolvedExecutionProfile, HostMessage> {
     resolve_with_backend(EnforcementBackend::legacy_agent(agent), requested, resolved_at)
 }
 
@@ -180,7 +179,7 @@ pub(crate) fn resolve_with_backend(
     backend: EnforcementBackend,
     requested: Option<ExecutionProfile>,
     resolved_at: String,
-) -> Result<ResolvedExecutionProfile, String> {
+) -> Result<ResolvedExecutionProfile, HostMessage> {
     let requested = requested.unwrap_or_else(|| {
         let mut profile = default_requested_profile(
             if backend == EnforcementBackend::CodexNative { "codex" } else { "generic" },
@@ -191,7 +190,7 @@ pub(crate) fn resolve_with_backend(
     validate_profile(&requested)?;
     if backend != EnforcementBackend::AgentManaged &&
         (requested.filesystem_policy == "agent-managed" || requested.command_policy == "agent-managed") {
-        return Err("unsupported: provider-managed permissions require an agent-managed provider".into());
+        return Err(HostMessage::with_diagnostic("native.profile.agentManaged",serde_json::json!({}),"unsupported: provider-managed permissions require an agent-managed provider"));
     }
 
     let mut enforced = requested.clone();
@@ -339,29 +338,29 @@ pub(crate) async fn save_for_session(
 pub(crate) fn from_row(
     row: &sqlx::sqlite::SqliteRow,
     session_id: String,
-) -> Result<SessionExecutionProfile, String> {
+) -> Result<SessionExecutionProfile, HostMessage> {
     let requested: ExecutionProfile = serde_json::from_str(
         &row.try_get::<String, _>("requested_json")
             .map_err(|error| error.to_string())?,
     )
-    .map_err(|error| format!("invalid requested execution profile: {error}"))?;
+    .map_err(|error| HostMessage::with_diagnostic("native.profile.storedRequested",serde_json::json!({"error":error.to_string()}),format!("invalid requested execution profile: {error}")))?;
     let enforced: ExecutionProfile = serde_json::from_str(
         &row.try_get::<String, _>("enforced_json")
             .map_err(|error| error.to_string())?,
     )
-    .map_err(|error| format!("invalid enforced execution profile: {error}"))?;
+    .map_err(|error| HostMessage::with_diagnostic("native.profile.storedEnforced",serde_json::json!({"error":error.to_string()}),format!("invalid enforced execution profile: {error}")))?;
     let unsupported: Vec<String> = serde_json::from_str(
         &row.try_get::<String, _>("unsupported_json")
             .map_err(|error| error.to_string())?,
     )
-    .map_err(|error| format!("invalid unsupported capabilities: {error}"))?;
+    .map_err(|error| HostMessage::with_diagnostic("native.profile.storedUnsupported",serde_json::json!({"error":error.to_string()}),format!("invalid unsupported capabilities: {error}")))?;
     let adapter_capabilities: Vec<String> = serde_json::from_str(
         &row.try_get::<String, _>("adapter_capabilities_json")
             .map_err(|error| error.to_string())?,
     )
-    .map_err(|error| format!("invalid adapter capabilities: {error}"))?;
+    .map_err(|error| HostMessage::with_diagnostic("native.profile.storedCapabilities",serde_json::json!({"error":error.to_string()}),format!("invalid adapter capabilities: {error}")))?;
     let backend: EnforcementBackend = serde_json::from_str(&row.try_get::<String, _>("enforcement_backend")
-        .map_err(|error| error.to_string())?).map_err(|error| format!("invalid enforcement backend: {error}"))?;
+        .map_err(|error| error.to_string())?).map_err(|error| HostMessage::with_diagnostic("native.profile.storedBackend",serde_json::json!({"error":error.to_string()}),format!("invalid enforcement backend: {error}")))?;
     Ok(SessionExecutionProfile {
         session_id,
         profile: ResolvedExecutionProfile {

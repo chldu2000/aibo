@@ -1,3 +1,5 @@
+import { localizedMessage } from '../../../packages/i18n/index.js';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 import type { SetNotice } from './notifications';
 import type {
   CodexThreadSnapshot,
@@ -15,7 +17,7 @@ import type {
   WorkspaceCapabilityInventory,
   RestoreOperation,
 } from '$lib/types';
-import { toErrorMessage } from './error-utils';
+import { toErrorText } from './error-utils';
 import { createAgentFacade } from './agent-facade';
 
 export type SessionContextControllerContext = {
@@ -55,7 +57,7 @@ export type SessionContextControllerContext = {
   setTimeline: (value: TimelineItem[]) => void;
   setTimelineVisibleCount: (value: number) => void;
   setThreadBusy: (value: boolean) => void;
-  setErrorMessage: (value: string | null) => void;
+  setErrorMessage: (value: LocalizedText | null) => void;
   setNotice: SetNotice;
 };
 
@@ -72,9 +74,9 @@ export function createSessionContextController(context: SessionContextController
       if (workspaceId === context.getSelectedWorkspaceId()) {
         context.setCodexThreads(loadedThreads);
       }
-      if (announce) context.setNotice(`已读取 ${loadedThreads.length} 个远端会话。`, 'success');
+      if (announce) context.setNotice(localizedMessage('context.remoteSessions', {count: loadedThreads.length}), 'success');
     } catch (error) {
-      if (announce) context.setErrorMessage(toErrorMessage(error));
+      if (announce) context.setErrorMessage(toErrorText(error));
     }
   }
 
@@ -101,12 +103,12 @@ export function createSessionContextController(context: SessionContextController
       if (sessionId === context.getSelectedSessionId()) {
         context.setCodexThreadSnapshot(snapshot);
       }
-      if (announce) context.setNotice(snapshot.turnCount === null ? '已读取远端线程，原生引擎未提供轮次统计。' : `已读取远端线程，共 ${snapshot.turnCount} 轮。`, 'success');
+      if (announce) context.setNotice(snapshot.turnCount === null ? localizedMessage('context.remoteNoCount') : localizedMessage('context.remoteTurns', {count: snapshot.turnCount}), 'success');
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) {
         context.setCodexThreadSnapshot(null);
       }
-      if (announce) context.setErrorMessage(toErrorMessage(error));
+      if (announce) context.setErrorMessage(toErrorText(error));
     }
   }
 
@@ -118,7 +120,7 @@ export function createSessionContextController(context: SessionContextController
         context.setTimelineVisibleCount(80);
       }
     } catch (error) {
-      if (sessionId === context.getSelectedSessionId()) context.setErrorMessage(toErrorMessage(error));
+      if (sessionId === context.getSelectedSessionId()) context.setErrorMessage(toErrorText(error));
     }
   }
 
@@ -243,7 +245,7 @@ export function createSessionContextController(context: SessionContextController
       if (sessionId === context.getSelectedSessionId()) context.setPiTree(snapshot);
     } catch (error) {
       if (sessionId === context.getSelectedSessionId()) {
-        context.setNotice('会话树暂时无法读取，请稍后点击“刷新”重试。', 'warning');
+        context.setNotice(localizedMessage('context.treeUnavailable'), 'warning');
       }
       console.warn('unable to read Pi session tree', error);
     }

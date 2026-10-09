@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import Select from '../../runtime/Select.svelte';
   import Button from '../../runtime/Button.svelte';
   import Input from '../../runtime/Input.svelte';
@@ -26,11 +27,11 @@
       {:else}
         <Input id={`${id}-${field.key}`} type={field.type === 'number' ? 'number' : 'text'} step="any" min={field.min} max={field.max} value={String(value)} disabled={busy} aria-describedby={field.description ? `${id}-${field.key}-help` : undefined} oninput={(event: Event) => { const text = (event.currentTarget as HTMLInputElement).value; onChange(field.key, field.type === 'number' && text !== '' ? Number(text) : text); }} />
       {/if}
-      <div class="agent-settings-inheritance"><small>{Object.hasOwn(draft, field.key) ? '已在此范围覆盖' : '使用继承值或默认值'}</small><Button type="button" size="sm" variant="ghost" disabled={busy || !Object.hasOwn(draft, field.key)} onclick={() => onChange(field.key, undefined)}>使用继承值</Button></div>
+      <div class="agent-settings-inheritance"><small>{Object.hasOwn(draft, field.key) ? $t('agentSettings.overridden') : $t('agentSettings.inherited')}</small><Button type="button" size="sm" variant="ghost" disabled={busy || !Object.hasOwn(draft, field.key)} onclick={() => onChange(field.key, undefined)}>{$t('agentSettings.useInherited')}</Button></div>
     </div>
   {/each}
   {#if error}<p role="alert">{error}</p>{/if}
   {#if notice}<p role="status">{notice}</p>{/if}
-  {#if dirty}<p role="status">有未保存的修改，切换分类或关闭设置会保留草稿；点击“保存设置”后生效。</p>{/if}
-  <footer><Button type="submit" disabled={busy}>保存设置</Button><Button type="button" variant="outline" disabled={busy} onclick={onReset}>全部使用继承值</Button><Button type="button" variant="ghost" disabled={busy} onclick={onReload}>重新加载并丢弃修改</Button></footer>
+  {#if dirty}<p role="status">{$t('agentSettings.unsaved')}</p>{/if}
+  <footer><Button type="submit" disabled={busy}>{$t('agentSettings.save')}</Button><Button type="button" variant="outline" disabled={busy} onclick={onReset}>{$t('agentSettings.reset')}</Button><Button type="button" variant="ghost" disabled={busy} onclick={onReload}>{$t('agentSettings.reload')}</Button></footer>
 </form>

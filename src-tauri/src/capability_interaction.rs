@@ -30,27 +30,27 @@ impl Broker {
         let interaction = self.flights.lock().await.get(&key)
             .filter(|flight|!*flight.cancel.borrow())
             .and_then(|flight|flight.interaction.clone())
-            .ok_or_else(||fail("provider_unavailable","No interactive invocation belongs to this caller"))?;
-        let _permit = interaction.control_permit.clone().try_acquire_owned().map_err(|_|fail("busy","Another control is pending"))?;
+            .ok_or_else(||fail_display("provider_unavailable", "No interactive invocation belongs to this caller", "native.broker.interactiveCaller"))?;
+        let _permit = interaction.control_permit.clone().try_acquire_owned().map_err(|_|fail_display("busy", "Another control is pending", "native.broker.controlBusy"))?;
         Self::identity(&interaction.scope,&control.capability,&control.version)?;
         self.workspace(&interaction.scope).await?;
-        if control.input.to_string().len() > input_limit(&control.capability) { return Err(fail("invalid_input","Control input exceeds limit")); }
+        if control.input.to_string().len() > input_limit(&control.capability) { return Err(fail_display("invalid_input", "Control input exceeds limit", "native.broker.controlInputLimit")); }
         let provider = self.offers(&interaction.scope,&control.capability,&control.version,Some(&interaction.provider.installation_id)).await?
             .into_iter().find(|provider|provider.contribution_id == interaction.provider.contribution_id)
-            .ok_or_else(||fail("unsupported","The pinned provider does not offer this control"))?;
+            .ok_or_else(||fail_display("unsupported", "The pinned provider does not offer this control", "native.broker.controlUnsupported"))?;
         if provider.digest != interaction.provider.digest || provider.operation["effect"] != "read"
             || provider.operation["permissions"].as_array().unwrap().iter().any(|permission|!interaction.permissions.iter().any(|allowed|permission == allowed)) {
-            return Err(fail("permission_denied","Control exceeds the running invocation's authority"));
+            return Err(fail_display("permission_denied", "Control exceeds the running invocation's authority", "native.broker.controlAuthority"));
         }
         if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&control.input) {
-            return Err(fail("invalid_input","Control input does not match its contract"));
+            return Err(fail_display("invalid_input", "Control input does not match its contract", "native.broker.controlContract"));
         }
-        let (_,_,digest) = plugin_registry::inspect(&provider.directory).map_err(|_|fail("provider_unavailable","Control package is unavailable"))?;
-        if digest != provider.digest { return Err(fail("provider_unavailable","Control package changed")); }
+        let (_,_,digest) = plugin_registry::inspect(&provider.directory).map_err(|_|fail_display("provider_unavailable", "Control package is unavailable", "native.broker.controlPackage"))?;
+        if digest != provider.digest { return Err(fail_display("provider_unavailable", "Control package changed", "native.broker.controlPackageChanged")); }
         let live = self.flights.lock().await.get(&key).is_some_and(|flight|
             !*flight.cancel.borrow() && flight.interaction.as_ref().is_some_and(|current|current.invocation_id == interaction.invocation_id));
         if !live || interaction.runtime.was_stopped() || interaction.runtime.has_exited() || Instant::now() >= interaction.deadline {
-            return Err(fail("cancelled","Interactive invocation has ended"));
+            return Err(fail_display("cancelled", "Interactive invocation has ended", "native.broker.interactiveEnded"));
         }
         let timeout = interaction.deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(provider.operation["timeoutMs"].as_u64().unwrap()));
         let raw = interaction.runtime.request("capability.control",json!({
@@ -61,7 +61,7 @@ impl Broker {
         if raw["invocationId"] != interaction.invocation_id || raw["generationId"] != interaction.runtime.generation_id
             || raw["output"].to_string().len() > MAX_OUTPUT || !raw.as_object().is_some_and(|value|value.len()==3 && value.contains_key("output"))
             || !jsonschema::options().build(&provider.operation["outputSchema"]).map_err(database)?.is_valid(&raw["output"]) {
-            return Err(fail("invalid_output","Control returned an invalid result"));
+            return Err(fail_display("invalid_output", "Control returned an invalid result", "native.broker.controlResult"));
         }
         Ok(Response {instance_id:interaction.instance_id,invocation_id:interaction.invocation_id,installation_id:provider.installation_id,generation_id:interaction.runtime.generation_id,output:raw["output"].clone(),negotiated_operations:Value::Null})
     }
@@ -72,13 +72,13 @@ impl StreamCursor {
     pub fn new() -> Self { Self {sequence:0,bytes:0} }
     pub fn accept(&mut self, message: &Value, instance: &str, generation: &str, contribution: &str, invocation: &str) -> Result<Value,Failure> {
         if !crate::plugin_contract::contracts().capability_interactive.is_valid(message) || message["method"] != "capability.event" {
-            return Err(fail("invalid_output","Invalid capability stream envelope"));
+            return Err(fail_display("invalid_output", "Invalid capability stream envelope", "native.broker.streamEnvelope"));
         }
         let p = &message["params"];
         let bytes = p["event"].to_string().len();
         if p["instanceId"] != instance || p["generationId"] != generation || p["contributionId"] != contribution || p["invocationId"] != invocation
             || p["sequence"].as_u64() != Some(self.sequence+1) || bytes > MAX_OUTPUT || self.bytes+bytes > 64*1024*1024 {
-            return Err(fail("invalid_output","Stale, unordered or oversized capability stream"));
+            return Err(fail_display("invalid_output", "Stale, unordered or oversized capability stream", "native.broker.streamOrder"));
         }
         self.sequence += 1;
         self.bytes += bytes;

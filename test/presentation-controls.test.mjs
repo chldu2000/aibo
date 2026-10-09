@@ -103,3 +103,32 @@ test('attachment, goal and subagent controls project host data only and resolve 
  assert.equal(resolveControlIntent('SubagentCard',card,{id:'open',event:'input'}),null);
  assert.deepEqual(calls.slice(1),[['pause'],['open']]);
 });
+
+test('language is display input and does not alter control authority or legacy shape',()=>{
+ const context={workspaceId:'w',sessionId:'s',revision:2};
+ const legacy=controlInput('ModelMatrix',props,context);
+ assert.equal('locale' in legacy,false);
+ for(const locale of ['zh-CN','en']) {
+  const localized=controlInput('ModelMatrix',props,context,{},locale);
+  assert.equal(localized.locale,locale);
+  assert.deepEqual(localized.context,legacy.context);
+  assert.deepEqual(localized.data,legacy.data);
+  assert.ok(controlPreflights('1.1.0',locale).every(input=>input.locale===locale));
+ }
+});
+
+test('control defaults, marks and host menus use locale without changing options or callback authorization',async()=>{
+ const context={workspaceId:'w',sessionId:'s',revision:1};const calls=[];
+ const select={options:[{value:'a',label:'用户值'},{value:'b',label:'原始选项'}],value:'a',onSelect:value=>calls.push(value)};
+ const input=controlInput('Select',select,context,{},'en');assert.equal(input.data.props.placeholder,'Select an option');assert.equal(input.data.props.label,'Select an option');
+ assert.deepEqual(input.data.actions,controlInput('Select',select,context).data.actions);
+ const effect=resolveControlIntent('Select',select,{id:'open',event:'click'});
+ assert.equal(effect.menu(select,'en').label,'Select an option');assert.equal(effect.menu(select,'zh-CN').label,'请选择');
+ assert.deepEqual(effect.menu(select,'en').options,effect.menu(select).options);
+ await effect.choose(select,'b')();assert.deepEqual(calls,['b']);assert.equal(effect.choose({...select,disabled:true},'b'),null);
+ const mark=controlInput('FileChangeMark',{kind:'conflicted'},context,{},'en');assert.equal(mark.data.props.label,'Merge conflicts');assert.equal(decorativeLabel('FileChangeMark',{kind:'conflicted'},'en'),'Merge conflicts');
+ assert.equal(decorativeLabel('FileChangeMark',{kind:'conflicted',decorative:true},'en'),null);
+ assert.equal(controlInput('AttachmentList',{items:[]},context,{},'en').data.props.label,'Message attachments');
+ const modelContext={options:[{id:'standard',label:'原始上下文',description:null}],current:'standard',disabled:false,onSelect(){}};
+ const menu=resolveControlIntent('ModelContextSelect',modelContext,{id:'open',event:'click'}).menu(modelContext,'en');assert.equal(menu.label,'Model context size');assert.equal(menu.options[0].label,'原始上下文');
+});

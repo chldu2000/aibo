@@ -2,70 +2,73 @@
 use super::*;
 use crate::{capability_broker::Response, workspace_write_runs, CoreError};
 use sha2::{Digest,Sha256};
-fn invalid(message: &str) -> CoreError {CoreError::InvalidWorkspacePath(message.into())}
-fn failure(error: CoreError) -> String {let value = serde_json::to_value(error).unwrap(); format!("{}: {}",value["code"].as_str().unwrap_or("write_failed"),value["message"].as_str().unwrap_or("Host write failed"))}
+fn invalid(key: &str, message: &str) -> CoreError {crate::ui_i18n::invalid_path_message(owned(key,message))}
+fn failure(error: CoreError) -> HostMessage {
+    let value = serde_json::to_value(error).unwrap();
+    HostMessage {diagnostic:format!("{}: {}",value["code"].as_str().unwrap_or("write_failed"),value["message"].as_str().unwrap_or("Host write failed")),localized:value.get("localized").cloned()}
+}
 fn identity(action: &SemanticAction) -> Value {json!({"context":action.context,"actionId":action.action_id,"itemId":action.item_id})}
 
-async fn binding(db: &SqlitePool, broker: &Broker, lease: &Lease, reference: &Value, effect: &str) -> Result<Binding,String> {
+async fn binding(db: &SqlitePool, broker: &Broker, lease: &Lease, reference: &Value, effect: &str) -> Result<Binding, HostMessage> {
     let dependencies = plugin_dependencies::resolve_metadata(db,&lease.contribution.installation_id).await?;
-    if !dependencies.supports(&lease.contribution.contribution_id) {return Err("provider_unavailable: view dependency".into());}
+    if !dependencies.supports(&lease.contribution.contribution_id) {return Err(owned("native.semanticWrite.dependency", "provider_unavailable: view dependency"));}
     let mut allowed = vec![lease.contribution.installation_id.clone()];
     allowed.extend(dependencies.dependencies.iter().filter(|d|d.available && d.contribution_ids.contains(&lease.contribution.contribution_id)).filter_map(|d|d.installation_id.clone()));
-    let capability = reference["capability"].as_str().ok_or("invalid_input: declared capability")?;
-    let version = reference["version"]["min"].as_str().ok_or("invalid_input: declared version")?;
-    let offers: Vec<_> = broker.providers(&lease.binding.scope,capability,version).await.map_err(|error|error.code)?.into_iter()
+    let capability = reference["capability"].as_str().ok_or_else(|| owned("native.semanticWrite.capability", "invalid_input: declared capability"))?;
+    let version = reference["version"]["min"].as_str().ok_or_else(|| owned("native.semanticWrite.version", "invalid_input: declared version"))?;
+    let offers: Vec<_> = broker.providers(&lease.binding.scope,capability,version).await.map_err(broker_message)?.into_iter()
         .filter(|provider|allowed.contains(&provider.installation_id) && provider.operation["id"] == reference["operation"] && provider.operation["effect"] == effect).collect();
-    if offers.len() != 1 {return Err(if offers.is_empty() {"provider_unavailable: declared operation"} else {"provider_selection_required: declared operation"}.into());}
+    if offers.len() != 1 {return Err(if offers.is_empty() {owned("native.semanticWrite.operationUnavailable","provider_unavailable: declared operation")} else {owned("native.semanticWrite.operationSelection","provider_selection_required: declared operation")});}
     Ok(Binding {scope:lease.binding.scope.clone(),capability:capability.into(),version:version.into(),installation_id:offers[0].installation_id.clone(),contribution_id:offers[0].contribution_id.clone()})
 }
 
 async fn proof(db: &SqlitePool, broker: &Broker, lease: &Lease, action: &SemanticAction, snapshot: &Value, target: &Binding) -> Result<Value,CoreError> {
     {
-        let state = lease.state.try_lock().map_err(|_|invalid("stale_context: view is updating"))?;
-        if lease.released.load(Ordering::Acquire) || state.touched.elapsed() > TTL || state.snapshot != *snapshot || state.snapshot["context"] != action.context {return Err(invalid("stale_context: view changed or released"));}
+        let state = lease.state.try_lock().map_err(|_|invalid("native.semanticWrite.updating", "stale_context: view is updating"))?;
+        if lease.released.load(Ordering::Acquire) || state.touched.elapsed() > TTL || state.snapshot != *snapshot || state.snapshot["context"] != action.context {return Err(invalid("native.semanticWrite.changed", "stale_context: view changed or released"));}
     }
-    let current = catalog(db).await.map_err(|_|invalid("provider_unavailable: contribution"))?.into_iter().find(|entry|entry.installation_id == lease.contribution.installation_id && entry.contribution_id == lease.contribution.contribution_id && entry.available)
-        .ok_or_else(||invalid("provider_unavailable: contribution"))?;
-    if current.metadata != lease.contribution.metadata {return Err(invalid("stale_context: contribution changed"));}
+    let current = catalog(db).await.map_err(|_|invalid("native.semanticWrite.contribution", "provider_unavailable: contribution"))?.into_iter().find(|entry|entry.installation_id == lease.contribution.installation_id && entry.contribution_id == lease.contribution.contribution_id && entry.available)
+        .ok_or_else(||invalid("native.semanticWrite.contribution", "provider_unavailable: contribution"))?;
+    if current.metadata != lease.contribution.metadata {return Err(invalid("native.semanticWrite.contributionChanged", "stale_context: contribution changed"));}
     let (directory,digest): (String,String) = sqlx::query_as("SELECT install_path,package_digest FROM plugin_installations WHERE id=? AND installed=1 AND enabled=1").bind(&current.installation_id).fetch_one(db).await?;
-    let (_,_,actual) = crate::plugin_registry::inspect(std::path::Path::new(&directory)).map_err(|_|invalid("provider_unavailable: declaration package"))?;
-    if actual != digest {return Err(invalid("stale_context: declaration package changed"));}
-    let declared = current.metadata["writeActions"].as_array().and_then(|items|items.iter().find(|item|item["id"] == action.action_id)).ok_or_else(||invalid("unsupported: undeclared write action"))?;
-    let now = binding(db,broker,lease,&declared["provider"],"write").await.map_err(|_|invalid("provider_unavailable: write binding"))?;
-    let read = binding(db,broker,lease,&current.metadata["provider"],"read").await.map_err(|_|invalid("provider_unavailable: read binding"))?;
-    if serde_json::to_value(&now).unwrap() != serde_json::to_value(target).unwrap() || serde_json::to_value(&read).unwrap() != serde_json::to_value(&lease.binding).unwrap() {return Err(invalid("stale_context: semantic binding changed"));}
-    let state = lease.state.try_lock().map_err(|_|invalid("stale_context: view is updating"))?;
-    if lease.released.load(Ordering::Acquire) || state.snapshot != *snapshot || state.touched.elapsed() > TTL {return Err(invalid("stale_context: view changed or released"));}
+    let (_,_,actual) = crate::plugin_registry::inspect(std::path::Path::new(&directory)).map_err(|_|invalid("native.semanticWrite.package", "provider_unavailable: declaration package"))?;
+    if actual != digest {return Err(invalid("native.semanticWrite.packageChanged", "stale_context: declaration package changed"));}
+    let declared = current.metadata["writeActions"].as_array().and_then(|items|items.iter().find(|item|item["id"] == action.action_id)).ok_or_else(||invalid("native.semanticWrite.undeclared", "unsupported: undeclared write action"))?;
+    let now = binding(db,broker,lease,&declared["provider"],"write").await.map_err(|_|invalid("native.semanticWrite.writeBinding", "provider_unavailable: write binding"))?;
+    let read = binding(db,broker,lease,&current.metadata["provider"],"read").await.map_err(|_|invalid("native.semanticWrite.readBinding", "provider_unavailable: read binding"))?;
+    if serde_json::to_value(&now).unwrap() != serde_json::to_value(target).unwrap() || serde_json::to_value(&read).unwrap() != serde_json::to_value(&lease.binding).unwrap() {return Err(invalid("native.semanticWrite.bindingChanged", "stale_context: semantic binding changed"));}
+    let state = lease.state.try_lock().map_err(|_|invalid("native.semanticWrite.updating", "stale_context: view is updating"))?;
+    if lease.released.load(Ordering::Acquire) || state.snapshot != *snapshot || state.touched.elapsed() > TTL {return Err(invalid("native.semanticWrite.changed", "stale_context: view changed or released"));}
     Ok(json!({"context":action.context,"actionId":action.action_id,"declarationInstallationId":current.installation_id,"declarationDigest":digest,"snapshotDigest":format!("sha256:{:x}",Sha256::digest(snapshot.to_string())),"readBinding":read,"writeBinding":now}))
 }
 
 impl SemanticPlugins {
-    pub(crate) async fn write_requested(&self, db: &SqlitePool, broker: &Broker, owner: &str, action: SemanticAction, request_id: String, approval: &workspace_write_runs::Request) -> Result<Response,String> {
-        if !approval.matches(&request_id,owner) || action.context.to_string().len() > 4096 || action.action_id.len() > 128 || action.item_id.is_some() {return Err("invalid_input: semantic write identity".into());}
-        let workspace = action.context["workspaceId"].as_str().ok_or("permission_denied: semantic write workspace")?;
+    pub(crate) async fn write_requested(&self, db: &SqlitePool, broker: &Broker, owner: &str, action: SemanticAction, request_id: String, approval: &workspace_write_runs::Request) -> Result<Response, HostMessage> {
+        if !approval.matches(&request_id,owner) || action.context.to_string().len() > 4096 || action.action_id.len() > 128 || action.item_id.is_some() {return Err(owned("native.semanticWrite.identity", "invalid_input: semantic write identity"));}
+        let workspace = action.context["workspaceId"].as_str().ok_or_else(|| owned("native.semanticWrite.workspace", "permission_denied: semantic write workspace"))?;
         let identity = identity(&action);
         if let Some(result) = workspace_write_runs::replay_requested(db,workspace,"semantic.write",&identity,approval).await.map_err(failure)? {return result.map_err(failure);}
-        let lease = self.leases.lock().await.get(action.context["generation"].as_str().ok_or("invalid_input: generation")?).cloned().ok_or("stale_context: unknown view")?;
-        if lease.owner != owner {return Err("permission_denied: view owner".into());}
+        let lease = self.leases.lock().await.get(action.context["generation"].as_str().ok_or_else(|| owned("native.semantic.generation", "invalid_input: generation"))?).cloned().ok_or_else(|| owned("native.semantic.unknown", "stale_context: unknown view"))?;
+        if lease.owner != owner {return Err(owned("native.semantic.owner", "permission_denied: view owner"));}
         let snapshot = {
-            let state = lease.state.try_lock().map_err(|_|"busy: semantic action")?;
-            if lease.released.load(Ordering::Acquire) || state.touched.elapsed() > TTL || state.snapshot["context"] != action.context {return Err("stale_context: view changed or released".into());}
+            let state = lease.state.try_lock().map_err(|_|owned("native.semantic.busy", "busy: semantic action"))?;
+            if lease.released.load(Ordering::Acquire) || state.touched.elapsed() > TTL || state.snapshot["context"] != action.context {return Err(owned("native.semanticWrite.changed", "stale_context: view changed or released"));}
             state.snapshot.clone()
         };
-        let value = snapshot["actions"].as_array().and_then(|actions|actions.iter().find(|a|a["id"] == action.action_id && a["enabled"] == true && a["intent"] == "execute")).ok_or("unsupported: disabled write action")?;
-        let declared = lease.contribution.metadata["writeActions"].as_array().and_then(|actions|actions.iter().find(|a|a["id"] == action.action_id)).ok_or("unsupported: undeclared write action")?;
+        let value = snapshot["actions"].as_array().and_then(|actions|actions.iter().find(|a|a["id"] == action.action_id && a["enabled"] == true && a["intent"] == "execute")).ok_or_else(|| owned("native.semanticWrite.disabled", "unsupported: disabled write action"))?;
+        let declared = lease.contribution.metadata["writeActions"].as_array().and_then(|actions|actions.iter().find(|a|a["id"] == action.action_id)).ok_or_else(|| owned("native.semanticWrite.undeclared", "unsupported: undeclared write action"))?;
         let target = binding(db,broker,&lease,&declared["provider"],"write").await?;
         let request = Request {scope:target.scope.clone(),capability:target.capability.clone(),version:target.version.clone(),request_id,turn_id:None,input:value["input"].clone()};
-        broker.invoke_semantic_write(owner,request,&target,identity,approval,||proof(db,broker,&lease,&action,&snapshot,&target)).await.map_err(|error|format!("{}: {}",error.code,error.message))
+        broker.invoke_semantic_write(owner,request,&target,identity,approval,||proof(db,broker,&lease,&action,&snapshot,&target)).await.map_err(|error|HostMessage {diagnostic:format!("{}: {}",error.code,error.message),localized:error.localized})
     }
 }
 
 #[tauri::command]
-pub(crate) async fn write_semantic_contribution(action: SemanticAction, request_id: String, window: tauri::WebviewWindow, state: tauri::State<'_,crate::AppState>) -> Result<Response,String> {
+pub(crate) async fn write_semantic_contribution(action: SemanticAction, request_id: String, window: tauri::WebviewWindow, state: tauri::State<'_,crate::AppState>) -> Result<Response, HostMessage> {
     let owner = window.label().to_owned(); let db = state.db.clone(); let broker = state.capability_broker.clone(); let views = state.semantic_plugins.clone();
     let approval = crate::host_write_request(request_id.clone(),window,db.clone(),crate::host_confirmation::Category::ViewWrite);
     // Disposing a renderer invalidates approval, but cannot abandon an approved write.
-    tokio::spawn(async move {views.write_requested(&db,&broker,&owner,action,request_id,&approval).await}).await.map_err(|_|"outcome_unknown: semantic write task stopped".to_owned())?
+    tokio::spawn(async move {views.write_requested(&db,&broker,&owner,action,request_id,&approval).await}).await.map_err(|_|owned("native.semanticWrite.taskStopped", "outcome_unknown: semantic write task stopped"))?
 }
 
 #[cfg(all(test, unix))]
@@ -103,10 +106,33 @@ mod tests {
         let snapshot = host.open(&db, &broker, "main", "w", &installed.id, "dev.aibo.semantic-write.page").await.unwrap();
         assert_eq!(snapshot["schema"], "aibo.semantic-view/v1.1");
         let action = SemanticAction { context: snapshot["context"].clone(), action_id: "dev.aibo.semantic-write.append".into(), item_id: None };
-        assert!(host.act(&db, &broker, "main", action.clone()).await.unwrap_err().contains("permission_denied"));
+        assert!(host.act(&db, &broker, "main", action.clone()).await.unwrap_err().diagnostic.contains("permission_denied"));
+        assert!(!root.join("workspace/effect.txt").exists());
+        let calls_before: i64 = sqlx::query_scalar("SELECT count(*) FROM capability_invocations").fetch_one(&db).await.unwrap();
+        let runs_before: i64 = sqlx::query_scalar("SELECT count(*) FROM workspace_write_runs").fetch_one(&db).await.unwrap();
+        let mut missing_workspace = action.clone(); missing_workspace.context["workspaceId"] = Value::Null;
+        let mut stale_revision = action.clone(); stale_revision.context["revision"] = json!(99);
+        let mut disabled_action = action.clone(); disabled_action.action_id = "not-declared".into();
+        for (owner, request, approved_id, target, key, diagnostic) in [
+            ("main","guard-identity","different",action.clone(),"identity","invalid_input: semantic write identity"),
+            ("main","guard-workspace","guard-workspace",missing_workspace,"workspace","permission_denied: semantic write workspace"),
+            ("other","guard-owner","guard-owner",action.clone(),"owner","permission_denied: view owner"),
+            ("main","guard-revision","guard-revision",stale_revision,"changed","stale_context: view changed or released"),
+            ("main","guard-action","guard-action",disabled_action,"disabled","unsupported: disabled write action"),
+        ] {
+            let approval = workspace_write_runs::Request::with_confirmation(approved_id.into(),owner.into(),|_|async{panic!("rejected semantic identity requested approval")});
+            let error = host.write_requested(&db,&broker,owner,target,request.into(),&approval).await.unwrap_err();
+            assert_eq!(error.diagnostic,diagnostic);
+            let expected = format!("native.{}.{key}",if key=="owner"{"semantic"}else{"semanticWrite"});
+            assert_eq!(error.localized.as_ref().unwrap()["key"],expected);
+        }
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM capability_invocations").fetch_one(&db).await.unwrap(),calls_before);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM workspace_write_runs").fetch_one(&db).await.unwrap(),runs_before);
+        let lease = host.leases.lock().await.get(snapshot["context"]["generation"].as_str().unwrap()).unwrap().clone();
+        assert_eq!(lease.state.lock().await.snapshot,snapshot);
         assert!(!root.join("workspace/effect.txt").exists());
         let denied = workspace_write_runs::Request::with_confirmation("semantic-denied".into(), "main".into(), |_| async { Ok(false) });
-        assert!(host.write_requested(&db, &broker, "main", action.clone(), "semantic-denied".into(), &denied).await.unwrap_err().contains("approval_rejected"));
+        assert!(host.write_requested(&db, &broker, "main", action.clone(), "semantic-denied".into(), &denied).await.unwrap_err().diagnostic.contains("approval_rejected"));
         assert!(!root.join("workspace/effect.txt").exists());
         let stale = workspace_write_runs::Request::with_confirmation("semantic-stale".into(), "main".into(), {
             let host = host.clone(); let broker = broker.clone(); let generation = snapshot["context"]["generation"].as_str().unwrap().to_owned();
@@ -114,7 +140,11 @@ mod tests {
                 host.release(&broker, "main", &generation).await.unwrap(); Ok(true)
             } }
         });
-        assert!(host.write_requested(&db, &broker, "main", action, "semantic-stale".into(), &stale).await.is_err());
+        let stale_error = host.write_requested(&db, &broker, "main", action, "semantic-stale".into(), &stale).await.unwrap_err();
+        assert_eq!(stale_error.diagnostic,"approval_rejected: Host write was not started: approval stale. Check the current context before submitting a new request.");
+        let stale_display = stale_error.localized.as_ref().unwrap();
+        assert_eq!(stale_display["key"],"native.writeRun.approvalRejected");
+        assert_eq!(stale_display["params"]["decision"]["key"],"native.writeRun.stale");
         assert!(!root.join("workspace/effect.txt").exists());
         let snapshot = host.open(&db, &broker, "main", "w", &installed.id, "dev.aibo.semantic-write.page").await.unwrap();
         let action = SemanticAction { context: snapshot["context"].clone(), action_id: "dev.aibo.semantic-write.append".into(), item_id: None };
@@ -168,7 +198,7 @@ mod tests {
             }).await.unwrap();
             if mode == "delayed" {
                 let duplicate = workspace_write_runs::Request::with_confirmation(request_id.clone(), "main".into(), |_| async { panic!("duplicate requested approval") });
-                assert!(host.write_requested(&db, &broker, "main", action.clone(), request_id.clone(), &duplicate).await.unwrap_err().contains("busy"));
+                assert!(host.write_requested(&db, &broker, "main", action.clone(), request_id.clone(), &duplicate).await.unwrap_err().diagnostic.contains("busy"));
             }
             // The effect proves approval and runtime dispatch happened before release.
             host.release(&broker, "main", snapshot["context"]["generation"].as_str().unwrap()).await.unwrap();
@@ -179,8 +209,8 @@ mod tests {
             }
             let outcome = task.await.unwrap();
             if mode == "delayed" { assert_eq!(outcome.as_ref().unwrap().output["value"], "semantic-write"); }
-            else { assert!(outcome.as_ref().unwrap_err().contains("outcome_unknown"), "{outcome:?}"); }
-            replays.push((action, request_id, outcome.map(|response|response.output)));
+            else { assert!(outcome.as_ref().unwrap_err().diagnostic.contains("outcome_unknown"), "{outcome:?}"); }
+            replays.push((action, request_id, outcome.map(|response|response.output).map_err(|error|serde_json::to_value(error).unwrap())));
         }
         tokio::time::sleep(Duration::from_millis(3200)).await;
         assert!(!root.join("workspace/late.txt").exists(), "cancelled child survived");
@@ -191,7 +221,7 @@ mod tests {
         let broker = Broker::new(db.clone()); let host = SemanticPlugins::default();
         for (action, request_id, expected) in replays {
             let approval = workspace_write_runs::Request::with_confirmation(request_id.clone(), "main".into(), |_| async { panic!("settled replay requested approval") });
-            let actual = host.write_requested(&db, &broker, "main", action, request_id, &approval).await.map(|response|response.output);
+            let actual = host.write_requested(&db, &broker, "main", action, request_id, &approval).await.map(|response|response.output).map_err(|error|serde_json::to_value(error).unwrap());
             assert_eq!(actual, expected);
         }
         assert_eq!(std::fs::read_to_string(root.join("workspace/effect.txt")).unwrap(), before);
@@ -218,7 +248,7 @@ mod tests {
         let host = SemanticPlugins::default();
 
         let error = host.open(&db, &broker, "main", "w", &installed.id, "dev.aibo.semantic-write.page").await.unwrap_err();
-        assert!(error.contains("undeclared"), "{error}");
+        assert!(error.diagnostic.contains("undeclared"), "{error}");
         assert!(!root.join("workspace/effect.txt").exists());
         db.close().await; std::fs::remove_dir_all(root).unwrap();
     }

@@ -84,6 +84,29 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 再通过应用真实的 `open_database` 路径升级并再次打开。断言数据内容、旧迁移 checksum、外键及完整性。
 禁止从修改后的当前 SQL 重建同一个“旧版本”来替代冻结样本；前置迁移复用受不可变门禁保护的文件。
 
+0061 追加可空的宿主显示元数据字段，不改写消息正文或恢复审计数组。
+`host_display_migration_preserves_legacy_text_and_optional_metadata_across_reopen` 从冻结的
+0060 及之前迁移建库，验证升级与重开后的历史文本、草稿、旧校验值、外键及完整性。
+
+0062 为排队消息追加可空的错误显示字段，保留旧错误、正文、投递状态和队列修订号。
+`queue_display_migration_preserves_delivery_and_errors_across_reopen` 从冻结的 0061 及之前 SQL
+建立旧队列，经真实 `open_database` 升级并重开，验证数据、草稿、旧校验值、外键和完整性。
+
+
+0063 为回合采集错误追加可空显示字段，不修改旧诊断、归属或采集状态。
+`turn_capture_display_migration_preserves_history_across_reopen` 从冻结的 0062 及之前 SQL 建库，
+通过真实打开与重开验证原数据、草稿、校验值、外键和完整性。
+
+0064 为明确匹配宿主控件事件的历史系统消息补充显示元数据，不改写正文或身份。
+`context_display_migration_backfills_only_identified_host_messages_across_reopen` 从冻结的 0063
+及之前 SQL 建库，经真实打开升级和重开，验证模式原文、事件、草稿、旧 checksum、外键和
+完整性；用户/Agent 消息、错位身份、修改过的正文、歧义事件、无效 JSON 和已有元数据保持原样。
+
+0065 为工程任务输出追加可空的宿主片段显示字段，不修改旧输出、状态、审批或请求身份。
+`project_output_display_migration_preserves_legacy_results_and_checksums_across_reopen` 从冻结的
+0064 及之前 SQL 建库，经真实打开升级和重开，验证旧任务结果、消息、草稿、旧 checksum、
+外键与完整性，以及新显示元数据保留。没有元数据的旧文字保持原文。
+
 ## 已发生改写时
 
 1. 从原提交或已知发布版本恢复准确的原始 SQL，保留有数据的数据库。

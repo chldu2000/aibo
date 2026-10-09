@@ -53,7 +53,7 @@ test('workbench callbacks and writable bindings cross the generation gate', asyn
   assert.deepEqual(foundSlots, slots, 'all named workbench slots retain generation guards');
   assert.deepEqual(foundHost, hostComponents);
   const timeline = await readFile('src/lib/components/app/TimelinePanel.svelte', 'utf8');
-  assert.match(timeline, /aria-label="会话审批"/, 'the session area renders its pending approvals');
+  assert.match(timeline, /aria-label=\{\$t\('approval\.list'\)\}/, 'the session area renders its pending approvals');
   assert.match(source, /onResolveApproval=\{guard\('onResolveApproval'/, 'approval choices cross the generation gate');
   assert.ok(guarded + hostCallbacks >= 100, 'all workbench and independent host callbacks must be covered');
   assert.match(source, /listenToAgentEvents/);
@@ -76,10 +76,10 @@ test('generic host routing requires capability sessions and rejects unbound hist
   }
   const create = source.slice(source.indexOf('async fn create_agent_session(')).split('#[tauri::command]')[0];
   assert.match(create, /requested_profile/);
-  assert.match(create, /prepare_with_profile/);
-  assert.match(create, /resume_from\(window\.label\(\)/);
-  assert.ok(create.indexOf('drop(_guard)') > create.indexOf('prepare_with_profile'));
-  assert.ok(create.indexOf('drop(_guard)') < create.indexOf('resume_from'), 'slow session startup must not hold the plugin lifecycle lock');
+  assert.match(create, /prepare_with_profile_display\(&workspace_id, &installation_id, &agent_id, profile\)/);
+  assert.match(create, /resume_from_display\(window\.label\(\), &session\.id\)/);
+  assert.ok(create.indexOf('drop(_guard)') > create.indexOf('prepare_with_profile_display'));
+  assert.ok(create.indexOf('drop(_guard)') < create.indexOf('resume_from_display'), 'slow session startup must not hold the plugin lifecycle lock');
   assert.doesNotMatch(create, /create_codex_session|create_pi_session/);
   const app = await readFile('src/App.svelte', 'utf8');
   assert.doesNotMatch(app, /\b(?:sendCodexPrompt|sendPiPrompt|abortCodexTurn|abortPiTurn|setPiModel|setPiThinkingLevel|sessionModelBackend)\b/);

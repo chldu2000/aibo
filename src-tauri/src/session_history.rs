@@ -18,14 +18,14 @@ pub(crate) struct Page {
 
 pub(crate) async fn read(db: &SqlitePool, workspace_id: String, session_id: String, before: Option<Cursor>) -> Result<Page, CoreError> {
     let session = crate::session_by_id(db, &session_id).await?;
-    if session.workspace_id != workspace_id { return Err(CoreError::InvalidWorkspacePath("history session does not belong to workspace".into())); }
+    if session.workspace_id != workspace_id { return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.history.workspace",serde_json::json!({}),"history session does not belong to workspace"))); }
     let sequence = if let Some(cursor) = &before {
         if cursor.schema != "aibo.session-history-cursor/v1" || cursor.workspace_id != workspace_id || cursor.session_id != session_id || cursor.created_at.is_empty() || cursor.created_at.len() > 64 || cursor.sequence.len() > 20 || cursor.id.is_empty() || cursor.id.len() > 256 {
-            return Err(CoreError::InvalidWorkspacePath("invalid session history cursor or scope".into()));
+            return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.history.cursor",serde_json::json!({}),"invalid session history cursor or scope")));
         }
-        Some(cursor.sequence.parse::<i64>().map_err(|_| CoreError::InvalidWorkspacePath("invalid history sequence".into()))?)
+        Some(cursor.sequence.parse::<i64>().map_err(|_| crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.history.sequence",serde_json::json!({}),"invalid history sequence")))?)
     } else { None };
-    let mut rows = sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,status,created_at,updated_at,sequence FROM messages WHERE session_id=? AND (? IS NULL OR (created_at,sequence,id) < (?,?,?)) ORDER BY created_at DESC,sequence DESC,id DESC LIMIT 51")
+    let mut rows = sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,localized_content_json,status,created_at,updated_at,sequence FROM messages WHERE session_id=? AND (? IS NULL OR (created_at,sequence,id) < (?,?,?)) ORDER BY created_at DESC,sequence DESC,id DESC LIMIT 51")
         .bind(&session_id).bind(before.as_ref().map(|cursor| &cursor.created_at)).bind(before.as_ref().map(|cursor| &cursor.created_at)).bind(sequence).bind(before.as_ref().map(|cursor| &cursor.id)).fetch_all(db).await?;
     let has_more = rows.len() > 50; rows.truncate(50);
     let next_before = if has_more { rows.last().map(|row| Cursor {
@@ -39,14 +39,14 @@ pub(crate) async fn read(db: &SqlitePool, workspace_id: String, session_id: Stri
 /// Locate a durable message without replaying or resuming its provider.
 pub(crate) async fn around(db: &SqlitePool, workspace_id: String, session_id: String, message_id: String) -> Result<Page, CoreError> {
     let session = crate::session_by_id(db, &session_id).await?;
-    if session.workspace_id != workspace_id { return Err(CoreError::SessionOperation("消息不属于此工作区".into())); }
+    if session.workspace_id != workspace_id { return Err(crate::ui_i18n::session_operation_message(crate::ui_i18n::HostMessage::with_diagnostic("native.history.messageWorkspace",serde_json::json!({}),"消息不属于此工作区"))); }
     let target = sqlx::query("SELECT created_at,sequence,id FROM messages WHERE id=? AND session_id=?").bind(&message_id).bind(&session_id).fetch_optional(db).await?
-        .ok_or_else(||CoreError::SessionOperation("消息已移除".into()))?;
+        .ok_or_else(||crate::ui_i18n::session_operation_message(crate::ui_i18n::HostMessage::with_diagnostic("native.history.messageRemoved",serde_json::json!({}),"消息已移除")))?;
     // The inclusive upper bound contains 24 newer neighbors, followed by the hit.
     let newer = sqlx::query("SELECT created_at,sequence,id FROM messages WHERE session_id=? AND (created_at,sequence,id) >= (?,?,?) ORDER BY created_at,sequence,id LIMIT 25")
         .bind(&session_id).bind(target.get::<String,_>("created_at")).bind(target.get::<i64,_>("sequence")).bind(&message_id).fetch_all(db).await?;
     let upper = newer.last().unwrap_or(&target);
-    let mut rows=sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,status,created_at,updated_at,sequence FROM messages WHERE session_id=? AND (created_at,sequence,id)<=(?,?,?) ORDER BY created_at DESC,sequence DESC,id DESC LIMIT 51")
+    let mut rows=sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,localized_content_json,status,created_at,updated_at,sequence FROM messages WHERE session_id=? AND (created_at,sequence,id)<=(?,?,?) ORDER BY created_at DESC,sequence DESC,id DESC LIMIT 51")
         .bind(&session_id).bind(upper.get::<String,_>("created_at")).bind(upper.get::<i64,_>("sequence")).bind(upper.get::<String,_>("id")).fetch_all(db).await?;
     let has_more=rows.len()>50;rows.truncate(50);
     let next_before=if has_more {rows.last().map(|row|Cursor{schema:"aibo.session-history-cursor/v1".into(),workspace_id,session_id,created_at:row.get("created_at"),sequence:row.get::<i64,_>("sequence").to_string(),id:row.get("id")})}else{None};
@@ -78,6 +78,14 @@ pub(crate) async fn read_subagent(db: &SqlitePool, session_id: &str, agent_id: &
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn assert_history_error(error: CoreError, key: &str, code: &str, diagnostic: &str, en: &str) {
+        let original = if code == "invalid_workspace_path" { CoreError::InvalidWorkspacePath(diagnostic.into()) } else { CoreError::SessionOperation(diagnostic.into()) };
+        assert_eq!(error.to_string(),original.to_string());
+        let value = serde_json::to_value(error).unwrap(); let raw = serde_json::to_value(original).unwrap();
+        assert_eq!(value["code"],raw["code"]); assert_eq!(value["message"],raw["message"]);
+        assert_eq!(value["localized"]["key"],key);
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&value["localized"]),en);
+    }
     #[tokio::test]
     async fn persisted_pi_history_reads_from_a_read_only_database_without_a_runtime() {
         let root = std::env::temp_dir().join(format!("aibo-session-history-{}",ulid::Ulid::new()));
@@ -110,10 +118,21 @@ mod tests {
         let located = around(&readonly,"w".into(),"archived".into(),"archived-070".into()).await.unwrap();
         assert!(located.items.iter().any(|item|item.id=="archived-070"));
         assert!(located.items.len()<=50);
-        assert!(around(&readonly,"w".into(),"session".into(),"archived-070".into()).await.is_err());
+        assert_history_error(around(&readonly,"w".into(),"session".into(),"archived-070".into()).await.unwrap_err(),"native.history.messageRemoved","session_operation_error","消息已移除","The message has been removed.");
+        assert_history_error(around(&readonly,"other".into(),"session".into(),"session-070".into()).await.unwrap_err(),"native.history.messageWorkspace","session_operation_error","消息不属于此工作区","This message does not belong to the workspace.");
         let page = read(&readonly,"w".into(),"session".into(),None).await.unwrap();
-        assert!(read(&readonly,"other".into(),"session".into(),None).await.is_err());
-        assert!(read(&readonly,"w".into(),"archived".into(),page.next_before).await.is_err());
+        assert_history_error(read(&readonly,"other".into(),"session".into(),None).await.unwrap_err(),"native.history.workspace","invalid_workspace_path","history session does not belong to workspace","This history session does not belong to the workspace.");
+        assert_history_error(read(&readonly,"w".into(),"archived".into(),page.next_before.clone()).await.unwrap_err(),"native.history.cursor","invalid_workspace_path","invalid session history cursor or scope","The history cursor or its scope is invalid.");
+        for sequence in ["invalid","9223372036854775808"] {
+            let mut cursor = page.next_before.clone().unwrap(); cursor.sequence=sequence.into();
+            assert_history_error(read(&readonly,"w".into(),"session".into(),Some(cursor)).await.unwrap_err(),"native.history.sequence","invalid_workspace_path","invalid history sequence","The history sequence is invalid.");
+        }
+        for (field,value) in [("schema","unknown"),("workspaceId","other"),("createdAt",""),("id","")] {
+            let mut cursor = serde_json::to_value(page.next_before.as_ref().unwrap()).unwrap();cursor[field]=serde_json::json!(value);
+            let cursor = serde_json::from_value(cursor).unwrap();
+            assert_history_error(read(&readonly,"w".into(),"session".into(),Some(cursor)).await.unwrap_err(),"native.history.cursor","invalid_workspace_path","invalid session history cursor or scope","The history cursor or its scope is invalid.");
+        }
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM messages").fetch_one(&readonly).await.unwrap(),302);
         let processes: i64 = sqlx::query_scalar("SELECT count(*) FROM process_runs").fetch_one(&readonly).await.unwrap(); assert_eq!(processes,0);
         readonly.close().await; std::fs::remove_dir_all(root).unwrap();
     }

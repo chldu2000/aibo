@@ -4,10 +4,11 @@
 宿主动作目录转换成视觉树，不引用宿主代码、DOM、框架或业务执行端口。
 
 当前提供 `renderNavigation`、`renderConversation`、`renderGit`、`renderInspector`，
-参数均为 `(state, actions)`；`renderCapability(state, actions, renderSemantic)`
+参数为 `(state, actions, locale?)`。
+`renderCapability(state, actions, renderSemantic, locale?)`
 接收皮肤自己的语义 renderer。
 调用方拥有样式；模块只生成语义结构、可访问性属性及当前目录中的动作绑定。
-0.2.0 随双皮肤 0.3.0 交付导航、会话、Git、Inspector 与能力视图的完整工作台；当前版本 0.2.2 随双皮肤 0.4.1 交付。
+0.2.0 随双皮肤 0.3.0 交付导航、会话、Git、Inspector 与能力视图的完整工作台；当前版本 0.2.4 随双皮肤 0.4.3 交付。
 执行权限、附件状态、诊断、会话绑定、三种布局、草稿以及跨默认呈现的焦点/滚动
 恢复均由宿主提供数据与权限；包只决定呈现。macOS arm64 原生生命周期与
 Chromium 浏览器交互已有验收记录，未宣称其他 OS 或所有屏幕阅读器通过认证。
@@ -61,3 +62,12 @@ Shift/Ctrl+Enter 换行。没有对应动作时回车不提交，输入法组合
 
 桌面会话历史与编辑区独立滚动，附件详情可展开；默认视图与外置视图按消息标识
 恢复位置。外置核心语义不冒充内置专业阅读，存在专业偏好时显示通用降级提示。
+
+界面语言由宿主 `PresentationInput.locale` 提供，缺省按简体中文兼容旧宿主。
+导航、布局、时间线、执行权限与 Markdown 操作显式接收语言参数；原始用户、Agent、
+路径、代码和插件字段保持原文。语言不会改变 key、动作 token 或上下文。
+独立皮肤的控件与语义视图同样使用这个字段。会话 Composer、Git、Inspector 与能力页也接入相同词条及语言参数。
+
+`i18n.generated.js` 从仓库的规范词条和纯翻译器打包生成，使 npm tarball 无需读取
+仓库其他目录；不是手工维护的第二份词条。修改规范词条后运行
+`node scripts/build-presentation-i18n.mjs`，测试检查生成产物同步。

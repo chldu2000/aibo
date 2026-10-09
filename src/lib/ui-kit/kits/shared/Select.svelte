@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { onMount, tick } from 'svelte';
   import Icon from '../../runtime/Icon.svelte';
   import type { UiSelectProps } from '../../contract';
   import { createTypeahead, stepEnabledOption } from './select-navigation';
-  let { options, value, placeholder = '请选择', disabled = false, onSelect, ...attrs }: UiSelectProps = $props();
+  let { options, value, placeholder, disabled = false, onSelect, ...attrs }: UiSelectProps = $props();
   const uid = $props.id();
   let trigger: HTMLButtonElement;
   let popup: HTMLDivElement;
@@ -65,7 +66,7 @@
 
 <span class="ui-select">
   <button {...attrs} bind:this={trigger} type="button" class={`ui-select-trigger ${attrs.class ?? ''}`} role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-controls={`${uid}-options`} aria-activedescendant={open && active >= 0 ? `${uid}-option-${active}` : undefined} {disabled} onclick={() => open ? close() : reveal()} onkeydown={keydown} onblur={close}>
-    <span>{selected?.label ?? placeholder}</span><Icon name="chevron-down" size={14} aria-hidden="true" />
+    <span>{selected?.label ?? placeholder ?? $t('select.choose')}</span><Icon name="chevron-down" size={14} aria-hidden="true" />
   </button>
   <div bind:this={popup} id={`${uid}-options`} class="ui-select-popup" popover="auto" role="listbox" aria-label={attrs['aria-label']} aria-labelledby={attrs['aria-labelledby']} ontoggle={(event) => { open = event.newState === 'open'; }}>
     {#each options as option, index (option.value)}

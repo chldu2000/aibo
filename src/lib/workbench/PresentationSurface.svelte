@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { onMount, untrack } from 'svelte';
   import { Card } from '$lib/ui-kit';
   import type { PresentationProps } from './types';
@@ -66,6 +67,6 @@
     if (host) host.update($state.snapshot(snapshot), recovery());
   });
 </script>
-{#if fallbackReason}<Card><p role="status">专业阅读界面不可用，已使用通用视图。</p></Card>{/if}
-{#if failure}<Card><p role="alert">呈现恢复提示：{failure}</p></Card>{/if}
+{#if fallbackReason}<Card><p role="status">{$t('workbench.genericFallback')}</p></Card>{/if}
+{#if failure}<Card><p role="alert">{$t('workbench.recoveryMessage', {error: failure})}</p></Card>{/if}
 <div bind:this={target} inert={switching} aria-busy={switching}></div>

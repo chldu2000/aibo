@@ -1,3 +1,5 @@
+import type { LocalizedText } from '../../../packages/i18n/index.js';
+import { LocalizedError, toErrorText } from './error-utils.ts';
 import type { InstalledPresentationPackage, PresentationRelease, PresentationSelection } from '../presentation-runtime/types';
 
 export type PresentationInstance = { activate(): void; dispose(): void };
@@ -6,7 +8,7 @@ export type PresentationPackageState = {
   active: InstalledPresentationPackage | null;
   themeId: string | null;
   busy: boolean;
-  error: string;
+  error: LocalizedText;
 };
 
 /** Owns selection transactions; visual mounting and native storage are injected. */
@@ -29,7 +31,7 @@ export function createPresentationPackageController(ports: {
   let requested = 0, refreshRequested = 0, disposed = false;
   let queue: Promise<unknown> = Promise.resolve();
   const emit = () => { if (!disposed) ports.changed({ ...state, releases: [...state.releases] }); };
-  const report = (error: unknown) => { state.error = String(error instanceof Error ? error.message : error); emit(); };
+  const report = (error: unknown) => { state.error = toErrorText(error); emit(); };
 
   async function refresh() {
     const ticket = ++refreshRequested;
@@ -59,7 +61,7 @@ export function createPresentationPackageController(ports: {
         const saved = await ports.selection();
         const value = digest ? await ports.read(digest) : null;
         const themeId = value ? requestedTheme ?? value.release.manifest.defaultThemeId ?? null : null;
-        if (themeId && !value?.release.manifest.themes?.some(theme => theme.id === themeId)) throw Error('invalid_presentation_theme');
+        if (themeId && !value?.release.manifest.themes?.some(theme => theme.id === themeId)) throw new LocalizedError('presentation.invalidTheme');
         let failed: Error | null = null;
         if (value) candidate = await ports.prepare(value, themeId, error => {
           failed = error;
@@ -85,7 +87,7 @@ export function createPresentationPackageController(ports: {
         candidate?.dispose();
         if (committed) {
           try { await ports.persist(previousSelection.digest, previousSelection.themeId, digest); }
-          catch (rollback) { report(`presentation_rollback_failed: ${rollback}`); throw rollback; }
+          catch (rollback) { report(new LocalizedError('presentation.rollbackFailed',{error:toErrorText(rollback)})); throw rollback; }
         }
         if (!preparation.signal.aborted && !disposed) { report(error); throw error; }
       } finally {

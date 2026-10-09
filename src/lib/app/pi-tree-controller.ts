@@ -1,3 +1,5 @@
+import { localizedMessage } from '../../../packages/i18n/index.js';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 import type { SetNotice } from './notifications';
 import type {
   PiSessionTreeNavigation,
@@ -6,7 +8,7 @@ import type {
   Session,
   TimelineItem,
 } from '$lib/types';
-import { toErrorMessage } from './error-utils';
+import { toErrorText } from './error-utils';
 import { createAgentFacade } from './agent-facade';
 
 export type PiTreeControllerContext = {
@@ -30,7 +32,7 @@ export type PiTreeControllerContext = {
   setTimeline: (value: TimelineItem[]) => void;
   setComposerText: (value: string) => void;
   setBusy: (value: boolean) => void;
-  setErrorMessage: (value: string | null) => void;
+  setErrorMessage: (value: LocalizedText | null) => void;
   setNotice: SetNotice;
 };
 
@@ -57,7 +59,7 @@ export function createPiTreeController(context: PiTreeControllerContext) {
     const session = context.getSelectedSession();
     if (!entryId || !sessionId || !session || !session.capabilities.includes('session.tree')) return false;
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；分支切换需要在 Tauri 桌面模式中执行。', 'warning');
+      context.setNotice(localizedMessage('tree.desktopOnly'), 'warning');
       return false;
     }
 
@@ -77,7 +79,7 @@ export function createPiTreeController(context: PiTreeControllerContext) {
         editorText: typeof result.editorText === 'string' ? result.editorText : null,
       };
       if (navigation.cancelled) {
-        context.setNotice('分支切换已取消。', 'info');
+        context.setNotice(localizedMessage('tree.cancelled'), 'info');
         return false;
       } else {
         if (context.getSelectedSessionId() !== sessionId) return false;
@@ -86,11 +88,11 @@ export function createPiTreeController(context: PiTreeControllerContext) {
         if (context.getSelectedSessionId() !== sessionId) return false;
         context.setTimeline(timeline);
         if (navigation.editorText !== null) context.setComposerText(navigation.editorText);
-        context.setNotice('会话已切换到选定分支；原分支仍保留在会话树中。', 'success');
+        context.setNotice(localizedMessage('tree.switched'), 'success');
         return true;
       }
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
       return false;
     } finally {
       context.setBusy(false);

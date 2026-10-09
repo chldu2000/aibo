@@ -29,3 +29,14 @@ test('write intents retain host context and never accept replacement execution i
   assert.equal(snapshot.actions[0].input.request,'host-owned');
   assert.deepEqual(action,{context:snapshot.context,actionId:'dev.aibo.preflight.apply',itemId:null});
 });
+
+test('semantic language input leaves plugin content and action identities intact',()=>{
+ const legacy=semanticInput(collection,19);
+ assert.equal('locale' in legacy,false);
+ for(const locale of ['zh-CN','en']) {
+  const localized=semanticInput(collection,19,{},locale);
+  assert.equal(localized.locale,locale);
+  assert.deepEqual(localized.context,legacy.context);
+  assert.deepEqual(localized.data,legacy.data);
+ }
+});

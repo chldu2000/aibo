@@ -1,3 +1,5 @@
+import { translate, formatDateTime } from '../../../../packages/i18n/index.js';
+import type { Locale, MessageKey } from '../../../../packages/i18n/index.js';
 import type { SessionState } from '$lib/types';
 export { isSessionRunning } from '$lib/app/session-state';
 
@@ -6,30 +8,10 @@ type SessionStateView = {
   archived?: boolean;
 };
 
-export function sessionStateLabel(session: SessionStateView): string {
-  if (session.archived) return '已归档';
-  switch (session.state) {
-    case 'waiting_approval':
-      return '待审批';
-    case 'waiting_user':
-      return '待你输入';
-    case 'compacting':
-      return '压缩中';
-    case 'running':
-      return '运行中';
-    case 'interrupted':
-      return '已中断';
-    case 'failed':
-      return '失败';
-    case 'closed':
-      return '已关闭';
-    case 'starting':
-      return '启动中';
-    case 'created':
-      return '新建';
-    default:
-      return '空闲';
-  }
+export function sessionStateLabel(session: SessionStateView, locale: Locale = 'zh-CN'): string {
+  if (session.archived) return translate(locale, 'session.status.archived');
+  const state = ['waiting_approval', 'waiting_user', 'compacting', 'running', 'interrupted', 'failed', 'closed', 'starting', 'created'].includes(session.state) ? session.state : 'idle';
+  return translate(locale, `session.status.${state}` as MessageKey);
 }
 
 export function sessionStatusTone(session: SessionStateView): 'idle' | 'running' | 'attention' | 'danger' | 'muted' {
@@ -40,15 +22,29 @@ export function sessionStatusTone(session: SessionStateView): 'idle' | 'running'
   return 'idle';
 }
 
-export function relativeTimeLabel(value: string): string {
+export function relativeTimeLabel(value: string, locale: Locale = 'zh-CN'): string {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return '';
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (elapsedSeconds < 60) return '刚刚';
-  if (elapsedSeconds < 60 * 60) return `${Math.floor(elapsedSeconds / 60)} 分钟`;
-  if (elapsedSeconds < 24 * 60 * 60) return `${Math.floor(elapsedSeconds / (60 * 60))} 小时`;
-  if (elapsedSeconds < 30 * 24 * 60 * 60) return `${Math.floor(elapsedSeconds / (24 * 60 * 60))} 天`;
-  return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(timestamp);
+  if (elapsedSeconds < 60) return translate(locale, 'time.justNow');
+  if (elapsedSeconds < 60 * 60) return translate(locale, 'time.minutes', { count: Math.floor(elapsedSeconds / 60) });
+  if (elapsedSeconds < 24 * 60 * 60) return translate(locale, 'time.hours', { count: Math.floor(elapsedSeconds / (60 * 60)) });
+  if (elapsedSeconds < 30 * 24 * 60 * 60) return translate(locale, 'time.days', { count: Math.floor(elapsedSeconds / (24 * 60 * 60)) });
+  return formatDateTime(locale, timestamp, { month: 'numeric', day: 'numeric' });
+}
+
+/** Git timestamps include direction without inspecting translated text. */
+export function relativeDateLabel(value: string, locale: Locale = 'zh-CN', now = Date.now()): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return value;
+  const seconds = Math.floor((timestamp - now) / 1000);
+  const magnitude = Math.abs(seconds);
+  if (magnitude < 60) return translate(locale, 'time.justNow');
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'always' });
+  if (magnitude < 3600) return formatter.format(Math.trunc(seconds / 60), 'minute');
+  if (magnitude < 86400) return formatter.format(Math.trunc(seconds / 3600), 'hour');
+  if (magnitude < 30 * 86400) return formatter.format(Math.trunc(seconds / 86400), 'day');
+  return formatDateTime(locale, timestamp, { month: 'numeric', day: 'numeric' });
 }
 
 export function formatBytes(bytes: number): string {

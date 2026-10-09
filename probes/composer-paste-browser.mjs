@@ -9,10 +9,11 @@ const browser=await chromium.launch({headless:true});
 const page=await browser.newPage();
 page.setDefaultTimeout(15000);
 await page.context().grantPermissions(['clipboard-read','clipboard-write']);const errors=[];
-page.on('pageerror',error=>errors.push(error.message));
+page.on('pageerror',error=>errors.push(error.stack??error.message));
 try {
   await page.addInitScript(pkg=>{
     if(window!==window.top)return;
+    localStorage.setItem('aibo.language.v1','zh-CN');
     const storedAttachments=JSON.parse(sessionStorage.getItem('probe.attachments')||'[]'), messages=JSON.parse(sessionStorage.getItem('probe.messages')||'[]');
     let callback=0;window.presentationCommands=[];window.presentationInstallable=pkg;
     const workspaces = ['w1','w2'].map(id=>({id,label:id,path:'/probe/'+id,trust:'trusted',createdAt:'2026-09-13',updatedAt:'2026-09-13',lastOpenedAt:null}));
@@ -28,7 +29,7 @@ try {
       async invoke(command,args={}){
         window.presentationCommands.push(command);window.navigationCalls.push({command,args});
         if(command==='list_workspace_git_repositories')return {repositories:(window.multiRepository?['one','two']:['.']).map(id=>({id,name:id==='.'?'w1':id,relativePath:id,kind:'repository',externalRoot:false})),limited:false,warnings:[],scanBudget:2000};
-        if(command==='register_session_clipboard_images'){const added=args.images.map((image,index)=>({schema:'aibo.context-attachment/v1',id:'paste-'+window.navigationCalls.length+'-'+index,workspaceId:'w1',sessionId:args.sessionId,turnId:null,path:'clipboard/image-'+index+'.png',size:68,mediaType:'image/png',source:'manual',sendStrategy:'inline',createdAt:'now'}));storedAttachments.push(...added);return added;}
+        if(command==='register_session_clipboard_images'){if(window.pasteErrorKey)throw {code:'invalid_workspace_path',message:'原始诊断',localized:{schema:'aibo.host-message/v1',key:window.pasteErrorKey,params:{}}};const added=args.images.map((image,index)=>({schema:'aibo.context-attachment/v1',id:'paste-'+window.navigationCalls.length+'-'+index,workspaceId:'w1',sessionId:args.sessionId,turnId:null,path:'clipboard/image-'+index+'.png',size:68,mediaType:'image/png',source:'manual',sendStrategy:'inline',createdAt:'now'}));storedAttachments.push(...added);return added;}
         if(command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:'head',branch:'main',dirty:true,capturedAt:'now',files:[changed],captureStatus:'captured',captureError:null};
         if(command==='list_workspace_git_branches')return [{name:'main',current:true,commit:'head'},{name:'topic',current:false,commit:'old'}];
         if(command==='list_workspace_git_history'&&window.delayedRepositoryReads){if(args.repositoryId==='one')await new Promise(resolve=>setTimeout(resolve,300));return [{hash:'commit-a',shortHash:'commit-a',subject:args.repositoryId==='one'?'STALE ONE':'CURRENT TWO',author:'Author',authoredAt:'2026-09-13'}];}
@@ -50,6 +51,7 @@ try {
           return {...sessions.find(item=>item.id===args.sessionId)};
         }
         if(command==='get_composer_draft')return null;
+        if(command==='get_turn_change_set')return null;
         if(command==='save_composer_draft')return {text:args.text,sendFailed:args.sendFailed,updatedAt:'2026-09-13'};
         if(command==='get_session_execution_profile'){
           const profile={schema:'aibo.execution-profile/v1',interactionMode:'ask',approvalPolicy:'on-request',filesystemPolicy:'read-only',commandPolicy:'disabled',networkPolicy:'disabled',model:null,reasoningEffort:null};
@@ -94,7 +96,7 @@ try {
   await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=2;canvas.height=2;canvas.getContext('2d').fillRect(0,0,2,2);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});
   console.log('registered image');
   // Plain text is not intercepted; both built-in textarea implementations forward paste.
-  for (const kit of ['shadcn','material3']) {
+  for (const kit of ['ak-ui','material3']) {
     await page.evaluate(async kit=>(await import('/src/lib/ui-kit/registry.ts')).setUiKit(kit),kit);
     assert.equal(await input.evaluate(element=>{const data=new DataTransfer();data.setData('text/plain','ordinary text');const event=new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true});element.dispatchEvent(event);return event.defaultPrevented;}),false);
     const before=await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='register_session_clipboard_images').length);
@@ -104,6 +106,21 @@ try {
     await page.waitForFunction(()=>Array.from(document.querySelectorAll('[aria-label="上下文附件"] img')).some(img=>img.naturalWidth>0));
     await input.fill('');
     assert.equal(await page.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'an image-only draft can be sent');
+    for(const [key,zh,en] of [
+      ['native.image.encoding','无效的图片编码。','Invalid image encoding.'],
+      ['native.image.format','图片格式无效；支持 PNG、JPEG、WebP 和 GIF。','Invalid image format. PNG, JPEG, WebP and GIF are supported.'],
+      ['native.image.archived','已归档会话不能添加图片。','Images cannot be added to archived sessions.'],
+    ]) {
+      await input.fill('原始草稿 {error}');await page.evaluate(key=>window.pasteErrorKey=key,key);
+      const before=await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='register_session_clipboard_images').length);
+      await input.press('Meta+V');await page.getByText(zh,{exact:true}).waitFor();
+      const calls=await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='register_session_clipboard_images').length);assert.equal(calls,before+1);
+      await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'en',locale:'en'});});
+      await page.getByText(en,{exact:true}).waitFor();assert.equal(await input.inputValue(),'原始草稿 {error}');
+      assert.equal(await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='register_session_clipboard_images').length),calls);
+      await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'});});await page.getByText(zh,{exact:true}).waitFor();
+    }
+    await page.evaluate(()=>delete window.pasteErrorKey);await input.fill('');
   }
   console.log('native previews passed');
   await page.getByRole('button',{name:'发送',exact:true}).click();
@@ -120,7 +137,7 @@ try {
   await page.getByRole('tab',{name:'外观',exact:true}).click();
   await page.getByRole('button',{name:new RegExp(pkg.release.manifest.displayName+' '+pkg.release.manifest.version),exact:true}).click();
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
-  const frame=page.frameLocator('iframe:not([aria-hidden="true"])');
+  const frame=page.frameLocator('.presentation-external iframe');
   const externalInput=frame.locator('textarea').first();
   await externalInput.click();
   const before=await page.evaluate(()=>window.navigationCalls.filter(call=>call.command==='register_session_clipboard_images').length);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { onMount, tick, untrack } from 'svelte';
   import Icon from '../../runtime/Icon.svelte';
   import type { UiRepositorySelectProps } from '../../contract';
@@ -12,7 +13,7 @@
   const query = $derived(search.trim().toLocaleLowerCase());
   const matches = $derived(repositories.filter(repo => `${repo.name} ${repo.relativePath}`.toLocaleLowerCase().includes(query)));
   const options = $derived([
-    ...(!query || '所有仓库'.includes(query) ? [{ id: null, name: '所有仓库', relativePath: `${repositories.length} 个仓库` }] : []),
+    ...(!query || $t('repository.all').toLocaleLowerCase().includes(query) ? [{ id: null, name: $t('repository.all'), relativePath: $t('repository.count', { count: repositories.length }) }] : []),
     ...matches,
   ]);
   const activeIndex = $derived(Math.min(active, options.length - 1));
@@ -60,9 +61,9 @@
 
 <svelte:window onpointerdown={outside} onfocusin={outside} />
 <div class="repository-select" bind:this={root}>
-  <button class="repository-trigger" type="button" data-repository-select-trigger aria-label="选择仓库" aria-haspopup="listbox" aria-expanded={open} aria-controls={`${uid}-list`} {disabled} onclick={() => onOpenChange(!open)} title={selected ? `${selected.name} · ${selected.relativePath}` : '查看工作区中的所有仓库'}>
+  <button class="repository-trigger" type="button" data-repository-select-trigger aria-label={$t('repository.choose')} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${uid}-list`} {disabled} onclick={() => onOpenChange(!open)} title={selected ? `${selected.name} · ${selected.relativePath}` : $t('repository.allHint')}>
     <Icon name="folder" size={14} aria-hidden="true" />
-    <span class="repository-trigger-name">{selected?.name ?? '所有仓库'}</span>
+    <span class="repository-trigger-name">{selected?.name ?? $t('repository.all')}</span>
     {#if !selected}<span class="repository-total">{repositories.length}</span>{/if}
     <span class="repository-chevron" class:is-open={open}><Icon name="chevron-down" size={13} aria-hidden="true" /></span>
   </button>
@@ -70,10 +71,10 @@
     <div class="repository-popup">
       <div class="repository-search">
         <Icon name="search" size={14} aria-hidden="true" />
-        <input bind:this={input} role="combobox" aria-label="搜索仓库" aria-expanded="true" aria-autocomplete="list" aria-controls={`${uid}-list`} aria-activedescendant={activeIndex >= 0 ? `${uid}-option-${activeIndex}` : undefined} placeholder="搜索仓库…" value={search} {disabled} autocomplete="off" spellcheck="false" oninput={(event) => { active = 0; onSearch(event.currentTarget.value); }} />
+        <input bind:this={input} role="combobox" aria-label={$t('repository.search')} aria-expanded="true" aria-autocomplete="list" aria-controls={`${uid}-list`} aria-activedescendant={activeIndex >= 0 ? `${uid}-option-${activeIndex}` : undefined} placeholder={$t('repository.placeholder')} value={search} {disabled} autocomplete="off" spellcheck="false" oninput={(event) => { active = 0; onSearch(event.currentTarget.value); }} />
         <kbd aria-hidden="true">Esc</kbd>
       </div>
-      <div class="repository-options" id={`${uid}-list`} role="listbox" aria-label="工作区仓库" bind:this={list}>
+      <div class="repository-options" id={`${uid}-list`} role="listbox" aria-label={$t('repository.workspaceRepositories')} bind:this={list}>
         {#each options as option, index (option.id)}
           {@const detail = description(option.name, option.relativePath)}
           <button type="button" role="option" id={`${uid}-option-${index}`} aria-label={detail ? `${option.name}，${detail}` : option.name} aria-selected={option.id === selectedId} tabindex="-1" class="repository-option" class:is-active={index === activeIndex} class:all-repositories={option.id === null} {disabled} title={option.relativePath} onclick={() => choose(option.id)}>
@@ -83,7 +84,7 @@
           </button>
         {/each}
       </div>
-      {#if options.length === 0}<p class="repository-empty" role="status">没有匹配的仓库</p>{/if}
+      {#if options.length === 0}<p class="repository-empty" role="status">{$t('repository.noMatches')}</p>{/if}
     </div>
   {/if}
 </div>

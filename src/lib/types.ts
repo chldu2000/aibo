@@ -84,6 +84,8 @@ export interface AgentDiagnostic {
   capabilities: string[];
   authState: 'delegated' | 'not_required' | 'unknown';
   message: string | null;
+  localizedMessage?: unknown;
+  localizedVersion?: unknown;
 }
 
 export interface CapabilityEntry {
@@ -99,6 +101,7 @@ export interface WorkspaceCapabilityInventory {
   tools: CapabilityEntry[];
   mcpServers: CapabilityEntry[];
   warnings: string[];
+  localizedWarnings?: unknown[];
 }
 
 export interface AppSnapshot {
@@ -266,6 +269,8 @@ export interface TimelineItem {
   status: 'streaming' | 'completed' | 'failed' | 'queued' | 'interrupted';
   createdAt: string;
   updatedAt: string;
+  localizedContent?: unknown;
+  localizedActivity?: unknown;
 }
 
 export interface ChangeSetState {
@@ -304,6 +309,7 @@ export interface VerificationRef {
 }
 
 export interface TurnChangeSet {
+  localizedCaptureError?: unknown;
   id: string;
   schema: 'aibo.turn-changeset/v1';
   workspaceId: string;
@@ -324,6 +330,8 @@ export interface RestoreTurnChangeSetResult {
   restored: string[];
   conflicts: string[];
   unsupported: string[];
+  localizedConflicts?: unknown;
+  localizedUnsupported?: unknown;
 }
 
 export interface RestoreOperation {
@@ -337,9 +345,12 @@ export interface RestoreOperation {
   conflicts: string[];
   unsupported: string[];
   createdAt: string;
+  localizedConflicts?: unknown;
+  localizedUnsupported?: unknown;
 }
 
 export interface CheckpointFile {
+  localizedReason?: unknown;
   schema: 'aibo.checkpoint/v1';
   id: string;
   workspaceId: string;
@@ -377,6 +388,7 @@ export interface WorkspaceChanges {
   files: WorkspaceFileChange[];
   captureStatus: 'captured' | 'unsupported' | 'failed';
   captureError: string | null;
+  localizedCaptureError?: unknown;
 }
 
 export interface WorkspaceFileDiff {
@@ -387,6 +399,8 @@ export interface WorkspaceFileDiff {
   diff: string;
   hunks: TurnDiffHunk[];
   reason: string | null;
+  localizedReason?: unknown;
+  localizedSuffix?: unknown;
 }
 
 export interface TurnFileDiff {
@@ -395,6 +409,8 @@ export interface TurnFileDiff {
   diff: string;
   hunks: TurnDiffHunk[];
   reason: string | null;
+  localizedReason?: unknown;
+  localizedSuffix?: unknown;
 }
 
 export interface TurnDiffHunk {
@@ -410,6 +426,8 @@ export interface ContextAttachment {
   sessionId: string;
   turnId: string | null;
   path: string;
+  /** Optional host-formatted name; path and identity retain their original values. */
+  displayName?: string;
   contentHash: string | null;
   size: number | null;
   mediaType: string;
@@ -424,6 +442,7 @@ export interface ContextAttachmentValidation {
   path: string;
   status: 'ready' | 'missing' | 'changed' | string;
   reason: string | null;
+  localizedReason?: unknown;
   currentHash: string | null;
   size: number | null;
 }
@@ -493,6 +512,7 @@ export interface ProjectActionRun {
   status: 'completed' | 'failed' | 'timed_out' | string;
   exitCode: number | null;
   output: string;
+  localizedOutput?: unknown;
   artifactId: string | null;
   startedAt: string;
   completedAt: string | null;
@@ -506,6 +526,7 @@ export interface GitHunkActionResult {
   action: GitFileAction;
   applied: boolean;
   message: string;
+  localizedMessage?: unknown;
 }
 
 export interface GitFileActionResult {
@@ -513,6 +534,7 @@ export interface GitFileActionResult {
   action: GitFileAction;
   applied: boolean;
   message: string;
+  localizedMessage?: unknown;
 }
 
 export type GitWorkspaceAction = 'stage_all' | 'stage_changed' | 'stage_untracked' | 'unstage_all';
@@ -528,12 +550,14 @@ export interface GitWorkspaceActionResult {
   action: GitWorkspaceResultAction;
   applied: boolean;
   message: string;
+  localizedMessage?: unknown;
 }
 
 export interface GitCommitResult {
   committed: boolean;
   hash: string | null;
   message: string;
+  localizedMessage?: unknown;
 }
 
 export interface GitBranch {
@@ -623,6 +647,7 @@ export interface UserInputRequest {
 
 /** Adapter-neutral view of work queued while an Agent is busy. */
 export interface QueuedMessage {
+  localizedError?: unknown;
   id: string;
   text: string;
   status: 'pending' | 'sending' | 'failed' | 'uncertain';

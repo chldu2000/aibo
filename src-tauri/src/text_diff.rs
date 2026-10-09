@@ -176,18 +176,18 @@ pub(crate) fn parse_unified_hunks(diff: &str) -> Vec<TurnDiffHunk> {
     hunks
 }
 
-pub(crate) fn select_unified_hunk(diff: &str, hunk_index: usize) -> Result<String, String> {
+pub(crate) fn select_unified_hunk(diff: &str, hunk_index: usize) -> Result<String, crate::ui_i18n::HostMessage> {
     let lines: Vec<&str> = diff.lines().collect();
     let header_start = lines
         .iter()
         .position(|line| line.starts_with("--- "))
-        .ok_or_else(|| "diff 缺少文件头".to_owned())?;
+        .ok_or_else(|| crate::ui_i18n::HostMessage::new("native.diff.missingFileHeader",serde_json::json!({})))?;
     let plus_header = header_start + 1;
     if lines
         .get(plus_header)
         .map_or(true, |line| !line.starts_with("+++ "))
     {
-        return Err("diff 缺少目标文件头".to_owned());
+        return Err(crate::ui_i18n::HostMessage::new("native.diff.missingTargetHeader",serde_json::json!({})));
     }
     let hunk_starts: Vec<usize> = lines
         .iter()
@@ -195,7 +195,7 @@ pub(crate) fn select_unified_hunk(diff: &str, hunk_index: usize) -> Result<Strin
         .filter_map(|(index, line)| line.starts_with("@@ ").then_some(index))
         .collect();
     let Some(&start) = hunk_starts.get(hunk_index) else {
-        return Err(format!("hunk index {hunk_index} 超出范围"));
+        return Err(crate::ui_i18n::HostMessage::new("native.diff.hunkOutOfRange",serde_json::json!({"index":hunk_index.to_string()})));
     };
     let end = hunk_starts
         .get(hunk_index + 1)
@@ -300,5 +300,23 @@ mod tests {
         assert!(truncated);
         assert!(diff.len() <= 1_000);
         assert!(diff.ends_with("diff 已截断"));
+    }
+}
+
+#[cfg(test)]
+mod validation_display_tests {
+    #[test]
+    fn malformed_hunks_preserve_codes_diagnostics_and_explicit_display_metadata() {
+        for (patch,index,raw,en) in [
+            ("raw provider text",0,"diff 缺少文件头","The diff is missing its source file header."),
+            ("--- a/{path}\n@@ hunk",0,"diff 缺少目标文件头","The diff is missing its target file header."),
+            ("--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n-old\n+new",12,"hunk index 12 超出范围","Hunk index 12 is out of range."),
+        ] {
+            let error=super::select_unified_hunk(patch,index).unwrap_err();assert_eq!(error.diagnostic,raw);
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,error.localized.as_ref().unwrap()),en);
+            let error=crate::ui_i18n::database_message(error);let value=serde_json::to_value(&error).unwrap();
+            assert_eq!(value["code"],"database_error");assert_eq!(value["message"],format!("database error: {raw}"));
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&value["localized"]),raw);
+        }
     }
 }

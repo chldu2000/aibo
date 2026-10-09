@@ -17,7 +17,7 @@ pub(crate) async fn read(db: &SqlitePool) -> Result<SessionReferencePreferences,
 
 pub(crate) async fn save(db: &SqlitePool, message_limit: Option<i64>) -> Result<SessionReferencePreferences, CoreError> {
     if message_limit.is_some_and(|limit| !(1..=10000).contains(&limit)) {
-        return Err(CoreError::InvalidWorkspacePath("消息条数必须是 1 到 10000 的整数。".into()));
+        return Err(crate::ui_i18n::invalid_path_error("native.reference.messageLimitInvalid", serde_json::json!({})));
     }
     let message_limit = sqlx::query_scalar("UPDATE session_reference_preferences SET message_limit=? WHERE id=1 RETURNING message_limit")
         .bind(message_limit).fetch_one(db).await?;
@@ -48,7 +48,12 @@ mod tests {
         connection.close().await.unwrap();
         let db = crate::open_database(&path).await.unwrap();
         assert_eq!(read(&db).await.unwrap().message_limit, Some(12));
-        for invalid in [0, -1, 10001] { assert!(save(&db, Some(invalid)).await.is_err()); }
+        for invalid in [0, -1, 10001] {
+            let error=save(&db, Some(invalid)).await.unwrap_err();
+            assert_eq!(error.to_string(),"invalid workspace path: 消息条数必须是 1 到 10000 的整数。");
+            assert_eq!(serde_json::to_value(&error).unwrap()["code"],"invalid_workspace_path");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&crate::ui_i18n::error_display(&error)),"The message count must be an integer from 1 to 10000.");
+        }
         assert_eq!(read(&db).await.unwrap().message_limit, Some(12));
         assert_eq!(save(&db, None).await.unwrap().message_limit, None);
         db.close().await;

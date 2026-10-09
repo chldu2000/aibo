@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -42,4 +43,20 @@ test('draft persistence does not discard older drafts and extension sessions use
   assert.doesNotMatch(app, /pluginDrafts|pluginTimeline|pluginSelection|pluginSessionId|<PluginWorkspacePanel/);
   assert.match(app, /selectSession: id => \{ navigationController\.selectSession\(id\); settingsOpen = false;/);
   assert.match(app, /<PluginManagerPanel/);
+});
+
+
+test('invalid view writes preserve the previous persisted state and remain recoverable',()=>{
+ const storage=new Map();let writes=0;
+ const store=createViewStateStore({getItem:key=>storage.get(key)??null,setItem:(key,value)=>{writes++;storage.set(key,value);}},'main',()=>99);
+ const scope={workspaceId:'原始工作区',contributionId:'原始能力'};
+ const state={selection:'item',detail:null,offset:3,layout:'central'};
+ store.write(scope,state);const previous=[...storage];
+ assert.throws(()=>store.write(scope,{...state,offset:10000}),error=>{
+  assert.equal(error.message,'invalid presentation state');assert.equal(error.localized.key,'presentation.invalidState');
+  assert.equal(translateMessage('en',error.localized),'The view state is invalid. Reopen the view.');
+  return true;
+ });
+ assert.equal(writes,1);assert.deepEqual([...storage],previous);assert.deepEqual(store.read(scope),state);
+ store.write(scope,{...state,layout:'sidebar'});assert.equal(writes,2);assert.equal(store.read(scope).layout,'sidebar');
 });

@@ -21,18 +21,18 @@ impl<'a> GitOperation<'a> {
         Self { workspace_path, cancellation: None, deadline: Instant::now() + Duration::from_secs(120) }
     }
     pub(crate) fn cancellable(mut self, cancellation: crate::workspace_write_runs::Cancellation) -> Self { self.cancellation = Some(cancellation); self }
-    pub(crate) async fn run(&self, args: &[&str], action: &str) -> Result<(crate::controlled_process::ProcessResult, String), CoreError> {
+    pub(crate) async fn run(&self, args: &[&str], action: &str) -> Result<(crate::controlled_process::ProcessResult, crate::ui_i18n::HostMessage), CoreError> {
         capture_git_operation(git_command(self.workspace_path, args), action, self.deadline.saturating_duration_since(Instant::now()), self.cancellation.as_ref()).await
     }
     async fn action(&self, args: &[&str], action: &str) -> Result<GitWorkspaceActionResult, CoreError> {
         let (output, message) = self.run(args, action).await?;
-        Ok(GitWorkspaceActionResult { action: action.into(), applied: output.success, message })
+        Ok(GitWorkspaceActionResult { action: action.into(), applied: output.success, message: message.diagnostic, localized_message: message.localized })
     }
     async fn has_head(&self) -> Result<bool, CoreError> {
         let (output, message) = self.run(&["rev-parse", "--verify", "--quiet", "HEAD"], "inspect_head").await?;
         match output.exit_code {
             Some(0) => Ok(true), Some(1) => Ok(false),
-            _ => Err(CoreError::Database(format!("Unable to inspect Git HEAD: {message}"))),
+            _ => Err(crate::ui_i18n::database_message(crate::ui_i18n::HostMessage::with_diagnostic("native.git.inspectHead",serde_json::json!({"error":message.display()}),format!("Unable to inspect Git HEAD: {message}")))),
         }
     }
 }
@@ -47,8 +47,8 @@ fn git_command(workspace_path: &str, args: &[&str]) -> TokioCommand {
 pub(crate) async fn apply_git_index_action(
     workspace_path: &str, path: &str, action: &str, cancellation: Option<crate::workspace_write_runs::Cancellation>,
 ) -> Result<GitFileActionResult, CoreError> {
-    crate::workspace_guard::canonicalize_target(Path::new(workspace_path), Path::new(path))
-        .map_err(CoreError::InvalidWorkspacePath)?;
+    crate::workspace_guard::canonicalize_target_message(Path::new(workspace_path), Path::new(path))
+        .map_err(crate::ui_i18n::invalid_path_message)?;
     let mut operation = GitOperation::new(workspace_path);
     operation.cancellation = cancellation;
     let result = match action {
@@ -57,9 +57,9 @@ pub(crate) async fn apply_git_index_action(
             if operation.has_head().await? { operation.action(&["restore", "--staged", "--", path], action).await? }
             else { operation.action(&["rm", "--cached", "--ignore-unmatch", "--", path], action).await? }
         }
-        _ => return Err(CoreError::InvalidWorkspacePath("unsupported Git index action".into())),
+        _ => return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.git.unsupportedIndex",serde_json::json!({}),"unsupported Git index action"))),
     };
-    Ok(GitFileActionResult { path: path.into(), action: action.into(), applied: result.applied, message: result.message })
+    Ok(GitFileActionResult { path: path.into(), action: action.into(), applied: result.applied, message: result.message, localized_message: result.localized_message })
 }
 
 pub(crate) async fn apply_workspace_git_file_action_requested(
@@ -93,14 +93,14 @@ pub(crate) async fn apply_workspace_git_file_action_requested_in_repository(
 async fn stage_workspace_group(operation: &GitOperation<'_>, action: &str) -> Result<GitWorkspaceActionResult, CoreError> {
     let (status, message) = operation.run(&["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."], "inspect_stage_group").await?;
     if !status.success {
-        return Ok(GitWorkspaceActionResult { action: action.into(), applied: false, message });
+        return Ok(GitWorkspaceActionResult { action: action.into(), applied: false, message: message.diagnostic, localized_message: message.localized });
     }
     if status.stdout.len() > GIT_OUTPUT_LIMIT || std::str::from_utf8(&status.stdout).is_err() {
-        return Err(CoreError::Database("无法完整读取 Git 分组文件列表，未执行暂存".into()));
+        return Err(crate::ui_i18n::database_error("native.git.groupIncomplete",serde_json::json!({})));
     }
     let (prefix, message) = operation.run(&["rev-parse", "--show-prefix"], "inspect_stage_prefix").await?;
-    if !prefix.success { return Err(CoreError::Database(message)); }
-    let prefix = std::str::from_utf8(&prefix.stdout).map_err(|_| CoreError::InvalidWorkspacePath("invalid Git path encoding".into()))?.trim_end_matches('\n');
+    if !prefix.success { return Err(crate::ui_i18n::database_message(message)); }
+    let prefix = std::str::from_utf8(&prefix.stdout).map_err(|_| crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.git.pathEncoding",serde_json::json!({}),"invalid Git path encoding")))?.trim_end_matches('\n');
     let mut paths = Vec::new();
     for file in crate::change_set::parse_workspace_git_status(&status.stdout) {
         let selected = !file.conflicted && if action == "stage_untracked" { file.untracked } else { file.unstaged && !file.untracked };
@@ -108,10 +108,10 @@ async fn stage_workspace_group(operation: &GitOperation<'_>, action: &str) -> Re
         // Porcelain paths are repository-relative, but Git -C may point at a
         // workspace inside that repository. Stage only paths inside that scope.
         let path = file.path.strip_prefix(prefix).filter(|path| !path.is_empty())
-            .ok_or_else(|| CoreError::InvalidWorkspacePath("Git group path is outside the workspace".into()))?.to_owned();
+            .ok_or_else(|| crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.git.groupOutside",serde_json::json!({}),"Git group path is outside the workspace")))?.to_owned();
         paths.push(path);
     }
-    if paths.is_empty() { return Ok(GitWorkspaceActionResult { action: action.into(), applied: true, message: "该分组没有需要暂存的文件".into() }); }
+    if paths.is_empty() { return Ok(GitWorkspaceActionResult { action: action.into(), applied: true, message: "该分组没有需要暂存的文件".into(), localized_message: Some(crate::ui_i18n::display_descriptor("native.git.emptyGroup",serde_json::json!({}))) }); }
     let mut args = vec!["add", "--"];
     args.extend(paths.iter().map(String::as_str));
     operation.action(&args, action).await
@@ -127,7 +127,7 @@ async fn run_git_workspace_action(workspace_path: &str, action: &str, cancellati
             if operation.has_head().await? { operation.action(&["restore", "--staged", "--", "."], action).await }
             else { operation.action(&["rm", "--cached", "-r", "--ignore-unmatch", "--", "."], action).await }
         }
-        _ => Err(CoreError::InvalidWorkspacePath("unsupported Git workspace action".into())),
+        _ => Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.git.unsupportedWorkspace",serde_json::json!({}),"unsupported Git workspace action"))),
     }
 }
 
@@ -157,21 +157,21 @@ pub(crate) async fn apply_workspace_git_action_requested_in_repository(
 
 async fn commit_workspace(operation: &GitOperation<'_>, message: &str) -> Result<GitCommitResult, CoreError> {
     let trimmed = message.trim();
-    if trimmed.is_empty() { return Err(CoreError::Database("提交信息不能为空".into())); }
+    if trimmed.is_empty() { return Err(crate::ui_i18n::database_error("native.git.emptyCommit",serde_json::json!({}))); }
     let (staged, detail) = operation.run(&["diff", "--cached", "--quiet"], "inspect_staged").await?;
     match staged.exit_code {
-        Some(0) => return Ok(GitCommitResult { committed: false, hash: None, message: "没有已暂存的更改可提交".into() }),
+        Some(0) => return Ok(GitCommitResult { committed: false, hash: None, message: "没有已暂存的更改可提交".into(), localized_message: Some(crate::ui_i18n::display_descriptor("native.git.noStagedChanges",serde_json::json!({}))) }),
         Some(1) => {},
-        _ => return Err(CoreError::Database(format!("Unable to inspect staged changes: {detail}"))),
+        _ => return Err(crate::ui_i18n::database_message(crate::ui_i18n::HostMessage::with_diagnostic("native.git.inspectStaged",serde_json::json!({"error":detail.display()}),format!("Unable to inspect staged changes: {detail}")))),
     }
     let result = operation.action(&["commit", "-m", trimmed], "commit").await?;
-    if !result.applied { return Ok(GitCommitResult { committed: false, hash: None, message: result.message }); }
+    if !result.applied { return Ok(GitCommitResult { committed: false, hash: None, message: result.message, localized_message: result.localized_message }); }
     // The successful mutation remains successful if optional hash inspection fails.
     let hash = operation.run(&["rev-parse", "HEAD"], "inspect_commit").await.ok()
         .filter(|(output, _)| output.success)
         .map(|(output, _)| String::from_utf8_lossy(&output.stdout).trim().to_owned())
         .filter(|value| !value.is_empty());
-    Ok(GitCommitResult { committed: true, hash, message: result.message })
+    Ok(GitCommitResult { committed: true, hash, message: result.message, localized_message: result.localized_message })
 }
 
 pub(crate) async fn commit_workspace_changes_requested(
@@ -266,9 +266,7 @@ pub(crate) async fn list_workspace_git_branches_in_repository(
 fn validate_git_ref_name(name: &str) -> Result<(), CoreError> {
     if name.trim().is_empty() || name.starts_with('-') || name.contains('\n') || name.contains('\r')
     {
-        return Err(CoreError::InvalidWorkspacePath(
-            "无效的 Git 分支名称".to_owned(),
-        ));
+        return Err(crate::ui_i18n::invalid_path_error("native.git.invalidBranch",serde_json::json!({})));
     }
     Ok(())
 }
@@ -503,9 +501,7 @@ pub(crate) async fn get_workspace_git_commit_file_diff_in_repository(
             .components()
             .any(|part| matches!(part, std::path::Component::ParentDir))
     {
-        return Err(CoreError::InvalidWorkspacePath(
-            "无效的提交文件路径".to_owned(),
-        ));
+        return Err(crate::ui_i18n::invalid_path_error("native.git.invalidCommitPath",serde_json::json!({})));
     }
     let workspace = workspace_by_id(db, &workspace_id).await?;
     let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
@@ -531,7 +527,7 @@ pub(crate) async fn get_workspace_git_commit_file_diff_in_repository(
             String::from_utf8_lossy(&output.stderr).trim().to_owned(),
         ));
     }
-    let truncated = output.stdout_truncated;
+    let truncated = output.stdout_truncated || output.stdout.len() > WORKSPACE_DIFF_MAX_BYTES;
     let diff = if truncated {
         truncate_diff_with_marker(
             &String::from_utf8_lossy(&output.stdout),
@@ -549,6 +545,8 @@ pub(crate) async fn get_workspace_git_commit_file_diff_in_repository(
         diff,
         reason: Some("该提交中的文件没有可展示的文本差异".to_owned())
             .filter(|_| output.stdout.is_empty()),
+        localized_suffix: truncated.then(||crate::ui_i18n::display_descriptor("native.diff.truncatedSuffix", serde_json::json!({}))),
+        localized_reason: output.stdout.is_empty().then(|| crate::ui_i18n::display_descriptor("native.diff.commitEmpty", serde_json::json!({}))),
     })
 }
 
@@ -659,25 +657,25 @@ fn git_sync_command(workspace_path: &str, action: &str) -> Result<TokioCommand, 
         "fetch" => &["fetch", "--all", "--prune"],
         "pull" => &["pull", "--ff-only"],
         "push" => &["push"],
-        _ => return Err(CoreError::InvalidWorkspacePath("unsupported Git sync action".into())),
+        _ => return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.git.unsupportedSync",serde_json::json!({}),"unsupported Git sync action"))),
     };
     Ok(git_command(workspace_path, args))
 }
 
 async fn execute_git_action(command: TokioCommand, action: String, timeout: Duration, cancellation: Option<crate::workspace_write_runs::Cancellation>) -> Result<GitWorkspaceActionResult, CoreError> {
     let (output, message) = capture_git_operation(command, &action, timeout, cancellation.as_ref()).await?;
-    Ok(GitWorkspaceActionResult { action, applied: output.success, message })
+    Ok(GitWorkspaceActionResult { action, applied: output.success, message: message.diagnostic, localized_message: message.localized })
 }
 
-async fn capture_git_operation(command: TokioCommand, action: &str, timeout: Duration, cancellation: Option<&crate::workspace_write_runs::Cancellation>) -> Result<(crate::controlled_process::ProcessResult, String), CoreError> {
-    if timeout.is_zero() { return Err(CoreError::WriteOutcomeUnknown(format!("Git {action}: deadline expired before launching the next command"))); }
+async fn capture_git_operation(command: TokioCommand, action: &str, timeout: Duration, cancellation: Option<&crate::workspace_write_runs::Cancellation>) -> Result<(crate::controlled_process::ProcessResult, crate::ui_i18n::HostMessage), CoreError> {
+    if timeout.is_zero() { return Err(crate::ui_i18n::unknown_message(crate::ui_i18n::HostMessage::with_diagnostic("native.git.deadlineBeforeLaunch",serde_json::json!({"action":action}),format!("Git {action}: deadline expired before launching the next command")))); }
     if let Some(cancel) = cancellation {
-        if cancel.is_requested().await { return Err(CoreError::WriteOutcomeUnknown(format!("Git {action}: stopped before launching the next command"))); }
+        if cancel.is_requested().await { return Err(crate::ui_i18n::unknown_message(crate::ui_i18n::HostMessage::with_diagnostic("native.git.stoppedBeforeLaunch",serde_json::json!({"action":action}),format!("Git {action}: stopped before launching the next command")))); }
     }
     let output = crate::controlled_process::execute_cancellable(command, timeout, GIT_OUTPUT_LIMIT + 1, async {
         match cancellation { Some(cancel) => cancel.requested().await, None => std::future::pending::<()>().await }
     }).await
-        .map_err(|error| CoreError::WriteOutcomeUnknown(format!("Git {action}: {error}")))?;
+        .map_err(|error| crate::ui_i18n::unknown_message(crate::ui_i18n::HostMessage::new("native.git.commandError",serde_json::json!({"action":action,"error":error.to_string()}))))?;
     let mut message = String::from_utf8_lossy(&output.stdout).to_string();
     if !output.stderr.is_empty() {
         if !message.is_empty() { message.push('\n'); }
@@ -689,14 +687,14 @@ async fn capture_git_operation(command: TokioCommand, action: &str, timeout: Dur
     let sanitized = crate::artifact::sanitize_content("git.command", message.trim());
     let message = if truncated || sanitized.len() > GIT_OUTPUT_LIMIT {
         const SUFFIX: &str = "\n… Git 输出已截断";
-        format!("{}{}", crate::artifact::truncate_utf8(&sanitized, GIT_OUTPUT_LIMIT - SUFFIX.len(), ""), SUFFIX)
-    } else { sanitized };
+        crate::ui_i18n::HostMessage::new("native.git.truncatedOutput",serde_json::json!({"output":crate::artifact::truncate_utf8(&sanitized, GIT_OUTPUT_LIMIT - SUFFIX.len(), "")}))
+    } else { crate::ui_i18n::HostMessage::from(sanitized) };
     if output.timed_out || output.cancelled {
-        return Err(CoreError::WriteOutcomeUnknown(format!("Git {action} 已停止，部分更改可能已生效。\n{message}")));
+        return Err(crate::ui_i18n::unknown_message(crate::ui_i18n::HostMessage::new("native.git.stopped",serde_json::json!({"action":action,"output":message.display()}))));
     }
-    let message = if message.is_empty() {
-        if output.success { "Git 操作已完成".into() }
-        else { format!("git exited with {:?}", output.exit_code) }
+    let message = if message.diagnostic.is_empty() {
+        if output.success { crate::ui_i18n::HostMessage::new("native.git.completed",serde_json::json!({})) }
+        else { format!("git exited with {:?}", output.exit_code).into() }
     } else { message };
     Ok((output, message))
 }
@@ -1037,8 +1035,11 @@ mod tests {
         git(&["add", "--", "file.txt"]);
         let operation = GitOperation { workspace_path: path, cancellation: None, deadline: Instant::now() + Duration::from_secs(3) };
         let error = tokio::time::timeout(Duration::from_secs(5), commit_workspace(&operation, "Fixture\n\nCo-authored-by: Codex <codex@openai.com>")).await.unwrap().unwrap_err();
-        assert!(matches!(&error, CoreError::WriteOutcomeUnknown(_)), "{error}");
+        assert!(error.is_write_outcome_unknown(), "{error}");
         assert!(error.to_string().contains("POST_COMMIT_STARTED"), "{error}");
+        let payload=serde_json::to_value(&error).unwrap();assert_eq!(payload["code"],"outcome_unknown");
+        let en=crate::ui_i18n::render(crate::ui_i18n::Locale::En,&payload["localized"]);assert!(en.contains("Git commit stopped"));assert!(en.contains("POST_COMMIT_STARTED"));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]),error.to_string());
         assert!(root.join("hook-started").exists());
         // A commit can exist even though its post-commit hook never returned.
         assert_eq!(git(&["show", "HEAD:file.txt"]), "committed content");
@@ -1064,7 +1065,7 @@ mod tests {
         command.current_dir(&root).env("GIT_SSH", &helper).env("GIT_SSH_VARIANT", "ssh");
         let result = tokio::time::timeout(Duration::from_secs(5), execute_git_action(command, "fetch".into(), Duration::from_secs(2), None)).await.unwrap();
         let error = result.unwrap_err();
-        assert!(matches!(&error, CoreError::WriteOutcomeUnknown(_)), "{error}");
+        assert!(error.is_write_outcome_unknown(), "{error}");
         assert!(error.to_string().contains("BEFORE_TIMEOUT"), "{error}");
         assert_eq!(serde_json::to_value(&error).unwrap()["code"], "outcome_unknown");
         tokio::time::sleep(Duration::from_millis(4200)).await;
@@ -1080,6 +1081,9 @@ mod tests {
         assert!(result.message.contains("Git 输出已截断"));
         assert!(result.message.contains("[REDACTED]"));
         assert!(!result.message.contains("fixture-secret"));
+        let en=crate::ui_i18n::render(crate::ui_i18n::Locale::En,result.localized_message.as_ref().unwrap());assert!(en.ends_with("\n… Git output truncated"));assert!(en.contains("[REDACTED]"));assert!(!en.contains("fixture-secret"));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,result.localized_message.as_ref().unwrap()),result.message);
+        assert!(!serde_json::to_string(&result).unwrap().contains("fixture-secret"));
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -1151,5 +1155,74 @@ mod tests {
         assert!(git(&["diff", "--cached", "--name-only"]).is_empty());
         db.close().await;
         std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod validation_display_tests {
+    use super::*;
+    #[tokio::test]
+    async fn unsupported_git_actions_preserve_display_and_do_not_change_the_index() {
+        let root=tempfile::tempdir().unwrap();let repo=root.path().join("repo");std::fs::create_dir_all(&repo).unwrap();
+        assert!(Command::new("git").args(["init","-q"]).arg(&repo).status().unwrap().success());
+        std::fs::write(repo.join("原文{path}.txt"),"原始正文").unwrap();
+        let db=crate::open_database(&root.path().join("host.db")).await.unwrap();
+        let workspace=crate::add_workspace_in_db(repo.to_str().unwrap(),&db).await.unwrap();
+        for (index,key,diagnostic) in [(0,"unsupportedIndex","unsupported Git index action"),(1,"unsupportedWorkspace","unsupported Git workspace action"),(2,"unsupportedSync","unsupported Git sync action")] {
+            let request=crate::workspace_write_runs::Request::new(format!("invalid-{index}"),"main".into());
+            let error=match index {
+                0=>apply_workspace_git_file_action_requested(&db,workspace.id.clone(),"原文{path}.txt".into(),"unsupported".into(),&request).await.err().unwrap(),
+                1=>apply_workspace_git_action_requested(&db,workspace.id.clone(),"unsupported".into(),&request).await.err().unwrap(),
+                _=>sync_workspace_git_requested(&db,workspace.id.clone(),"unsupported".into(),&request).await.err().unwrap(),
+            };
+            let payload=serde_json::to_value(error).unwrap();
+            assert_eq!(payload["code"],"invalid_workspace_path");assert_eq!(payload["message"],format!("invalid workspace path: {diagnostic}"));
+            assert_eq!(payload["localized"]["key"],format!("native.git.{key}"));
+            assert_ne!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]),diagnostic);
+            let index_output=Command::new("git").arg("-C").arg(&repo).arg("ls-files").output().unwrap();assert!(index_output.status.success());assert!(index_output.stdout.is_empty());
+            assert_eq!(std::fs::read_to_string(repo.join("原文{path}.txt")).unwrap(),"原始正文");
+            let runs=serde_json::to_value(crate::workspace_write_runs::list(&db,workspace.id.clone(),None).await.unwrap()).unwrap();
+            assert_eq!(runs.as_array().unwrap().len(),if index==0 {1} else {2});
+            assert!(runs.as_array().unwrap().iter().all(|run|run["status"]=="failed"));
+            if index<2 {
+                let run=runs.as_array().unwrap().iter().find(|run|run["requestId"]==format!("invalid-{index}")).unwrap();
+                assert_eq!(run["result"]["error"],payload);
+            }
+        }
+        let staged=apply_workspace_git_file_action_requested(&db,workspace.id,"原文{path}.txt".into(),"stage".into(),&crate::workspace_write_runs::Request::new("valid".into(),"main".into())).await.unwrap();assert!(staged.applied);
+        assert!(!Command::new("git").arg("-C").arg(&repo).arg("ls-files").output().unwrap().stdout.is_empty());
+        db.close().await;
+    }
+
+    #[tokio::test]
+    async fn host_git_validation_and_empty_results_preserve_original_fields() {
+        for name in ["", "-option", "line\nbreak", "line\rbreak"] {
+            let error=validate_git_ref_name(name).unwrap_err();let value=serde_json::to_value(error).unwrap();
+            assert_eq!(value["code"],"invalid_workspace_path");assert_eq!(value["message"],"invalid workspace path: 无效的 Git 分支名称");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&value["localized"]),"Invalid Git branch name.");
+        }
+        let root=std::env::temp_dir().join(format!("aibo-git-validation-{}",ulid::Ulid::new()));let repo=root.join("repo");std::fs::create_dir_all(&repo).unwrap();
+        let output=Command::new("git").args(["init","-q"]).arg(&repo).output().unwrap();assert!(output.status.success());
+        let db=crate::open_database(&root.join("host.db")).await.unwrap();
+        for path in ["/outside", "../outside"] {
+            let value=serde_json::to_value(get_workspace_git_commit_file_diff(&db,"missing".into(),"HEAD".into(),path.into()).await.unwrap_err()).unwrap();
+            assert_eq!(value["code"],"invalid_workspace_path");assert_eq!(value["message"],"invalid workspace path: 无效的提交文件路径");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&value["localized"]),"Invalid commit file path.");
+        }
+        let operation=GitOperation::new(repo.to_str().unwrap());
+        let group=stage_workspace_group(&operation,"stage_changed").await.unwrap();assert!(group.applied);assert_eq!(group.action,"stage_changed");assert_eq!(group.message,"该分组没有需要暂存的文件");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,group.localized_message.as_ref().unwrap()),"This group has no files to stage.");
+        let commit=commit_workspace(&operation,"raw message {message}").await.unwrap();assert!(!commit.committed);assert!(commit.hash.is_none());assert_eq!(commit.message,"没有已暂存的更改可提交");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,commit.localized_message.as_ref().unwrap()),"There are no staged changes to commit.");
+        for value in [serde_json::to_value(group).unwrap(),serde_json::to_value(commit).unwrap()] {assert_eq!(value["localizedMessage"]["schema"],"aibo.host-message/v1");}
+        std::fs::write(repo.join("raw.txt"),"用户原文").unwrap();
+        let success=operation.action(&["add","--","raw.txt"],"stage").await.unwrap();assert!(success.applied);assert_eq!(success.message,"Git 操作已完成");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,success.localized_message.as_ref().unwrap()),"Git operation completed.");
+        #[cfg(unix)]
+        {
+        let mut command=TokioCommand::new("/usr/bin/printf");command.arg("Git 操作已完成");
+        let literal=execute_git_action(command,"fixture".into(),Duration::from_secs(3),None).await.unwrap();assert_eq!(literal.message,"Git 操作已完成");assert!(literal.localized_message.is_none());
+        }
+        db.close().await;std::fs::remove_dir_all(root).unwrap();
     }
 }

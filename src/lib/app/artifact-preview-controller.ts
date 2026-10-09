@@ -1,15 +1,22 @@
+import { translateMessage } from '../../../packages/i18n/index.js';
+import type { Locale, LocalizedText } from '../../../packages/i18n/index.js';
+import { LocalizedError, toErrorText } from './error-utils.ts';
 import type { ArtifactContent } from '../types';
 import type { PresentationArtifactPreview } from '../../../packages/plugin-protocol/src/presentation-inspector';
-export const emptyArtifactPreview = (): PresentationArtifactPreview => ({sessionId:null,artifactId:null,content:null,loading:false,error:null});
+export type ArtifactPreviewState = Omit<PresentationArtifactPreview, 'error'> & { error: LocalizedText | null };
+export function artifactPreviewPresentation(state: ArtifactPreviewState, locale: Locale): PresentationArtifactPreview {
+  return { ...state, error: state.error === null ? null : translateMessage(locale, state.error) };
+}
+export const emptyArtifactPreview = (): ArtifactPreviewState => ({sessionId:null,artifactId:null,content:null,loading:false,error:null});
 export function createArtifactPreviewController(ports: {
   read(sessionId: string, artifactId: string): Promise<ArtifactContent>;
   currentSession(): string | null;
   available(sessionId: string, artifactId: string): boolean;
-  changed(state: PresentationArtifactPreview): void;
+  changed(state: ArtifactPreviewState): void;
 }) {
   let generation = 0;
   let state = emptyArtifactPreview();
-  const publish = (value: PresentationArtifactPreview) => { state = value; ports.changed(value); };
+  const publish = (value: ArtifactPreviewState) => { state = value; ports.changed(value); };
   function reset() { ++generation; publish(emptyArtifactPreview()); }
   return {
     reset,
@@ -22,10 +29,10 @@ export function createArtifactPreviewController(ports: {
       try {
         const content = await ports.read(sessionId, artifactId);
         if (!owns()) return;
-        if (content.artifact.id !== artifactId || content.artifact.sessionId !== sessionId) throw Error('artifact_identity_mismatch');
+        if (content.artifact.id !== artifactId || content.artifact.sessionId !== sessionId) throw new LocalizedError('artifact.identityMismatch');
         publish({sessionId,artifactId,content,loading:false,error:null});
       } catch(error) {
-        if (owns()) publish({sessionId,artifactId,content:null,loading:false,error:error instanceof Error ? error.message : String(error)});
+        if (owns()) publish({sessionId,artifactId,content:null,loading:false,error:toErrorText(error)});
       }
     },
   };

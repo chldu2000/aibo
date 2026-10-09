@@ -1,16 +1,18 @@
+import {presentationTranslator} from './i18n.js';
 import {node,button,actionFor} from './tree.js';
 import {parseMarkdown,displayMarkdown} from './markdown.js';
 import {highlightCode} from './code-highlight.js';
-import {linkTarget,linkLabels,linkIconPaths} from './links.js';
+import {linkTarget,linkIconPaths} from './links.js';
 
-export function renderRichText(content,key,entryId,actions) {
+export function renderRichText(content,key,entryId,actions,locale='zh-CN') {
+  const t=presentationTranslator(locale);
   const inline = (segments,prefix) => segments.map((segment,index) => {
     const id = prefix+':'+index;
     if (segment.kind === 'link') {
       const action = actions.find(action => action.operation === 'openLink' && action.args[0] === entryId && action.args[2] === segment.href);
       const kind = linkTarget(segment.href).kind;
       const icon = {...node('svg',id+':icon',null,[node('path',id+':icon:path',null,[],{d:linkIconPaths[kind]})],{viewBox:'0 0 24 24',width:'13',height:'13',fill:'none',stroke:'currentColor','stroke-width':'1.6','aria-hidden':'true'}),className:'markdown-link-icon'};
-      return {...button(id,null,action,{role:'link',title:linkLabels[kind]+'：'+segment.href}),children:[icon,...inline(segment.children,id+':label')],className:'markdown-link'};
+      return {...button(id,null,action,{role:'link',title:t('markdown.link.'+kind,{href:segment.href})}),children:[icon,...inline(segment.children,id+':label')],className:'markdown-link'};
     }
     const tag = {code:'code',strong:'strong',em:'em',del:'del'}[segment.kind] ?? 'span';
     return {...node(tag,id,segment.children ? null : segment.value,segment.children ? inline(segment.children,id) : []),
@@ -23,13 +25,13 @@ export function renderRichText(content,key,entryId,actions) {
   const blocks = values => values.map(block => {
     const id = key+':block:'+block.index;
     if (block.kind === 'code') return {...node('section',id,null,[
-      node('header',id+':toolbar',null,[node('span',id+':language',block.language),button(id+':copy','复制代码',actionFor(actions,'copyCode',entryId,String(block.index)))]),
-      node('pre',id+':pre',null,[node('code',id+':code',null,highlighted(highlightCode(block.lines.join('\n'),block.language),id+':highlight'))],{tabindex:'0','aria-label':'代码块'}),
+      node('header',id+':toolbar',null,[node('span',id+':language',block.language),button(id+':copy',t('external.copyCode'),actionFor(actions,'copyCode',entryId,String(block.index)))]),
+      node('pre',id+':pre',null,[node('code',id+':code',null,highlighted(highlightCode(block.lines.join('\n'),block.language),id+':highlight'))],{tabindex:'0','aria-label':t('markdown.code')}),
     ]),className:'markdown-code-block'};
     if (block.kind === 'list') return {...node(block.ordered ? 'ol' : 'ul',id,null,block.items.map((item,i) => {
       const itemId = id+':item:'+i;
       return {...node('li',itemId,null,[
-        item.checked !== null ? {...node('span',itemId+':check',item.checked ? '☑' : '☐',[],{role:'img','aria-label':item.checked ? '已完成' : '未完成'}),className:'markdown-task-check'} : null,
+        item.checked !== null ? {...node('span',itemId+':check',item.checked ? '☑' : '☐',[],{role:'img','aria-label':item.checked ? t('markdown.completed') : t('markdown.pending')}),className:'markdown-task-check'} : null,
         {...node('div',itemId+':content',null,blocks(item.blocks)),className:'markdown-list-content'},
       ]),className:item.checked !== null ? 'markdown-task' : ''};
     }),block.ordered ? {start:String(block.start)} : {}),className:'markdown-list'};
@@ -43,7 +45,7 @@ export function renderRichText(content,key,entryId,actions) {
       return {...node('div',id,null,[{...node('table',id+':table',null,[
         node('thead',id+':head',null,[row(block.header,id+':header','th')]),
         node('tbody',id+':body',null,block.rows.map((cells,i) => row(cells,id+':row:'+i,'td'))),
-      ]),className:'markdown-table'}],{role:'region',tabindex:'0','aria-label':'表格，可横向滚动'}),className:'markdown-table-scroll'};
+      ]),className:'markdown-table'}],{role:'region',tabindex:'0','aria-label':t('markdown.table')}),className:'markdown-table-scroll'};
     }
     const heading = block.kind === 'heading';
     return {...node(heading ? 'h'+block.level : 'p',id,null,inline(block.segments,id+':inline')),

@@ -1,3 +1,4 @@
+import type { Locale } from '../../packages/i18n/index.js';
 import { createWorkspaceWriteController } from './app/workspace-write-controller';
 import type { PresentationRelease, InstalledPresentationPackage, PresentationSelection } from './presentation-runtime/types';
 import { invoke } from '@tauri-apps/api/core';
@@ -81,9 +82,10 @@ export interface PluginInstallation {
   enabled: boolean;
   installed: boolean;
   runnable: boolean;
-  dependencies: { kind: string; name: string; required: boolean; available: boolean; executable: string | null; versionRange: string | null; detectedVersion: string | null; issue: string | null }[];
-  packageDependencies?: { dependencies: { pluginId: string; required: boolean; available: boolean; installationId: string | null; version: string | null; issue: string | null; contributionIds: string[] }[]; unavailableContributions: string[] };
+  dependencies: { kind: string; name: string; required: boolean; available: boolean; executable: string | null; versionRange: string | null; detectedVersion: string | null; issue: string | null; localizedIssue?: unknown }[];
+  packageDependencies?: { dependencies: { pluginId: string; required: boolean; available: boolean; installationId: string | null; version: string | null; issue: string | null; localizedIssue?: unknown; contributionIds: string[] }[]; unavailableContributions: string[] };
   activationIssues?: string[];
+  localizedActivationIssues?: unknown[];
   contributions?: { id: string; kind: string; scope: string; required: boolean; metadata: Record<string, unknown> }[];
   manifest: { displayName: string; authentication?: { kind: 'cli-terminal'; executable: string; loginArgs: string[]; statusArgs: string[] }; agents?: { agentId: string; displayName: string }[]; [key: string]: unknown };
 }
@@ -616,7 +618,7 @@ export const saveAgentSettings = (request: AgentSettingsSave): Promise<AgentSett
 
 export const getSubagentHistory = (sessionId: string, agentId: string): Promise<import('./app/subagents').SubagentEntry[]> => invoke('get_subagent_history', { sessionId, agentId });
 
-export const listWorkspaceGitRepositories = (workspaceId: string, scanBudget = 2000): Promise<import('../../packages/plugin-protocol/src/presentation-git').GitRepositoryDiscovery> =>
+export const listWorkspaceGitRepositories = (workspaceId: string, scanBudget = 2000): Promise<import('../../packages/plugin-protocol/src/presentation-git').GitRepositoryDiscovery & {localizedWarnings?: unknown}> =>
   invoke('list_workspace_git_repositories', { workspaceId, scanBudget });
 
 export const registerSessionClipboardImages = (sessionId: string, images: import('./app/clipboard-images').ClipboardImage[]): Promise<ContextAttachment[]> =>
@@ -626,7 +628,7 @@ export const getSessionAttachmentPreview = (sessionId: string, attachmentId: str
   invoke<string>('get_session_attachment_preview', { sessionId, attachmentId });
 
 export const searchGlobal = (request: import('./app/global-search').SearchRequest): Promise<import('./app/global-search').SearchPage> => invoke('search_global', { request });
-export const readSearchResult = (target: import('./app/global-search').SearchTarget): Promise<{ title: string; content: string; target: import('./app/global-search').SearchTarget; truncated: boolean }> => invoke('read_search_result', { target });
+export const readSearchResult = (target: import('./app/global-search').SearchTarget): Promise<{ title: string; content: string; localizedContent?: unknown; localizedSuffix?: unknown; target: import('./app/global-search').SearchTarget; truncated: boolean }> => invoke('read_search_result', { target });
 
 export const searchGlobalFiles = (request: import('./app/global-search').SearchRequest, requestId: string): Promise<import('./app/global-search').SearchPage> => invoke('search_global_files', { request, requestId });
 export const cancelGlobalFileSearch = (requestId: string): Promise<void> => invoke('cancel_global_file_search', { requestId });
@@ -645,3 +647,6 @@ import type { NodeRuntimeStatus } from './app/node-runtime-controller';
 export const getNodeRuntime = (refresh: boolean): Promise<NodeRuntimeStatus> => invoke('get_node_runtime', { refresh });
 export const selectNodeRuntime = (path: string | null): Promise<NodeRuntimeStatus> => invoke('select_node_runtime', { path });
 export const downloadNodeRuntime = (): Promise<NodeRuntimeStatus> => invoke('download_node_runtime');
+
+/** Display-only preference, scoped natively to the invoking window. */
+export const setWindowLocale = (locale: Locale): Promise<Locale> => invoke('set_window_locale', {locale});

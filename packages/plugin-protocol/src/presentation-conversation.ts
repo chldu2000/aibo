@@ -151,6 +151,8 @@ interface ContextAttachment {
   sessionId: string;
   turnId: string | null;
   path: string;
+  /** Optional host-formatted name; path and identity retain their original values. */
+  displayName?: string;
   contentHash: string | null;
   size: number | null;
   mediaType: string;

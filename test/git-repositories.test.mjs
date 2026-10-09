@@ -17,10 +17,12 @@ test('all-repository tree groups duplicate filenames and clean/error states inde
  const changes={workspaceId:'w',branch:'main',captureStatus:'captured',files:[{path:'package.json',kind:'modified',unstaged:true,staged:false}]};
  const repo=(id,extra={})=>({id,name:'api',relativePath:id,kind:'repository',changes,error:null,...extra});
  const state={workspace:{id:'w',trust:'trusted'},desktop:true,repositories:[repo('one'),repo('two'),repo('clean',{changes:{...changes,files:[]}}),repo('failed',{changes:null,error:'unreadable'})],repositoryId:null,preview:{},draft:{},loading:false};
- const tree=renderGit(state,gitActions(state).map((action,i)=>({...action,token:`t${i}`})));
+ for(const [locale,cleanLabel,modifiedLabel] of [['zh-CN','干净的仓库（1）','修改'],['en','Clean repositories (1)','Modified']]){
+ const tree=renderGit(state,gitActions(state).map((action,i)=>({...action,token:`t${i}`})),locale);
  const nodes=[];const visit=node=>{nodes.push(node);node.children?.forEach(visit);};visit(tree);
  assert.equal(new Set(nodes.map(node=>node.key)).size,nodes.length,'render keys remain unique for duplicate names and paths');
- assert.ok(nodes.some(node=>node.text==='干净的仓库（1）'));
+ assert.ok(nodes.some(node=>node.text===cleanLabel));
  assert.ok(nodes.some(node=>node.text==='unreadable'));
- assert.equal(nodes.filter(node=>node.text==='modified package.json').length,2);
+ assert.equal(nodes.filter(node=>node.text===`${modifiedLabel} package.json`).length,2);
+ }
 });

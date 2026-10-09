@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -33,5 +34,29 @@ test('snapshot 1.1 requires explicit renderer support independently of core sema
  const supported={...descriptor,snapshotSchemas:['aibo.semantic-view/v1','aibo.semantic-view/v1.1']};
  assert.deepEqual(choosePresentation(supported,writeView).snapshot,writeView);
  for(const snapshotSchemas of [[],['aibo.semantic-view/v1.1'],['aibo.semantic-view/v1','aibo.semantic-view/v1'],['aibo.semantic-view/v1','aibo.semantic-view/v9']])assert.throws(()=>validateRenderer({...descriptor,snapshotSchemas}),/snapshot schema declaration/);
+ assert.deepEqual(choosePresentation(descriptor,snapshot).snapshot,snapshot);
+});
+
+
+test('renderer guard diagnostics localize without mutating declarations or host snapshots',()=>{
+ const cases=[
+  [{...descriptor,id:'bad id'},'presentation.rendererIdentity','incompatible_renderer: identity or version'],
+  [{...descriptor,core:[]},'presentation.rendererCore','incompatible_renderer: missing core semantics'],
+  [{...descriptor,optional:Array(33).fill(descriptor.optional[0])},'presentation.rendererLimit','incompatible_renderer: optional limit'],
+  [{...descriptor,snapshotSchemas:[]},'presentation.rendererSchemas','incompatible_renderer: snapshot schema declaration'],
+  [{...descriptor,optional:[{...descriptor.optional[0],id:'foreign.graph'}]},'presentation.rendererOptional','incompatible_renderer: optional declaration'],
+ ];
+ for(const [value,key,diagnostic] of cases){
+  const original=structuredClone(value);
+  assert.throws(()=>validateRenderer(value),error=>{
+   assert.equal(error.message,diagnostic);assert.equal(error.localized.key,key);
+   for(const locale of ['zh-CN','en'])assert.notEqual(translateMessage(locale,error.localized),diagnostic);
+   return true;
+  });
+  assert.deepEqual(value,original);
+ }
+ const newer={...structuredClone(snapshot),schema:'aibo.semantic-view/v1.1'};const original=structuredClone(newer);
+ assert.throws(()=>choosePresentation(descriptor,newer),error=>{assert.equal(error.message,'incompatible_renderer: snapshot version not supported');assert.equal(error.localized.key,'presentation.snapshotVersion');return true;});
+ assert.deepEqual(newer,original);
  assert.deepEqual(choosePresentation(descriptor,snapshot).snapshot,snapshot);
 });

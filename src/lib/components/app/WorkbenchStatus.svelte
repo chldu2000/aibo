@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { locale, t } from '$lib/i18n/runtime';
+  import { formatDateTime, formatNumber } from '../../../../packages/i18n/index.js';
   import type { UsageValues } from '$lib/app/session-usage';
   import { Separator } from '$lib/ui-kit';
 
@@ -10,14 +12,14 @@
   } = $props();
 
   function compactNumber(value: number): string {
-    return new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+    return formatNumber($locale, value, { notation: 'compact', maximumFractionDigits: 1 });
   }
 
   function limitLabel(limit: UsageValues['limits'][number]): string {
     if (limit.label) return limit.label;
-    if (limit.windowMinutes && limit.windowMinutes % 1440 === 0) return `${limit.windowMinutes / 1440} 天`;
-    if (limit.windowMinutes && limit.windowMinutes % 60 === 0) return `${limit.windowMinutes / 60} 小时`;
-    return limit.windowMinutes ? `${limit.windowMinutes} 分钟` : '套餐';
+    if (limit.windowMinutes && limit.windowMinutes % 1440 === 0) return $t('time.days', { count: limit.windowMinutes / 1440 });
+    if (limit.windowMinutes && limit.windowMinutes % 60 === 0) return $t('time.hours', { count: limit.windowMinutes / 60 });
+    return limit.windowMinutes ? $t('time.minutes', { count: limit.windowMinutes }) : $t('usage.plan');
   }
 
   const items = $derived.by(() => {
@@ -29,31 +31,31 @@
         ? `${Math.min(100, Math.max(0, Math.round(usage.contextUsed / usage.contextLimit! * 100)))}%`
         : compactNumber(usage.contextUsed);
       result.push({
-        id: 'context', label: `上下文 ${amount}${usage.contextEstimated ? ' · 估算' : ''}`,
-        detail: `${usage.contextUsed}${hasLimit ? ` / ${usage.contextLimit}` : ''} tokens${usage.contextEstimated ? '（估算）' : ''}`,
+        id: 'context', label: $t('usage.context', { amount, estimated: usage.contextEstimated ? $t('usage.estimated') : '' }),
+        detail: `${usage.contextUsed}${hasLimit ? ` / ${usage.contextLimit}` : ''} tokens${usage.contextEstimated ? $t('usage.estimatedDetail') : ''}`,
       });
     }
-    if (usage.total !== null) result.push({ id: 'total', label: `Token ${compactNumber(usage.total)}`, detail: `累计 ${usage.total} · 输入 ${usage.input ?? '—'} · 输出 ${usage.output ?? '—'}` });
+    if (usage.total !== null) result.push({ id: 'total', label: `Token ${compactNumber(usage.total)}`, detail: $t('usage.tokenDetail', { total: usage.total, input: usage.input ?? '—', output: usage.output ?? '—' }) });
     if (usage.plan) result.push({ id: 'plan', label: usage.plan.toUpperCase() });
     for (const limit of usage.limits) {
       result.push({
-        id: `limit:${limit.id}`, label: `${limitLabel(limit)}${limit.usedPercent === null ? '额度未知' : `剩余 ${Math.max(0, 100 - Math.round(limit.usedPercent))}%`}${limit.observedAt !== undefined ? ' · 最近观测' : ''}`,
-        detail: limit.usedPercent === null ? '已到重置时间，等待新额度数据' : limit.resetsAt !== null ? `重置于 ${new Date(limit.resetsAt * 1000).toLocaleString()}` : '重置时间未知',
+        id: `limit:${limit.id}`, label: `${limitLabel(limit)}${limit.usedPercent === null ? $t('usage.unknownQuota') : $t('usage.remaining', { percent: Math.max(0, 100 - Math.round(limit.usedPercent)) })}${limit.observedAt !== undefined ? $t('usage.observed') : ''}`,
+        detail: limit.usedPercent === null ? $t('usage.awaitingReset') : limit.resetsAt !== null ? $t('usage.resetsAt', { time: formatDateTime($locale, limit.resetsAt * 1000, { dateStyle: 'medium', timeStyle: 'short' }) }) : $t('usage.unknownReset'),
       });
     }
-    if (usage.credits?.unlimited) result.push({ id: 'credits', label: 'Credits 不限量' });
+    if (usage.credits?.unlimited) result.push({ id: 'credits', label: $t('usage.unlimitedCredits') });
     else if (usage.credits?.balance) result.push({ id: 'credits', label: `Credits ${usage.credits.balance}` });
     return result;
   });
 </script>
 
-<footer class="workbench-status" class:has-usage={items.length > 0} aria-label="工作台状态">
-  <span class="workbench-status-environment">{desktop ? '本地工作区' : '浏览器预览'}</span>
-  <span class="workbench-status-workspace" title={workspaceLabel ?? '未选择工作区'}>{workspaceLabel ?? '未选择工作区'}</span>
+<footer class="workbench-status" class:has-usage={items.length > 0} aria-label={$t('workbench.status')}>
+  <span class="workbench-status-environment">{desktop ? $t('workbench.local') : $t('workbench.preview')}</span>
+  <span class="workbench-status-workspace" title={workspaceLabel ?? $t('workspace.none')}>{workspaceLabel ?? $t('workspace.none')}</span>
   {#if items.length > 0}
     <Separator orientation="vertical" class="workbench-status-divider" />
     <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users need to scroll overflowing usage text.) -->
-    <div class="workbench-status-usage" role="group" aria-label="会话用量与套餐余量" tabindex="0">
+    <div class="workbench-status-usage" role="group" aria-label={$t('usage.accessibility')} tabindex="0">
       {#each items as item (item.id)}
         <span data-usage={item.id} title={item.detail}>{item.label}</span>
       {/each}

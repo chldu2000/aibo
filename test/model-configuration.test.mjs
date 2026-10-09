@@ -1,3 +1,5 @@
+import { translateMessage } from '../packages/i18n/index.js';
+const localizedErrorMatch = pattern => error => pattern.test(error.localized ? translateMessage('zh-CN',error.localized) : String(error));
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
@@ -47,7 +49,7 @@ test('service tier changes use an independent capability and reject unsupported 
   const result = await service.apply(session,{kind:'serviceTier',serviceTier:'priority'},catalog,null);
   assert.equal(result.catalog.currentServiceTier,'priority');
   assert.deepEqual(calls,[['model.service-tier',{action:'set',tier:'priority'}]]);
-  await assert.rejects(service.apply(session,{kind:'serviceTier',serviceTier:'ultrafast'},catalog,null),/不支持/);
+  await assert.rejects(service.apply(session,{kind:'serviceTier',serviceTier:'ultrafast'},catalog,null),localizedErrorMatch(/不支持/));
   await assert.rejects(service.apply({...session,capabilities:['model.select']},{kind:'serviceTier',serviceTier:'priority'},catalog,null),/model.service-tier/);
 }));
 
@@ -56,7 +58,7 @@ test('combined model changes validate all capabilities and levels before any mut
   const service = createModelConfigurationService({ getSessionExecutionProfile: async () => ({ requested: {}, enforced: {} }), facade: { invoke: async () => { mutations++; } }, getSessionModels: async () => initialCatalog,
     legacyApply: () => assert.fail('no compatibility fallback') });
   await assert.rejects(service.apply({ ...session, capabilities: ['model.select'] }, { kind: 'configuration', model: 'model', reasoningEffort: 'high' }, initialCatalog, null), /model.reasoning/);
-  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'model', reasoningEffort: 'unsupported' }, initialCatalog, null), /不支持/);
+  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'model', reasoningEffort: 'unsupported' }, initialCatalog, null), localizedErrorMatch(/不支持/));
   assert.equal(mutations, 0);
 }));
 
@@ -90,16 +92,16 @@ test('context windows use a separate capability, revalidate the model, and requi
   assert.equal(result.catalog.currentReasoningEffort, 'high');
   assert.equal(result.catalog.currentServiceTier, null);
   await assert.rejects(service.apply(session, change, catalog, null), /model.context-window/);
-  await assert.rejects(service.apply(capable, { ...change, contextWindow: 'invented' }, catalog, null), /不支持/);
-  await assert.rejects(service.apply(capable, { ...change, modelReference: 'previous' }, catalog, null), /模型已变化/);
+  await assert.rejects(service.apply(capable, { ...change, contextWindow: 'invented' }, catalog, null), localizedErrorMatch(/不支持/));
+  await assert.rejects(service.apply(capable, { ...change, modelReference: 'previous' }, catalog, null), localizedErrorMatch(/模型已变化/));
   assert.equal(calls.length, 1);
   fail = true;
   await assert.rejects(service.apply(capable, change, catalog, null), /Backend rejected/);
   fail = false; confirm = false; catalog.currentContextWindow = 'standard';
-  await assert.rejects(service.apply(capable, change, catalog, null), /未确认/);
+  await assert.rejects(service.apply(capable, change, catalog, null), localizedErrorMatch(/未确认/));
   assert.equal(catalog.currentContextWindow, 'standard');
   catalog = { ...catalog, current: { ...option, contextWindows: [] } };
-  await assert.rejects(service.apply(capable, change, catalog, null), /不支持/);
+  await assert.rejects(service.apply(capable, change, catalog, null), localizedErrorMatch(/不支持/));
 }));
 
 test('current-model catalogs require sequential selection, refreshed options and native confirmation', () => withModule(async ({ createModelConfigurationService, reasoningEffortLabel }) => {
@@ -117,18 +119,47 @@ test('current-model catalogs require sequential selection, refreshed options and
       if (confirm && capability === 'model.reasoning') catalog.currentReasoningEffort = input.level;
     } },
   });
-  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: level('second') }, catalog, null), /先切换模型/);
+  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: level('second') }, catalog, null), localizedErrorMatch(/先切换模型/));
   assert.equal(calls.length, 0);
   const stale = structuredClone(catalog);
   const changed = await service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: null }, catalog, null);
   assert.equal(changed.catalog.current.reference, 'second');
-  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'first', reasoningEffort: level('first') }, stale, null), /先切换模型/);
+  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'first', reasoningEffort: level('first') }, stale, null), localizedErrorMatch(/先切换模型/));
   const result = await service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: level('second') }, catalog, null);
   assert.deepEqual(calls.map(([cap]) => cap), ['model.select', 'model.reasoning'], 'reasoning does not reselect the model');
   assert.equal(reasoningEffortLabel(result.catalog, result.catalog.currentReasoningEffort), 'Medium');
   assert.equal(reasoningEffortLabel(result.catalog, level('first')), null, 'never display an unrecognized opaque ID');
   confirm = false;
   catalog.currentReasoningEffort = null;
-  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: level('second') }, catalog, null), /未确认/);
-  await assert.rejects(service.apply(session, { kind: 'model', model: 'first' }, catalog, null), /未确认/);
+  await assert.rejects(service.apply(session, { kind: 'configuration', model: 'second', reasoningEffort: level('second') }, catalog, null), localizedErrorMatch(/未确认/));
+  await assert.rejects(service.apply(session, { kind: 'model', model: 'first' }, catalog, null), localizedErrorMatch(/未确认/));
+}));
+
+
+test('owned configuration guards preserve diagnostics and reject before reads or mutations', () => withModule(async ({createModelConfigurationService}) => {
+  const calls=[];
+  const service=createModelConfigurationService({
+    facade:{invoke:async (...args)=>{calls.push(['invoke',...args]);}},
+    getSessionModels:async id=>{calls.push(['models',id]);return structuredClone(initialCatalog);},
+    getSessionExecutionProfile:async id=>{calls.push(['profile',id]);return {requested:{},enforced:{}};},
+  });
+  const cases=[
+    [{...session,pluginInstallationId:null},{kind:'model',model:'model'},'history_only: old session configuration is read-only','native.controls.historyOnly',{}],
+    [{...session,capabilities:[]},{kind:'model',model:'model'},'capability_unsupported: model.select','native.session.unsupportedCapability',{capability:'model.select'}],
+    [{...session,capabilities:['model.select']},{kind:'configuration',model:'model',reasoningEffort:'high'},'capability_unsupported: model.reasoning','native.session.unsupportedCapability',{capability:'model.reasoning'}],
+    [{...session,capabilities:['model.select']},{kind:'serviceTier',serviceTier:'priority'},'capability_unsupported: model.service-tier','native.session.unsupportedCapability',{capability:'model.service-tier'}],
+    [{...session,capabilities:['model.select']},{kind:'contextWindow',contextWindow:'原始窗口 {id}',modelReference:'model'},'capability_unsupported: model.context-window','native.session.unsupportedCapability',{capability:'model.context-window'}],
+  ];
+  for(const [target,change,diagnostic,key,params] of cases){
+    const original=structuredClone({target,change,catalog:initialCatalog});
+    await assert.rejects(service.apply(target,change,initialCatalog,null),error=>{
+      assert.equal(error.message,diagnostic);assert.deepEqual(error.localized,{key,params});
+      for(const locale of ['zh-CN','en','zh-CN'])assert.equal(translateMessage(locale,error.localized),translateMessage(locale,{key,params}));
+      return true;
+    });
+    assert.deepEqual(calls,[]);assert.deepEqual({target,change,catalog:initialCatalog},original);
+  }
+  const result=await service.apply(session,{kind:'model',model:'model'},initialCatalog,null);
+  assert.deepEqual(calls,[['invoke',session,'model.select',{action:'set',reference:'model'}],['models',session.id],['profile',session.id]]);
+  assert.deepEqual(result.catalog,initialCatalog);
 }));

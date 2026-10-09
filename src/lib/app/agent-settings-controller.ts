@@ -1,7 +1,10 @@
+import { toErrorText } from './error-utils.ts';
+import { localizedMessage } from '../../../packages/i18n/index.js';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 import type { AgentSettingsTarget, AgentSettingsSnapshot, AgentSettingsSave, AgentSettingValue } from '../../../packages/plugin-protocol/src/settings';
 export type AgentSettingsState = {
   target: AgentSettingsTarget | null; snapshot: AgentSettingsSnapshot | null;
-  draft: Record<string, AgentSettingValue>; loading: boolean; saving: boolean; error: string | null; notice: string | null;
+  draft: Record<string, AgentSettingValue>; loading: boolean; saving: boolean; error: LocalizedText | null; notice: LocalizedText | null;
 };
 export function createAgentSettingsController(ports: {
   read(target: AgentSettingsTarget): Promise<AgentSettingsSnapshot>;
@@ -12,7 +15,10 @@ export function createAgentSettingsController(ports: {
   const entries = new Map<string, AgentSettingsState>();
   let current = empty();
   const publish = () => ports.changed({...current, draft:{...current.draft}});
-  const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error)).replace(/^(?:settings_conflict|settings_unavailable|invalid_settings):\s*/, '');
+  const errorMessage = (error: unknown): LocalizedText => {
+    const message = toErrorText(error);
+    return typeof message === 'string' ? message.replace(/^(?:settings_conflict|settings_unavailable|invalid_settings):\s*/, '') : message;
+  };
   async function load(entry: AgentSettingsState, preserveDraft = false) {
     if (!entry.target || entry.loading || entry.saving) return;
     entry.loading = true;
@@ -21,7 +27,7 @@ export function createAgentSettingsController(ports: {
     try {
       const next = await ports.read(entry.target);
       if (preserveDraft && entry.snapshot) {
-        if (next.descriptor.version !== entry.snapshot.descriptor.version) entry.error = '设置版本已改变，请重新加载。';
+        if (next.descriptor.version !== entry.snapshot.descriptor.version) entry.error = localizedMessage('agentSettings.versionChanged');
         else entry.snapshot = {...entry.snapshot,inheritedValues:next.inheritedValues};
       } else { entry.snapshot = next; entry.draft = {...next.values}; }
     }
@@ -52,7 +58,7 @@ export function createAgentSettingsController(ports: {
       entry.saving = true; entry.error = null; entry.notice = null; publish();
       try {
         entry.snapshot = await ports.save({...entry.target,version:entry.snapshot.descriptor.version,expectedRevision:entry.snapshot.revision,values:{...entry.draft}});
-        entry.draft = {...entry.snapshot.values}; entry.notice = '已保存，将在下一次调用时提供给 Agent。';
+        entry.draft = {...entry.snapshot.values}; entry.notice = localizedMessage('agentSettings.saved');
       } catch (error) { entry.error = errorMessage(error); }
       finally { entry.saving = false; publish(); }
     },

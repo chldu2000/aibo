@@ -28,11 +28,11 @@ impl Broker {
         let candidate: Option<(String,String,String,String,String,String)> = sqlx::query_as("DELETE FROM capability_binding_candidates WHERE candidate_id=? RETURNING scope_kind,scope_id,capability_id,contract_version,installation_id,contribution_id")
             .bind(token).fetch_optional(&mut *tx).await.map_err(database)?;
         let Some((kind,id,capability,version,installation,contribution)) = candidate else {
-            return Err(fail("provider_unavailable", "Candidate selection changed during initialization; select the provider again"));
+            return Err(fail_display("provider_unavailable", "Candidate selection changed during initialization; select the provider again", "native.broker.candidateSelection"));
         };
         let changed = sqlx::query("UPDATE capability_provider_bindings SET installation_id=?,contribution_id=?,updated_at=? WHERE scope_kind=? AND scope_id=? AND capability_id=? AND contract_version=?")
             .bind(installation).bind(contribution).bind(crate::now_iso()).bind(kind).bind(id).bind(capability).bind(version).execute(&mut *tx).await.map_err(database)?;
-        if changed.rows_affected() != 1 { return Err(fail("provider_unavailable", "Confirmed binding disappeared during initialization")); }
+        if changed.rows_affected() != 1 { return Err(fail_display("provider_unavailable", "Confirmed binding disappeared during initialization", "native.broker.bindingDisappeared")); }
         tx.commit().await.map_err(database)
     }
 }

@@ -1,6 +1,7 @@
 //! External presentation releases contain data and assets, never native executables.
 use serde::Serialize;
-use serde_json::Value;
+use crate::ui_i18n::HostMessage;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool};
 use std::{
@@ -14,8 +15,11 @@ use tokio::sync::Mutex;
 static MUTATION: Mutex<()> = Mutex::const_new(());
 const MAX_RESOURCE: u64 = 8 * 1024 * 1024;
 const MAX_TOTAL: u64 = 32 * 1024 * 1024;
-fn error(value: impl std::fmt::Display) -> String {
-    value.to_string()
+fn error(value: impl std::fmt::Display) -> HostMessage {
+    value.to_string().into()
+}
+fn owned(key: &str, diagnostic: &str) -> HostMessage {
+    HostMessage::with_diagnostic(key, json!({}), diagnostic)
 }
 
 /// Preinstalled trusted releases. Their identity prefix is reserved, so a local
@@ -65,9 +69,9 @@ fn token(value: &str) -> bool {
         .iter()
         .any(|v| lower.contains(v))
 }
-fn manifest(source: &str) -> Result<Value, String> {
+fn manifest(source: &str) -> Result<Value, HostMessage> {
     if source.len() > 128 * 1024 {
-        return Err("presentation_manifest_too_large".into());
+        return Err(owned("native.presentation.manifestTooLarge", "presentation_manifest_too_large"));
     }
     let value: Value = serde_json::from_str(source).map_err(error)?;
     let schema: Value = serde_json::from_str(include_str!(
@@ -76,7 +80,7 @@ fn manifest(source: &str) -> Result<Value, String> {
     .map_err(error)?;
     let validator = jsonschema::options().build(&schema).map_err(error)?;
     if !validator.is_valid(&value) {
-        return Err("invalid_presentation_manifest".into());
+        return Err(owned("native.presentation.invalidManifest", "invalid_presentation_manifest"));
     }
     let mut paths = HashSet::new();
     let mut total = 0;
@@ -84,31 +88,31 @@ fn manifest(source: &str) -> Result<Value, String> {
     for resource in resources {
         let path = resource["path"].as_str().unwrap().to_ascii_lowercase();
         if path == "presentation.json" || !paths.insert(path) {
-            return Err("duplicate_presentation_resource".into());
+            return Err(owned("native.presentation.duplicateResource", "duplicate_presentation_resource"));
         }
         total += resource["bytes"].as_u64().unwrap();
     }
     if total > MAX_TOTAL {
-        return Err("presentation_package_too_large".into());
+        return Err(owned("native.presentation.packageTooLarge", "presentation_package_too_large"));
     }
     if let Some(entry) = value["entry"].as_str() {
         if !resources
             .iter()
             .any(|r| r["path"] == entry && r["mediaType"] == "text/javascript")
         {
-            return Err("missing_presentation_entry".into());
+            return Err(owned("native.presentation.missingEntry", "missing_presentation_entry"));
         }
     } else if resources
         .iter()
         .any(|r| r["mediaType"] == "text/javascript")
     {
-        return Err("unexpected_presentation_script".into());
+        return Err(owned("native.presentation.unexpectedScript", "unexpected_presentation_script"));
     }
     if let Some(themes) = value["themes"].as_array() {
         let mut ids = HashSet::new();
         for theme in themes {
             if !ids.insert(theme["id"].as_str().unwrap()) {
-                return Err("invalid_presentation_themes".into());
+                return Err(owned("native.presentation.invalidThemes", "invalid_presentation_themes"));
             }
             if !theme["tokens"]
                 .as_object()
@@ -116,21 +120,21 @@ fn manifest(source: &str) -> Result<Value, String> {
                 .values()
                 .all(|v| token(v.as_str().unwrap()))
             {
-                return Err("unsafe_presentation_token".into());
+                return Err(owned("native.presentation.unsafeToken", "unsafe_presentation_token"));
             }
         }
         if !ids.contains(value["defaultThemeId"].as_str().unwrap()) {
-            return Err("invalid_presentation_themes".into());
+            return Err(owned("native.presentation.invalidThemes", "invalid_presentation_themes"));
         }
     }
     Ok(value)
 }
 
-fn read(root: &Path, relative: &str, limit: u64) -> Result<Vec<u8>, String> {
+fn read(root: &Path, relative: &str, limit: u64) -> Result<Vec<u8>, HostMessage> {
     let mut path = root.to_path_buf();
     for part in Path::new(relative).components() {
         if !matches!(part, std::path::Component::Normal(_)) {
-            return Err("invalid_presentation_path".into());
+            return Err(owned("native.presentation.invalidPath", "invalid_presentation_path"));
         }
         path.push(part);
         if fs::symlink_metadata(&path)
@@ -138,7 +142,7 @@ fn read(root: &Path, relative: &str, limit: u64) -> Result<Vec<u8>, String> {
             .file_type()
             .is_symlink()
         {
-            return Err("presentation_symlink".into());
+            return Err(owned("native.presentation.symlink", "presentation_symlink"));
         }
     }
     let mut options = fs::OpenOptions::new();
@@ -151,22 +155,22 @@ fn read(root: &Path, relative: &str, limit: u64) -> Result<Vec<u8>, String> {
     let file = options.open(&path).map_err(error)?;
     let metadata = file.metadata().map_err(error)?;
     if !metadata.is_file() || metadata.len() > limit {
-        return Err("invalid_presentation_resource_size".into());
+        return Err(owned("native.presentation.resourceSize", "invalid_presentation_resource_size"));
     }
     if !path.canonicalize().map_err(error)?.starts_with(root) {
-        return Err("invalid_presentation_path".into());
+        return Err(owned("native.presentation.invalidPath", "invalid_presentation_path"));
     }
     let mut bytes = Vec::new();
     file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(error)?;
     if bytes.len() as u64 > limit {
-        return Err("invalid_presentation_resource_size".into());
+        return Err(owned("native.presentation.resourceSize", "invalid_presentation_resource_size"));
     }
     Ok(bytes)
 }
 
-fn load(root: &Path) -> Result<(String, Value, BTreeMap<String, Vec<u8>>, String), String> {
+fn load(root: &Path) -> Result<(String, Value, BTreeMap<String, Vec<u8>>, String), HostMessage> {
     let root = root.canonicalize().map_err(error)?;
     let source = String::from_utf8(read(&root, "presentation.json", 128 * 1024)?).map_err(error)?;
     let manifest = manifest(&source)?;
@@ -175,10 +179,10 @@ fn load(root: &Path) -> Result<(String, Value, BTreeMap<String, Vec<u8>>, String
         let path = resource["path"].as_str().unwrap();
         let bytes = read(&root, path, MAX_RESOURCE)?;
         if bytes.len() as u64 != resource["bytes"].as_u64().unwrap() {
-            return Err("presentation_resource_size_mismatch".into());
+            return Err(owned("native.presentation.sizeMismatch", "presentation_resource_size_mismatch"));
         }
         if format!("{:x}", Sha256::digest(&bytes)) != resource["sha256"].as_str().unwrap() {
-            return Err("presentation_resource_integrity_mismatch".into());
+            return Err(owned("native.presentation.integrityMismatch", "presentation_resource_integrity_mismatch"));
         }
         resources.insert(path.to_owned(), bytes);
     }
@@ -199,7 +203,7 @@ fn digest(source: &str, resources: &BTreeMap<String, Vec<u8>>) -> String {
     format!("{:x}", hash.finalize())
 }
 
-pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<Release>, String> {
+pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<Release>, HostMessage> {
     sqlx::query("SELECT digest,plugin_id,manifest_json,enabled FROM presentation_releases WHERE installed=1 ORDER BY plugin_id,version")
         .fetch_all(db).await.map_err(error)?.into_iter().map(|row| Ok(Release {
             digest: row.get("digest"), manifest: serde_json::from_str(row.get::<&str,_>("manifest_json")).map_err(error)?, enabled: row.get("enabled"),
@@ -209,11 +213,11 @@ pub(crate) async fn list(db: &SqlitePool) -> Result<Vec<Release>, String> {
 
 /// Register the releases compiled into this host build. Idempotent; a changed
 /// build replaces its own earlier built-in rows and keeps each window's choice.
-pub(crate) async fn register_builtins(db: &SqlitePool) -> Result<(), String> {
+pub(crate) async fn register_builtins(db: &SqlitePool) -> Result<(), HostMessage> {
     register(db, &BUILTINS).await
 }
 
-async fn register(db: &SqlitePool, sources: &[&str]) -> Result<(), String> {
+async fn register(db: &SqlitePool, sources: &[&str]) -> Result<(), HostMessage> {
     let _guard = MUTATION.lock().await;
     let mut tx = db.begin().await.map_err(error)?;
     let mut current = Vec::new();
@@ -221,7 +225,7 @@ async fn register(db: &SqlitePool, sources: &[&str]) -> Result<(), String> {
         let manifest = manifest(source)?;
         let id = manifest["id"].as_str().unwrap();
         if !id.starts_with(BUILTIN_PREFIX) || !manifest["resources"].as_array().unwrap().is_empty() {
-            return Err("invalid_builtin_presentation".into());
+            return Err(owned("native.presentation.invalidBuiltin", "invalid_builtin_presentation"));
         }
         let digest = digest(source, &BTreeMap::new());
         current.push(digest.clone());
@@ -254,7 +258,7 @@ async fn register(db: &SqlitePool, sources: &[&str]) -> Result<(), String> {
     tx.commit().await.map_err(error)
 }
 
-async fn plugin_id(db: &SqlitePool, digest: &str) -> Result<Option<String>, String> {
+async fn plugin_id(db: &SqlitePool, digest: &str) -> Result<Option<String>, HostMessage> {
     sqlx::query_scalar("SELECT plugin_id FROM presentation_releases WHERE digest=?")
         .bind(digest).fetch_optional(db).await.map_err(error)
 }
@@ -263,11 +267,11 @@ pub(crate) async fn install(
     db: &SqlitePool,
     data: &Path,
     source: &Path,
-) -> Result<Release, String> {
+) -> Result<Release, HostMessage> {
     let _guard = MUTATION.lock().await;
     let (digest, manifest, resources, raw) = load(source)?;
     if source_of(manifest["id"].as_str().unwrap()) == "builtin" {
-        return Err("reserved_presentation_id".into());
+        return Err(owned("native.presentation.reservedId", "reserved_presentation_id"));
     }
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT digest FROM presentation_releases WHERE plugin_id=? AND version=?",
@@ -278,7 +282,7 @@ pub(crate) async fn install(
     .await
     .map_err(error)?;
     if existing.is_some_and(|old| old != digest) {
-        return Err("presentation_release_conflict".into());
+        return Err(owned("native.presentation.releaseConflict", "presentation_release_conflict"));
     }
     let packages = data.join("presentation-packages");
     fs::create_dir_all(&packages).map_err(error)?;
@@ -286,7 +290,7 @@ pub(crate) async fn install(
     let destination = packages.join(&digest);
     if destination.exists() {
         if load(&destination)?.0 != digest {
-            return Err("presentation_release_corrupt".into());
+            return Err(owned("native.presentation.releaseCorrupt", "presentation_release_corrupt"));
         }
     } else {
         let stage = packages.join(format!(".staging-{}", ulid::Ulid::new()));
@@ -315,7 +319,7 @@ pub(crate) async fn install(
     })
 }
 
-pub(crate) async fn package(db: &SqlitePool, data: &Path, digest: &str) -> Result<Package, String> {
+pub(crate) async fn package(db: &SqlitePool, data: &Path, digest: &str) -> Result<Package, HostMessage> {
     use base64::Engine;
     let exists: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM presentation_releases WHERE digest=? AND installed=1 AND enabled=1",
@@ -325,7 +329,7 @@ pub(crate) async fn package(db: &SqlitePool, data: &Path, digest: &str) -> Resul
     .await
     .map_err(error)?;
     if exists != 1 || digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err("presentation_unavailable".into());
+        return Err(owned("native.presentation.unavailable", "presentation_unavailable"));
     }
     if plugin_id(db, digest).await?.is_some_and(|id| source_of(&id) == "builtin") {
         // Built-in releases have no files: the registered manifest is data only and
@@ -333,7 +337,7 @@ pub(crate) async fn package(db: &SqlitePool, data: &Path, digest: &str) -> Resul
         let source: String = sqlx::query_scalar("SELECT manifest_json FROM presentation_releases WHERE digest=?")
             .bind(digest).fetch_one(db).await.map_err(error)?;
         if self::digest(&source, &BTreeMap::new()) != digest {
-            return Err("presentation_release_corrupt".into());
+            return Err(owned("native.presentation.releaseCorrupt", "presentation_release_corrupt"));
         }
         return Ok(Package {
             release: Release { digest: digest.to_owned(), manifest: manifest(&source)?, enabled: true, source: "builtin" },
@@ -342,7 +346,7 @@ pub(crate) async fn package(db: &SqlitePool, data: &Path, digest: &str) -> Resul
     }
     let (actual, manifest, resources, _) = load(&data.join("presentation-packages").join(digest))?;
     if actual != digest {
-        return Err("presentation_release_corrupt".into());
+        return Err(owned("native.presentation.releaseCorrupt", "presentation_release_corrupt"));
     }
     Ok(Package {
         release: Release {
@@ -363,14 +367,14 @@ pub(crate) async fn package(db: &SqlitePool, data: &Path, digest: &str) -> Resul
     })
 }
 
-async fn reject_builtin(db: &SqlitePool, digest: &str) -> Result<(), String> {
+async fn reject_builtin(db: &SqlitePool, digest: &str) -> Result<(), HostMessage> {
     if plugin_id(db, digest).await?.is_some_and(|id| source_of(&id) == "builtin") {
-        return Err("builtin_presentation_immutable".into());
+        return Err(owned("native.presentation.builtinImmutable", "builtin_presentation_immutable"));
     }
     Ok(())
 }
 
-pub(crate) async fn enable(db: &SqlitePool, digest: &str, enabled: bool) -> Result<(), String> {
+pub(crate) async fn enable(db: &SqlitePool, digest: &str, enabled: bool) -> Result<(), HostMessage> {
     let _guard = MUTATION.lock().await;
     reject_builtin(db, digest).await?;
     let mut tx = db.begin().await.map_err(error)?;
@@ -383,7 +387,7 @@ pub(crate) async fn enable(db: &SqlitePool, digest: &str, enabled: bool) -> Resu
         .rows_affected()
         != 1
     {
-        return Err("presentation_unavailable".into());
+        return Err(owned("native.presentation.unavailable", "presentation_unavailable"));
     }
     if !enabled {
         sqlx::query("DELETE FROM presentation_selections WHERE digest=?")
@@ -395,10 +399,10 @@ pub(crate) async fn enable(db: &SqlitePool, digest: &str, enabled: bool) -> Resu
     tx.commit().await.map_err(error)
 }
 
-pub(crate) async fn removal_windows(db: &SqlitePool, digest: &str) -> Result<Vec<String>,String> {
+pub(crate) async fn removal_windows(db: &SqlitePool, digest: &str) -> Result<Vec<String>, HostMessage> {
     sqlx::query_scalar("SELECT window_id FROM presentation_selections WHERE digest=? ORDER BY window_id").bind(digest).fetch_all(db).await.map_err(error)
 }
-async fn cleanup_removed(db:&SqlitePool,data:&Path,digest:&str)->Result<(),String> {
+async fn cleanup_removed(db:&SqlitePool,data:&Path,digest:&str)->Result<(), HostMessage> {
     let pending:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM presentation_removals WHERE digest=?)").bind(digest).fetch_one(db).await.map_err(error)?;
     if pending {
         crate::plugin_lifecycle::remove_owned(data,&["presentation-packages",digest])?;
@@ -406,16 +410,16 @@ async fn cleanup_removed(db:&SqlitePool,data:&Path,digest:&str)->Result<(),Strin
     }
     Ok(())
 }
-pub(crate) async fn collect_removed(db:&SqlitePool,data:&Path)->Result<(),String> {
+pub(crate) async fn collect_removed(db:&SqlitePool,data:&Path)->Result<(), HostMessage> {
     let _guard=MUTATION.lock().await;
     let digests:Vec<String>=sqlx::query_scalar("SELECT digest FROM presentation_removals").fetch_all(db).await.map_err(error)?;
     for digest in digests {cleanup_removed(db,data,&digest).await?;}
     Ok(())
 }
-pub(crate) async fn uninstall(db: &SqlitePool, data: &Path, digest: &str, expected_windows: &[String]) -> Result<(), String> {
+pub(crate) async fn uninstall(db: &SqlitePool, data: &Path, digest: &str, expected_windows: &[String]) -> Result<(), HostMessage> {
     let _guard = MUTATION.lock().await;
     reject_builtin(db, digest).await?;
-    if removal_windows(db,digest).await? != expected_windows { return Err("皮肤引用已变化，请重新确认卸载".into()); }
+    if removal_windows(db,digest).await? != expected_windows { return Err(owned("native.presentation.removalChanged", "皮肤引用已变化，请重新确认卸载")); }
     crate::plugin_lifecycle::owned_path(data,&["presentation-packages",digest])?;
     let mut tx = db.begin().await.map_err(error)?;
     sqlx::query("DELETE FROM presentation_selections WHERE digest=?")
@@ -440,7 +444,7 @@ pub(crate) struct Selection {
     pub theme_id: Option<String>,
 }
 
-pub(crate) async fn selection(db: &SqlitePool, window: &str) -> Result<Option<Selection>, String> {
+pub(crate) async fn selection(db: &SqlitePool, window: &str) -> Result<Option<Selection>, HostMessage> {
     Ok(sqlx::query("SELECT s.digest,s.theme_id FROM presentation_selections s JOIN presentation_releases p ON p.digest=s.digest WHERE window_id=? AND p.installed=1 AND p.enabled=1")
         .bind(window).fetch_optional(db).await.map_err(error)?.map(|row| Selection { digest: row.get("digest"), theme_id: row.get("theme_id") }))
 }
@@ -453,7 +457,7 @@ pub(crate) async fn select(
     digest: Option<&str>,
     theme: Option<&str>,
     expected: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), HostMessage> {
     let _guard = MUTATION.lock().await;
     if selection(db, window)
         .await?
@@ -461,7 +465,7 @@ pub(crate) async fn select(
         .map(|s| s.digest.as_str())
         != expected
     {
-        return Err("presentation_selection_superseded".into());
+        return Err(owned("native.presentation.selectionSuperseded", "presentation_selection_superseded"));
     }
     if let Some(digest) = digest {
         let package = package(db, data, digest).await?;
@@ -470,7 +474,7 @@ pub(crate) async fn select(
                 .as_array()
                 .is_some_and(|themes| themes.iter().any(|t| t["id"] == theme))
             {
-                return Err("invalid_presentation_theme".into());
+                return Err(owned("native.presentation.invalidTheme", "invalid_presentation_theme"));
             }
         }
         sqlx::query("INSERT INTO presentation_selections(window_id,digest,theme_id) VALUES(?,?,?) ON CONFLICT(window_id) DO UPDATE SET digest=excluded.digest,theme_id=excluded.theme_id")
@@ -517,8 +521,8 @@ mod tests {
             let package = package(&db, &root, &release.digest).await.unwrap();
             assert!(package.resources.is_empty(), "built-in content never comes from disk");
             assert_eq!(package.release.manifest, release.manifest);
-            assert_eq!(enable(&db, &release.digest, false).await.unwrap_err(), "builtin_presentation_immutable");
-            assert_eq!(uninstall(&db, &root, &release.digest, &[]).await.unwrap_err(), "builtin_presentation_immutable");
+            assert_eq!(enable(&db, &release.digest, false).await.unwrap_err().diagnostic, "builtin_presentation_immutable");
+            assert_eq!(uninstall(&db, &root, &release.digest, &[]).await.unwrap_err().diagnostic, "builtin_presentation_immutable");
         }
 
         let first = builtin("1.0.0", "#111111");
@@ -562,9 +566,9 @@ mod tests {
         fs::create_dir_all(&source).unwrap();
         fs::write(source.join("presentation.json"), builtin("1.0.0", "#333333")).unwrap();
         let db = crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
-        assert_eq!(install(&db, &root, &source).await.unwrap_err(), "reserved_presentation_id");
+        assert_eq!(install(&db, &root, &source).await.unwrap_err().diagnostic, "reserved_presentation_id");
         let local = builtin("1.0.0", "#333333").replace("dev.aibo.builtin.example", "dev.example.skin");
-        assert_eq!(register(&db, &[&local]).await.unwrap_err(), "invalid_builtin_presentation");
+        assert_eq!(register(&db, &[&local]).await.unwrap_err().diagnostic, "invalid_builtin_presentation");
         db.close().await;
         fs::remove_dir_all(root).unwrap();
     }
@@ -593,7 +597,7 @@ mod tests {
         );
         assert!(select(&db, &root, "main", Some(&second.digest), None, None)
             .await
-            .unwrap_err()
+            .unwrap_err().diagnostic
             .contains("superseded"));
         assert!(select(
             &db,
@@ -660,7 +664,7 @@ mod tests {
         fs::write(path, value.to_string()).unwrap();
         assert!(install(&db, &root, &source)
             .await
-            .unwrap_err()
+            .unwrap_err().diagnostic
             .contains("conflict"));
         assert_eq!(
             selection(&db, "main").await.unwrap().unwrap().digest,
@@ -727,12 +731,51 @@ mod tests {
         fixture(&source, "1.0.0");
         fs::rename(source.join("skin.js"), root.join("outside.js")).unwrap();
         symlink(root.join("outside.js"), source.join("skin.js")).unwrap();
-        assert!(load(&source).unwrap_err().contains("symlink"));
+        assert!(load(&source).unwrap_err().diagnostic.contains("symlink"));
         fs::remove_file(source.join("skin.js")).unwrap();
         fixture(&source, "1.0.0");
         fs::rename(source.join("presentation.json"), root.join("outside.json")).unwrap();
         symlink(root.join("outside.json"), source.join("presentation.json")).unwrap();
-        assert!(load(&source).unwrap_err().contains("symlink"));
+        assert!(load(&source).unwrap_err().diagnostic.contains("symlink"));
         fs::remove_dir_all(root).unwrap();
     }
+    #[tokio::test]
+    async fn display_errors_preserve_resources_and_selections_until_valid_uninstall() {
+        let root = temp();
+        let source = root.join("source");
+        fixture(&source, "1.0.0");
+        let db = crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
+        let release = install(&db, &root, &source).await.unwrap();
+        select(&db, &root, "main", Some(&release.digest), Some("dark"), None).await.unwrap();
+        let installed = root.join("presentation-packages").join(&release.digest);
+        let original = fs::read(installed.join("skin.js")).unwrap();
+        let stale = uninstall(&db, &root, &release.digest, &[]).await.unwrap_err();
+        assert_eq!(stale.diagnostic, "皮肤引用已变化，请重新确认卸载");
+        assert_eq!(stale.localized.as_ref().unwrap()["key"], "native.presentation.removalChanged");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En, &stale.display()), "Presentation references changed. Confirm the uninstall again.");
+        assert_eq!(fs::read(installed.join("skin.js")).unwrap(), original);
+        assert_eq!(removal_windows(&db, &release.digest).await.unwrap(), vec!["main"]);
+        assert_eq!(list(&db).await.unwrap().len(), 1);
+        let wrong = select(&db, &root, "main", Some(&release.digest), Some("missing"), Some(&release.digest)).await.unwrap_err();
+        assert_eq!(wrong.diagnostic, "invalid_presentation_theme");
+        assert_eq!(wrong.localized.as_ref().unwrap()["key"], "native.presentation.invalidTheme");
+        assert_eq!(selection(&db, "main").await.unwrap().unwrap().theme_id.as_deref(), Some("dark"));
+        // A real checksum rejection must not overwrite the installed release.
+        fs::write(source.join("skin.js"), vec![b'x'; original.len()]).unwrap();
+        let corrupt = install(&db, &root, &source).await.unwrap_err();
+        assert_eq!(corrupt.diagnostic, "presentation_resource_integrity_mismatch");
+        assert_eq!(corrupt.localized.as_ref().unwrap()["key"], "native.presentation.integrityMismatch");
+        assert_eq!(fs::read(installed.join("skin.js")).unwrap(), original);
+        assert_eq!(list(&db).await.unwrap().len(), 1);
+        let missing = read(&root, "missing.js", MAX_RESOURCE).unwrap_err();
+        assert!(missing.localized.is_none(), "OS diagnostics are not guessed from content");
+        uninstall(&db, &root, &release.digest, &["main".into()]).await.unwrap();
+        assert!(!installed.exists());
+        assert!(selection(&db, "main").await.unwrap().is_none());
+        assert!(list(&db).await.unwrap().is_empty());
+        assert_eq!(fs::read(source.join("skin.js")).unwrap(), vec![b'x'; original.len()]);
+        db.close().await;
+        fs::remove_dir_all(root).unwrap();
+    }
+
 }

@@ -1,9 +1,12 @@
-import type { PluginRemovalImpact } from './plugin-lifecycle-controller';
+import { readNativeMessage, toErrorText } from './error-utils.ts';
+import { localizedMessage, translateMessage } from '../../../packages/i18n/index.js';
+import type { Locale, LocalizedText } from '../../../packages/i18n/index.js';
+import { pluginRemovalImpactPresentation, type PluginRemovalImpact } from './plugin-lifecycle-controller.ts';
 export type PluginInstallPreview = {
   pluginId: string; version: string; kind: 'install' | 'installed' | 'upgrade' | 'replace' | 'downgrade';
-  token: string; archivedSessions?: string[]; rebuildSessions?: string[]; previous: string[]; impacts: PluginRemovalImpact[]; blockers: string[];
+  token: string; archivedSessions?: string[]; rebuildSessions?: string[]; previous: string[]; impacts: PluginRemovalImpact[]; blockers: string[]; localizedBlockers?: unknown[];
 };
-export type PluginInstallState = { preview: PluginInstallPreview | null; busy: boolean; error: string; notice: string; undoTargets: string[]; skipArchived: boolean };
+export type PluginInstallState = { preview: PluginInstallPreview | null; busy: boolean; error: LocalizedText; notice: LocalizedText; undoTargets: string[]; skipArchived: boolean };
 export function createPluginInstallController(ports: {
   preview(path: string): Promise<PluginInstallPreview>;
   install(path: string, token: string, reinstall: boolean, skipArchived: boolean): Promise<unknown>;
@@ -18,14 +21,14 @@ export function createPluginInstallController(ports: {
   async function run(action: () => Promise<void>) {
     if (state.busy) return;
     state = {...state,busy:true,error:'',notice:''}; emit();
-    try {await action();} catch (error) {state.error = String(error instanceof Error ? error.message : error);}
+    try {await action();} catch (error) {state.error = toErrorText(error);}
     finally {state.busy=false;emit();}
   }
   return {
     review: (source: string) => run(async () => {
       path=source;state.preview=null;state.skipArchived=true;
       const preview=await ports.preview(source);
-      if (preview.kind==='installed') state.notice='已安装相同版本和内容，无需重复安装。';
+      if (preview.kind==='installed') state.notice=localizedMessage('install.alreadyInstalled');
       else state.preview=preview;
     }),
     confirm: (reinstall=false) => run(async () => {
@@ -35,13 +38,20 @@ export function createPluginInstallController(ports: {
       await ports.install(path,preview.token,reinstall,state.skipArchived);
       await ports.refresh();
       state.undoTargets=await ports.undoTargets();
-      state.notice=reinstall ? '已安装旧版，原会话仅保留历史。启用后可创建新会话。' : '安装完成；同一插件只保留一个当前版本。';
+      state.notice=reinstall ? localizedMessage('install.downgraded') : localizedMessage('install.completed');
     }),
     undo: (id: string) => run(async () => {
-      await ports.undo(id);await ports.refresh();state.undoTargets=await ports.undoTargets();state.notice='已撤销升级并恢复旧版本。';
+      await ports.undo(id);await ports.refresh();state.undoTargets=await ports.undoTargets();state.notice=localizedMessage('install.undone');
     }),
     refreshUndo: async () => {const targets=await ports.undoTargets();state.undoTargets=targets;emit();},
     setSkipArchived: (value: boolean) => {if (!state.busy) {state.skipArchived=value;emit();}},
     cancel: () => {if(!state.busy){state.preview=null;state.error='';emit();}},
   };
+}
+
+export function pluginInstallStatePresentation(state: PluginInstallState, locale: Locale): PluginInstallState {
+  if (!state.preview) return state;
+  const {localizedBlockers, ...preview} = state.preview;
+  const metadata = Array.isArray(localizedBlockers) && localizedBlockers.length === preview.blockers.length ? localizedBlockers : [];
+  return {...state,preview:{...preview,blockers:preview.blockers.map((text,index)=>translateMessage(locale,readNativeMessage(metadata[index]) ?? text)),impacts:preview.impacts.map(impact=>pluginRemovalImpactPresentation(impact,locale)!)} };
 }

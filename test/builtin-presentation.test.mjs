@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -51,4 +52,15 @@ test('only host-marked built-in releases resolve to compiled kits', () => {
   assert.throws(() => builtinAppearance(local, 'dark', kits), /presentation_unavailable/);
   assert.throws(() => builtinAppearance({ ...builtin, source: undefined }, 'dark', kits), /presentation_unavailable/);
   assert.throws(() => builtinAppearance(builtin, 'missing', kits), /invalid_presentation_theme/);
+  const original=structuredClone({builtin,local,kits});
+  for(const [release,theme,key,diagnostic] of [[local,'dark','native.presentation.unavailable','presentation_unavailable'],[builtin,'missing','presentation.invalidTheme','invalid_presentation_theme']]){
+    assert.throws(()=>builtinAppearance(release,theme,kits),error=>{
+      assert.equal(error.message,diagnostic);assert.equal(error.localized.key,key);
+      for(const locale of ['en','zh-CN'])assert.notEqual(translateMessage(locale,error.localized),diagnostic);
+      return true;
+    });
+  }
+  assert.deepEqual({builtin,local,kits},original);
+  assert.deepEqual(builtinAppearance(builtin,'dark',kits),{kitId:'material3',themeId:'dark'});
+
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { openExternalLink, readLinkedFile } from '$lib/api';
+  import { openExternalLink, readLinkedFile, setWindowLocale } from '$lib/api';
   import {linkTarget} from '../packages/presentation-workbench/links.js';
   import {createFilePreviewController,emptyFilePreview} from '$lib/app/file-preview-controller';
   import FilePreviewPanel from '$lib/components/app/FilePreviewPanel.svelte';
@@ -7,22 +7,22 @@
   const filePreviewController = createFilePreviewController(readLinkedFile, value => { filePreview = value; });
   $effect(() => { selectedSessionId; selectedWorkspaceId; filePreviewController.close(); });
   async function copyPreviewPath() {
-    try { await navigator.clipboard.writeText(filePreview.preview?.path ?? filePreview.path ?? ''); setNotice('路径已复制','success'); }
-    catch (error) { setNotice(`无法复制路径：${String(error)}`,'error'); }
+    try { await navigator.clipboard.writeText(filePreview.preview?.path ?? filePreview.path ?? ''); setNotice(localizedMessage('app.pathCopied'),'success'); }
+    catch (error) { setNotice(localizedMessage('app.copyPathFailed', {error: toErrorText(error)}),'error'); }
   }
   async function handleOpenLink(url: string): Promise<void> {
     try {
       const target = linkTarget(url);
-      if (!target) throw Error('不支持的链接地址');
+      if (!target) throw new LocalizedError('app.unsupportedLink');
       if (target.kind === 'file') {
-        if (!selectedSessionId) throw Error('请先选择文件所属会话');
+        if (!selectedSessionId) throw new LocalizedError('app.selectFileSession');
         await filePreviewController.open(selectedSessionId,target.path,target.line);
       } else await openExternalLink(url);
     }
-    catch (error) { setNotice(`无法打开链接：${String(error)}`, 'error'); }
+    catch (error) { setNotice(localizedMessage('app.openLinkFailed', {error: toErrorText(error)}), 'error'); }
   }
   import { notificationDuration, type AppNotification, type NotificationType } from '$lib/app/notifications';
-  import { createPluginLifecycleController, type PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
+  import { createPluginLifecycleController, pluginRemovalImpactPresentation, pluginMigrationReportPresentation, type PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
   import { createPluginAuthenticationController, emptyPluginAuthentication } from '$lib/app/plugin-authentication-controller';
   import { pluginAuthenticationAction } from '$lib/api';
   let pluginAuthentication = $state(emptyPluginAuthentication());
@@ -36,7 +36,7 @@
   let nodeRuntime = $state(emptyNodeRuntime());
   const nodeRuntimeController = createNodeRuntimeController({
     read: getNodeRuntime, select: selectNodeRuntime, download: downloadNodeRuntime,
-    pick: async () => { const path = await open({ directory: false, multiple: false, title: '选择 Node 可执行文件' }); return typeof path === 'string' ? path : null; },
+    pick: async () => { const path = await open({ directory: false, multiple: false, title: $t('app.pickNode') }); return typeof path === 'string' ? path : null; },
     refreshDependencies: async () => { await refreshPluginInstallations(); },
     changed: value => { nodeRuntime = value; },
   });
@@ -46,6 +46,10 @@
 
   import { createSessionStartupController } from '$lib/app/session-startup-controller';
   import { createSessionModelCache } from '$lib/app/session-model-cache';
+  import { turnFileDiffPresentation, restoreOperationsPresentation, timelinePresentation, turnChangeSetPresentation, checkpointsPresentation } from '$lib/app/turn-change-presentation';
+  import { agentDiagnosticsPresentation } from '$lib/app/agent-diagnostics';
+  import { workspaceCapabilityPresentation } from '$lib/app/workspace-capabilities';
+  import { workspaceFileDiffPresentation } from '$lib/app/workspace-file-diff';
   import { createSessionDiffController, emptySessionDiff } from '$lib/app/session-diff-controller';
   import { sessionChangeFile, sessionChangeRowId } from '$lib/app/session-change-file';
   let sessionTabs = $state<Record<string, 'conversation' | 'executions' | 'changes'>>({});
@@ -72,7 +76,7 @@
   let subagentOpen = $state(false);
   let subagentEntries = $state<SubagentEntry[]>([]);
   let subagentLoading = $state(false);
-  let subagentError = $state<string | null>(null);
+  let subagentError = $state<LocalizedText | null>(null);
   let subagentGeneration = 0;
   let subagentLive: SubagentEntry[] = [];
   const selectedSubagent = $derived(subagentSelection?.sessionId === selectedSessionId
@@ -86,7 +90,7 @@
     try {
       const history = await getSubagentHistory(sessionId,id);
       if (generation === subagentGeneration && selectedSessionId === sessionId) subagentEntries = mergeSubagentEntries(history,subagentLive);
-    } catch (error) { if (generation === subagentGeneration) subagentError = toErrorMessage(error); }
+    } catch (error) { if (generation === subagentGeneration) subagentError = toErrorText(error); }
     finally { if (generation === subagentGeneration) subagentLoading = false; }
   }
   $effect(() => { if (subagentSelection && subagentSelection.sessionId !== selectedSessionId) { subagentOpen = false; subagentSelection = null; subagentEntries = []; ++subagentGeneration; } });
@@ -103,19 +107,19 @@
     const scope: CapabilityScope | null = scopes.includes('application') ? {kind:'application'}
       : scopes.includes('workspace') && selectedWorkspaceId ? {kind:'workspace',id:selectedWorkspaceId}
       : scopes.includes('session') && selectedSession?.pluginInstallationId === installationId && selectedSession.agent === contributionId ? {kind:'session',id:selectedSession.id} : null;
-    if (!scope) { pluginError = '请先选择此 Agent 支持的项目或会话作用域。'; return; }
+    if (!scope) { pluginError = $t('app.selectAgentScope'); return; }
     void agentSettingsController.select({installationId,contributionId,scope});
   }
   function agentSettingsScopeLabel(scope: CapabilityScope): string {
-    if (scope.kind === 'application') return '全局设置';
-    if (scope.kind === 'workspace') return `项目：${workspaces.find(item => item.id === scope.id)?.label ?? '已不可用'}`;
-    return `会话：${Object.values(workspaceSessionMap).flat().find(item => item.id === scope.id)?.label ?? '已不可用'}`;
+    if (scope.kind === 'application') return $t('app.globalSettings');
+    if (scope.kind === 'workspace') return $t('app.workspaceScope', {name: workspaces.find(item => item.id === scope.id)?.label ?? $t('app.unavailable')});
+    return $t('app.sessionScope', {name: Object.values(workspaceSessionMap).flat().find(item => item.id === scope.id)?.label ?? $t('app.unavailable')});
   }
   function selectAgentSettingsScope(scope: CapabilityScope) {
     if (agentSettings.target) void agentSettingsController.select({...agentSettings.target,scope});
   }
 
-  import { createWorkspaceGitController, emptyWorkspaceGit } from '$lib/app/workspace-git-controller';
+  import { createWorkspaceGitController, workspaceGitPresentation, emptyWorkspaceGit } from '$lib/app/workspace-git-controller';
   import { createTurnChangeController, emptyTurnChange } from '$lib/app/turn-change-controller';
   import { encodeClipboardImages } from '$lib/app/clipboard-images';
   import { registerSessionClipboardImages } from '$lib/api';
@@ -130,9 +134,9 @@
   import { createCapabilityWorkbenchDirectory } from '$lib/presentation-runtime/capability-workbench';
   import type { PresentationCapabilityWorkbench } from '../packages/plugin-protocol/src/presentation-capability';
   const capabilityWorkbenchDirectory = createCapabilityWorkbenchDirectory();
-  import { createProjectEditorController, emptyProjectEditor, type ProjectEditorField } from '$lib/app/project-editor-controller';
+  import { createProjectEditorController, emptyProjectEditor, projectEditorPresentation, type ProjectEditorState, type ProjectEditorField } from '$lib/app/project-editor-controller';
   import type { PresentationProjectEditor } from '../packages/plugin-protocol/src/presentation-inspector';
-  let projectEditors = $state<Record<string, PresentationProjectEditor>>({});
+  let projectEditors = $state<Record<string, ProjectEditorState>>({});
   let projectRunningActions = $state<Record<string, string | null>>({});
   const projectEditor = createProjectEditorController({
     workspace: () => selectedWorkspaceId, actions: () => projectActions, save: saveProjectAction,
@@ -140,7 +144,7 @@
     saved: (id, saved) => { if (selectedWorkspaceId === id) projectActions = projectActions.some(item => item.id === saved.id) ? projectActions.map(item => item.id === saved.id ? saved : item) : [...projectActions, saved]; },
   });
   import { createInspectorDirectory } from '$lib/presentation-runtime/inspector';
-  import { createArtifactPreviewController, emptyArtifactPreview } from '$lib/app/artifact-preview-controller';
+  import { createArtifactPreviewController, emptyArtifactPreview, artifactPreviewPresentation } from '$lib/app/artifact-preview-controller';
   import type { PresentationInspector } from '../packages/plugin-protocol/src/presentation-inspector';
   const inspectorDirectory = createInspectorDirectory();
   let artifactPreview = $state(emptyArtifactPreview());
@@ -186,7 +190,7 @@
     list: listPresentationPackages, read: readPresentationPackage, install: installPresentationPackage,
     enable: setPresentationPackageEnabled, uninstall: async digest => {
       const windows = await previewPresentationRemoval(digest);
-      if (await confirm(`将删除此皮肤版本的资源文件，保留业务历史。${windows.length ? `正在使用的窗口：${windows.join('、')}，将恢复内置皮肤。` : '没有窗口引用此版本。'}`, {title:'卸载皮肤并清除资源',kind:'warning'})) {
+      if (await confirm($t('app.removeSkinConfirm', {impact: windows.length ? $t('app.removeSkinWindows', {windows: new Intl.ListFormat($locale).format(windows)}) : $t('app.removeSkinUnused')}), {title:$t('app.removeSkinTitle'),kind:'warning'})) {
         await uninstallPresentationPackage(digest, windows);
       }
     },
@@ -213,16 +217,16 @@
   /** Built-in releases are listed through their kits; only isolated packages are external. */
   const externalActive = $derived(presentationPackages.active?.release.source !== 'builtin' ? presentationPackages.active : null);
   const externalSnapshotNeeded = $derived(preparingExternalWorkbench > 0 || Boolean(externalActive?.release.manifest.surfaces?.includes('workbench')));
-  const presentationOptions = $derived([...availableUiKits, ...presentationPackages.releases.filter(release => release.enabled && release.source !== 'builtin').map(release => ({
+  const presentationOptions = $derived([...$localizedUiKits, ...presentationPackages.releases.filter(release => release.enabled && release.source !== 'builtin').map(release => ({
     id: release.digest, label: release.manifest.displayName, description: release.manifest.version,
     defaultThemeId: release.manifest.defaultThemeId ?? '',
     themes: (release.manifest.themes ?? []).map(theme => ({ ...theme, description: '', swatches: [] })),
   }))]);
   async function presentationOperation(operation: () => Promise<unknown>) {
-    try { await operation(); } catch (error) { errorMessage = toErrorMessage(error); }
+    try { await operation(); } catch (error) { errorMessage = toErrorText(error); }
   }
   async function installPresentationFromDirectory() {
-    const path = await open({ directory: true, multiple: false, title: '选择皮肤插件目录' });
+    const path = await open({ directory: true, multiple: false, title: $t('app.pickSkin') });
     if (typeof path === 'string') await presentationPackagesController.install(path);
   }
   async function choosePresentation(id: string) {
@@ -285,12 +289,12 @@
   const externalConversation = $derived<PresentationConversation>({
     workspace: selectedWorkspace, session: selectedSession, goal: codexGoal, goalBusy,
     thread: codexThreadSnapshot && { id: codexThreadSnapshot.id, turnCount: codexThreadSnapshot.turnCount },
-    timeline, timelineVisibleCount, groupSystemItems: selectedSession?.capabilities.includes('session.timeline') ?? false, usage: toPresentationUsage(usageValues), retryPrompt, retryReason,
+    timeline: displayedTimeline, timelineVisibleCount, groupSystemItems: selectedSession?.capabilities.includes('session.timeline') ?? false, usage: toPresentationUsage(usageValues), retryPrompt, retryReason: retryReason ? translateMessage($locale,retryReason) : null,
     userInputRequests: selectedUserInputRequests, approvalRequests: selectedApprovals, answerDrafts: Object.fromEntries(selectedUserInputRequests.flatMap(request => request.questions.map(question => {
       const key = userInputDraftKey(request, question.id); return [key, userInputDrafts[key] ?? ''];
-    }))), queue: queueSnapshot,
+    }))), queue: displayedQueue,
     activityLabel: agentActivityLabel, compacting: contextCompacting, running: sessionRunning,
-    archiving: selectedSessionArchiving, busy, attachments, executionProfile,
+    archiving: selectedSessionArchiving, busy, attachments: displayedAttachments, executionProfile,
     modelConfiguration: modelConfigurationState(selectedSession, sessionModelCatalog, executionProfile),
     modelCatalog: sessionModelCatalog, modelCatalogLoading: sessionModelCatalogLoading, modelOverride: sessionModelOverride,
     workspacePathSuggestions, sessionSuggestions, agentCommands: visibleAgentCommands, agentCommandsLoading,
@@ -303,7 +307,7 @@
     const [target, detail, option] = action.args;
     switch (action.operation) {
       case 'draft': composerText = intent.value!; handleComposerInput(composerText); break;
-      case 'copyCode': await navigator.clipboard.writeText(action.args[2]!); setNotice('代码已复制', 'success'); break;
+      case 'copyCode': await navigator.clipboard.writeText(action.args[2]!); setNotice(localizedMessage('app.codeCopied'), 'success'); break;
       case 'openLink': await handleOpenLink(action.args[2]!); break;
       case 'send': await sendPrompt(); break;
       case 'stop': await abortPrompt(); break;
@@ -398,29 +402,30 @@
     syncWorkspaceBranch, saveWorkspaceStash, applyWorkspaceStash, applyWorkspaceGitAction,
     applyWorkspaceGitWorkspaceAction, commitWorkspaceGitChanges, requestWorkspaceAgentReview,
   } = workspaceGit;
+  const gitPresentation = $derived(workspaceGitPresentation(git, $locale));
   const repositoryId = $derived(git.repositoryId);
   const repositorySearch = $derived(git.repositorySearch);
   const repositoryPickerOpen = $derived(git.repositoryPickerOpen);
   const discoveryLimited = $derived(git.discoveryLimited);
-  const discoveryWarnings = $derived(git.discoveryWarnings);
-  const visibleRepositories = $derived(git.repositories);
-  const workspaceChanges = $derived(git.changes);
+  const discoveryWarnings = $derived(gitPresentation.discoveryWarnings);
+  const visibleRepositories = $derived(gitPresentation.repositories);
+  const workspaceChanges = $derived(gitPresentation.changes);
   const workspaceChangesLoading = $derived(git.loading);
-  const workspaceChangesError = $derived(git.error);
-  const workspaceFileDiff = $derived(git.fileDiff);
+  const workspaceChangesError = $derived(gitPresentation.error);
+  const workspaceFileDiff = $derived(gitPresentation.fileDiff);
   const workspaceFileDiffLoading = $derived(git.fileDiffLoading);
-  const workspaceFileDiffError = $derived(git.fileDiffError);
+  const workspaceFileDiffError = $derived(gitPresentation.fileDiffError);
   const workspaceFileDiffPath = $derived(git.fileDiffPath);
   const workspaceFileDiffStaged = $derived(git.fileDiffStaged);
-  const workspaceFileDiffContextLabel = $derived(git.fileDiffContextLabel);
+  const workspaceFileDiffContextLabel = $derived(gitPresentation.fileDiffContextLabel);
   const previewRepositoryId = $derived(git.previewRepositoryId);
   const workspaceGitBranches = $derived(git.branches);
   const workspaceGitHistory = $derived(git.history);
   const workspaceGitHistoryHasMore = $derived(git.historyHasMore);
   const workspaceGitHistoryLoadingMore = $derived(git.historyLoadingMore);
-  const workspaceGitHistoryLoadMoreError = $derived(git.historyLoadMoreError);
+  const workspaceGitHistoryLoadMoreError = $derived(gitPresentation.historyLoadMoreError);
   const workspaceGitMetadataLoading = $derived(git.metadataLoading);
-  const workspaceGitMetadataError = $derived(git.metadataError);
+  const workspaceGitMetadataError = $derived(gitPresentation.metadataError);
   const workspaceGitCommitFiles = $derived(git.commitFiles);
   const workspaceGitCommitFilesLoading = $derived(git.commitFilesLoading);
   const workspaceGitRemoteStatus = $derived(git.remoteStatus);
@@ -505,15 +510,15 @@
       const notificationType: NotificationType = result.status === 'completed' ? 'success'
         : result.status === 'running' || result.status === 'awaiting_approval' ? 'info'
         : result.status === 'rejected' || result.status === 'outcome_unknown' ? 'warning' : 'error';
-      const message = result.status === 'rejected' ? '工程动作未执行，请查看审批结果。'
-        : result.status === 'awaiting_approval' ? '工程动作正在等待宿主批准。'
-        : result.status === 'running' ? '工程动作正在执行。'
-        : result.status === 'outcome_unknown' ? '工程动作结果未知，请核对实际更改后再操作。'
-        : result.status === 'completed' ? '工程动作已完成。'
-        : `工程动作${result.status === 'timed_out' ? '超时' : '失败'}。`;
+      const message = result.status === 'rejected' ? localizedMessage('app.projectRejected')
+        : result.status === 'awaiting_approval' ? localizedMessage('app.projectAwaiting')
+        : result.status === 'running' ? localizedMessage('app.projectRunning')
+        : result.status === 'outcome_unknown' ? localizedMessage('app.projectUnknown')
+        : result.status === 'completed' ? localizedMessage('app.projectCompleted')
+        : localizedMessage(result.status === 'timed_out' ? 'app.projectTimedOut' : 'app.projectFailed');
       setNotice(message, notificationType);
     } catch (error) {
-      if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
+      if (selectedWorkspaceId === workspaceId) errorMessage = toErrorText(error);
     } finally {
       projectRunningActions[workspaceId] = null;
     }
@@ -523,9 +528,9 @@
     if (!workspaceId) return;
     try {
       const requested = await cancelProjectAction(workspaceId, runId);
-      if (selectedWorkspaceId === workspaceId) setNotice(requested ? '已请求停止，正在等待执行结束；已有更改不会自动撤销。' : '该执行已结束或不属于当前工作区。', 'info');
+      if (selectedWorkspaceId === workspaceId) setNotice(localizedMessage(requested ? 'app.stopRequested' : 'app.executionEnded'), 'info');
     } catch (error) {
-      if (selectedWorkspaceId === workspaceId) errorMessage = toErrorMessage(error);
+      if (selectedWorkspaceId === workspaceId) errorMessage = toErrorText(error);
     }
   }
   async function deleteCurrentProjectAction(actionId: string): Promise<void> {
@@ -534,13 +539,13 @@
     try {
       await deleteProjectAction(id, actionId);
       if (selectedWorkspaceId === id) projectActions = projectActions.filter(action => action.id !== actionId);
-    } catch(error) { if (selectedWorkspaceId === id) errorMessage = toErrorMessage(error); }
+    } catch(error) { if (selectedWorkspaceId === id) errorMessage = toErrorText(error); }
   }
   const externalInspector = $derived<PresentationInspector>({
     workspace: selectedWorkspace, session: selectedSession, desktop, open: sidePanelOpen, activeView: sidePanelView,
-    diagnostics, workspaceCapabilities, threads: codexThreads, executionProfile, attachments, artifacts, artifactPreview,
-    projectEditor: projectEditors[selectedWorkspaceId ?? ''] ?? emptyProjectEditor(), runningActionId: projectRunningActions[selectedWorkspaceId ?? ''] ?? null,
-    projectActions, projectActionRuns, changeSet: turnChangeSet, checkpoints, restoreOperations, workspaceChanges,
+    diagnostics: displayedDiagnostics, workspaceCapabilities: displayedWorkspaceCapabilities, threads: codexThreads, executionProfile, attachments: displayedAttachments, artifacts, artifactPreview: artifactPreviewPresentation(artifactPreview,$locale),
+    projectEditor: projectEditorPresentation(projectEditors[selectedWorkspaceId ?? ''] ?? emptyProjectEditor(), $locale), runningActionId: projectRunningActions[selectedWorkspaceId ?? ''] ?? null,
+    projectActions, projectActionRuns:projectActionRuns.map(run=>projectTaskPresentation(run,$locale)), changeSet: displayedTurnChangeSet, checkpoints: displayedCheckpoints, restoreOperations: displayedRestoreOperations, workspaceChanges,
     fileDiff: turnFileDiff, fileDiffLoading: turnFileDiffLoading, fileDiffError: turnFileDiffError,
     threadBusy, busy, running: sessionRunning, archiving: selectedSessionArchiving,
   });
@@ -571,9 +576,9 @@
     }
   }
   const externalCapability = $derived<PresentationCapabilityWorkbench>({
-    catalog: installedContributions.map(item => ({...item,available:contributionAvailable(item)})),
-    selected: installedTool, scope: installedScope, view: installedWorkbenchState.snapshot && presentationPackages.active?.release.manifest.surfaces?.includes('workbench') && !presentationPackages.active.release.manifest.snapshotSchemas.includes(installedWorkbenchState.snapshot.schema)
-      ? {...installedWorkbenchState,snapshot:null,error:'unsupported_presentation_snapshot'} : installedWorkbenchState,
+    catalog: installedContributions.map(item => ({...semanticContributionPresentation(item, $locale),available:contributionAvailable(item)})),
+    selected: installedTool ? semanticContributionPresentation(installedTool, $locale) : null, scope: installedScope, view: installedWorkbenchState.snapshot && presentationPackages.active?.release.manifest.surfaces?.includes('workbench') && !presentationPackages.active.release.manifest.snapshotSchemas.includes(installedWorkbenchState.snapshot.schema)
+      ? {...installedWorkbenchPresentation(installedWorkbenchState, $locale),snapshot:null,error:$t('workbench.unsupportedSnapshot')} : installedWorkbenchPresentation(installedWorkbenchState, $locale),
   });
   async function externalCapabilityIntent(intent: PresentationIntent) {
     const action = capabilityWorkbenchDirectory.resolve(externalCapability, externalInput.context, intent);
@@ -599,7 +604,7 @@
       const identity = JSON.stringify([presentationPackages.active?.release.digest, snapshot.schema]);
       if (incompatibleCapabilityRecovery === identity) return;
       incompatibleCapabilityRecovery = identity;
-      void presentationOperation(async () => { await presentationPackagesController.restore(); setNotice('皮肤不支持此能力视图格式，已恢复默认呈现。', 'warning'); });
+      void presentationOperation(async () => { await presentationPackagesController.restore(); setNotice(localizedMessage('app.unsupportedView'), 'warning'); });
     } else incompatibleCapabilityRecovery = null;
   });
   const layoutDirectory = createLayoutDirectory();
@@ -630,14 +635,15 @@
   }
   // History depends on message changes, not on the composer draft. Keep both
   // protocol representations detached and reusable across input-only updates.
-  const externalTimeline = $derived(externalSnapshotNeeded ? $state.snapshot(timeline) : []);
+  const externalTimeline = $derived(externalSnapshotNeeded ? $state.snapshot(displayedTimeline) : []);
   const externalLegacyTimeline = $derived(externalTimeline.map(({ id, role, content, status }) => ({ id, role, content, status })));
   $effect(() => {
     const workspaceId = selectedWorkspaceId, sessionId = selectedSessionId;
+    const displayLocale = $locale;
     const history = externalTimeline, legacyHistory = externalLegacyTimeline;
     if (!externalSnapshotNeeded) {
       // Default focus/scroll and inherited controls still require a current scope.
-      untrack(() => { externalInput = { surface: 'workbench', context: { workspaceId, sessionId, revision: externalInput.context.revision + 1 }, data: null, theme: {} }; });
+      untrack(() => { externalInput = { locale: displayLocale, surface: 'workbench', context: { workspaceId, sessionId, revision: externalInput.context.revision + 1 }, data: null, theme: {} }; });
       return;
     }
     const data = { workspaces: workspaces.map(({ id, label }) => ({ id, label })),
@@ -652,7 +658,7 @@
       draft: composerText, busy, running: sessionRunning, selectedWorkspaceId, selectedSessionId };
     untrack(() => {
       const snapshot = $state.snapshot(data);
-      externalInput = { surface: 'workbench', context: { workspaceId, sessionId, revision: externalInput.context.revision + 1 },
+      externalInput = { locale: displayLocale, surface: 'workbench', context: { workspaceId, sessionId, revision: externalInput.context.revision + 1 },
         data: { ...snapshot, timeline: legacyHistory, conversation: { ...snapshot.conversation, timeline: history } }, theme: {} };
     });
   });
@@ -663,7 +669,7 @@
     return () => { clearInterval(timer); presentationPackagesController.dispose(); };
   });
   const loadInstalledWorkbench = () => import('$lib/workbench/InstalledWorkbench.svelte');
-  import type { InstalledWorkbenchState, createInstalledWorkbenchController } from '$lib/app/installed-workbench-controller';
+  import { installedWorkbenchPresentation, type InstalledWorkbenchState, type createInstalledWorkbenchController } from '$lib/app/installed-workbench-controller';
   let installedWorkbenchState = $state<InstalledWorkbenchState>({snapshot:null,error:'',enhanced:true,layout:'central',focusTarget:null,restoring:false});
   let installedWorkbenchController: ReturnType<typeof createInstalledWorkbenchController> | null = null;
   $effect(() => {
@@ -680,7 +686,7 @@
         owned = module.createInstalledWorkbenchController(installedPort, presentationState, state => { if (!cancelled) installedWorkbenchState = state; });
         installedWorkbenchController = owned;
         void owned.open(workspaceId, contribution, scope);
-      }).catch(error => { if (!cancelled) installedWorkbenchState = {...installedWorkbenchState,restoring:false,error:toErrorMessage(error)}; });
+      }).catch(error => { if (!cancelled) installedWorkbenchState = {...installedWorkbenchState,restoring:false,error:toErrorText(error)}; });
     });
     return () => { cancelled = true; owned?.dispose(); if (installedWorkbenchController === owned) installedWorkbenchController = null; };
   });
@@ -715,6 +721,36 @@
     setItem: (key, value) => window.localStorage.setItem(key, value),
   }, presentationWindowId());
   import { onDestroy, onMount, tick, untrack } from 'svelte';
+  import { createLanguageController } from '$lib/app/language-controller';
+  import { language, locale, t } from '$lib/i18n/runtime';
+  import { languageStorageKey, localizedMessage, translateMessage } from '../packages/i18n/index.js';
+  import type { LocalizedText } from '../packages/i18n/index.js';
+  const languageController = createLanguageController({
+    storage: {
+      getItem: key => window.localStorage.getItem(key),
+      setItem: (key, value) => window.localStorage.setItem(key, value),
+    },
+    languages: () => navigator.languages,
+    changed: value => { language.set(value); document.documentElement.lang = value.locale; },
+  });
+  $effect(() => {
+    const displayLocale = $locale;
+    if (desktop) void setWindowLocale(displayLocale).catch(error => console.warn('Native language synchronization failed', error));
+  });
+  onMount(() => {
+    const synchronize = (event: StorageEvent) => {
+      if (event.storageArea === window.localStorage && (event.key === languageStorageKey || event.key === null)) {
+        languageController.receive(event.key === null ? null : event.newValue);
+      }
+    };
+    const refresh = () => { languageController.refresh(); };
+    window.addEventListener('storage', synchronize);
+    window.addEventListener('languagechange', refresh);
+    return () => {
+      window.removeEventListener('storage', synchronize);
+      window.removeEventListener('languagechange', refresh);
+    };
+  });
   import { open, confirm } from '@tauri-apps/plugin-dialog';
   import {
     AppOverlays,
@@ -750,15 +786,16 @@
   import { watchBackgroundTasks, reconcileBackgroundTasks } from '$lib/app/background-task-controller';
   import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
   import { createExecutionHistoryController, emptyExecutionHistory } from '$lib/app/execution-history-controller';
-  import { createSessionHistoryController, emptySessionHistory } from '$lib/app/session-history-controller';
+  import { createSessionHistoryController, emptySessionHistory, sessionHistoryPresentation } from '$lib/app/session-history-controller';
   import { createCapabilityHistoryController, emptyCapabilityHistory } from '$lib/app/capability-history-controller';
   import { listCapabilityHistoryScopes, readCapabilityHistory } from '$lib/api';
-  import { sessionMentionSuggestions } from '$lib/app/session-references';
+  import { sessionMentionSuggestions, attachmentPresentation } from '$lib/app/session-references';
   import { referenceSession } from '$lib/api';
   import { listWorkspaceWriteRuns, cancelWorkspaceWrite, readSessionHistory, readSessionHistoryAround } from '$lib/api';
+  import { projectTaskPresentation } from '$lib/app/project-task-presentation';
   import { createProjectTaskController, observeProjectTaskHistory } from '$lib/app/project-task-controller';
   import { createApprovalController } from '$lib/app/approval-controller';
-  import { toErrorMessage } from '$lib/app/error-utils';
+  import { LocalizedError, toErrorText } from '$lib/app/error-utils';
   import { createSessionLifecycleController } from '$lib/app/session-lifecycle-controller';
   import { createSessionContextController } from '$lib/app/session-context-controller';
   import { createRefreshController } from '$lib/app/refresh-controller';
@@ -769,7 +806,7 @@
   import { createViewStateStore } from '$lib/app/view-state-storage';
   import { createMessageController } from '$lib/app/message-controller';
   import { createNavigationController } from '$lib/app/navigation-controller';
-  import { normalizeMessageQueue, newerMessageQueue } from '$lib/app/message-queue';
+  import { normalizeMessageQueue, newerMessageQueue, messageQueuePresentation } from '$lib/app/message-queue';
   import { createPiTreeController } from '$lib/app/pi-tree-controller';
   import { createWorkspaceController } from '$lib/app/workspace-controller';
   import {
@@ -906,6 +943,7 @@
     activeThemeStyle,
     activeUiKitName,
     availableUiKits,
+    localizedUiKits,
     defaultUiKitId,
     ColumnSplitter,
     appearanceSelection,
@@ -937,9 +975,11 @@
       status: 'ready',
       executable: '/usr/local/bin/codex',
       version: 'detected at runtime',
+      localizedVersion: {schema:'aibo.host-message/v1',key:'native.diagnostics.previewRuntimeVersion',params:{}},
       capabilities: ['app-server', 'streaming', 'approval'],
       authState: 'delegated',
       message: 'Web preview; desktop mode probes the local installation.',
+      localizedMessage: {schema:'aibo.host-message/v1',key:'native.diagnostics.webPreview',params:{}},
     },
     {
       agent: 'pi',
@@ -950,6 +990,7 @@
       capabilities: ['sdk-host', 'streaming', 'abort', 'session-tree', 'session-tree-navigation', 'session-snapshot', 'slash-commands', 'queue-management', 'read-only-tools', 'workspace-write-gateway', 'workspace-command-gateway', 'aibo-approval'],
       authState: 'delegated',
       message: 'Project-locked SDK host; workspace writes are mediated by Aibo Core; native authentication remains with Pi.',
+      localizedMessage: {schema:'aibo.host-message/v1',key:'native.diagnostics.piPreview',params:{}},
     },
   ];
 
@@ -991,12 +1032,16 @@
 
   let workspaces = $state<Workspace[]>([]);
   let diagnostics = $state<AgentDiagnostic[]>([]);
+  const displayedDiagnostics = $derived(agentDiagnosticsPresentation(diagnostics, $locale));
   let workspaceCapabilities = $state<WorkspaceCapabilityInventory | null>(null);
+  const displayedWorkspaceCapabilities = $derived(workspaceCapabilityPresentation(workspaceCapabilities, $locale));
   let workspaceSessionMap = $state<Record<string, Session[]>>({});
   let timeline = $state<TimelineItem[]>([]);
+  const displayedTimeline = $derived(timelinePresentation(timeline, $locale));
   let pendingApprovals = $state<ApprovalRequest[]>([]);
   let pendingUserInputs = $state<UserInputRequest[]>([]);
   let queueSnapshot = $state<AgentQueueSnapshot | null>(null);
+  const displayedQueue = $derived(messageQueuePresentation(queueSnapshot,$locale));
   let codexThreads = $state<CodexThreadSummary[]>([]);
   let codexThreadSnapshot = $state<CodexThreadSnapshot | null>(null);
   let piTree = $state<PiSessionTreeSnapshot | null>(null);
@@ -1012,8 +1057,11 @@
   let codexGoal = $state<AgentGoal | null>(null);
   let sessionModelRequestGeneration = 0;
   let turnChangeSet = $state<TurnChangeSet | null>(null);
+  const displayedTurnChangeSet = $derived(turnChangeSetPresentation(turnChangeSet,$locale));
   let checkpoints = $state<CheckpointFile[]>([]);
+  const displayedCheckpoints = $derived(checkpointsPresentation(checkpoints,$locale));
   let restoreOperations = $state<RestoreOperation[]>([]);
+  const displayedRestoreOperations = $derived(restoreOperationsPresentation(restoreOperations, $locale));
   let turnChange = $state.raw(emptyTurnChange());
   const turnChanges = createTurnChangeController({
     api: { getTurnFileDiff, applyGitFileAction, applyGitHunkAction, restoreTurnChangeSet: restoreTurnChangeSetApi },
@@ -1028,11 +1076,12 @@
   });
   const { showDiff: showTurnFileDiff, applyFile: applyGitFileActionFromInspector,
     applyHunk: applyGitHunkActionFromInspector, restore: restoreTurnChangeSet } = turnChanges;
-  const turnFileDiff = $derived(turnChange.diff);
+  const turnFileDiff = $derived(turnFileDiffPresentation(turnChange.diff, $locale));
   const turnFileDiffLoading = $derived(turnChange.loading);
-  const turnFileDiffError = $derived(turnChange.error);
+  const turnFileDiffError = $derived(turnChange.error === null ? null : translateMessage($locale, turnChange.error));
   $effect(() => { selectedSessionId; turnChangeSet?.turnId; untrack(() => turnChanges.reset()); });
   let attachments = $state<ContextAttachment[]>([]);
+  const displayedAttachments = $derived(attachmentPresentation(attachments, $locale));
   let attachmentPreviews = $state<Record<string, string | null>>({});
   const previewController = createAttachmentPreviews(getSessionAttachmentPreview, values => { attachmentPreviews = values; });
   $effect(() => { previewController.update(desktop ? selectedSessionId : null, attachments); });
@@ -1077,15 +1126,15 @@
 
   const visibleAgentCommands = $derived.by(() => {
     if (!selectedSession) return [];
-    return visibleSessionCommands(sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.sessionControls : []), agentCommands);
+    return visibleSessionCommands(sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.sessionControls : [], $locale), agentCommands);
   });
   let commandSearchGeneration = 0;
   let busy = $state(false);
-  let errorMessage = $state<string | null>(null);
+  let errorMessage = $state<LocalizedText | null>(null);
   let notice = $state<AppNotification | null>(null);
   function setNotice(message: null): void;
-  function setNotice(message: string, type: NotificationType): void;
-  function setNotice(message: string | null, type: NotificationType = 'info'): void {
+  function setNotice(message: LocalizedText, type: NotificationType): void;
+  function setNotice(message: LocalizedText | null, type: NotificationType = 'info'): void {
     notice = message === null ? null : { message, type };
   }
   let desktop = $state(false);
@@ -1108,7 +1157,7 @@
   let timelineVisibleCount = $state(80);
   let usageSnapshotsBySession = $state<SessionUsageCache>({});
   let retryPrompt = $state<string | null>(null);
-  let retryReason = $state<string | null>(null);
+  let retryReason = $state<LocalizedText | null>(null);
   let lastSubmittedPrompt = $state<string | null>(null);
   let settingsOpen = $state(false);
   let hostConfirmation = $state(emptyHostConfirmation());
@@ -1165,6 +1214,7 @@
   let sessionHistoryRequest = $state<{ workspaceId: string; sessionId: string | null; messageId: string | null } | null>(null);
   const sessionHistoryWorkspaceId = $derived(sessionHistoryRequest?.workspaceId ?? null);
   let sessionHistory = $state(emptySessionHistory());
+  const displayedSessionHistory = $derived(sessionHistoryPresentation(sessionHistory, $locale));
   let sessionHistoryTrigger: HTMLElement | null = null;
   const sessionHistoryController = createSessionHistoryController({
     list: id => listAllSessions(id, { statusFilter: 'all' }), read: readSessionHistory, readAround: readSessionHistoryAround,
@@ -1187,7 +1237,7 @@
   async function closeSessionHistory(): Promise<void> {
     sessionHistoryOpen = false;
     await tick();
-    const trigger = sessionHistoryTrigger?.isConnected ? sessionHistoryTrigger : document.querySelector<HTMLElement>('[aria-label="会话历史"]') ?? document.querySelector<HTMLElement>('[aria-label="全局搜索"]');
+    const trigger = sessionHistoryTrigger?.isConnected ? sessionHistoryTrigger : document.querySelector<HTMLElement>('[data-host-navigation="session-history"]') ?? document.querySelector<HTMLElement>('[data-host-navigation="search"]');
     trigger?.focus();
   }
 
@@ -1202,7 +1252,7 @@
   function openCapabilityHistory():void { historyOpen=true;sessionHistoryOpen=false;settingsOpen=false;capabilityHistoryOpen=true; }
   function backFromCapabilityHistory():void { capabilityHistoryOpen=false;historyOpen=true; }
 
-  import {createPluginInstallController, type PluginInstallState} from '$lib/app/plugin-install-controller';
+  import {createPluginInstallController, pluginInstallStatePresentation, type PluginInstallState} from '$lib/app/plugin-install-controller';
   let pluginInstall = $state<PluginInstallState>({preview:null,busy:false,error:'',notice:'',undoTargets:[],skipArchived:true});
   const pluginInstallController=createPluginInstallController({
     preview:previewPluginInstall, install:installAgentPlugin, undo:undoPluginReplacement, undoTargets:listPluginUndoTargets,
@@ -1228,22 +1278,23 @@
   }
   $effect(() => {
     if (!desktop) return;
-    const refresh = () => { void refreshPluginInstallations().catch(error => { pluginError = toErrorMessage(error); }); };
+    const refresh = () => { void refreshPluginInstallations().catch(error => { pluginError = toErrorText(error); }); };
     refresh();
     const timer = window.setInterval(() => { if (createSessionWorkspaceId && document.visibilityState === 'visible') refresh(); }, 5000);
     window.addEventListener('focus', refresh);
     return () => { clearInterval(timer); window.removeEventListener('focus', refresh); ++pluginRefreshRevision; };
   });
-  const pluginManagerInstallations = $derived(pluginInstallations.map(installation => ({ ...installation, sessionProviders: sessionProviders(installation) })));
+  import {pluginDiagnosticsPresentation, semanticContributionPresentation} from '$lib/app/plugin-diagnostics';
+  const pluginManagerInstallations = $derived(pluginInstallations.map(installation => ({ ...pluginDiagnosticsPresentation(installation, $locale), sessionProviders: sessionProviders(installation) })));
   let pluginBusy = $state(false);
-  let pluginError = $state('');
+  let pluginError = $state<LocalizedText>('');
 
   async function pluginOperation(operation: () => Promise<void>): Promise<void> {
     if (pluginBusy || pluginLifecycle.busy || pluginInstall.busy || !desktop) return;
     pluginBusy = true;
     pluginError = '';
     try { await operation(); }
-    catch (error) { pluginError = toErrorMessage(error); }
+    catch (error) { pluginError = toErrorText(error); }
     finally { pluginBusy = false; }
   }
 
@@ -1269,7 +1320,7 @@
 
   async function installPlugin(): Promise<void> {
     await pluginOperation(async () => {
-      const path = await open({ directory: true, multiple: false, title: '选择能力插件目录' });
+      const path = await open({ directory: true, multiple: false, title: $t('app.pickCapability') });
       if (typeof path !== 'string') return;
       await pluginInstallController.review(path);
     });
@@ -1303,7 +1354,7 @@
     refreshProfile: refreshExecutionProfile,
   });
   async function createPluginSession(installationId: string, agentId: string, workspaceId = selectedWorkspaceId): Promise<void> {
-    if (!workspaceId) { pluginError = '请先选择工作区。'; return; }
+    if (!workspaceId) { pluginError = $t('app.selectWorkspace'); return; }
     await sessionStartupController.create(workspaceId, agentId, installationId);
   }
 
@@ -1360,7 +1411,8 @@
   let globalSearchOpen = $state(false);
   let promptInFlight = $state(false);
   let activeAgentSessionIds = $state<string[]>([]);
-  let agentActivityOverrides = $state<Record<string, string | undefined>>({});
+  let agentActivityOverrides = $state<Record<string, LocalizedText | undefined>>({});
+  let compactingSessionIds = $state<string[]>([]);
   let agentActivityUpdatedAt = $state<Record<string, number | undefined>>({});
   let activityNow = $state(Date.now());
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1526,7 +1578,7 @@
       if (selectedSessionId === session.id && action !== 'resume') codexGoal = normalizeAgentGoal(result);
       await refreshSessions(session.workspaceId);
       if (selectedSessionId === session.id) await refreshTimeline(session.id);
-    } catch (error) { errorMessage = toErrorMessage(error); }
+    } catch (error) { errorMessage = toErrorText(error); }
     finally { goalBusy = false; if (selectedSessionId === session.id) void refreshGoal(); }
   }
   $effect(() => {
@@ -1546,7 +1598,7 @@
     draftHydratingSessionId = enabled && id ? id : null;
     untrack(() => {
       composerText = draft;
-      if (enabled && id && draft) setNotice('已恢复当前会话草稿。', 'success');
+      if (enabled && id && draft) setNotice(localizedMessage('app.draftRestored'), 'success');
     });
     if (!enabled || !id) return;
     void getComposerDraft(id)
@@ -1568,7 +1620,7 @@
         };
         composerDrafts = next;
         composerText = remoteDraft.text;
-        if (remoteDraft.sendFailed) setNotice('上次发送未完成，已恢复草稿。', 'warning');
+        if (remoteDraft.sendFailed) setNotice(localizedMessage('app.failedDraftRestored'), 'warning');
       })
       .catch(() => {
         // localStorage remains the offline/preview fallback; a stale desktop
@@ -1669,14 +1721,14 @@
   function withActivityAge(label: string): string {
     const age = selectedActivityAgeSeconds;
     if (age === null || age < 15) return label;
-    if (age < 60) return `${label} · 已等待 ${age} 秒（最近活动）`;
+    if (age < 60) return $t('activity.ageSeconds', {label, count: age});
     const minutes = Math.floor(age / 60);
     const seconds = age % 60;
-    return `${label} · 已等待 ${minutes} 分 ${seconds} 秒（最近活动）`;
+    return $t('activity.ageMinutes', {label, minutes, seconds});
   }
   const agentActivityLabel = $derived.by(() => {
     if (!selectedSession) return null;
-    if (selectedSessionArchiving) return '正在归档会话…';
+    if (selectedSessionArchiving) return $t('activity.archiving');
     if (
       !promptInFlight &&
       ['failed', 'interrupted', 'closed'].includes(selectedSession.state)
@@ -1690,32 +1742,32 @@
       !activeAgentSession
     ) return null;
     if (selectedSession.state === 'waiting_approval' || selectedApprovals.length > 0) {
-      return withActivityAge('等待你的确认…');
+      return withActivityAge($t('activity.approval'));
     }
     if (selectedSession.state === 'waiting_user' || selectedUserInputRequests.length > 0) {
-      return withActivityAge('等待你的输入…');
+      return withActivityAge($t('activity.input'));
     }
-    if (selectedSession.state === 'compacting') return withActivityAge('正在压缩上下文…');
+    if (selectedSession.state === 'compacting') return withActivityAge($t('activity.compacting'));
     const agentLabel = selectedSession?.label ?? 'Agent';
     const activityOverride = agentActivityOverrides[selectedSession.id];
-    if (activityOverride) return withActivityAge(activityOverride);
+    if (activityOverride) return withActivityAge(translateMessage($locale, activityOverride));
     if (streamingTimelineItem?.role === 'tool') {
-      return withActivityAge(`${agentLabel} 正在执行 ${toolLabel(streamingTimelineItem)}…`);
+      return withActivityAge($t('activity.executing', {agent: agentLabel, tool: toolLabel(streamingTimelineItem)}));
     }
     if (streamingTimelineItem?.role === 'assistant') {
-      return withActivityAge(`${agentLabel} 正在生成回复…`);
+      return withActivityAge($t('activity.generating', {agent: agentLabel}));
     }
     const latest = timeline.at(-1);
     if (latest?.role === 'tool' && latest.status === 'failed') {
-      return withActivityAge(`${agentLabel} 正在处理工具错误…`);
+      return withActivityAge($t('activity.toolError', {agent: agentLabel}));
     }
     if (latest?.role === 'tool' && latest.status === 'completed') {
-      return withActivityAge(`${agentLabel} 工具执行完成，等待模型继续响应…`);
+      return withActivityAge($t('activity.toolDone', {agent: agentLabel}));
     }
     if (promptInFlight && !sessionRunning && !activeAgentSession) {
-      return withActivityAge(`${agentLabel} 正在启动请求…`);
+      return withActivityAge($t('activity.starting', {agent: agentLabel}));
     }
-    return withActivityAge(`${agentLabel} 等待模型响应（可能正在思考）…`);
+    return withActivityAge($t('activity.waitingModel', {agent: agentLabel}));
   });
   $effect(() => {
     const id = selectedSessionId;
@@ -1743,7 +1795,7 @@
     return (Array.isArray(result.commands) ? result.commands : Array.isArray(result.skills) ? result.skills : []) as AgentCommand[];
   }
 
-  const contextCompacting = $derived(agentActivityLabel?.includes('压缩上下文') ?? false);
+  const contextCompacting = $derived(selectedSession?.state === 'compacting' || (selectedSessionId !== null && compactingSessionIds.includes(selectedSessionId)));
 
   $effect(() => {
     const session = selectedSession;
@@ -1775,16 +1827,16 @@
   let presentationSwitching = $state(false);
 
   const searchCommands = $derived.by((): SearchCommand[] => [
-    { id: 'focus-presentation', label: '切换专注会话', description: '显示或收起工作台侧边区域', run: () => { void workbenchPresentation?.switchPresentation(presentationLayout === 'focus' ? 'standard' : 'focus'); } },
-    { id: 'restore-presentation', label: '恢复默认工作台', description: '恢复内置皮肤与标准布局，保留会话和草稿', shortcut: '⌘⇧⌫', run: () => { void workbenchPresentation?.restoreDefault(); } },
-    { id: 'execution-history', label: '执行历史', description: '查看执行记录', run: openExecutionHistory },
-    { id: 'session-history', label: '会话历史', description: '查找与恢复历史会话', run: openSessionHistory },
-    ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: item.issue ?? '已安装的插件视图', disabled: !contributionAvailable(item),
+    { id: 'focus-presentation', label: $t('search.focusPresentation'), description: $t('search.focusPresentationDescription'), run: () => { void workbenchPresentation?.switchPresentation(presentationLayout === 'focus' ? 'standard' : 'focus'); } },
+    { id: 'restore-presentation', label: $t('search.restorePresentation'), description: $t('search.restorePresentationDescription'), shortcut: '⌘⇧⌫', run: () => { void workbenchPresentation?.restoreDefault(); } },
+    { id: 'execution-history', label: $t('search.executionHistory'), description: $t('search.executionHistoryDescription'), run: openExecutionHistory },
+    { id: 'session-history', label: $t('search.sessionHistory'), description: $t('search.sessionHistoryDescription'), run: openSessionHistory },
+    ...installedContributions.map(item => ({ id: `installed:${item.installationId}:${item.contributionId}`, label: item.title, description: semanticContributionPresentation(item, $locale).issue ?? $t('search.installedView'), disabled: !contributionAvailable(item),
       run: () => { installedTool = item; settingsOpen = false; globalSearchOpen = false; } })),
     {
       id: 'new-session',
-      label: '新建会话',
-      description: selectedWorkspace ? `在 ${selectedWorkspace.label} 中选择 Agent` : '先选择一个工作区',
+      label: $t('search.newSession'),
+      description: selectedWorkspace ? $t('search.chooseAgentInWorkspace', {name: selectedWorkspace.label}) : $t('search.selectWorkspace'),
       shortcut: '⌘N',
       disabled: selectedWorkspaceId === null || busy,
       run: () => {
@@ -1793,8 +1845,8 @@
     },
     {
       id: 'focus-composer',
-      label: '聚焦消息输入框',
-      description: selectedSession ? '开始输入消息' : '需要先选择会话',
+      label: $t('search.focusComposer'),
+      description: selectedSession ? $t('search.startTyping') : $t('search.selectSession'),
       shortcut: '⌘I',
       disabled: selectedSession === null || busy,
       run: () => {
@@ -1803,42 +1855,42 @@
     },
     {
       id: 'refresh',
-      label: '刷新数据',
-      description: '重新读取工作区、会话与当前线程',
+      label: $t('search.refreshData'),
+      description: $t('search.refreshDataDescription'),
       shortcut: '⌘R',
       disabled: busy,
       run: () => void refresh(),
     },
     {
       id: 'settings',
-      label: '打开工作台设置',
-      description: '外观、布局、工作区、插件与运行诊断',
+      label: $t('search.openSettings'),
+      description: $t('search.settingsDescription'),
       shortcut: '⌘,',
       run: openSettingsPanel,
     },
     {
       id: 'extensions',
-      label: '插件与能力',
-      description: '安装、启用或移除插件',
+      label: $t('search.plugins'),
+      description: $t('search.pluginsDescription'),
       run: () => openManagementCenter('extensions'),
     },
     {
       id: 'diagnostics',
-      label: '打开 Agent 诊断',
-      description: '查看 Agent 连接与运行环境',
+      label: $t('search.openDiagnostics'),
+      description: $t('search.diagnosticsDescription'),
       run: openDiagnosticsPanel,
     },
     {
       id: 'archive-session',
-      label: '归档当前会话',
-      description: selectedSession?.label ?? '需要先选择会话',
+      label: $t('search.archiveSession'),
+      description: selectedSession?.label ?? $t('search.selectSession'),
       disabled: selectedSessionId === null || busy || selectedSessionArchiving,
       run: () => requestArchiveSession(),
     },
     {
       id: 'clear-message-queue',
-      label: '清空待处理队列',
-      description: '移除当前会话中尚未发送的消息',
+      label: $t('search.clearQueue'),
+      description: $t('search.clearQueueDescription'),
       disabled: !selectedSession?.capabilities.includes('queue.manage')
         || queueSnapshot === null
         || (queueSnapshot.steering.length === 0 && queueSnapshot.followUp.length === 0)
@@ -1847,11 +1899,12 @@
     },
   ]);
 
+  import { searchPresentation, searchPreviewPresentation } from '$lib/app/global-search';
   let globalSearch = $state(emptySearch());
   let searchPreview = $state<Awaited<ReturnType<typeof readSearchResult>> | null>(null);
   let searchPreviewItem = $state<SearchResult | null>(null);
   let searchPreviewLoading = $state(false);
-  let searchPreviewError = $state('');
+  let searchPreviewError = $state<LocalizedText>('');
   let searchReadRevision = 0;
   let searchTrigger: HTMLElement | null = null;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1861,19 +1914,19 @@
     currentWorkspace: () => selectedWorkspaceId, recent: () => recentSearchIds,
     publish: state => { globalSearch = state; },
     sources: [
-      { id: '附件与产物', search: async (request, signal) => {
+      { id: '附件与产物', label: localizedMessage('search.source.attachments'), search: async (request, signal) => {
         if (!desktop || signal.aborted || (!request.query && !request.kind) || (request.kind && !['attachment', 'artifact'].includes(request.kind))) return { items: [], hasMore: false, warnings: [] };
         return searchGlobalAssets(request);
       } },
-      { id: '文件', search: async (request, signal) => {
+      { id: '文件', label: localizedMessage('search.source.files'), search: async (request, signal) => {
         if (!desktop || signal.aborted || (!request.query && request.kind !== 'file') || (request.kind && request.kind !== 'file')) return { items: [], hasMore: false, warnings: [] };
         const requestId = crypto.randomUUID();
         const cancel = () => { void cancelGlobalFileSearch(requestId).catch(() => {}); };
         signal.addEventListener('abort', cancel, { once: true });
         try { return await searchGlobalFiles(request, requestId); } finally { signal.removeEventListener('abort', cancel); }
       } },
-      { id: '目录', search: async request => searchCatalog(searchCatalogItems(), request) },
-      { id: '历史', search: async (request, signal) => {
+      { id: '目录', label: localizedMessage('search.source.catalog'), search: async request => searchCatalog(searchCatalogItems(), request) },
+      { id: '历史', label: localizedMessage('search.source.history'), search: async (request, signal) => {
         if (!desktop || signal.aborted || ['command', 'setting', 'file', 'attachment', 'artifact'].includes(request.kind ?? '')) return { items: [], hasMore: false, warnings: [] };
         return searchGlobal(request);
       } },
@@ -1881,26 +1934,26 @@
   });
   function searchCatalogItems(): SearchResult[] {
     const items: SearchResult[] = searchCommands.map(command => ({ id: `command:${command.id}`, kind: 'command', title: command.label,
-      description: command.description ?? '', shortcut: command.shortcut, disabledReason: command.disabled ? command.description ?? '当前不可用' : undefined,
+      description: command.description ?? '', shortcut: command.shortcut, disabledReason: command.disabled ? command.description ?? $t('search.unavailable') : undefined,
       score: 1, target: { source: 'command', id: command.id } }));
     for (const [id, title, description] of [
-      ['appearance', '外观与主题', '浅色、深色、明暗主题、皮肤、恢复内置皮肤'], ['layout', '工作台布局', '侧栏位置、标准布局、专注会话'],
-      ['workspace', '工作区设置', '新增工作区默认信任'], ['extensions', '插件与能力', '安装、启用、禁用、卸载插件'], ['runtime', '运行与诊断', 'Agent 连接、执行历史、运行环境'],
+      ['appearance', $t('search.appearanceTitle'), $t('search.appearanceDescription')], ['layout', $t('search.layoutTitle'), $t('search.layoutDescription')],
+      ['workspace', $t('search.workspaceTitle'), $t('search.workspaceDescription')], ['extensions', $t('search.plugins'), $t('search.pluginsSettingsDescription')], ['runtime', $t('search.runtimeTitle'), $t('search.runtimeDescription')],
     ]) items.push({ id: `setting:${id}`, kind: 'setting', title, description, score: 1, target: { source: 'setting', id } });
     for (const workspace of workspaces) items.push({ id: `workspace:${workspace.id}`, kind: 'workspace', title: workspace.label, description: workspace.path,
       score: 1, target: { source: 'workspace', id: workspace.id, workspaceId: workspace.id } });
     for (const command of visibleAgentCommands) items.push({ id: `agent-command:${selectedSessionId}:${command.name}`, kind: 'command', title: command.name,
-      description: `${command.description ?? ''} · ${selectedSession?.label ?? ''} · 填入输入框`, score: 1,
-      disabledReason: selectedSession?.archived ? '已归档会话不能输入命令' : undefined,
+      description: $t('search.insertCommand', {description: command.description ?? '', session: selectedSession?.label ?? ''}), score: 1,
+      disabledReason: selectedSession?.archived ? $t('search.archivedCommand') : undefined,
       target: { source: 'agent-command', id: command.name, workspaceId: selectedWorkspaceId, sessionId: selectedSessionId } });
     if (!desktop) for (const session of Object.values(workspaceSessionMap).flat()) items.push({ id: `session:${session.id}`, kind: 'session', title: session.label,
-      description: `${session.agent}${session.archived ? ' · 已归档' : ''}`, score: 1, target: { source: 'session', id: session.id, workspaceId: session.workspaceId, sessionId: session.id } });
+      description: `${session.agent}${session.archived ? $t('search.archivedSuffix') : ''}`, score: 1, target: { source: 'session', id: session.id, workspaceId: session.workspaceId, sessionId: session.id } });
     return items;
   }
   function clearSearchPreview() { ++searchReadRevision; searchPreview = null; searchPreviewItem = null; searchPreviewLoading = false; searchPreviewError = ''; }
   function runGlobalSearch(query: string, kind: SearchKind | null = null, workspaceId: string | null = null, limit = 50) {
     clearTimeout(searchTimer); searchController.close(); clearSearchPreview();
-    globalSearch = { ...globalSearch, query, kind, workspaceId, limit, items: [], pending: ['搜索'] };
+    globalSearch = { ...globalSearch, query, kind, workspaceId, limit, items: [], pending: ['pending'] };
     searchTimer = setTimeout(() => { void searchController.search(query, kind, workspaceId, limit); }, query ? 100 : 0);
   }
   function openGlobalSearch(query = '') {
@@ -1921,7 +1974,7 @@
     const revision = ++searchReadRevision;
     const found = desktop ? (await listAllSessions(workspaceId, { statusFilter: 'all' })).find(session => session.id === sessionId) : Object.values(workspaceSessionMap).flat().find(session => session.id === sessionId);
     if (revision !== searchReadRevision || !globalSearchOpen) return;
-    if (!found) throw Error('会话已移除，请重新搜索');
+    if (!found) throw new LocalizedError('search.sessionRemoved');
     if (found.archived || item.kind !== 'session') {
       sessionHistoryTrigger = searchTrigger;
       closeGlobalSearch(false);
@@ -1941,18 +1994,18 @@
     try {
       if (item.target.source === 'command') {
         const command = searchCommands.find(command => command.id === item.target.id);
-        if (!command || command.disabled) throw Error('此命令当前不可用');
+        if (!command || command.disabled) throw new LocalizedError('search.commandUnavailable');
         closeGlobalSearch(false); await tick(); await command.run();
       } else if (item.target.source === 'setting') { closeGlobalSearch(false); openManagementCenter(item.target.id as UiManagementSection); }
       else if (item.target.source === 'agent-command') {
-        if (item.target.sessionId !== selectedSessionId || selectedSession?.archived) throw Error('命令所属会话已变化');
+        if (item.target.sessionId !== selectedSessionId || selectedSession?.archived) throw new LocalizedError('search.commandSessionChanged');
         const command = visibleAgentCommands.find(command => command.name === item.target.id);
-        if (!command) throw Error('命令已不可用');
+        if (!command) throw new LocalizedError('search.commandRemoved');
         composerText = commandComposerInsertion(command) + composerText;
         handleComposerInput(composerText); closeGlobalSearch(false); await tick();
         document.querySelector<HTMLElement>('[data-composer-input]')?.focus();
       } else if (item.kind === 'workspace') {
-        if (!workspaces.some(workspace => workspace.id === item.target.id)) throw Error('工作区已移除');
+        if (!workspaces.some(workspace => workspace.id === item.target.id)) throw new LocalizedError('search.workspaceRemoved');
         closeGlobalSearch(false); settingsOpen = false; historyOpen = false; sessionHistoryOpen = false; capabilityHistoryOpen = false; installedTool = null;
         activateWorkspace(item.target.id); await refreshSessions(item.target.id);
       } else if (item.kind === 'session') await openSearchSession(item);
@@ -1960,10 +2013,10 @@
       else {
         clearSearchPreview(); const revision = searchReadRevision; searchPreviewItem = item; searchPreviewLoading = true;
         try { const detail = await readSearchResult(item.target); if (revision === searchReadRevision) searchPreview = detail; }
-        catch (error) { if (revision === searchReadRevision) searchPreviewError = toErrorMessage(error); }
+        catch (error) { if (revision === searchReadRevision) searchPreviewError = toErrorText(error); }
         finally { if (revision === searchReadRevision) searchPreviewLoading = false; }
       }
-    } catch (error) { if (globalSearchOpen) searchPreviewError = toErrorMessage(error); else errorMessage = toErrorMessage(error); }
+    } catch (error) { if (globalSearchOpen) searchPreviewError = toErrorText(error); else errorMessage = toErrorText(error); }
   }
   onMount(() => {
     const doubleShift = createDoubleShift();
@@ -2151,7 +2204,13 @@
     };
   }
 
-  function setAgentActivity(sessionId: string, active: boolean, label?: string): void {
+  function setContextCompacting(sessionId: string, compacting: boolean): void {
+    compactingSessionIds = compacting
+      ? [...new Set([...compactingSessionIds, sessionId])]
+      : compactingSessionIds.filter(id => id !== sessionId);
+  }
+
+  function setAgentActivity(sessionId: string, active: boolean, label?: LocalizedText): void {
     agentActivityOverrides = { ...agentActivityOverrides, [sessionId]: active ? label : undefined };
     if (active) {
       agentActivityUpdatedAt = { ...agentActivityUpdatedAt, [sessionId]: Date.now() };
@@ -2266,8 +2325,8 @@
         composerText = draft.replace(/(^|\s)@([^\s]*)$/, '$1');
         handleComposerInput(composerText);
       }
-      setNotice('已添加会话引用：将传递对话摘录，不包含工具输出正文。', 'success');
-    } catch (error) { errorMessage = toErrorMessage(error); }
+      setNotice(localizedMessage('app.referenceAdded'), 'success');
+    } catch (error) { errorMessage = toErrorText(error); }
     finally { busy = false; }
   }
 
@@ -2339,10 +2398,10 @@
       const registered = await registerSessionClipboardImages(session.id, images);
       if (selectedSessionId === session.id) {
         attachments = [...attachments, ...registered];
-        setNotice(`已添加 ${registered.length} 张图片。`, 'success');
+        setNotice(localizedMessage('app.imagesAdded', {count: registered.length}), 'success');
       }
     } catch (error) {
-      if (selectedSessionId === session.id) errorMessage = toErrorMessage(error);
+      if (selectedSessionId === session.id) errorMessage = toErrorText(error);
     } finally { busy = false; }
   }
 
@@ -2354,16 +2413,16 @@
       const registered = await registerSessionAttachments(session.id, paths);
       const existing = new Set(attachments.map((item) => item.id));
       attachments = [...attachments, ...registered.filter((item) => !existing.has(item.id))];
-      setNotice(registered.length > 0 ? `已添加 ${registered.length} 个上下文附件。` : '没有添加新的上下文附件。', registered.length > 0 ? 'success' : 'info');
+      setNotice(registered.length > 0 ? localizedMessage('app.attachmentsAdded', {count: registered.length}) : localizedMessage('app.noAttachmentsAdded'), registered.length > 0 ? 'success' : 'info');
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      errorMessage = toErrorText(error);
     }
   }
 
   async function chooseSessionAttachments() {
     try {
       const selected = await open({
-        title: '添加上下文文件',
+        title: $t('app.pickContextFiles'),
         multiple: true,
         directory: false,
         recursive: true,
@@ -2372,14 +2431,14 @@
       const paths = Array.isArray(selected) ? selected : selected ? [selected] : [];
       await registerAttachmentPaths(paths);
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      errorMessage = toErrorText(error);
     }
   }
 
   async function chooseSessionAttachmentDirectory() {
     try {
       const selected = await open({
-        title: '添加上下文目录',
+        title: $t('app.pickContextDirectory'),
         multiple: false,
         directory: true,
         recursive: true,
@@ -2387,7 +2446,7 @@
       });
       if (typeof selected === 'string') await registerAttachmentPaths([selected]);
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      errorMessage = toErrorText(error);
     }
   }
 
@@ -2398,7 +2457,7 @@
       await removeSessionAttachment(session.id, attachmentId);
       attachments = attachments.filter((item) => item.id !== attachmentId);
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      errorMessage = toErrorText(error);
     }
   }
 
@@ -2432,6 +2491,7 @@
       pendingUserInputs,
       lastSubmittedPrompt,
       setAgentActivity,
+      setContextCompacting,
       updateWorkspaceSessions,
       setPendingApprovals: (approvals) => (pendingApprovals = approvals),
       setPendingUserInputs: (requests) => (pendingUserInputs = requests),
@@ -2465,7 +2525,7 @@
     try {
       await openWorkspaceLocationApi(workspaceId, 'finder');
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      errorMessage = toErrorText(error);
     }
   }
 
@@ -2473,11 +2533,11 @@
     const session = selectedSession;
     if (!session) return;
     if (!desktop) {
-      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整会话权限。';
+      errorMessage = localizedMessage('app.permissionsDesktopOnly');
       return;
     }
     if (sessionRunning || selectedSessionArchiving) {
-      errorMessage = '会话运行中不能切换权限，请等待当前回合结束。';
+      errorMessage = localizedMessage('app.permissionsBusy');
       return;
     }
     // Changing a profile closes the plugin runtime. Any model catalog request
@@ -2497,9 +2557,9 @@
       // every session in the workspace (which also reloads unrelated list and
       // conversation context on this path).
       markSessionIdle(session);
-      setNotice('会话设置已更新。', 'success');
+      setNotice(localizedMessage('app.sessionSettingsUpdated'), 'success');
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      errorMessage = toErrorText(error);
     } finally {
       busy = false;
     }
@@ -2545,7 +2605,7 @@
       }
     } catch (error) {
       if (generation === sessionModelRequestGeneration && selectedSessionId === session.id) {
-        errorMessage = toErrorMessage(error);
+        errorMessage = toErrorText(error);
       }
     } finally {
       if (generation === sessionModelRequestGeneration) sessionModelCatalogLoading = false;
@@ -2556,11 +2616,11 @@
     const session = selectedSession;
     if (!session) return;
     if (!desktop) {
-      errorMessage = '当前是 Web 预览；请在 Tauri 桌面模式中调整会话模型。';
+      errorMessage = localizedMessage('app.modelDesktopOnly');
       return;
     }
     if (busy || sessionRunning || selectedSessionArchiving) {
-      errorMessage = '会话忙碌时不能切换模型或推理强度，请稍候重试。';
+      errorMessage = localizedMessage('app.modelBusy');
       return;
     }
     busy = true;
@@ -2577,12 +2637,12 @@
       sessionModelCatalogs.set(session.id, result.catalog);
       sessionModelCatalog = result.catalog;
       sessionModelOverride = null;
-      setNotice(`当前模型：${result.catalog.current?.label ?? '默认'} · ${reasoningEffortLabel(result.catalog, result.catalog.currentReasoningEffort) ?? '模型默认'}。`, 'info');
+      setNotice(localizedMessage('app.modelWithEffort', {model: result.catalog.current?.label ?? localizedMessage('app.defaultModel'), effort: reasoningEffortLabel(result.catalog, result.catalog.currentReasoningEffort) ?? localizedMessage('app.modelDefault')}), 'info');
     } catch (error) {
       // A model update may have succeeded before a reasoning update failed.
       // Re-read the owner so the matrix does not pretend the combined operation rolled back.
       if (ownsSelection()) {
-        errorMessage = toErrorMessage(error);
+        errorMessage = toErrorText(error);
         try {
           const catalog = await getSessionModels(session.id);
           if (ownsSelection()) { sessionModelCatalogs.set(session.id, catalog); sessionModelCatalog = catalog; sessionModelOverride = null; }
@@ -2615,12 +2675,12 @@
 
   async function executeBuiltinCommand(input: string): Promise<boolean> {
     const command = parseAgentCommand(input);
-    if (!command || !selectedSession || !sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.sessionControls : []).some(item => item.name === command.name)) return false;
+    if (!command || !selectedSession || !sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.sessionControls : [], $locale).some(item => item.name === command.name)) return false;
 
     const control = executionProfile?.sessionId === selectedSession.id
       ? executionProfile.sessionControls?.find(option => option.command === command.name) : undefined;
     if (control) {
-      if (command.args) { errorMessage = `/${command.name} 不接受参数。`; return true; }
+      if (command.args) { errorMessage = localizedMessage('app.noCommandArguments', {command: command.name}); return true; }
       await applySessionAccess(control.id);
       if (!errorMessage) composerText = '';
       return true;
@@ -2634,7 +2694,7 @@
         await operation();
         composerText = '';
       } catch (error) {
-        errorMessage = toErrorMessage(error);
+        errorMessage = toErrorText(error);
       } finally {
         busy = false;
       }
@@ -2643,7 +2703,7 @@
     switch (command.name) {
       case 'settings':
         if (command.args) {
-          errorMessage = '/settings 不接受参数。';
+          errorMessage = localizedMessage('app.noCommandArguments', {command: 'settings'});
           return true;
         }
         openSettingsPanel();
@@ -2651,11 +2711,11 @@
         return true;
       case 'new':
         if (command.args) {
-          errorMessage = '/new 不接受参数。';
+          errorMessage = localizedMessage('app.noCommandArguments', {command: 'new'});
           return true;
         }
         if (!workspace) {
-          errorMessage = '请先选择一个工作区。';
+          errorMessage = localizedMessage('app.selectWorkspaceFirst');
           return true;
         }
         toggleSessionCreator(workspace.id);
@@ -2672,16 +2732,16 @@
           updateWorkspaceSessions(session.workspaceId, (items) =>
             items.map((item) => (item.id === renamed.id ? renamed : item)),
           );
-          setNotice('会话名称已更新。', 'success');
+          setNotice(localizedMessage('app.sessionRenamed'), 'success');
         });
         return true;
       case 'trust':
         if (!workspace) {
-          errorMessage = '请先选择一个工作区。';
+          errorMessage = localizedMessage('app.selectWorkspaceFirst');
           return true;
         }
         if (command.args && !['on', 'off', 'true', 'false', 'trusted', 'untrusted'].includes(command.args.toLocaleLowerCase())) {
-          errorMessage = '/trust 可选参数为 on 或 off。';
+          errorMessage = localizedMessage('app.trustArguments');
           return true;
         }
         if (command.args) {
@@ -2694,7 +2754,7 @@
         return true;
       case 'tree':
         if (command.args) {
-          errorMessage = '/tree 不接受参数。';
+          errorMessage = localizedMessage('app.noCommandArguments', {command: 'tree'});
           return true;
         }
         await run(async () => {
@@ -2702,44 +2762,44 @@
             await refreshPiTree(session.id);
             piTreeOpen = true;
           } else await refreshCodexThread(session.id);
-          setNotice('会话已刷新。', 'success');
+          setNotice(localizedMessage('app.sessionRefreshed'), 'success');
         });
         return true;
       case 'session':
         if (command.args) {
-          errorMessage = '/session 不接受参数。';
+          errorMessage = localizedMessage('app.noCommandArguments', {command: 'session'});
           return true;
         }
-        setNotice(`${session.label} · ${session.externalSessionId ?? '尚未绑定远端会话 ID'}`, 'info');
+        setNotice(localizedMessage('app.remoteSessionNotice',{label:session.label,remote:session.externalSessionId??localizedMessage('app.remoteUnbound')}), 'info');
         composerText = '';
         return true;
       case 'resume':
         if (command.args) {
-          errorMessage = '/resume 不接受参数。';
+          errorMessage = localizedMessage('app.noCommandArguments', {command: 'resume'});
           return true;
         }
         if (!workspace) {
-          errorMessage = '请先选择一个工作区。';
+          errorMessage = localizedMessage('app.selectWorkspaceFirst');
           return true;
         }
         await run(async () => {
           activateWorkspace(workspace.id);
           await refreshSessions(workspace.id);
-          setNotice('会话列表已刷新。', 'success');
+          setNotice(localizedMessage('app.sessionsRefreshed'), 'success');
         });
         return true;
       case 'compact':
         await run(async () => {
           await agentFacade.invoke(session, 'compaction.run', { instructions: command.args });
           timeline = await getTimeline(session.id);
-          setNotice('上下文压缩已完成。', 'success');
+          setNotice(localizedMessage('app.compacted'), 'success');
         });
         return true;
       case 'thinking':
         if (command.args) await applySessionReasoningEffort(command.args);
         else {
           await loadSessionModels();
-          if (selectedSessionId === session.id && !errorMessage) setNotice(`当前推理强度：${sessionModelCatalog?.currentReasoningEffort ?? '模型默认'}。`, 'info');
+          if (selectedSessionId === session.id && !errorMessage) setNotice(localizedMessage('app.currentEffort', {effort: sessionModelCatalog?.currentReasoningEffort ?? localizedMessage('app.modelDefault')}), 'info');
         }
         if (selectedSessionId === session.id && composerText === input) composerText = '';
         return true;
@@ -2747,13 +2807,13 @@
         if (command.args) await applySessionModel(command.args);
         else {
           await loadSessionModels();
-          if (selectedSessionId === session.id && !errorMessage) setNotice(`当前模型：${sessionModelCatalog?.current?.label ?? '默认'}。`, 'info');
+          if (selectedSessionId === session.id && !errorMessage) setNotice(localizedMessage('app.currentModel', {model: sessionModelCatalog?.current?.label ?? localizedMessage('app.defaultModel')}), 'info');
         }
         if (selectedSessionId === session.id && composerText === input) composerText = '';
         return true;
       case 'reload':
         if (command.args) {
-          errorMessage = '/reload 不接受参数。';
+          errorMessage = localizedMessage('app.noCommandArguments', {command: 'reload'});
           return true;
         }
         await run(async () => {
@@ -2761,19 +2821,19 @@
           if (Array.isArray(result.commands)) {
             agentCommands = result.commands.filter((item): item is AgentCommand => Boolean(item && typeof item === 'object' && typeof item.name === 'string'));
           }
-          setNotice('会话资源已重新加载。', 'success');
+          setNotice(localizedMessage('app.resourcesReloaded'), 'success');
         });
         return true;
       case 'fork':
         if (command.args) {
-          errorMessage = '/fork 不接受参数。';
+          errorMessage = localizedMessage('app.noCommandArguments', {command: 'fork'});
           return true;
         }
         await run(() => forkSession(session.id));
         return true;
       case 'archive':
         if (command.args) {
-          errorMessage = '/archive 不接受参数。';
+          errorMessage = localizedMessage('app.noCommandArguments', {command: 'archive'});
           return true;
         }
         requestArchiveSession(session.id);
@@ -2784,15 +2844,15 @@
           if (command.args.toLocaleLowerCase() === 'clear') {
             await agentFacade.invoke(session, 'goal.manage', { action: 'clear' });
             codexGoal = null;
-            setNotice('当前目标已清除。', 'success');
+            setNotice(localizedMessage('app.goalCleared'), 'success');
             return;
           }
           if (!command.args) {
             const result = await agentFacade.invoke(session, 'goal.manage', { action: 'get' });
             const goal = normalizeAgentGoal(result);
             setNotice(goal?.objective
-              ? `当前目标：${goal.objective}${goal.status ? ` · ${goal.status}` : ''}`
-              : '当前会话没有目标。', 'info');
+              ? $t('app.currentGoal', {objective: goal.objective, status: goal.status ? ` · ${goal.status}` : ''})
+              : $t('app.noGoal'), 'info');
             return;
           }
           const result = await agentFacade.invoke(session, 'goal.manage', { action: 'set', objective: command.args });
@@ -2807,17 +2867,17 @@
             await agentFacade.invoke(session, 'goal.resume', {});
             await refreshSessions(session.workspaceId);
           }
-          setNotice(`目标已设置：${command.args}`, 'success');
+          setNotice(localizedMessage('app.goalSet', {objective: command.args}), 'success');
         });
         return true;
       case 'skills':
         if (command.args) {
-          errorMessage = '/skills 不接受参数。';
+          errorMessage = localizedMessage('app.noCommandArguments', {command: 'skills'});
           return true;
         }
         await run(async () => {
           agentCommands = await loadSessionCommands(session);
-          setNotice(`已刷新 Skills（${agentCommands.length} 项）。`, 'success');
+          setNotice(localizedMessage('app.skillsRefreshed', {count: agentCommands.length}), 'success');
         });
         return true;
       default:
@@ -2826,7 +2886,7 @@
   }
 
   async function sendPrompt() {
-    if (selectedSession?.state === 'starting') { setNotice('会话正在初始化，草稿已保留，请就绪后发送。', 'info'); return; }
+    if (selectedSession?.state === 'starting') { setNotice(localizedMessage('app.initializingDraft'), 'info'); return; }
     if (await executeBuiltinCommand(composerText)) return;
     await messageController.sendPrompt();
     await refreshPromptQueue();
@@ -2848,21 +2908,23 @@
     const session = selectedSession;
     if (!session || !session.capabilities.includes('compaction.run') || session.archived) return;
     if (sessionRunning || busy) {
-      errorMessage = '会话运行中不能手动压缩，请等待当前回合结束。';
+      errorMessage = localizedMessage('app.compactBusy');
       return;
     }
     busy = true;
     errorMessage = null;
-    setAgentActivity(session.id, true, '正在压缩上下文…');
+    setContextCompacting(session.id, true);
+    setAgentActivity(session.id, true, localizedMessage('activity.compacting'));
     try {
       await agentFacade.invoke(session, 'compaction.run', {});
       if (selectedSessionId === session.id) timeline = await getTimeline(session.id);
       setAgentActivity(session.id, false);
-      setNotice('上下文压缩已完成。', 'success');
+      setNotice(localizedMessage('app.compacted'), 'success');
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      errorMessage = toErrorText(error);
       setAgentActivity(session.id, false);
     } finally {
+      setContextCompacting(session.id, false);
       busy = false;
     }
   }
@@ -2885,7 +2947,7 @@
       const result = await agentFacade.invoke(session, 'queue.manage', { action: 'get' });
       if (selectedSessionId === session.id) applyPromptQueue(normalizeMessageQueue(result, session.id));
     } catch (error) {
-      if (selectedSessionId === session.id) errorMessage = toErrorMessage(error);
+      if (selectedSessionId === session.id) errorMessage = toErrorText(error);
     }
   }
 
@@ -2905,7 +2967,7 @@
       if (selectedSessionId === session.id) applyPromptQueue(normalizeMessageQueue(result, session.id));
       await Promise.all([refreshTimeline(session.id), refreshAttachments(session.id), refreshSessions(session.workspaceId)]);
     } catch (error) {
-      if (selectedSessionId === session.id) errorMessage = toErrorMessage(error);
+      if (selectedSessionId === session.id) errorMessage = toErrorText(error);
     } finally { busy = false; }
   }
 
@@ -2925,8 +2987,8 @@
 
   async function confirmPiTreeNavigation(options: PiTreeNavigationOptions) {
     piNavigationStatus = options.mode === 'none'
-      ? '正在切换会话树节点…'
-      : '正在生成分支总结并切换节点…';
+      ? $t('activity.treeNavigating')
+      : $t('activity.treeSummarizing');
     try {
       const switched = await piTreeController.confirmNavigation(options);
       if (switched) piTreeOpen = false;
@@ -2949,9 +3011,9 @@
         (item) => item.sessionId !== request.sessionId || item.requestId !== request.requestId,
       );
       userInputDrafts = clearRequestDrafts(request, userInputDrafts);
-      setNotice('已提交你的回答，Agent 将继续执行。', 'success');
+      setNotice(localizedMessage('app.answerSubmitted'), 'success');
     } catch (error) {
-      errorMessage = toErrorMessage(error);
+      errorMessage = toErrorText(error);
       throw error;
     } finally {
       busy = false;
@@ -3023,7 +3085,7 @@
 
   function toggleSessionCreator(workspaceId: string) {
     navigationController.toggleSessionCreator(workspaceId);
-    if (createSessionWorkspaceId) void refreshPluginInstallations().catch(error => { errorMessage = toErrorMessage(error); });
+    if (createSessionWorkspaceId) void refreshPluginInstallations().catch(error => { errorMessage = toErrorText(error); });
   }
 
   const sessionContextController = createSessionContextController({
@@ -3141,7 +3203,7 @@
     },
     chooseDirectory: async () => {
       const selectedPath = await open({
-        title: '选择工作区目录',
+        title: $t('app.pickWorkspace'),
         directory: true,
         multiple: false,
         recursive: true,
@@ -3242,7 +3304,7 @@
     api: {
       createDefaultSession: async (workspaceId) => {
         const providers = readySessionProviders(pluginInstallations);
-        if (providers.length !== 1) throw new Error('请先选择一个 Agent 插件并创建会话。');
+        if (providers.length !== 1) throw new LocalizedError('app.selectAgent');
         const provider = providers[0];
         return createAgentSession(workspaceId, provider.contributionId, provider.installationId);
       },
@@ -3347,15 +3409,15 @@
 </script>
 
 {#snippet presentationPackageManagement()}
-  <section id="presentation-packages" aria-label="皮肤插件管理" tabindex="-1">
-  <SettingsSection title="皮肤插件" error={presentationPackages.error} items={[
-    { id: 'install', title: '安装皮肤', description: '从本地目录添加新的外观插件。', icon: 'plugins',
-      actions: [{ id: 'install', label: '安装皮肤插件', intent: 'install', disabled: !desktop || presentationPackages.busy }] },
+  <section id="presentation-packages" aria-label={$t('app.skinsManagement')} tabindex="-1">
+  <SettingsSection title={$t('app.skins')} error={translateMessage($locale,presentationPackages.error)} items={[
+    { id: 'install', title: $t('app.installSkin'), description: $t('app.installSkinDescription'), icon: 'plugins',
+      actions: [{ id: 'install', label: $t('app.installSkinPlugin'), intent: 'install', disabled: !desktop || presentationPackages.busy }] },
     ...presentationPackages.releases.filter(release => release.source !== 'builtin').map(release => ({ id: release.digest, title: release.manifest.displayName,
-      description: `${release.manifest.version} · ${release.enabled ? '已启用' : '已禁用'}`,
+      description: `${release.manifest.version} · ${release.enabled ? $t('app.enabled') : $t('app.disabled')}`,
       actions: [
-        { id: 'toggle', label: release.enabled ? '禁用' : '启用', intent: 'toggle' as const, disabled: presentationPackages.busy },
-        { id: 'uninstall', label: '卸载', intent: 'remove' as const, disabled: presentationPackages.busy },
+        { id: 'toggle', label: release.enabled ? $t('app.disable') : $t('app.enable'), intent: 'toggle' as const, disabled: presentationPackages.busy },
+        { id: 'uninstall', label: $t('app.uninstall'), intent: 'remove' as const, disabled: presentationPackages.busy },
       ] })),
   ]} onAction={(item, action) => {
     if (item === 'install') void presentationOperation(installPresentationFromDirectory);
@@ -3375,12 +3437,12 @@
     authentication={pluginAuthentication}
     onAuthenticate={hostGuard('onAuthenticate', (id, action) => void pluginOperation(() => pluginAuthenticationController.run(id, action)))}
     busy={pluginBusy || pluginLifecycle.busy || pluginInstall.busy || !desktop}
-    installation={pluginInstall}
+    installation={pluginInstallStatePresentation(pluginInstall, $locale)}
     onInstallConfirm={hostGuard('onInstallConfirm', reinstall=>void pluginInstallController.confirm(reinstall))}
     onSkipArchivedChange={hostGuard('onSkipArchivedChange', value=>pluginInstallController.setSkipArchived(value))}
     onInstallCancel={hostGuard('onInstallCancel', ()=>pluginInstallController.cancel())}
     onUndo={hostGuard('onUndo', id=>void pluginInstallController.undo(id))}
-    lifecycle={pluginLifecycle}
+    lifecycle={{...pluginLifecycle, impact:pluginRemovalImpactPresentation(pluginLifecycle.impact,$locale), report:pluginMigrationReportPresentation(pluginLifecycle.report,$locale)}}
     onRemovalCancel={hostGuard('onRemovalCancel', () => pluginLifecycleController.cancel())}
     onRemovalConfirm={hostGuard('onRemovalConfirm', keepHistory => void pluginLifecycleController.remove(keepHistory))}
     onMigrate={hostGuard('onMigrate', target => void pluginLifecycleController.migrate(target))}
@@ -3391,19 +3453,19 @@
     onCreateSession={hostGuard('onCreateSession', (installationId, agentId) => void createPluginSession(installationId, agentId))}
   />
   {#if agentSettings.target}
-    <section aria-label="Agent 插件设置">
+    <section aria-label={$t('app.agentSettings')}>
       <p>{pluginInstallations.find(item => item.id === agentSettings.target?.installationId)?.manifest.displayName ?? 'Agent'} · {agentSettingsScopeLabel(agentSettings.target.scope)}</p>
       {#if agentSettings.snapshot}
-        {#if agentSettings.snapshot.descriptor.scopes.includes('application')}<Button type="button" variant="outline" onclick={() => selectAgentSettingsScope({kind:'application'})}>全局</Button>{/if}
-        {#if agentSettings.snapshot.descriptor.scopes.includes('workspace')}<Button type="button" variant="outline" disabled={!selectedWorkspaceId} onclick={() => selectedWorkspaceId && selectAgentSettingsScope({kind:'workspace',id:selectedWorkspaceId})}>当前项目</Button>{/if}
-        {#if agentSettings.snapshot.descriptor.scopes.includes('session')}<Button type="button" variant="outline" disabled={!selectedSession || selectedSession.pluginInstallationId !== agentSettings.target.installationId || selectedSession.agent !== agentSettings.target.contributionId || selectedSession.archived} onclick={() => selectedSession && selectAgentSettingsScope({kind:'session',id:selectedSession.id})}>当前会话</Button>{/if}
-        <AgentSettingsForm snapshot={agentSettings.snapshot} draft={agentSettings.draft} busy={agentSettings.loading || agentSettings.saving} error={agentSettings.error} notice={agentSettings.notice} onChange={agentSettingsController.change} onSave={() => void agentSettingsController.save()} onReset={agentSettingsController.reset} onReload={() => void agentSettingsController.reload()} />
-      {:else if agentSettings.loading}<p role="status">正在读取 Agent 设置…</p>
-      {:else if agentSettings.error}<p role="alert">{agentSettings.error}</p><Button type="button" onclick={() => void agentSettingsController.reload()}>重试</Button>{/if}
-      <Button type="button" variant="ghost" onclick={() => void agentSettingsController.select(null)}>收起设置</Button>
+        {#if agentSettings.snapshot.descriptor.scopes.includes('application')}<Button type="button" variant="outline" onclick={() => selectAgentSettingsScope({kind:'application'})}>{$t('app.globalScope')}</Button>{/if}
+        {#if agentSettings.snapshot.descriptor.scopes.includes('workspace')}<Button type="button" variant="outline" disabled={!selectedWorkspaceId} onclick={() => selectedWorkspaceId && selectAgentSettingsScope({kind:'workspace',id:selectedWorkspaceId})}>{$t('app.currentProject')}</Button>{/if}
+        {#if agentSettings.snapshot.descriptor.scopes.includes('session')}<Button type="button" variant="outline" disabled={!selectedSession || selectedSession.pluginInstallationId !== agentSettings.target.installationId || selectedSession.agent !== agentSettings.target.contributionId || selectedSession.archived} onclick={() => selectedSession && selectAgentSettingsScope({kind:'session',id:selectedSession.id})}>{$t('app.currentSession')}</Button>{/if}
+        <AgentSettingsForm snapshot={agentSettings.snapshot} draft={agentSettings.draft} busy={agentSettings.loading || agentSettings.saving} error={agentSettings.error ? translateMessage($locale, agentSettings.error) : null} notice={agentSettings.notice ? translateMessage($locale, agentSettings.notice) : null} onChange={agentSettingsController.change} onSave={() => void agentSettingsController.save()} onReset={agentSettingsController.reset} onReload={() => void agentSettingsController.reload()} />
+      {:else if agentSettings.loading}<p role="status">{$t('app.loadingAgentSettings')}</p>
+      {:else if agentSettings.error}<p role="alert">{translateMessage($locale, agentSettings.error)}</p><Button type="button" onclick={() => void agentSettingsController.reload()}>{$t('app.retry')}</Button>{/if}
+      <Button type="button" variant="ghost" onclick={() => void agentSettingsController.select(null)}>{$t('app.collapseSettings')}</Button>
     </section>
   {/if}
-  {#if pluginError}<p role="alert">{pluginError}</p>{/if}
+  {#if pluginError}<p role="alert">{translateMessage($locale, pluginError)}</p>{/if}
 {/snippet}
 
 {#snippet runtimeStatus()}
@@ -3412,14 +3474,14 @@
     onAutomatic={() => void nodeRuntimeController.automatic()} onDownload={() => void nodeRuntimeController.download()} />
   <div class="management-runtime-actions">
     <Button variant="outline" size="sm" type="button" onclick={() => void refresh()} disabled={busy}>
-      刷新运行状态
+      {$t('app.refreshRuntime')}
     </Button>
   </div>
   <DiagnosticsPanel
     presentationActions={diagnosticsActions}
     open={true}
     embedded={true}
-    diagnostics={diagnostics}
+    diagnostics={displayedDiagnostics}
     desktop={desktop}
     workspaceCount={workspaces.length}
     sessionCount={sessions.length}
@@ -3431,10 +3493,10 @@
 
 {#snippet hostPanelActions()}
   {#if capabilityHistoryOpen}
-    <Button variant="outline" size="sm" disabled={!desktop || capabilityHistory.loadingScopes} onclick={() => void capabilityHistoryController.open()}>刷新作用域</Button>
+    <Button variant="outline" size="sm" disabled={!desktop || capabilityHistory.loadingScopes} onclick={() => void capabilityHistoryController.open()}>{$t('app.refreshScopes')}</Button>
   {:else if historyOpen}
-    <Button variant="outline" size="sm" disabled={!desktop || !historyWorkspaceId || executionHistory.loading} onclick={() => void executionHistoryController.refresh()}>刷新记录</Button>
-    <Button variant="outline" size="sm" onclick={openCapabilityHistory}>插件调用历史</Button>
+    <Button variant="outline" size="sm" disabled={!desktop || !historyWorkspaceId || executionHistory.loading} onclick={() => void executionHistoryController.refresh()}>{$t('app.refreshRecords')}</Button>
+    <Button variant="outline" size="sm" onclick={openCapabilityHistory}>{$t('app.capabilityHistory')}</Button>
   {/if}
 {/snippet}
 
@@ -3444,16 +3506,16 @@
   <HostConfirmationPanel state={hostConfirmation} {desktop} onChange={(category, policy) => void hostConfirmationController.save(category, policy)} onReload={() => void hostConfirmationController.load()} />
 {/snippet}
 {#snippet appearanceActions()}
-  <SettingsSection title="皮肤恢复" items={[{
-    id: 'builtin', title: '内置皮肤', description: '恢复内置皮肤，保留当前布局、会话和草稿。', icon: 'undo',
-    actions: [{ id: 'restore', label: '恢复内置皮肤', intent: 'restore', disabled: presentationPackages.busy || !externalActive }],
+  <SettingsSection title={$t('app.skinRecovery')} items={[{
+    id: 'builtin', title: $t('app.builtinSkin'), description: $t('app.restoreBuiltinDescription'), icon: 'undo',
+    actions: [{ id: 'restore', label: $t('app.restoreBuiltin'), intent: 'restore', disabled: presentationPackages.busy || !externalActive }],
   }]} onAction={() => void presentationOperation(() => choosePresentation(defaultUiKitId))} />
 {/snippet}
 {#snippet layoutSettings()}{@render presentationActions('layout')}{/snippet}
 {#snippet diagnosticsActions()}{@render presentationActions('diagnostics')}{/snippet}
 {#snippet navigationFooter()}
-  <Button variant="ghost" data-presentation-focus="settings-extensions" aria-label="插件与能力" title="插件与能力" onclick={() => openManagementCenter('extensions')}><Icon name="plugins" /><span>插件与能力</span></Button>
-  <Button variant="ghost" data-presentation-focus="settings-appearance" aria-label="工作台设置" title="工作台设置" onclick={() => openManagementCenter('appearance')}><Icon name="settings" /><span>工作台设置</span></Button>
+  <Button variant="ghost" data-presentation-focus="settings-extensions" aria-label={$t('settings.extensions')} title={$t('settings.extensions')} onclick={() => openManagementCenter('extensions')}><Icon name="plugins" /><span>{$t('settings.extensions')}</span></Button>
+  <Button variant="ghost" data-presentation-focus="settings-appearance" aria-label={$t('settings.title')} title={$t('settings.title')} onclick={() => openManagementCenter('appearance')}><Icon name="settings" /><span>{$t('settings.title')}</span></Button>
 {/snippet}
 {#snippet navigationActions()}{@render presentationActions('navigation')}{/snippet}
 {#snippet conversationActions()}{@render presentationActions('conversation')}{/snippet}
@@ -3478,9 +3540,9 @@
   style={$activeThemeStyle}
 >
   {#if globalSearchOpen}
-    <GlobalSearchPanel state={globalSearch} {workspaces} onSearch={runGlobalSearch} onActivate={item => void activateSearchResult(item)} onClose={() => closeGlobalSearch()}
-      preview={searchPreview} previewLoading={searchPreviewLoading} previewError={searchPreviewError} onBack={clearSearchPreview}
-      onOpenContext={searchPreviewItem?.target.sessionId ? () => { if (searchPreviewItem) void openSearchSession(searchPreviewItem).catch(error => { searchPreviewError = toErrorMessage(error); }); } : undefined} />
+    <GlobalSearchPanel state={searchPresentation(globalSearch,$locale,searchCatalogItems())} {workspaces} onSearch={runGlobalSearch} onActivate={item => void activateSearchResult(item)} onClose={() => closeGlobalSearch()}
+      preview={searchPreviewPresentation(searchPreview,$locale)} previewLoading={searchPreviewLoading} previewError={translateMessage($locale,searchPreviewError)} onBack={clearSearchPreview}
+      onOpenContext={searchPreviewItem?.target.sessionId ? () => { if (searchPreviewItem) void openSearchSession(searchPreviewItem).catch(error => { searchPreviewError = toErrorText(error); }); } : undefined} />
   {/if}
   <WindowTitlebar
     onOpenSearch={() => openGlobalSearch()}
@@ -3495,11 +3557,13 @@
     onClose={closeAppWindow}
   />
   <SettingsPanel
+    languagePreference={$language.preference}
+    onSelectLanguage={value => { languageController.select(value); }}
     {workspaceSettings}
     packageManagement={presentationPackageManagement}
     {appearanceActions}
     {layoutSettings}
-    appearanceError={presentationPackages.error}
+    appearanceError={translateMessage($locale,presentationPackages.error)}
     appearanceBusy={presentationPackages.busy}
     extensions={extensionManagement}
     runtime={runtimeStatus}
@@ -3516,7 +3580,7 @@
 
   {#if sessionHistoryOpen}
     <div class="host-session-history-region" style="order:2; display:grid; flex:1; min-height:0; overflow:auto;">
-      <SessionHistoryPanel {workspaces} workspaceId={sessionHistoryWorkspaceId} state={sessionHistory} {desktop}
+      <SessionHistoryPanel {workspaces} workspaceId={sessionHistoryWorkspaceId} state={displayedSessionHistory} {desktop}
         onWorkspace={id=>{sessionHistoryRequest={workspaceId:id,sessionId:null,messageId:null};}} onSession={id=>void sessionHistoryController.select(id)}
         onRefresh={()=>void sessionHistoryController.refresh()} onOlder={()=>void sessionHistoryController.older()}
         onNewer={()=>void sessionHistoryController.newer()} onLatest={()=>void sessionHistoryController.latest()} onClose={closeSessionHistory}
@@ -3524,8 +3588,8 @@
     </div>
   {/if}
   {#if historyOpen || capabilityHistoryOpen}
-    <HostPanel actions={hostPanelActions} title={capabilityHistoryOpen ? '插件调用历史' : '执行历史'}
-      backLabel={capabilityHistoryOpen ? '执行历史' : undefined}
+    <HostPanel actions={hostPanelActions} title={capabilityHistoryOpen ? $t('app.capabilityHistory') : $t('search.executionHistory')}
+      backLabel={capabilityHistoryOpen ? $t('search.executionHistory') : undefined}
       onBack={capabilityHistoryOpen ? backFromCapabilityHistory : undefined}
       onClose={closeHostPanel}>
       {#if capabilityHistoryOpen}
@@ -3585,7 +3649,7 @@
         if (workspace) void deleteWorkspace(workspace);
       })}
       onOpenWorkspaceLocation={guard('onOpenWorkspaceLocation', (workspaceId) => void openWorkspaceLocation(workspaceId))}
-      agentChoices={sessionProviderChoices(pluginInstallations)}
+      agentChoices={sessionProviderChoices(pluginInstallations, $locale)}
       onCreateAgent={guard('onCreateAgent', (workspaceId, choiceId) => void createWheelSession(workspaceId, choiceId))}
       onSelectSession={guard('onSelectSession', (id) => { installedTool = null; selectSession(id); })}
       onUnarchiveSession={guard('onUnarchiveSession', (sessionId) => void unarchiveSession(sessionId))}
@@ -3598,7 +3662,7 @@
 {/snippet}
 {#snippet navigationResize(guard, slot)}
     <ColumnSplitter
-      label="调整工作区与会话宽度"
+      label={$t('app.resizeNavigation')}
       width={workspaceSidebarWidth}
       onPointerDown={guard('onPointerDown', (event) => beginColumnResize('workspace', event, slot.growthDirection))}
       onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('workspace', event, slot.growthDirection))}
@@ -3650,23 +3714,23 @@
       onPauseGoal={guard('onPauseGoal', () => void changeGoal('pause'))}
       onResumeGoal={guard('onResumeGoal', () => void changeGoal('resume'))}
       codexThreadSnapshot={codexThreadSnapshot}
-      timeline={timeline}
+      timeline={displayedTimeline}
       timelineVisibleCount={timelineVisibleCount}
       usageValues={usageValues}
       retryPrompt={retryPrompt}
-      retryReason={retryReason}
+      retryReason={retryReason ? translateMessage($locale,retryReason) : null}
       onOpenSubagent={guard('onOpenSubagent', (id) => void openSubagent(id))}
       userInputRequests={selectedUserInputRequests}
       approvalRequests={selectedApprovals}
       {userInputDrafts}
       onUserInputDraftChange={guard('onUserInputDraftChange', (value) => { userInputDrafts = value; })}
-      queueSnapshot={queueSnapshot}
+      queueSnapshot={displayedQueue}
       agentActivityLabel={agentActivityLabel}
       contextCompacting={contextCompacting}
       sessionRunning={sessionRunning}
       selectedSessionArchiving={selectedSessionArchiving}
       busy={busy}
-      attachments={attachments}
+      attachments={displayedAttachments}
       {attachmentPreviews}
       executionProfile={executionProfile}
       modelConfiguration={modelConfigurationState(selectedSession, sessionModelCatalog, executionProfile)}
@@ -3714,24 +3778,24 @@
     {/if}
 {/snippet}
 {#snippet sessionChanges()}
-  <section class="session-changes" aria-label="工作区变更">
-  <header class="session-changes-heading"><span>工作区未提交的文件</span>
-  <Button variant="ghost" size="icon" aria-label="刷新变更" title="刷新变更；共用工作区的会话共享这些变更" disabled={!desktop || workspaceChangesLoading} onclick={() => { sessionDiffController.close(); if (selectedWorkspaceId) void refreshWorkspaceChanges(selectedWorkspaceId); }}><Icon name="refresh" size={16} /></Button></header>
-  {#if !desktop}<p role="status">读取 Git 变更需要桌面宿主。</p>
-  {:else if workspaceChangesLoading}<p role="status">正在读取变更…</p>
+  <section class="session-changes" aria-label={$t('app.workspaceChanges')}>
+  <header class="session-changes-heading"><span>{$t('app.uncommittedFiles')}</span>
+  <Button variant="ghost" size="icon" aria-label={$t('app.refreshChanges')} title={$t('app.refreshChangesHint')} disabled={!desktop || workspaceChangesLoading} onclick={() => { sessionDiffController.close(); if (selectedWorkspaceId) void refreshWorkspaceChanges(selectedWorkspaceId); }}><Icon name="refresh" size={16} /></Button></header>
+  {#if !desktop}<p role="status">{$t('app.changesDesktopOnly')}</p>
+  {:else if workspaceChangesLoading}<p role="status">{$t('app.loadingChanges')}</p>
   {:else if workspaceChangesError}<p role="alert">{workspaceChangesError}</p>
   {:else}
-    {#if discoveryLimited}<p role="status">仓库扫描尚未完成，以下仅显示已发现的仓库。</p>{/if}
+    {#if discoveryLimited}<p role="status">{$t('app.discoveryIncomplete')}</p>{/if}
     {#each discoveryWarnings as warning}<p role="alert">{warning}</p>{/each}
     {#each visibleRepositories as repo (repo.id)}
-      <section class="session-changes-repo" aria-label={`仓库 ${repo.name}`}>
-        {#if visibleRepositories.length > 1}<header class="session-changes-repo-heading"><strong>{repo.name}</strong><span>{repo.relativePath}</span>{#if repo.changes?.captureStatus === 'captured'}<Badge variant="outline">{repo.changes.files.length} 个文件</Badge>{/if}</header>{/if}
+      <section class="session-changes-repo" aria-label={$t('app.repositoryLabel', {name: repo.name})}>
+        {#if visibleRepositories.length > 1}<header class="session-changes-repo-heading"><strong>{repo.name}</strong><span>{repo.relativePath}</span>{#if repo.changes?.captureStatus === 'captured'}<Badge variant="outline">{$t('app.fileCount', {count: repo.changes.files.length})}</Badge>{/if}</header>{/if}
         {#if repo.error}<p role="alert">{repo.error}</p>
-        {:else if !repo.changes}<p role="status">正在读取变更…</p>
-        {:else if repo.changes.captureStatus !== 'captured'}<p role="status">{repo.changes.captureError ?? '无法读取此仓库的变更。'}</p>
+        {:else if !repo.changes}<p role="status">{$t('app.loadingChanges')}</p>
+        {:else if repo.changes.captureStatus !== 'captured'}<p role="status">{repo.changes.captureError ?? $t('app.repositoryChangesUnavailable')}</p>
         {:else}
           {#each repo.changes.files as file (file.path)}
-            {@const info = sessionChangeFile(file)}
+            {@const info = sessionChangeFile(file, $locale)}
             {@const rowId = sessionChangeRowId(repo.id, file.path)}
             {@const expanded = sessionDiff.repositoryId === repo.id && sessionDiff.path === file.path}
             <div class="session-change-file">
@@ -3741,34 +3805,34 @@
                 <FileChangeMark kind={info.kind} decorative />
                 <span class="session-change-name">{info.name}</span>
                 <span class="session-change-directory"><bdi dir="ltr">{info.directory}</bdi></span>
-                {#if info.stats}<span class="session-change-stats" title={info.statsTitle} aria-label={`新增 ${info.stats.additions} 行，删除 ${info.stats.deletions} 行`}><span>+{info.stats.additions}</span><span>−{info.stats.deletions}</span></span>{/if}
+                {#if info.stats}<span class="session-change-stats" title={info.statsTitle} aria-label={$t('git.lineStats', {additions: info.stats.additions, deletions: info.stats.deletions})}><span>+{info.stats.additions}</span><span>−{info.stats.deletions}</span></span>{/if}
               </Button>
               <div class="session-change-preview" id={`${rowId}-preview`} hidden={!expanded}>
                 {#if expanded}
                   <div class="session-change-preview-toolbar">
                     <span>{info.stateLabel}</span>
                     {#if file.staged && info.hasWorking}
-                      <div class="session-change-sides" role="group" aria-label="差异来源">
-                        <Button variant="ghost" aria-pressed={!sessionDiff.staged} onclick={() => { if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, false); }}>工作区</Button>
-                        <Button variant="ghost" aria-pressed={sessionDiff.staged} onclick={() => { if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, true); }}>暂存区</Button>
+                      <div class="session-change-sides" role="group" aria-label={$t('app.diffSource')}>
+                        <Button variant="ghost" aria-pressed={!sessionDiff.staged} onclick={() => { if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, false); }}>{$t('app.workingTree')}</Button>
+                        <Button variant="ghost" aria-pressed={sessionDiff.staged} onclick={() => { if (selectedWorkspaceId) void sessionDiffController.open(selectedWorkspaceId, repo.id, file.path, true); }}>{$t('app.index')}</Button>
                       </div>
                     {/if}
                   </div>
-                  <WorkspaceFileDiffPreview fileDiff={sessionDiff.diff} fileDiffLoading={sessionDiff.loading} fileDiffError={sessionDiff.error} selectedPath={file.path} selectedStaged={sessionDiff.staged} onClose={() => closeSessionDiff(rowId)} />
+                  <WorkspaceFileDiffPreview fileDiff={workspaceFileDiffPresentation(sessionDiff.diff, $locale)} fileDiffLoading={sessionDiff.loading} fileDiffError={sessionDiff.error===null?null:translateMessage($locale,sessionDiff.error)} selectedPath={file.path} selectedStaged={sessionDiff.staged} onClose={() => closeSessionDiff(rowId)} />
                 {/if}
               </div>
             </div>
-          {:else}<p role="status">没有未提交变更。</p>{/each}
+          {:else}<p role="status">{$t('app.noUncommittedChanges')}</p>{/each}
         {/if}
       </section>
-    {:else}<p role="status">当前工作区未发现 Git 仓库。</p>{/each}
+    {:else}<p role="status">{$t('app.noGitRepository')}</p>{/each}
   {/if}
   </section>
 {/snippet}
 {#snippet auxiliaryResize(guard, slot)}
     {#if sidePanelOpen}
       <ColumnSplitter
-        label="调整会话与侧边栏宽度"
+        label={$t('app.resizeAuxiliary')}
         width={inspectorWidth}
         onPointerDown={guard('onPointerDown', (event) => beginColumnResize('inspector', event, slot.growthDirection))}
         onKeyDown={guard('onKeyDown', (event) => handleSplitterKeydown('inspector', event, slot.growthDirection))}
@@ -3785,17 +3849,17 @@
       sessionProvider={selectedSession ? sessionProviderInfo(pluginInstallations, selectedSession) : undefined}
       desktop={desktop}
       activeView={sidePanelView}
-      {diagnostics}
-      workspaceCapabilities={workspaceCapabilities}
+      diagnostics={displayedDiagnostics}
+      workspaceCapabilities={displayedWorkspaceCapabilities}
       codexThreads={codexThreads}
       executionProfile={executionProfile}
-      attachments={attachments}
+      attachments={displayedAttachments}
       artifacts={artifacts}
       projectActions={projectActions}
-      projectActionRuns={projectActionRuns}
-      turnChangeSet={turnChangeSet}
-      checkpoints={checkpoints}
-      restoreOperations={restoreOperations}
+      projectActionRuns={projectActionRuns.map(run=>projectTaskPresentation(run,$locale))}
+      turnChangeSet={displayedTurnChangeSet}
+      checkpoints={displayedCheckpoints}
+      restoreOperations={displayedRestoreOperations}
       workspaceChanges={workspaceChanges}
       turnFileDiff={turnFileDiff}
       threadBusy={threadBusy}
@@ -3807,9 +3871,9 @@
       onShowTurnFileDiff={guard('onShowTurnFileDiff', showTurnFileDiff)}
       onApplyGitFileAction={guard('onApplyGitFileAction', applyGitFileActionFromInspector)}
       onApplyGitHunkAction={guard('onApplyGitHunkAction', applyGitHunkActionFromInspector)}
-      {artifactPreview}
+      artifactPreview={artifactPreviewPresentation(artifactPreview,$locale)}
       onToggleArtifact={guard('onToggleArtifact', (sessionId, artifactId) => artifactPreviewController.toggle(sessionId, artifactId))}
-      projectEditor={projectEditors[selectedWorkspaceId ?? ''] ?? emptyProjectEditor()}
+      projectEditor={projectEditorPresentation(projectEditors[selectedWorkspaceId ?? ''] ?? emptyProjectEditor(), $locale)}
       runningActionId={projectRunningActions[selectedWorkspaceId ?? ''] ?? null}
       onEditProjectAction={guard('onEditProjectAction', (id) => projectEditor.edit(id))}
       onProjectField={guard('onProjectField', (field, value) => projectEditor.change(field, value))}
@@ -3915,7 +3979,7 @@
 {/if}
 
 {#if selectedSubagent}
-  <SubagentDetails open={subagentOpen} agent={selectedSubagent} entries={subagentEntries} loading={subagentLoading} error={subagentError}
+  <SubagentDetails open={subagentOpen} agent={selectedSubagent} entries={subagentEntries} loading={subagentLoading} error={subagentError ? translateMessage($locale,subagentError) : null}
     onOpenLink={url => { if (linkTarget(url)?.kind === 'file') subagentOpen = false; void handleOpenLink(url); }}
     onClose={() => subagentOpen = false} onRetry={() => void openSubagent(selectedSubagent!.id)} />
 {/if}

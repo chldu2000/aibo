@@ -4,9 +4,9 @@ import {fileURLToPath} from 'node:url';
 /** Bundle the fixed workbench entry and installed dependencies for the Worker. */
 export async function workbenchSource() {
   const result = await build({
-    stdin: {contents: "export {renderWorkbench} from './workbench.js';", resolveDir: fileURLToPath(new URL('.', import.meta.url))},
+    stdin: {contents: "export {renderWorkbench} from './workbench.js';export {presentationTranslator} from './i18n.js';", resolveDir: fileURLToPath(new URL('.', import.meta.url))},
     bundle: true, write: false, format: 'iife', globalName: 'aiboWorkbenchModule',
     platform: 'browser', target: 'es2022', minify: true,
   });
-  return result.outputFiles[0].text + '\nself.aiboWorkbench=aiboWorkbenchModule.renderWorkbench;\n';
+  return result.outputFiles[0].text + '\nself.aiboWorkbench=aiboWorkbenchModule.renderWorkbench;self.aiboTranslate=aiboWorkbenchModule.presentationTranslator;\n';
 }

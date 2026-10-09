@@ -52,6 +52,19 @@ pub(crate) struct RestoreReport {
     pub(crate) restored: Vec<String>,
     pub(crate) conflicts: Vec<String>,
     pub(crate) unsupported: Vec<String>,
+    pub(crate) localized_conflicts: Vec<serde_json::Value>,
+    pub(crate) localized_unsupported: Vec<serde_json::Value>,
+}
+
+impl RestoreReport {
+    pub(crate) fn conflict(&mut self, message: crate::ui_i18n::HostMessage) {
+        self.conflicts.push(message.diagnostic);
+        self.localized_conflicts.push(message.localized.unwrap_or(serde_json::Value::Null));
+    }
+    pub(crate) fn unsupported(&mut self, message: crate::ui_i18n::HostMessage) {
+        self.unsupported.push(message.diagnostic);
+        self.localized_unsupported.push(message.localized.unwrap_or(serde_json::Value::Null));
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, PartialEq)]
@@ -83,16 +96,21 @@ pub(crate) struct WorkspaceChanges {
     pub(crate) files: Vec<WorkspaceFileChange>,
     pub(crate) capture_status: &'static str,
     pub(crate) capture_error: Option<String>,
+    pub(crate) localized_capture_error: Option<serde_json::Value>,
 }
 
 /// Capture a Git-backed status snapshot, falling back to a bounded filesystem
 /// walk for non-Git workspaces. The blocking walk and hashing happen off the
 /// async runtime so large workspaces do not stall event processing.
 pub(crate) async fn capture(root: &Path) -> Result<WorkspaceSnapshot, String> {
+    capture_message(root).await.map_err(|error|error.diagnostic)
+}
+
+pub(crate) async fn capture_message(root: &Path) -> Result<WorkspaceSnapshot, crate::ui_i18n::HostMessage> {
     let root = root.to_path_buf();
     task::spawn_blocking(move || capture_sync(&root))
         .await
-        .map_err(|error| format!("workspace snapshot task failed: {error}"))?
+        .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.capture.taskFailed", serde_json::json!({"error":error.to_string()}), format!("workspace snapshot task failed: {error}")))?
 }
 
 fn checkpoint_scope(root: &Path, session_id: &str, turn_id: &str) -> PathBuf {
@@ -261,9 +279,9 @@ pub(crate) async fn persist_checkpoint_metadata(
     tx.commit().await
 }
 
-fn capture_sync(root: &Path) -> Result<WorkspaceSnapshot, String> {
+fn capture_sync(root: &Path) -> Result<WorkspaceSnapshot, crate::ui_i18n::HostMessage> {
     let root =
-        fs::canonicalize(root).map_err(|error| format!("canonicalize workspace: {error}"))?;
+        fs::canonicalize(root).map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.canonicalize",serde_json::json!({"error":error.to_string()}),format!("canonicalize workspace: {error}")))?;
     if let Some(snapshot) = capture_git(&root)? {
         return Ok(snapshot);
     }
@@ -278,7 +296,7 @@ fn capture_sync(root: &Path) -> Result<WorkspaceSnapshot, String> {
     })
 }
 
-fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, String> {
+fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, crate::ui_i18n::HostMessage> {
     let probe = Command::new("git")
         .args([
             "-C",
@@ -297,7 +315,7 @@ fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, String> {
     let head = Command::new("git")
         .args(["-C", &root.to_string_lossy(), "rev-parse", "HEAD"])
         .output()
-        .map_err(|error| format!("read Git HEAD: {error}"))?;
+        .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.readHead",serde_json::json!({"error":error.to_string()}),format!("read Git HEAD: {error}")))?;
     let head = head
         .status
         .success()
@@ -313,15 +331,15 @@ fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, String> {
             "-z",
         ])
         .output()
-        .map_err(|error| format!("read Git status: {error}"))?;
+        .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.readStatus",serde_json::json!({"error":error.to_string()}),format!("read Git status: {error}")))?;
     if !status.status.success() {
-        return Err(format!("git status exited with {}", status.status));
+        return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.changes.statusExited",serde_json::json!({"status":status.status.to_string()}),format!("git status exited with {}", status.status)));
     }
     let dirty = status.stdout.iter().any(|byte| *byte != 0);
     let tracked = Command::new("git")
         .args(["-C", &root.to_string_lossy(), "ls-files", "-z"])
         .output()
-        .map_err(|error| format!("read tracked Git files: {error}"))?;
+        .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.capture.readTracked",serde_json::json!({"error":error.to_string()}),format!("read tracked Git files: {error}")))?;
     let mut paths = BTreeMap::<String, ()>::new();
     for path in tracked
         .stdout
@@ -352,8 +370,8 @@ fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, String> {
     }
     let mut files = Vec::with_capacity(paths.len());
     for path in paths.into_keys() {
-        let resolved = canonicalize_target(root, Path::new(&path))
-            .map_err(|error| format!("unsafe Git path {path}: {error}"))?;
+        let resolved = crate::workspace_guard::canonicalize_target_message(root, Path::new(&path))
+            .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.capture.gitPath",serde_json::json!({"path":path,"error":error.display()}),format!("unsafe Git path {path}: {}",error.diagnostic)))?;
         files.push(file_state(root, &resolved, path));
     }
     Ok(Some(WorkspaceSnapshot {
@@ -366,15 +384,19 @@ fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, String> {
 }
 
 pub(crate) async fn workspace_changes(root: &Path) -> Result<WorkspaceChanges, String> {
+    workspace_changes_message(root).await.map_err(|error| error.diagnostic)
+}
+
+pub(crate) async fn workspace_changes_message(root: &Path) -> Result<WorkspaceChanges, crate::ui_i18n::HostMessage> {
     let root = root.to_path_buf();
     task::spawn_blocking(move || workspace_changes_sync(&root))
         .await
-        .map_err(|error| format!("workspace changes task failed: {error}"))?
+        .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.taskFailed", serde_json::json!({"error":error.to_string()}), format!("workspace changes task failed: {error}")))?
 }
 
-fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
+fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, crate::ui_i18n::HostMessage> {
     let root =
-        fs::canonicalize(root).map_err(|error| format!("canonicalize workspace: {error}"))?;
+        fs::canonicalize(root).map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.canonicalize", serde_json::json!({"error":error.to_string()}), format!("canonicalize workspace: {error}")))?;
     let probe = Command::new("git")
         .args([
             "-C",
@@ -392,6 +414,7 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
             files: Vec::new(),
             capture_status: "unsupported",
             capture_error: Some("Git 不可用，非 Git 工作区暂不提供全局变更归属".to_owned()),
+            localized_capture_error: Some(crate::ui_i18n::display_descriptor("native.changes.gitUnavailable", serde_json::json!({}))),
         });
     };
     if !probe.status.success() || String::from_utf8_lossy(&probe.stdout).trim() != "true" {
@@ -403,12 +426,13 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
             files: Vec::new(),
             capture_status: "unsupported",
             capture_error: Some("非 Git 工作区暂不提供全局变更归属；本轮变更仍可用".to_owned()),
+            localized_capture_error: Some(crate::ui_i18n::display_descriptor("native.changes.nonGit", serde_json::json!({}))),
         });
     }
     let head = Command::new("git")
         .args(["-C", &root.to_string_lossy(), "rev-parse", "HEAD"])
         .output()
-        .map_err(|error| format!("read Git HEAD: {error}"))?;
+        .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.readHead", serde_json::json!({"error":error.to_string()}), format!("read Git HEAD: {error}")))?;
     let head = head
         .status
         .success()
@@ -438,9 +462,9 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
             "-z",
         ])
         .output()
-        .map_err(|error| format!("read Git status: {error}"))?;
+        .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.readStatus", serde_json::json!({"error":error.to_string()}), format!("read Git status: {error}")))?;
     if !status.status.success() {
-        return Err(format!("git status exited with {}", status.status));
+        return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.changes.statusExited", serde_json::json!({"status":status.status.to_string()}), format!("git status exited with {}", status.status)));
     }
     let mut files = parse_workspace_git_status(&status.stdout);
     if !files.is_empty() {
@@ -461,6 +485,7 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, String> {
         files,
         capture_status: "captured",
         capture_error: None,
+        localized_capture_error: None,
     })
 }
 
@@ -562,16 +587,16 @@ pub(crate) fn parse_workspace_git_status(status: &[u8]) -> Vec<WorkspaceFileChan
     files
 }
 
-fn walk_files(root: &Path, current: &Path, files: &mut Vec<FileState>) -> Result<(), String> {
+fn walk_files(root: &Path, current: &Path, files: &mut Vec<FileState>) -> Result<(), crate::ui_i18n::HostMessage> {
     if files.len() >= MAX_SCANNED_FILES {
         return Ok(());
     }
-    let entries = fs::read_dir(current).map_err(|error| format!("scan workspace: {error}"))?;
+    let entries = fs::read_dir(current).map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.capture.scan",serde_json::json!({"error":error.to_string()}),format!("scan workspace: {error}")))?;
     for entry in entries {
         if files.len() >= MAX_SCANNED_FILES {
             break;
         }
-        let entry = entry.map_err(|error| format!("read workspace entry: {error}"))?;
+        let entry = entry.map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.capture.entry",serde_json::json!({"error":error.to_string()}),format!("read workspace entry: {error}")))?;
         let name = entry.file_name();
         if entry
             .file_type()
@@ -598,8 +623,8 @@ fn walk_files(root: &Path, current: &Path, files: &mut Vec<FileState>) -> Result
                 .map_err(|error| error.to_string())?
                 .to_string_lossy()
                 .replace('\\', "/");
-            let resolved = canonicalize_target(root, &path)
-                .map_err(|error| format!("unsafe workspace path {relative}: {error}"))?;
+            let resolved = crate::workspace_guard::canonicalize_target_message(root, &path)
+                .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.capture.workspacePath",serde_json::json!({"path":relative,"error":error.display()}),format!("unsafe workspace path {relative}: {}",error.diagnostic)))?;
             files.push(file_state(root, &resolved, relative));
         }
     }
@@ -753,6 +778,25 @@ pub(crate) async fn persist(
     result: Option<&WorkspaceSnapshot>,
     capture_error: Option<&str>,
 ) -> Result<String, sqlx::Error> {
+    persist_inner(db,workspace_id,session_id,turn_id,baseline,result,capture_error,None).await
+}
+
+pub(crate) async fn persist_message(
+    db: &SqlitePool, workspace_id: &str, session_id: &str, turn_id: &str,
+    baseline: Option<&WorkspaceSnapshot>, result: Option<&WorkspaceSnapshot>,
+    capture_error: Option<&crate::ui_i18n::HostMessage>,
+) -> Result<String, sqlx::Error> {
+    let display = capture_error.and_then(|error|error.localized.clone());
+    persist_inner(db,workspace_id,session_id,turn_id,baseline,result,capture_error.map(|error|error.diagnostic.as_str()),Some(&display)).await
+}
+
+// None preserves the legacy SQL contract (including historical schema fixtures).
+// Some(None) clears stale display metadata after a successful current capture.
+async fn persist_inner(
+    db: &SqlitePool, workspace_id: &str, session_id: &str, turn_id: &str,
+    baseline: Option<&WorkspaceSnapshot>, result: Option<&WorkspaceSnapshot>,
+    capture_error: Option<&str>, capture_display: Option<&Option<serde_json::Value>>,
+) -> Result<String, sqlx::Error> {
     let id = Ulid::new().to_string();
     let now = crate::now_iso();
     let files = diff(baseline, result);
@@ -810,6 +854,11 @@ pub(crate) async fn persist(
             .bind(turn_id)
             .fetch_one(&mut *tx)
             .await?;
+    if let Some(display) = capture_display {
+        sqlx::query("UPDATE turn_change_sets SET localized_capture_error_json=? WHERE id=?")
+            .bind(display.as_ref().map(|value|value.to_string())).bind(&change_set_id)
+            .execute(&mut *tx).await?;
+    }
     sqlx::query("DELETE FROM file_changes WHERE change_set_id = ?")
         .bind(&change_set_id)
         .execute(&mut *tx)
@@ -1002,6 +1051,112 @@ mod tests {
         assert_eq!(workspace_changes.files[0].unstaged_stats, Some(super::GitLineStats { additions: 1, deletions: 1 }));
         assert_eq!(workspace_changes.files[0].staged_stats, None);
         fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[tokio::test]
+    async fn capture_display_persists_atomically_reopens_and_clears_after_success() {
+        use crate::ui_i18n::{Locale, render};
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("workspace");fs::create_dir(&root).unwrap();
+        let path = directory.path().join("app.db");
+        let db = crate::open_database(&path).await.unwrap();
+        sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'原文',1,'now','now')").bind(root.to_str().unwrap()).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('s','w','third.party','原文','interrupted','now','now')").execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,started_at) VALUES('t','s','native','interrupted','now')").execute(&db).await.unwrap();
+        let missing = root.join("缺失{error}");
+        let error = super::capture_message(&missing).await.unwrap_err();
+        assert_eq!(super::capture(&missing).await.unwrap_err(), error.diagnostic);
+        let expected_display = error.display();let expected_raw = error.diagnostic.clone();
+        let id = super::persist_message(&db,"w","s","t",None,None,Some(&error)).await.unwrap();
+        db.close().await;
+        let db = crate::open_database(&path).await.unwrap();
+        let original = serde_json::to_value(crate::turn_changes::get_turn_change_set("s".into(),Some("t".into()),&db).await.unwrap().unwrap()).unwrap();
+        assert_eq!(original["id"],id);assert_eq!(original["captureError"],expected_raw);assert_eq!(original["localizedCaptureError"],expected_display);assert_eq!(original["captureStatus"],"failed");assert_eq!(original["attribution"],"unknown");
+        assert_eq!(render(Locale::En,&original["localizedCaptureError"]),expected_raw);
+        assert!(!missing.exists());
+        sqlx::query("CREATE TRIGGER reject_capture_display BEFORE UPDATE OF localized_capture_error_json ON turn_change_sets BEGIN SELECT RAISE(ABORT,'display-write-rejected'); END").execute(&db).await.unwrap();
+        let changed = crate::ui_i18n::HostMessage::with_diagnostic("native.capture.scan",serde_json::json!({"error":"原文{error}"}),"different diagnostic");
+        assert!(super::persist_message(&db,"w","s","t",None,None,Some(&changed)).await.unwrap_err().to_string().contains("display-write-rejected"));
+        assert_eq!(serde_json::to_value(crate::turn_changes::get_turn_change_set("s".into(),Some("t".into()),&db).await.unwrap().unwrap()).unwrap(),original);
+        sqlx::query("DROP TRIGGER reject_capture_display").execute(&db).await.unwrap();
+        fs::write(root.join("原文{path}.txt"),"原始正文").unwrap();
+        let snapshot = super::capture_message(&root).await.unwrap();
+        let restored = super::persist_message(&db,"w","s","t",Some(&snapshot),Some(&snapshot),None).await.unwrap();assert_eq!(restored,id);
+        db.close().await;
+        let db = crate::open_database(&path).await.unwrap();
+        let current = serde_json::to_value(crate::turn_changes::get_turn_change_set("s".into(),Some("t".into()),&db).await.unwrap().unwrap()).unwrap();
+        assert_eq!(current["id"],id);assert_eq!(current["captureStatus"],"captured");assert!(current["captureError"].is_null());assert!(current.get("localizedCaptureError").is_none());assert_eq!(current["attribution"],"agent");
+        assert_eq!(fs::read_to_string(root.join("原文{path}.txt")).unwrap(),"原始正文");
+        db.close().await;
+        #[cfg(unix)] {
+            assert!(Command::new("git").arg("init").arg(&root).output().unwrap().status.success());
+            let outside = directory.path().join("外部{path}.txt");fs::write(&outside,"外部原文").unwrap();
+            std::os::unix::fs::symlink(&outside,root.join("link")).unwrap();
+            let error = super::capture_message(&root).await.unwrap_err();
+            assert_eq!(error.diagnostic,"unsafe Git path link: target escapes the workspace");
+            assert_eq!(error.display()["key"],"native.capture.gitPath");
+            assert_eq!(error.display()["params"]["error"]["key"],"native.path.outsideWorkspace");
+            assert_eq!(render(Locale::ZhCn,&error.display()),"Git 路径 link 不安全：目标路径超出工作区范围。");
+            assert_eq!(render(Locale::En,&error.display()),error.diagnostic);
+            assert_eq!(fs::read_to_string(outside).unwrap(),"外部原文");
+        }
+    }
+
+    #[tokio::test]
+    async fn workspace_read_failures_preserve_diagnostics_and_recover_without_changing_files() {
+        use crate::ui_i18n::{Locale, render};
+        let directory = tempfile::tempdir().unwrap();
+        let missing = directory.path().join("缺失{error}");
+        let raw = fs::canonicalize(&missing).unwrap_err().to_string();
+        let owned = super::workspace_changes_message(&missing).await.unwrap_err();
+        assert_eq!(owned.diagnostic, format!("canonicalize workspace: {raw}"));
+        assert_eq!(owned.display()["params"]["error"], raw);
+        assert_eq!(super::workspace_changes(&missing).await.unwrap_err(), owned.diagnostic);
+        let value = serde_json::to_value(crate::ui_i18n::database_message(owned)).unwrap();
+        assert_eq!(value["code"], "database_error");assert_eq!(value["message"], format!("database error: canonicalize workspace: {raw}"));
+        assert_eq!(render(Locale::ZhCn, &value["localized"]), format!("无法解析工作区路径：{raw}"));
+        assert!(!missing.exists());
+        let root = directory.path().join("repo");fs::create_dir(&root).unwrap();
+        assert!(Command::new("git").arg("init").arg(&root).output().unwrap().status.success());
+        fs::write(root.join("原文{path}.txt"), "原始正文").unwrap();
+        let corrupt = b"invalid index original bytes";
+        fs::write(root.join(".git/index"), corrupt).unwrap();
+        let owned = super::workspace_changes_message(&root).await.unwrap_err();
+        assert_eq!(owned.display()["key"], "native.changes.statusExited");
+        assert_eq!(render(Locale::En, &owned.display()), owned.diagnostic);
+        assert_eq!(super::workspace_changes(&root).await.unwrap_err(), owned.diagnostic);
+        let status = owned.display()["params"]["status"].as_str().unwrap().to_owned();
+        let value = serde_json::to_value(crate::ui_i18n::database_message(owned)).unwrap();
+        assert_eq!(value["code"], "database_error");assert_eq!(value["message"], format!("database error: git status exited with {status}"));
+        assert_eq!(render(Locale::ZhCn, &value["localized"]), format!("Git 状态读取退出，状态为 {status}"));
+        assert_eq!(fs::read(root.join(".git/index")).unwrap(), corrupt);
+        assert_eq!(fs::read_to_string(root.join("原文{path}.txt")).unwrap(), "原始正文");
+        fs::remove_file(root.join(".git/index")).unwrap();
+        let restored = super::workspace_changes_message(&root).await.unwrap();
+        assert_eq!(restored.capture_status, "captured");assert_eq!(restored.files.len(), 1);assert_eq!(restored.files[0].path, "原文{path}.txt");assert!(restored.files[0].untracked);
+        assert_eq!(fs::read_to_string(root.join("原文{path}.txt")).unwrap(), "原始正文");
+    }
+
+    #[tokio::test]
+    async fn non_git_changes_preserve_raw_warning_and_recover_after_repository_initialization() {
+        use crate::ui_i18n::{Locale, render};
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::write(root.join("原文{path}.txt"), "原始正文").unwrap();
+        let changes = super::workspace_changes(root).await.unwrap();
+        assert_eq!(changes.capture_status, "unsupported");
+        assert_eq!(changes.capture_error.as_deref(), Some("非 Git 工作区暂不提供全局变更归属；本轮变更仍可用"));
+        assert_eq!(render(Locale::ZhCn, changes.localized_capture_error.as_ref().unwrap()), changes.capture_error.as_deref().unwrap());
+        assert_eq!(render(Locale::En, changes.localized_capture_error.as_ref().unwrap()), "Global change attribution is not currently available for non-Git workspaces; changes from this turn remain available.");
+        assert!(changes.files.is_empty());assert!(!changes.dirty);assert!(changes.head.is_none());assert!(changes.branch.is_none());
+        assert_eq!(fs::read_to_string(root.join("原文{path}.txt")).unwrap(), "原始正文");
+        let result = Command::new("git").arg("init").arg(root).output().unwrap();
+        assert!(result.status.success());
+        let changes = super::workspace_changes(root).await.unwrap();
+        assert_eq!(changes.capture_status, "captured");
+        assert!(changes.capture_error.is_none());assert!(changes.localized_capture_error.is_none());
+        assert!(changes.dirty);assert_eq!(changes.files.len(), 1);assert_eq!(changes.files[0].path, "原文{path}.txt");assert!(changes.files[0].untracked);
+        assert_eq!(fs::read_to_string(root.join("原文{path}.txt")).unwrap(), "原始正文");
     }
 
     #[test]

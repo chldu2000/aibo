@@ -1,3 +1,4 @@
+import { LocalizedError } from './error-utils.ts';
 import type { Session } from '$lib/types';
 
 export type CapabilitySession = Pick<Session, 'id' | 'agent' | 'pluginInstallationId' | 'capabilities'>;
@@ -11,12 +12,12 @@ export function createAgentFacade(ports: {
   return {
     async invoke(session: CapabilitySession, capability: string, input: CapabilityInput = {}): Promise<CapabilityInput> {
       if (!session.capabilities.includes(capability)) {
-        throw new Error(`capability_unsupported: ${capability}`);
+        throw new LocalizedError('native.session.unsupportedCapability', { capability }, `capability_unsupported: ${capability}`);
       }
       if (session.pluginInstallationId) {
         return ports.invokeAgentCapability(session.id, capability, input);
       }
-      throw new Error('provider_unavailable: session has no plugin binding');
+      throw new LocalizedError('native.session.bindingMissing', {}, 'provider_unavailable: session has no plugin binding');
     },
   };
 }

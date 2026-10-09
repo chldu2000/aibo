@@ -1,0 +1,22 @@
+import type en from './locales/en.json';
+
+export type Locale = 'zh-CN' | 'en';
+export type LanguagePreference = 'system' | Locale;
+export type MessageKey = keyof typeof en;
+export type MessageValue = string | number | LocalizedMessage | LocalizedList;
+export type MessageParams = Record<string, MessageValue>;
+export type LocalizedList = Readonly<{ kind: 'list'; items: readonly MessageValue[] }>;
+export type LocalizedMessage = Readonly<{ key: MessageKey; params: Readonly<MessageParams> }>;
+export type LocalizedText = string | LocalizedMessage;
+export type Translator = (key: MessageKey, params?: MessageParams) => string;
+export const catalogs: Readonly<Record<Locale, Record<MessageKey, string | Record<string, string>>>>;
+export const supportedLocales: readonly Locale[];
+export const languageStorageKey: string;
+export function localizedMessage(key: MessageKey, params?: MessageParams): LocalizedMessage;
+export function translateMessage(locale: Locale, message: LocalizedText): string;
+export function localizedList(items: readonly MessageValue[]): LocalizedList;
+export function parseLanguagePreference(value: unknown): LanguagePreference;
+export function resolveLocale(preference: LanguagePreference, languages?: readonly string[]): Locale;
+export function translate(locale: Locale, key: MessageKey, params?: MessageParams): string;
+export function formatDateTime(locale: Locale, value: string | number | Date, options?: Intl.DateTimeFormatOptions): string;
+export function formatNumber(locale: Locale, value: number, options?: Intl.NumberFormatOptions): string;

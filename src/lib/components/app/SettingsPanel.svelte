@@ -1,9 +1,13 @@
 <script lang="ts">
+  import type { LanguagePreference } from '../../../../packages/i18n/index.js';
+  import { t } from '$lib/i18n/runtime';
   import { tick, untrack, type Snippet } from 'svelte';
   import { Button, Icon, ManagementCenter, Separator, themeForColorScheme, themePaletteOptions } from '$lib/ui-kit';
   import type { UiKitOption, UiManagementSection } from '$lib/ui-kit';
 
   type SettingsPanelProps = {
+    languagePreference: LanguagePreference;
+    onSelectLanguage: (value: LanguagePreference) => void;
     layoutSettings?: Snippet;
     appearanceActions?: Snippet;
     appearanceError?: string;
@@ -23,22 +27,36 @@
     onClose: () => void;
   };
 
-  let { layoutSettings, appearanceActions, appearanceError, appearanceBusy = false, workspaceSettings, packageManagement, extensions, runtime, open, activeSection, uiKits, activeUiKitName, activeThemeId, onSelectUiKit, onSelectTheme, onSelectSection, onClose }: SettingsPanelProps = $props();
+  let { languagePreference, onSelectLanguage, layoutSettings, appearanceActions, appearanceError, appearanceBusy = false, workspaceSettings, packageManagement, extensions, runtime, open, activeSection, uiKits, activeUiKitName, activeThemeId, onSelectUiKit, onSelectTheme, onSelectSection, onClose }: SettingsPanelProps = $props();
   let openedKit = $state<string | null>(null);
   let requestedKit = $state<string | null>(null);
   $effect.pre(() => { if (open) { openedKit = untrack(() => activeUiKitName); requestedKit = null; } });
   const activeKit = $derived(uiKits.find((kit) => kit.id === activeUiKitName) ?? uiKits[0]);
   const selectedTheme = $derived(activeKit?.themes.find(theme => theme.id === activeThemeId));
   const palettes = $derived(themePaletteOptions(activeKit?.themes ?? [], activeThemeId));
-  const modes = [{ id: 'light', label: '浅色' }, { id: 'dark', label: '深色' }] as const;
+  const modes = $derived([{ id: 'light', label: $t('appearance.light') }, { id: 'dark', label: $t('appearance.dark') }] as const);
 </script>
 
 {#snippet appearanceContent()}
   <div class="settings-tab-panel">
+    <section class="settings-section" aria-labelledby="language-title">
+      <div class="settings-section-heading"><div><h2 id="language-title">{$t('language.title')}</h2><p>{$t('language.description')}</p></div></div>
+      <div class="appearance-mode-control" role="radiogroup" aria-label={$t('language.title')}>
+        {#each ['system', 'zh-CN', 'en'] as value}
+          <label class="appearance-mode-option" class:active={languagePreference === value}>
+            <input type="radio" name="interface-language" {value} checked={languagePreference === value}
+              onchange={() => onSelectLanguage(value as LanguagePreference)} />
+            <span class="appearance-choice-mark" aria-hidden="true">{#if languagePreference === value}<Icon name="check" size={16} />{/if}</span>
+            <span>{value === 'system' ? $t('language.system') : value === 'zh-CN' ? $t('language.zh-CN') : $t('language.en')}</span>
+          </label>
+        {/each}
+      </div>
+    </section>
+    <Separator />
     <section class="settings-section" aria-labelledby="theme-color-title">
       {#if palettes.length}
-      <div class="settings-section-heading"><div><h2 id="theme-color-title">明暗模式</h2><p>改变界面亮度，保留当前配色。</p></div></div>
-      <div class="appearance-mode-control" role="radiogroup" aria-label="明暗模式">
+      <div class="settings-section-heading"><div><h2 id="theme-color-title">{$t('appearance.mode')}</h2><p>{$t('appearance.mode.description')}</p></div></div>
+      <div class="appearance-mode-control" role="radiogroup" aria-label={$t('appearance.mode')}>
         {#each modes as mode (mode.id)}
           {@const theme = themeForColorScheme(activeKit.themes, activeThemeId, mode.id)}
           <label class="appearance-mode-option" class:active={selectedTheme?.colorScheme === mode.id} class:unavailable={!theme}>
@@ -49,7 +67,7 @@
           </label>
         {/each}
       </div>
-      <div class="settings-section-heading appearance-palette-heading"><div><h2 id="palette-title">配色方案</h2><p>同时调整主色、选中状态与表面色调。选择会自动保存。</p></div></div>
+      <div class="settings-section-heading appearance-palette-heading"><div><h2 id="palette-title">{$t('appearance.palette')}</h2><p>{$t('appearance.palette.description')}</p></div></div>
       <div class="appearance-palette-grid" role="radiogroup" aria-labelledby="palette-title">
         {#each palettes as palette (palette.id)}
           <label class="appearance-palette-option" class:active={selectedTheme?.palette?.id === palette.id} class:unavailable={!palette.themeId}>
@@ -57,13 +75,13 @@
               checked={selectedTheme?.palette?.id === palette.id} onchange={() => { if (palette.themeId) onSelectTheme(palette.themeId); }} />
             <span class="appearance-palette-preview" aria-hidden="true">{#each palette.swatches as swatch}<i style:background={swatch}></i>{/each}</span>
             <span class="appearance-palette-name"><strong>{palette.label}</strong><span class="appearance-choice-mark" aria-hidden="true">{#if selectedTheme?.palette?.id === palette.id}<Icon name="check" size={16} />{/if}</span></span>
-            <small>{palette.themeId ? palette.description : '当前明暗模式不可用'}</small>
+            <small>{palette.themeId ? palette.description : $t('appearance.modeUnavailable')}</small>
           </label>
         {/each}
       </div>
       {:else}
-      <div class="settings-section-heading"><div><h2 id="theme-color-title">主题</h2><p>立即生效，下次启动时保留。颜色方案由当前皮肤提供。</p></div></div>
-      <div class="appearance-theme-grid" role="radiogroup" aria-label="主题">
+      <div class="settings-section-heading"><div><h2 id="theme-color-title">{$t('appearance.theme')}</h2><p>{$t('appearance.theme.description')}</p></div></div>
+      <div class="appearance-theme-grid" role="radiogroup" aria-label={$t('appearance.theme')}>
         {#each activeKit?.themes ?? [] as theme (theme.id)}
           <label class:active={theme.id === activeThemeId} class="appearance-theme-option" >
             <input type="radio" name="appearance-theme" value={theme.id} disabled={appearanceBusy} checked={theme.id === activeThemeId} onchange={() => onSelectTheme(theme.id)} />
@@ -73,12 +91,12 @@
           </label>
         {/each}
       </div>
-      {#if !activeKit?.themes.length}<p>此皮肤未提供可切换主题。</p>{/if}
+      {#if !activeKit?.themes.length}<p>{$t('appearance.noThemes')}</p>{/if}
       {/if}
     </section>
     <Separator />
     <section class="settings-section" aria-labelledby="ui-kit-title">
-      <div class="settings-section-heading"><div><h2 id="ui-kit-title">界面皮肤</h2><p>切换会立即应用，并在下次启动时恢复。</p></div></div>
+      <div class="settings-section-heading"><div><h2 id="ui-kit-title">{$t('appearance.skin')}</h2><p>{$t('appearance.skin.description')}</p></div></div>
       {#if uiKits.length === 1}
         <div class="appearance-kit-info"><strong>{uiKits[0].label}</strong><span>{uiKits[0].description}</span></div>
       {:else}
@@ -97,7 +115,7 @@
       onSelectSection('extensions');
       await tick();
       document.getElementById('presentation-packages')?.focus();
-    }}>管理皮肤插件…</Button></div>
+    }}>{$t('appearance.manageSkins')}</Button></div>
     {#if appearanceError}<p role="alert">{appearanceError}</p>{/if}
   </div>
 {/snippet}
@@ -108,5 +126,5 @@
 {#snippet runtimeContent()}<div class="settings-tab-panel">{@render runtime?.()}</div>{/snippet}
 
 {#if open}
-  <ManagementCenter title="工作台设置" restoreTriggerFocus={openedKit === activeUiKitName && (requestedKit === null || requestedKit === openedKit)} {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} layout={layoutContent} workspace={workspaceContent} extensions={extensionContent} runtime={runtimeContent} />
+  <ManagementCenter title={$t('settings.title')} restoreTriggerFocus={openedKit === activeUiKitName && (requestedKit === null || requestedKit === openedKit)} {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} layout={layoutContent} workspace={workspaceContent} extensions={extensionContent} runtime={runtimeContent} />
 {/if}

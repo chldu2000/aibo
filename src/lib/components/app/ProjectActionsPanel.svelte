@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { Select, Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea } from '$lib/ui-kit';
   import type { ProjectAction, ProjectActionRun, Workspace } from '$lib/types';
 
@@ -36,17 +37,17 @@
 {#if workspace}
   <Card class="project-actions-card">
     <CardHeader class="thread-card-heading">
-      <CardTitle>工程动作</CardTitle>
+      <CardTitle>{$t('project.title')}</CardTitle>
       <div class="project-action-heading-actions">
-        {#if !desktop}<Badge variant="secondary">桌面模式可用</Badge>{:else if workspace.trust !== 'trusted'}<Badge variant="warning">需信任工作区</Badge>{/if}
-        <Button variant="ghost" size="sm" type="button" onclick={() => onEditProjectAction(null)} disabled={busy || !desktop || editor.saving}>添加</Button>
+        {#if !desktop}<Badge variant="secondary">{$t('project.desktop')}</Badge>{:else if workspace.trust !== 'trusted'}<Badge variant="warning">{$t('project.trustRequired')}</Badge>{/if}
+        <Button variant="ghost" size="sm" type="button" onclick={() => onEditProjectAction(null)} disabled={busy || !desktop || editor.saving}>{$t('common.add')}</Button>
       </div>
     </CardHeader>
     <CardContent class="thread-card-content">
       {#if projectActions.length === 0 && !editor.open}
-        <p class="thread-empty">注册 Test、Lint 或 Build 后，可在工作区内受控运行。</p>
+        <p class="thread-empty">{$t('project.empty')}</p>
       {:else}
-        <div class="thread-list" aria-label="工程动作列表">
+        <div class="thread-list" aria-label={$t('project.list')}>
           {#each projectActions as action (action.id)}
             <div class="thread-item changeset-file project-action-item">
               <div class="thread-copy">
@@ -54,9 +55,9 @@
                 <small>{action.program} {action.args.join(' ')} · cwd {action.cwd}</small>
               </div>
               <div class="project-action-buttons">
-                <Button variant="ghost" size="sm" type="button" onclick={() => void onRunProjectAction(action.id)} disabled={busy || !desktop || runningActionId !== null || editor.saving || !action.enabled || workspace.trust !== 'trusted'}>{runningActionId === action.id ? '运行中…' : '运行'}</Button>
-                <Button variant="ghost" size="sm" type="button" onclick={() => onEditProjectAction(action.id)} disabled={busy || !desktop || runningActionId !== null || editor.saving}>编辑</Button>
-                <Button variant="ghost" size="sm" type="button" onclick={() => void onDeleteProjectAction(action.id)} disabled={busy || !desktop || runningActionId !== null || editor.saving}>删除</Button>
+                <Button variant="ghost" size="sm" type="button" onclick={() => void onRunProjectAction(action.id)} disabled={busy || !desktop || runningActionId !== null || editor.saving || !action.enabled || workspace.trust !== 'trusted'}>{runningActionId === action.id ? $t('project.running') : $t('project.run')}</Button>
+                <Button variant="ghost" size="sm" type="button" onclick={() => onEditProjectAction(action.id)} disabled={busy || !desktop || runningActionId !== null || editor.saving}>{$t('common.edit')}</Button>
+                <Button variant="ghost" size="sm" type="button" onclick={() => void onDeleteProjectAction(action.id)} disabled={busy || !desktop || runningActionId !== null || editor.saving}>{$t('common.delete')}</Button>
               </div>
             </div>
           {/each}
@@ -64,31 +65,31 @@
       {/if}
       {#if editor.open}
         <form class="project-action-editor" onsubmit={(event) => { event.preventDefault(); void onSaveProjectEditor(); }}>
-          <Input disabled={editor.saving} bind:value={() => editor.name, (value) => onProjectField('name', value)} placeholder="动作名称，如 Test" aria-label="动作名称" maxlength="80" />
+          <Input disabled={editor.saving} bind:value={() => editor.name, (value) => onProjectField('name', value)} placeholder={$t('project.namePlaceholder')} aria-label={$t('project.name')} maxlength="80" />
           <div class="project-action-editor-row">
-            <Select disabled={editor.saving} value={editor.kind} onSelect={value => onProjectField('kind', value)} aria-label="动作类型"
-              options={[{value:'test',label:'Test'},{value:'lint',label:'Lint'},{value:'build',label:'Build'},{value:'custom',label:'Custom'}]} />
-            <Input disabled={editor.saving} bind:value={() => editor.program, (value) => onProjectField('program', value)} placeholder="程序，如 pnpm" aria-label="动作程序" maxlength="255" />
+            <Select disabled={editor.saving} value={editor.kind} onSelect={value => onProjectField('kind', value)} aria-label={$t('project.kind')}
+              options={[{value:'test',label:$t('external.test')},{value:'lint',label:$t('external.lint')},{value:'build',label:$t('external.build')},{value:'custom',label:$t('external.custom')}]} />
+            <Input disabled={editor.saving} bind:value={() => editor.program, (value) => onProjectField('program', value)} placeholder={$t('project.programPlaceholder')} aria-label={$t('project.program')} maxlength="255" />
           </div>
-          <Textarea disabled={editor.saving} bind:value={() => editor.args, (value) => onProjectField('args', value)} rows="3" placeholder="参数：每行一个 argv，如 run\ntest；也可填写 JSON 数组" aria-label="动作参数"></Textarea>
-          <Input disabled={editor.saving} bind:value={() => editor.cwd, (value) => onProjectField('cwd', value)} placeholder="工作目录，相对工作区" aria-label="动作工作目录" />
+          <Textarea disabled={editor.saving} bind:value={() => editor.args, (value) => onProjectField('args', value)} rows="3" placeholder={$t('project.argsPlaceholder')} aria-label={$t('project.args')}></Textarea>
+          <Input disabled={editor.saving} bind:value={() => editor.cwd, (value) => onProjectField('cwd', value)} placeholder={$t('project.cwdPlaceholder')} aria-label={$t('project.cwd')} />
           {#if editor.error}<p class="profile-warning">{editor.error}</p>{/if}
           <div class="project-action-editor-actions">
-            <Button variant="ghost" size="sm" type="button" onclick={onCloseProjectEditor} disabled={editor.saving}>取消</Button>
-            <Button size="sm" type="submit" disabled={editor.saving || !editor.name.trim() || !editor.program.trim()}>{editor.saving ? '保存中…' : '保存动作'}</Button>
+            <Button variant="ghost" size="sm" type="button" onclick={onCloseProjectEditor} disabled={editor.saving}>{$t('common.cancel')}</Button>
+            <Button size="sm" type="submit" disabled={editor.saving || !editor.name.trim() || !editor.program.trim()}>{editor.saving ? $t('project.saving') : $t('project.save')}</Button>
           </div>
         </form>
       {/if}
       {#if projectActionRuns.length > 0}
-        <div class="project-action-run-list" aria-label="最近工程动作运行结果">
+        <div class="project-action-run-list" aria-label={$t('project.recent')}>
           {#each projectActionRuns.slice(0, 5) as run (run.id)}
             <div class="project-action-run" role="status">
-              <small>{run.actionName ?? projectActions.find((action) => action.id === run.actionId)?.name ?? '工程动作'} · {run.status === 'awaiting_approval' ? '等待宿主批准' : run.status === 'rejected' ? '未执行' : run.status === 'running' ? '执行中' : run.status === 'outcome_unknown' ? '结果未知，请核对实际更改后再操作' : run.status === 'completed' ? '成功' : run.status === 'timed_out' ? '超时' : '失败'}{run.exitCode === null ? '' : ` · 退出码 ${run.exitCode}`}</small>
+              <small>{run.actionName ?? projectActions.find((action) => action.id === run.actionId)?.name ?? $t('project.title')} · {run.status === 'awaiting_approval' ? $t('project.awaitingApproval') : run.status === 'rejected' ? $t('project.rejected') : run.status === 'running' ? $t('project.inProgress') : run.status === 'outcome_unknown' ? $t('project.unknownOutcome') : run.status === 'completed' ? $t('project.success') : run.status === 'timed_out' ? $t('project.timeout') : $t('project.failed')}{run.exitCode === null ? '' : $t('project.exitCode', { code: run.exitCode })}</small>
               {#if run.status === 'running' || run.status === 'awaiting_approval'}
-                <Button variant="ghost" size="sm" type="button" onclick={() => void onCancelProjectAction(run.id)} disabled={!desktop} aria-label={`停止 ${run.actionName ?? '工程动作'}`}>停止</Button>
+                <Button variant="ghost" size="sm" type="button" onclick={() => void onCancelProjectAction(run.id)} disabled={!desktop} aria-label={$t('history.stopLabel', { title: run.actionName ?? $t('project.title') })}>{$t('history.stop')}</Button>
               {/if}
-              <pre>{run.output || '没有输出'}</pre>
-              {#if run.artifactId}<small class="project-action-artifact">输出已保存为任务工件</small>{/if}
+              <pre>{run.output || $t('project.noOutput')}</pre>
+              {#if run.artifactId}<small class="project-action-artifact">{$t('project.artifactSaved')}</small>{/if}
             </div>
           {/each}
         </div>

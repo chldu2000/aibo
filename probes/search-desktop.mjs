@@ -9,6 +9,8 @@ const workspacePath=path.join(root,'workspace');await mkdir(workspacePath);
 execFileSync('git',['init','-q',workspacePath]);await writeFile(path.join(workspacePath,'one.txt'),'AIBO_NATIVE_SEARCH_OK\n原生全局搜索正文\n');
 await writeFile(path.join(workspacePath,'.gitignore'),'ignored.txt\n');
 await writeFile(path.join(workspacePath,'ignored.txt'),'AIBO_IGNORED_SEARCH_TEXT\n');
+await writeFile(path.join(workspacePath,'binary.dat'),Buffer.from([97,0,98]));
+await writeFile(path.join(workspacePath,'invalid.dat'),Buffer.from([255]));
 let finish;
 const report=new Promise(resolve=>finish=resolve);
 const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false},plugins:[{name:'isolated-native-probe',configureServer(server){

@@ -162,3 +162,7 @@
 否则管理面板打开期间的周期性查询会只因更新时间变化而使插件安装预览 token 失效。
 真实 recovery、包内容、引用、归档或草稿变化继续要求重新预览，安装确认校验不能跳过。
 回归见 `session_host_tests.rs` 的 `plugin_replacement_confirmation_*`。
+
+宿主 `adapter.crashed` 的 payload 可附带 `localizedReason`，作为可选的内部显示描述。
+SessionHost 保留诊断 `reason`，事件投影在写入和发送前移除插件提交的同名显示字段；
+它不属于提供者事件授权，也不参与回合状态或投递判断。无描述的旧记录继续使用原始诊断。

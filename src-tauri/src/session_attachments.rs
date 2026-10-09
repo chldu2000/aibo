@@ -32,6 +32,8 @@ pub struct ContextAttachmentValidation {
     pub(crate) path: String,
     pub(crate) status: String,
     pub(crate) reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_reason: Option<serde_json::Value>,
     pub(crate) current_hash: Option<String>,
     pub(crate) size: Option<i64>,
 }
@@ -71,8 +73,8 @@ pub(crate) async fn register_session_attachments(
     let now = now_iso();
     let mut attachments = Vec::new();
     for raw_path in paths {
-        let target = crate::workspace_guard::canonicalize_target(&root, Path::new(&raw_path))
-            .map_err(CoreError::InvalidWorkspacePath)?;
+        let target = crate::workspace_guard::canonicalize_target_message(&root, Path::new(&raw_path))
+            .map_err(crate::ui_i18n::invalid_path_message)?;
         let metadata = fs::metadata(&target).map_err(|error| {
             CoreError::InvalidWorkspacePath(format!("attachment is unavailable: {error}"))
         })?;
@@ -218,11 +220,11 @@ fn validate_file(
     let path: String = row.try_get("path")?;
     let expected_hash: Option<String> = row.try_get("content_hash")?;
     let expected_size: Option<i64> = row.try_get("size")?;
-    let result = crate::workspace_guard::canonicalize_target(&root, Path::new(&path));
-    let (status, reason, current_hash, size) = match result {
-        Err(error) => ("missing", Some(error), None, None),
+    let result = crate::workspace_guard::canonicalize_target_message(&root, Path::new(&path));
+    let (status, reason, localized_reason, current_hash, size) = match result {
+        Err(error) => ("missing", Some(error.diagnostic), error.localized, None, None),
         Ok(target) => match fs::metadata(&target) {
-            Err(error) => ("missing", Some(error.to_string()), None, None),
+            Err(error) => ("missing", Some(error.to_string()), None, None, None),
             Ok(metadata) => {
                 let size = (!metadata.is_dir()).then_some(metadata.len() as i64);
                 if let Some(expected_size) = expected_size {
@@ -232,6 +234,7 @@ fn validate_file(
                             path,
                             status: "changed".to_owned(),
                             reason: Some("文件大小已变化".to_owned()),
+                            localized_reason: Some(crate::ui_i18n::display_descriptor("native.attachment.sizeChanged",serde_json::json!({}))),
                             current_hash: None,
                             size,
                         });
@@ -250,11 +253,12 @@ fn validate_file(
                     (
                         "changed",
                         Some("文件内容已变化".to_owned()),
+                        Some(crate::ui_i18n::display_descriptor("native.attachment.contentChanged",serde_json::json!({}))),
                         current_hash,
                         size,
                     )
                 } else {
-                    ("ready", None, current_hash, size)
+                    ("ready", None, None, current_hash, size)
                 }
             }
         },
@@ -264,6 +268,7 @@ fn validate_file(
         path,
         status: status.to_owned(),
         reason,
+        localized_reason,
         current_hash,
         size,
     })
@@ -294,11 +299,11 @@ pub(crate) async fn inputs<'a, E: sqlx::Executor<'a, Database = sqlx::Sqlite>>(
     session_id: &str,
     queue_id: Option<&str>,
     capabilities: &[String],
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<Vec<serde_json::Value>, crate::ui_i18n::HostMessage> {
     let rows = sqlx::query("SELECT id,media_type,inline_context,content_hash FROM attachments WHERE session_id=? AND turn_id IS NULL AND queued_message_id IS ? ORDER BY created_at")
         .bind(session_id).bind(queue_id).fetch_all(executor).await.map_err(|e| e.to_string())?;
     rows.iter()
-        .map(|row| clipboard_images::turn_attachment(row, capabilities))
+        .map(|row| clipboard_images::turn_attachment_display(row, capabilities))
         .collect()
 }
 
@@ -319,7 +324,7 @@ pub(crate) async fn prepare_turn(
     queue_id: Option<&str>,
     turn_id: &str,
     capabilities: &[String],
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<Vec<serde_json::Value>, crate::ui_i18n::HostMessage> {
     let attachments = inputs(&mut *tx, session_id, queue_id, capabilities).await?;
     bind_to_turn(tx, session_id, queue_id, turn_id)
         .await
@@ -331,7 +336,7 @@ pub(crate) async fn validate_queued(
     db: &SqlitePool,
     session_id: &str,
     queue_id: &str,
-) -> Result<(), String> {
+) -> Result<(), crate::ui_i18n::HostMessage> {
     let session = session_by_id(db, session_id)
         .await
         .map_err(|e| e.to_string())?;
@@ -343,7 +348,7 @@ pub(crate) async fn validate_queued(
         .bind(session_id).bind(queue_id).fetch_all(db).await.map_err(|e| e.to_string())?;
     for row in rows {
         if row.get::<String, _>("media_type").starts_with("image/") {
-            clipboard_images::turn_attachment(&row, &session.capabilities)?;
+            clipboard_images::turn_attachment_display(&row, &session.capabilities)?;
             continue;
         }
         if row.get::<Option<String>, _>("inline_context").is_some() {
@@ -351,10 +356,11 @@ pub(crate) async fn validate_queued(
         }
         let result = validate_file(&root, &row).map_err(|e| e.to_string())?;
         if result.status != "ready" {
-            return Err(format!(
-                "附件不可用：{}: {}",
-                result.path,
-                result.reason.unwrap_or(result.status)
+            let reason=result.reason.unwrap_or(result.status);
+            return Err(crate::ui_i18n::HostMessage::with_diagnostic(
+                "native.attachment.unavailable",
+                serde_json::json!({"path":result.path,"reason":result.localized_reason.unwrap_or_else(||serde_json::json!(reason))}),
+                format!("附件不可用：{}: {}",result.path,reason),
             ));
         }
     }
@@ -410,10 +416,22 @@ mod tests {
         // The same content mutation is rejected for queued and draft files.
         fs::write(workspace.join("first.txt"), "FIRST").unwrap();
         fs::write(workspace.join("next.txt"), "NEXT").unwrap();
-        assert!(validate_queued(&db, "s", "q")
-            .await
-            .unwrap_err()
-            .contains("内容已变化"));
+        let error=validate_queued(&db,"s","q").await.unwrap_err();
+        assert_eq!(error.diagnostic,"附件不可用：first.txt: 文件内容已变化");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&error.display()),"Attachment unavailable: first.txt: The file content changed.");
+        let validation=validate_session_attachments("s".into(),&db).await.unwrap().remove(0);
+        assert_eq!(validation.reason.as_deref(),Some("文件内容已变化"));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,validation.localized_reason.as_ref().unwrap()),"The file content changed.");
+        fs::write(workspace.join("first.txt"),"longer first").unwrap();
+        let error=validate_queued(&db,"s","q").await.unwrap_err();
+        assert_eq!(error.diagnostic,"附件不可用：first.txt: 文件大小已变化");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&error.display()),"Attachment unavailable: first.txt: The file size changed.");
+        fs::remove_file(workspace.join("first.txt")).unwrap();
+        let error=validate_queued(&db,"s","q").await.unwrap_err();
+        let reason=error.display()["params"]["reason"].as_str().unwrap().to_owned();
+        assert_eq!(error.diagnostic,format!("附件不可用：first.txt: {reason}"));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&error.display()),format!("Attachment unavailable: first.txt: {reason}"));
+        assert_eq!(fs::read(workspace.join("next.txt")).unwrap(),b"NEXT");
         assert_eq!(
             validate_session_attachments("s".into(), &db).await.unwrap()[0].status,
             "changed"

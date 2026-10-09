@@ -1,6 +1,6 @@
 {
   "name": "@aibolabs/presentation-shadcn",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -17,6 +17,6 @@
   },
   "dependencies": {
     "@aibolabs/presentation-tools": "0.1.0",
-    "@aibolabs/presentation-workbench": "0.2.3"
+    "@aibolabs/presentation-workbench": "0.2.4"
   }
 }

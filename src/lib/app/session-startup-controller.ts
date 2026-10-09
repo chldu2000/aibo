@@ -1,3 +1,6 @@
+import { toErrorText } from './error-utils.ts';
+import { localizedMessage } from '../../../packages/i18n/index.js';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 import type { SetNotice } from './notifications';
 import type { Session } from '$lib/types';
 
@@ -10,7 +13,7 @@ type Ports = {
   putSession: (session: Session) => void;
   selectSession: (id: string) => void;
   setCreating: (creating: boolean) => void;
-  setError: (message: string | null) => void;
+  setError: (message: LocalizedText | null) => void;
   setNotice: SetNotice;
   refreshProfile: (id: string) => void | Promise<void>;
 };
@@ -28,10 +31,10 @@ export function createSessionStartupController(ports: Ports) {
         ports.putSession(session);
         if (ports.getWorkspaceId() === workspaceId && ports.getSessionId() === previousSelection) {
           ports.selectSession(session.id);
-          ports.setNotice('会话正在初始化，可以先编写消息。', 'info');
+          ports.setNotice(localizedMessage('startup.initializing'), 'info');
         }
       } catch (error) {
-        if (ports.getWorkspaceId() === workspaceId) ports.setError(String(error));
+        if (ports.getWorkspaceId() === workspaceId) ports.setError(toErrorText(error));
         return;
       } finally { ports.setCreating(false); }
       try {
@@ -41,13 +44,13 @@ export function createSessionStartupController(ports: Ports) {
         if (current.state === 'starting') ports.putSession({...ready, label: current.label});
         if (ports.getSessionId() === session.id) {
           void ports.refreshProfile(session.id);
-          ports.setNotice('会话已就绪，可以发送消息。', 'success');
+          ports.setNotice(localizedMessage('startup.ready'), 'success');
         }
       } catch (error) {
         const current = ports.findSession(session.id);
         if (!current || current.archived || current.state === 'closed') return;
         if (current.state === 'starting') ports.putSession({...current, state:'failed'});
-        if (ports.getSessionId() === session.id) ports.setError(`会话初始化失败：${String(error)}`);
+        if (ports.getSessionId() === session.id) ports.setError(localizedMessage('startup.failed', {error: toErrorText(error)}));
       }
     },
   };

@@ -36,6 +36,8 @@ export type PresentationContext = {
   revision: number;
 };
 export type PresentationInput = {
+  /** Display language only; absent in legacy hosts (Chinese). Does not grant authority. */
+  locale?: 'zh-CN' | 'en';
   surface: 'controls' | 'semantic' | 'workbench';
   context: PresentationContext;
   data: JsonValue;

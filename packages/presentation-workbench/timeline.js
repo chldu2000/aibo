@@ -1,4 +1,5 @@
-import {parseBackgroundTask,backgroundTaskLabels} from './background-tasks.js';
+import {presentationTranslator} from './i18n.js';
+import {parseBackgroundTask} from './background-tasks.js';
 import {splitMessageAttachments} from './message-attachments.js';
 import {renderMessageAttachment} from './metadata.js';
 import {splitSessionReferences} from './session-references.js';
@@ -6,38 +7,40 @@ import {node,button,text,actionFor} from './tree.js';
 import {renderRichText} from './rich-text.js';
 import {groupTimelineItems} from './timeline-model.js';
 
-export function renderTimeline(entries,actions,groupSystemItems=false,attachments=[]){
+export function renderTimeline(entries,actions,groupSystemItems=false,attachments=[],locale='zh-CN'){
+ const t=presentationTranslator(locale);
  return groupTimelineItems(entries,groupSystemItems).map(group=>{
-  if(group.kind==='entry')return renderTimelineEntry(group.item,actions,attachments);
+  if(group.kind==='entry')return renderTimelineEntry(group.item,actions,attachments,locale);
   const key='message-group:'+group.id;
   const tool=group.kind==='tool-group';
   const completed=group.items.filter(item=>item.status==='completed').length;
   return node('details',key,null,[
-   node('summary',key+':summary',tool?`工具调用 · ${group.items.length} 项 · ${completed}/${group.items.length} 完成`:`系统消息 · ${group.items.length} 项`),
+   node('summary',key+':summary',tool?t('external.toolGroup',{count:group.items.length,completed}):t('external.systemGroup',{count:group.items.length})),
    ...group.items.map(entry=>{
-    if(tool)return renderTimelineEntry(entry,actions,attachments);
+    if(tool)return renderTimelineEntry(entry,actions,attachments,locale);
     return node('details','message:'+entry.id+':disclosure',null,[
-     node('summary','message:'+entry.id+':summary',(entry.content.split('\n')[0]||'系统消息')+' · 查看详情'),
-     renderTimelineEntry(entry,actions,attachments),
+     node('summary','message:'+entry.id+':summary',t('external.viewDetails',{title:entry.content.split('\n')[0]||t('timeline.systemMessage')})),
+     renderTimelineEntry(entry,actions,attachments,locale),
     ]);
    }),
   ]);
  });
 }
 
-const timelineStatusLabels={streaming:'生成中',completed:'完成',failed:'失败',queued:'排队中',interrupted:'已中断'};
-const timelineToolLabels={commandExecution:'命令执行',fileRead:'读取文件',fileChange:'修改文件',mcpToolCall:'MCP 工具',webSearch:'网页搜索'};
 
 /** Tool payloads are literal text; only conversational prose uses Markdown. */
-export function renderTimelineEntry(entry,actions,attachments=[]){
+export function renderTimelineEntry(entry,actions,attachments=[],locale='zh-CN'){
+ const t=presentationTranslator(locale);
+ const timelineStatusLabels={streaming:t('timeline.streaming'),completed:t('timeline.completed'),failed:t('timeline.failed'),queued:t('timeline.queued'),interrupted:t('timeline.interrupted')};
+ const timelineToolLabels={commandExecution:t('external.toolCommand'),fileRead:t('external.toolRead'),fileChange:t('external.toolChange'),mcpToolCall:t('external.toolMcp'),webSearch:t('external.toolWeb')};
  const key='message:'+entry.id;
- const background = parseBackgroundTask(entry);
- if(background)return node('article',key,null,[node('strong',key+':name','后台任务 · '+background.name),text(key+':status',backgroundTaskLabels[background.status]),node('pre',key+':command',background.command),node('pre',key+':activity',background.activity),text(key+':id','任务 ID：'+background.id),background.exitCode!=null?text(key+':exit','退出码：'+background.exitCode):null,background.outputPath?node('pre',key+':output',background.outputPath):null]);
+ const background = parseBackgroundTask(entry,locale);
+ if(background)return node('article',key,null,[node('strong',key+':name',t('external.backgroundName',{name:background.name})),text(key+':status',t('background.status.'+background.status)),node('pre',key+':command',background.command),node('pre',key+':activity',background.activity),text(key+':id',t('external.taskId',{id:background.id})),background.exitCode!=null?text(key+':exit',t('external.exitCode',{code:background.exitCode})):null,background.outputPath?node('pre',key+':output',background.outputPath):null]);
  if(entry.toolName==='subagent') {
   try {
    const child=JSON.parse(entry.content);
-   const labels={pending:'正在启动',running:'运行中',waiting:'等待输入',completed:'已完成',failed:'失败',interrupted:'已中断',closed:'已关闭',unavailable:'过程暂不可用'};
-   return node('article',key,null,[node('strong',key+':name',child.name),text(key+':status',labels[child.status]??child.status),text(key+':task',child.task),text(key+':activity',child.activity),button(key+':open','查看工作过程',actionFor(actions,'openSubagent',child.id))]);
+   const labels={pending:t('subagent.status.pending'),running:t('subagent.status.running'),waiting:t('subagent.status.waiting'),completed:t('markdown.completed'),failed:t('timeline.failed'),interrupted:t('timeline.interrupted'),closed:t('subagent.status.closed'),unavailable:t('subagent.status.unavailable')};
+   return node('article',key,null,[node('strong',key+':name',child.name),text(key+':status',labels[child.status]??child.status),text(key+':task',child.task),text(key+':activity',child.activity),button(key+':open',t('subagent.viewProcess'),actionFor(actions,'openSubagent',child.id))]);
   } catch { /* Retain a readable fallback for older malformed history. */ }
  }
 
@@ -51,24 +54,24 @@ export function renderTimelineEntry(entry,actions,attachments=[]){
  if(entry.role==='tool'){
   const diff=/(^diff --git |^@@ |^\+\+\+ |^--- )/m.test(entry.content);
   const name=entry.toolName?.trim();
-  const label=timelineToolLabels[name]??name??'工具操作';
-  const hint=entry.entryType==='tool_call'?'查看调用参数':diff?'查看 diff':'查看工具输出';
+  const label=timelineToolLabels[name]??name??t('external.toolOperation');
+  const hint=entry.entryType==='tool_call'?t('timeline.parameters'):diff?t('timeline.viewDiff'):t('subagent.viewTool');
   content=node('details',key+':disclosure',null,[node('summary',key+':summary',`${label} · ${hint}`),
    {...node('pre','message:content:'+entry.id,entry.content||'…'),className:diff?'tool-output diff-content':'tool-output'},
   ]);
  }else{
   const attached=entry.role==='user'?splitMessageAttachments(entry.content,attachments):{body:entry.content,attachments:[]};
   const message=entry.role==='user'?splitSessionReferences(attached.body):{body:entry.content,references:[]};
-  content=node('div',key+':body',null,[message.body?renderRichText(message.body,'message:content:'+entry.id,entry.id,actions):message.references.length||attached.attachments.length?null:text(key+':empty','…'),
+  content=node('div',key+':body',null,[message.body?renderRichText(message.body,'message:content:'+entry.id,entry.id,actions,locale):message.references.length||attached.attachments.length?null:text(key+':empty','…'),
    ...attached.attachments.map(item=>renderMessageAttachment(item,key+':attachment:'+item.id)),
    ...message.references.map((reference,index)=>{const refKey=key+':reference:'+index;return node('details',refKey,null,[
-    node('summary',refKey+':title','引用会话 · '+reference.title),
-    text(refKey+':note',reference.agent+' · '+reference.note+(reference.omitted===null?'':' · 已省略 '+reference.omitted+' 条消息')),
-    ...reference.excerpts.flatMap((excerpt,i)=>[text(refKey+':role:'+i,(excerpt.role==='user'?'用户':'助手')+(excerpt.truncated?' · 已截取':'')),node('pre',refKey+':text:'+i,excerpt.text)]),
+    node('summary',refKey+':title',t('external.referenceTitle',{title:reference.title})),
+    text(refKey+':note',reference.omitted===null?reference.agent+' · '+reference.note:t('external.referenceOmitted',{agent:reference.agent,note:reference.note,count:reference.omitted})),
+    ...reference.excerpts.flatMap((excerpt,i)=>[text(refKey+':role:'+i,(excerpt.role==='user'?t('role.user'):t('role.assistant'))+(excerpt.truncated?t('timeline.excerptTruncated'):'')),node('pre',refKey+':text:'+i,excerpt.text)]),
    ]);}),
   ]);
-  if(reasoning)content=node('details',key+':disclosure',null,[node('summary',key+':summary','思考 · 查看详情'),content]);
+  if(reasoning)content=node('details',key+':disclosure',null,[node('summary',key+':summary',t('timeline.reasoningDetails')),content]);
  }
  const fork=entry.role==='assistant'&&entry.turnId&&actionFor(actions,'fork',entry.turnId);
- return node('article',key,null,[header,content,fork?button('message:fork:'+entry.id,'从此处分叉',fork):null]);
+ return node('article',key,null,[header,content,fork?button('message:fork:'+entry.id,t('external.forkFromHere'),fork):null]);
 }

@@ -12,8 +12,13 @@ mod plugin_lifecycle;
 #[path = "session_plugin_replacement.rs"]
 mod plugin_replacement;
 use crate::{capability_broker::{Binding, Broker, CapabilityControl, EventObserver, Request, Response, Scope},
-    change_set::{capture as capture_workspace, persist as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_registry, Session};
+    change_set::{capture_message as capture_workspace, persist_message as persist_change_set, WorkspaceSnapshot}, execution_profile, plugin_registry, Session};
 use serde_json::{json,Value};
+use crate::ui_i18n::HostMessage;
+
+fn session_error(key: &str, diagnostic: &str) -> HostMessage {
+    HostMessage::with_diagnostic(key, json!({}), diagnostic)
+}
 use sqlx::SqlitePool;
 use std::{collections::HashMap,path::{Path,PathBuf},sync::{Arc,Weak,atomic::{AtomicBool,Ordering}},time::Duration};
 use tauri::{Emitter,Manager};
@@ -104,24 +109,27 @@ impl SessionHost {
         let ids:Vec<String>=sqlx::query_scalar("SELECT id FROM sessions WHERE workspace_id=?").bind(workspace).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
         for id in ids {let caller=self.live.lock().await.get(&id).map(|run|run.caller.clone()).unwrap_or("main".into());self.close_from(&caller,&id).await?;}Ok(())
     }
-    async fn metadata(&self,session_id:&str)->Result<(Session,Value),String> {
+    async fn metadata_display(&self,session_id:&str)->Result<(Session,Value),HostMessage> {
         let retired: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_session_retirements WHERE session_id=?)").bind(session_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
-        if retired { return Err("history_only: 此会话的插件数据已清除，仅保留业务历史".into()); }
-        let session=crate::session_by_id(&self.db,session_id).await.map_err(|e|e.to_string())?;
-        let installation=session.plugin_installation_id.as_deref().ok_or("history_only: create a new capability session")?;
+        if retired { return Err(session_error("native.session.retiredData","history_only: 此会话的插件数据已清除，仅保留业务历史")); }
+        let session=crate::session_by_id(&self.db,session_id).await.map_err(crate::ui_i18n::core_message)?;
+        let installation=session.plugin_installation_id.as_deref().ok_or_else(||session_error("native.session.newCapabilitySession","history_only: create a new capability session"))?;
         let raw:Option<String>=sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=? AND enabled=1 AND installed=1").bind(installation).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;
-        let manifest:Value=serde_json::from_str(&raw.ok_or("provider_unavailable: pinned release is disabled or missing")?).map_err(|e|e.to_string())?;
-        if manifest["schema"]!="aibo.plugin-manifest/v2" || !crate::plugin_manifest::normalize(&manifest)?.contributions.iter().any(|entry|entry.id==session.agent && entry.kind=="capabilityProvider" && entry.scope=="session" && entry.metadata["operations"].as_array().is_some_and(|ops|ops.iter().any(|op|op["capability"]["id"]=="aibo.session.open"))) {
-            return Err("history_only: this session uses the retired Agent runtime".into());
+        let manifest:Value=serde_json::from_str(&raw.ok_or_else(||session_error("native.session.pinnedUnavailable","provider_unavailable: pinned release is disabled or missing"))?).map_err(|e|e.to_string())?;
+        if manifest["schema"]!="aibo.plugin-manifest/v2" || !crate::plugin_manifest::normalize_display(&manifest)?.contributions.iter().any(|entry|entry.id==session.agent && entry.kind=="capabilityProvider" && entry.scope=="session" && entry.metadata["operations"].as_array().is_some_and(|ops|ops.iter().any(|op|op["capability"]["id"]=="aibo.session.open"))) {
+            return Err(session_error("native.session.retiredRuntime","history_only: this session uses the retired Agent runtime"));
         }
         Ok((session,manifest))
     }
     fn binding(session:&Session,capability:&str)->Result<Binding,String> {Ok(Binding {scope:Scope::Session(session.id.clone()),capability:capability.into(),version:"1.0.0".into(),installation_id:session.plugin_installation_id.clone().ok_or("history_only")?,contribution_id:session.agent.clone()})}
     async fn saved_binding(&self,session_id:&str)->Result<Option<Value>,String> {
+        self.saved_binding_display(session_id).await.map_err(|error|error.diagnostic)
+    }
+    async fn saved_binding_display(&self,session_id:&str)->Result<Option<Value>,HostMessage> {
         let raw:Option<String>=sqlx::query_scalar("SELECT plugin_binding_json FROM session_bindings WHERE session_id=?").bind(session_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?.flatten();
         raw.map(|raw| {
             let value:Value=serde_json::from_str(&raw).map_err(|e|e.to_string())?;
-            if !crate::session_contract::binding_schema().is_valid(&value) {return Err("history_only: old session binding cannot execute".into());} Ok(value)
+            if !crate::session_contract::binding_schema().is_valid(&value) {return Err(session_error("native.session.oldBinding","history_only: old session binding cannot execute"));} Ok(value)
         }).transpose()
     }
     pub async fn create_with_profile_from(&self,caller:&str,workspace_id:&str,installation_id:&str,contribution_id:&str,profile:Option<execution_profile::ResolvedExecutionProfile>)->Result<Session,String> {
@@ -132,13 +140,16 @@ impl SessionHost {
     // Persist the host identity before starting a potentially slow native engine.
     // No capabilities are claimed until open has actually negotiated them.
     pub async fn prepare_with_profile(&self,workspace_id:&str,installation_id:&str,contribution_id:&str,profile:Option<execution_profile::ResolvedExecutionProfile>)->Result<Session,String> {
-        let workspace=crate::workspace_by_id(&self.db,workspace_id).await.map_err(|e|e.to_string())?;
-        if workspace.trust!="trusted" {return Err("permission_denied: workspace trust required".into());}
+        self.prepare_with_profile_display(workspace_id,installation_id,contribution_id,profile).await.map_err(|error|error.diagnostic)
+    }
+    pub async fn prepare_with_profile_display(&self,workspace_id:&str,installation_id:&str,contribution_id:&str,profile:Option<execution_profile::ResolvedExecutionProfile>)->Result<Session,HostMessage> {
+        let workspace=crate::workspace_by_id(&self.db,workspace_id).await.map_err(crate::ui_i18n::core_message)?;
+        if workspace.trust!="trusted" {return Err(session_error("native.session.prepareTrust","permission_denied: workspace trust required"));}
         let raw:Option<String>=sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=? AND enabled=1 AND installed=1")
             .bind(installation_id).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;
-        let manifest:Value=serde_json::from_str(&raw.ok_or("provider_unavailable: installation is disabled or missing")?).map_err(|e|e.to_string())?;
-        if !crate::plugin_manifest::normalize(&manifest)?.contributions.iter().any(|entry|entry.id==contribution_id && entry.kind=="capabilityProvider" && entry.scope=="session" && entry.metadata["operations"].as_array().is_some_and(|ops|ops.iter().any(|op|op["capability"]["id"]=="aibo.session.open"))) {
-            return Err("provider_unavailable: session contribution is missing".into());
+        let manifest:Value=serde_json::from_str(&raw.ok_or_else(||session_error("native.session.installationUnavailable","provider_unavailable: installation is disabled or missing"))?).map_err(|e|e.to_string())?;
+        if !crate::plugin_manifest::normalize_display(&manifest)?.contributions.iter().any(|entry|entry.id==contribution_id && entry.kind=="capabilityProvider" && entry.scope=="session" && entry.metadata["operations"].as_array().is_some_and(|ops|ops.iter().any(|op|op["capability"]["id"]=="aibo.session.open"))) {
+            return Err(session_error("native.session.contributionMissing","provider_unavailable: session contribution is missing"));
         }
         let id=ulid::Ulid::new().to_string();let now=crate::now_iso();
         let _guard=self.session_operation(&id).await;
@@ -152,36 +163,39 @@ impl SessionHost {
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES(?,?,?,?,'starting',?,?,?)")
             .bind(&id).bind(workspace_id).bind(contribution_id).bind(crate::DEFAULT_CAPABILITY_SESSION_LABEL).bind(&now).bind(&now).bind(installation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         execution_profile::save_for_session(&self.db,&id,&profile).await.map_err(|e|e.to_string())?;
-        crate::session_by_id(&self.db,&id).await.map_err(|e|e.to_string())
+        crate::session_by_id(&self.db,&id).await.map_err(crate::ui_i18n::core_message)
     }
     pub async fn resume_from(&self,caller:&str,session_id:&str)->Result<(),String> {
+        self.resume_from_display(caller,session_id).await.map_err(|error|error.diagnostic)
+    }
+    pub async fn resume_from_display(&self,caller:&str,session_id:&str)->Result<(),HostMessage> {
         let _guard=self.session_operation(session_id).await;
         if self.live.lock().await.contains_key(session_id) {return Ok(());}
-        let result=self.open(caller,session_id).await;
+        let result=self.open_display(caller,session_id).await;
         if result.is_err() {
             sqlx::query("UPDATE sessions SET state='failed',updated_at=? WHERE id=? AND state='starting'")
                 .bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         }
         result
     }
-    async fn open(&self,caller:&str,session_id:&str)->Result<(),String> {
-        let (session,manifest)=self.metadata(session_id).await?;
-        if session.archived || session.state=="closed" {return Err("invalid_session: session is closed".into());}
-        let previous=self.saved_binding(session_id).await?;
+    async fn open_display(&self,caller:&str,session_id:&str)->Result<(),HostMessage> {
+        let (session,manifest)=self.metadata_display(session_id).await?;
+        if session.archived || session.state=="closed" {return Err(session_error("native.session.closed","invalid_session: session is closed"));}
+        let previous=self.saved_binding_display(session_id).await?;
         if previous.is_some() {
             let saved_generation:String=sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
                 .bind(session_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
-            let installation=session.plugin_installation_id.as_deref().ok_or("history_only")?;
+            let installation=session.plugin_installation_id.as_deref().ok_or_else(||session_error("native.session.newCapabilitySession","history_only"))?;
             if self.broker.session_runtime_generation(installation,&session.agent,session_id).await.as_deref()==Some(saved_generation.as_str()) {return Ok(());}
         }
-        let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile;
+        let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(crate::ui_i18n::core_message)?.profile;
         let binding=Self::binding(&session,"aibo.session.open")?;
         let request=Request {scope:binding.scope.clone(),capability:binding.capability.clone(),version:binding.version.clone(),request_id:ulid::Ulid::new().to_string(),turn_id:None,input:json!({"mode":if previous.is_some(){"resume"}else{"create"},"executionProfile":profile.enforced,"recovery":previous.as_ref().map(|b|&b["recovery"])})};
-        let result=self.broker.invoke_bound(caller,request,&binding).await.map_err(|e|e.message)?;
+        let result=self.broker.invoke_bound(caller,request,&binding).await.map_err(crate::capability_broker::Failure::into_host_message)?;
         let negotiated = crate::session_contract::negotiate(&manifest, &session.agent, &result.output["capabilities"], &result.negotiated_operations);
         let now=crate::now_iso();
         let document=json!({"schema":"aibo.session-binding/v2","sessionId":session_id,"pluginInstallationId":session.plugin_installation_id,"pluginId":manifest["pluginId"],"pluginVersion":manifest["version"],"agentId":session.agent,"nativeSessionId":result.output["nativeSessionId"],"runtimeProtocolVersion":"2.1","recovery":result.output["recovery"],"createdAt":previous.as_ref().map(|b|b["createdAt"].clone()).unwrap_or(json!(now)),"updatedAt":now});
-        if !crate::session_contract::binding_schema().is_valid(&document) {return Err("invalid_output: session binding".into());}
+        if !crate::session_contract::binding_schema().is_valid(&document) {return Err(session_error("native.session.invalidBinding","invalid_output: session binding"));}
         let mut tx=self.db.begin_with("BEGIN IMMEDIATE").await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO session_bindings(session_id,external_session_id,generation_id,adapter_version,bound_at,plugin_binding_json,plugin_capabilities_json) VALUES(?,?,?,'2.1',?,?,?) ON CONFLICT(session_id) DO UPDATE SET external_session_id=excluded.external_session_id,generation_id=excluded.generation_id,adapter_version='2.1',bound_at=excluded.bound_at,plugin_binding_json=excluded.plugin_binding_json,plugin_capabilities_json=excluded.plugin_capabilities_json")
             .bind(session_id).bind(result.output["nativeSessionId"].as_str()).bind(&result.generation_id).bind(&now).bind(document.to_string()).bind(json!(negotiated).to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
@@ -196,9 +210,10 @@ impl SessionHost {
             .bind(session_id).bind(generation).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
         for event_id in resets {
             let sequence:i64=sqlx::query_scalar("SELECT COALESCE(MAX(sequence),0)+1 FROM messages WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
-            sqlx::query("INSERT OR IGNORE INTO messages(id,session_id,turn_id,role,content,status,sequence,created_at,updated_at) VALUES(?,?,NULL,'system',?,'completed',?,?,?)")
+            let notice = crate::ui_i18n::HostMessage::new("native.session.contextResetResumed",json!({}));
+            sqlx::query("INSERT OR IGNORE INTO messages(id,session_id,turn_id,role,content,localized_content_json,status,sequence,created_at,updated_at) VALUES(?,?,NULL,'system',?,?,'completed',?,?,?)")
                 .bind(format!("{session_id}:context-reset-resumed:{event_id}")).bind(session_id)
-                .bind("会话已恢复。之前批准计划时清空过上下文，恢复后 Agent 的上下文可能不包含清空之后的对话与操作；时间线保留了完整记录。")
+                .bind(&notice.diagnostic).bind(notice.display().to_string())
                 .bind(sequence).bind(now).bind(now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         }
         Ok(())
@@ -235,7 +250,7 @@ impl SessionHost {
         let _guard=self.session_operation(session_id).await;
         self.send_admitted(caller, session_id, text, approval).await
     }
-    pub(crate) async fn send_configured_from(&self,caller:&str,session_id:&str,text:&str)->Result<(),String> {
+    pub(crate) async fn send_configured_from(&self,caller:&str,session_id:&str,text:&str)->Result<(),crate::ui_i18n::HostMessage> {
         let _queue_guard = self.session_operation(&format!("queue:{session_id}")).await;
         let _guard=self.session_operation(session_id).await;
         let queued: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM queued_messages WHERE session_id=?").bind(session_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
@@ -245,21 +260,22 @@ impl SessionHost {
             return Ok(());
         }
         let approval = crate::session_permissions::turn_request(&self.db, session_id, caller).await?;
-        self.send_admitted(caller, session_id, text, Some(approval)).await
+        self.run_admitted(caller, session_id, text, Some(approval), false, None).await
     }
+    #[cfg(test)]
     async fn send_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>)->Result<(),String> {
-        self.run_admitted(caller, session_id, text, approval, false, None).await
+        self.run_admitted(caller, session_id, text, approval, false, None).await.map_err(|error|error.diagnostic)
     }
-    async fn run_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>,goal_resume:bool,queue_id:Option<&str>)->Result<(),String> {
-        if text.trim().is_empty() || text.len()>200_000 {return Err("invalid_input: prompt length".into());}
-        if self.live.lock().await.contains_key(session_id) {return Err("busy: session has an active invocation".into());}
-        self.open(caller,session_id).await?;
-        let (session,manifest)=self.metadata(session_id).await?;
-        if goal_resume && !session.capabilities.iter().any(|capability| capability == "goal.resume") {return Err("capability_unsupported: goal.resume".into());}
-        let saved=self.saved_binding(session_id).await?.ok_or("invalid_session: no native binding")?;
-        let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile.enforced;
+    async fn run_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>,goal_resume:bool,queue_id:Option<&str>)->Result<(),crate::ui_i18n::HostMessage> {
+        if text.trim().is_empty() || text.len()>200_000 {return Err(session_error("native.session.promptLength","invalid_input: prompt length"));}
+        if self.live.lock().await.contains_key(session_id) {return Err(session_error("native.session.activeInvocation","busy: session has an active invocation"));}
+        self.open_display(caller,session_id).await?;
+        let (session,manifest)=self.metadata_display(session_id).await?;
+        if goal_resume && !session.capabilities.iter().any(|capability| capability == "goal.resume") {return Err(HostMessage::with_diagnostic("native.session.unsupportedCapability",json!({"capability":"goal.resume"}),"capability_unsupported: goal.resume"));}
+        let saved=self.saved_binding_display(session_id).await?.ok_or_else(||session_error("native.session.nativeBindingMissing","invalid_session: no native binding"))?;
+        let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(crate::ui_i18n::core_message)?.profile.enforced;
         let write=profile.filesystem_policy!="read-only" || (profile.interaction_mode=="edit" && profile.command_policy!="disabled");
-        if write && approval.is_none() {return Err("approval_required: writable turn requires a host confirmation".into());}
+        if write && approval.is_none() {return Err(session_error("native.session.writeApproval","approval_required: writable turn requires a host confirmation"));}
         let capability=match (goal_resume,write) {
             (true,true)=>"aibo.session.goal.resume.write", (true,false)=>"aibo.session.goal.resume",
             (false,true)=>"aibo.session.turn.write", (false,false)=>"aibo.session.turn",
@@ -272,21 +288,23 @@ impl SessionHost {
             let response = self.broker.invoke_bound(caller, Request {
                 scope:binding.scope.clone(), capability:binding.capability.clone(), version:"1.0.0".into(),
                 request_id:ulid::Ulid::new().to_string(), turn_id:None, input:json!({}),
-            }, &binding).await.map_err(|e| e.message)?;
-            self.save_recovery(session_id, &response).await?;
+            }, &binding).await.map_err(crate::capability_broker::Failure::into_host_message)?;
+            self.save_recovery_display(session_id, &response).await?;
             Some(Arc::new(crate::session_snapshot_timeline(&response.output, session_id)))
         } else { None };
         let turn=ulid::Ulid::new().to_string();let message=ulid::Ulid::new().to_string();let now=crate::now_iso();
-        let workspace=crate::workspace_by_id(&self.db,&session.workspace_id).await.map_err(|e|e.to_string())?;
+        let workspace=crate::workspace_by_id(&self.db,&session.workspace_id).await.map_err(crate::ui_i18n::core_message)?;
         let baseline=capture_workspace(Path::new(&workspace.path)).await.ok();
         let mut live=self.live.lock().await;
-        if live.contains_key(session_id) {return Err("busy: session has an active invocation".into());}
+        if live.contains_key(session_id) {return Err(session_error("native.session.activeInvocation","busy: session has an active invocation"));}
         let mut tx=self.db.begin_with("BEGIN IMMEDIATE").await.map_err(|e|e.to_string())?;
         let changed=sqlx::query("UPDATE sessions SET state='running',updated_at=? WHERE id=? AND state IN ('idle','interrupted','failed')").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-        if changed.rows_affected()!=1 {return Err("busy: session is not idle".into());}
+        if changed.rows_affected()!=1 {return Err(session_error("native.session.notIdle","busy: session is not idle"));}
         sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,input_text,started_at) VALUES(?,?,?,'running',?,?)").bind(&turn).bind(session_id).bind(&turn).bind(text).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("INSERT INTO turn_delivery VALUES(?,'not_sent')").bind(&turn).execute(&mut *tx).await.map_err(|e|e.to_string())?;
-        sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,status,created_at,updated_at) VALUES(?,?,?,'user',?,'completed',?,?)").bind(&message).bind(session_id).bind(&turn).bind(text).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        // Only host goal continuation owns this display marker; ordinary user text stays literal.
+        let localized_prompt=goal_resume.then(||HostMessage::new("native.goal.resumePrompt",json!({}))).and_then(|message|message.localized);
+        sqlx::query("INSERT INTO messages(id,session_id,turn_id,role,content,localized_content_json,status,created_at,updated_at) VALUES(?,?,?,'user',?,?,'completed',?,?)").bind(&message).bind(session_id).bind(&turn).bind(text).bind(localized_prompt.as_ref().map(Value::to_string)).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         let attachments = if goal_resume { vec![] } else {
             crate::session_attachments::prepare_turn(&mut tx, session_id, queue_id, &turn, &session.capabilities).await?
         };
@@ -295,7 +313,7 @@ impl SessionHost {
                 .bind(session_id).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         }
         if let Some(id) = queue_id {
-            sqlx::query("UPDATE queued_messages SET status='sending',delivery='turn',turn_id=?,error=NULL WHERE id=? AND session_id=?")
+            sqlx::query("UPDATE queued_messages SET status='sending',delivery='turn',turn_id=?,error=NULL,localized_error_json=NULL WHERE id=? AND session_id=?")
                 .bind(&turn).bind(id).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         }
         tx.commit().await.map_err(|e|e.to_string())?;
@@ -308,20 +326,25 @@ impl SessionHost {
         let host=self.clone();let caller=caller.to_owned();
         tokio::spawn(async move {
             let execution=async {
-                if run.cancel.load(Ordering::Acquire) {return Err("cancelled: turn cancelled before dispatch".into());}
+                if run.cancel.load(Ordering::Acquire) {return Err(session_error("native.session.cancelledBeforeDispatch","cancelled: turn cancelled before dispatch"));}
                 let result=if let Some(approval)=approval.filter(|_|write) {
                     host.broker.invoke_bound_authorized_observed(&caller,request,&binding,&approval.child(turn.clone()),Some(observer)).await
                 } else {
                     host.broker.invoke_bound_observed(&caller,request,&binding,Some(observer)).await
                 };
-                result.map_err(|e|format!("{}: {}",e.code,e.message))
+                result.map_err(|error| {
+                    let diagnostic=format!("{}: {}",error.code,error.message);
+                    let localized=error.localized.map(|reason|crate::ui_i18n::display_descriptor(
+                        "native.session.invocationFailure",json!({"code":error.code,"error":reason})));
+                    HostMessage {diagnostic,localized}
+                })
             };
             tokio::pin!(execution);
             let cancel=async {loop {if run.cancel.load(Ordering::Acquire) && host.broker.cancel(&caller,&turn).await {break;}tokio::time::sleep(Duration::from_millis(10)).await;}};
             let result=tokio::select! {result=&mut execution=>result,_=cancel=>execution.await};
             run.phase.send_replace(TurnPhase::Settling);
             let result = match result {
-                Ok(response) => host.save_recovery(&session.id, &response).await,
+                Ok(response) => host.save_recovery_display(&session.id, &response).await,
                 Err(error) => Err(error),
             };
             if let Err(error) = result {
@@ -330,7 +353,7 @@ impl SessionHost {
                         .bind(&session.id).fetch_one(&host.db).await.map_err(|e| e.to_string())?;
                     host.project_event(&session.id, &session.workspace_id, &generation, &saved,
                         json!({"nativeSessionId":saved["nativeSessionId"],"turnId":turn,"type":"adapter.crashed","correlation":null,
-                            "payload":{"reason":error,"status":if run.cancel.load(Ordering::Acquire) || error.starts_with("cancelled:") {"interrupted"} else {"failed"}}}),
+                            "payload":{"reason":error.diagnostic,"localizedReason":error.localized,"status":if run.cancel.load(Ordering::Acquire) || error.diagnostic.starts_with("cancelled:") {"interrupted"} else {"failed"}}}),
                         EventOrigin::Host).await
                 }.await;
                 if let Err(error) = failure { eprintln!("session failure persistence failed: {error}"); }
@@ -349,48 +372,56 @@ impl SessionHost {
         });
         Ok(())
     }
-    async fn save_recovery(&self,session_id:&str,response:&Response)->Result<(),String> {
+    async fn save_recovery_display(&self,session_id:&str,response:&Response)->Result<(),HostMessage> {
         if response.output.get("recovery").is_none() {return Ok(());}
-        let mut binding=self.saved_binding(session_id).await?.ok_or("invalid_session: missing binding")?;
+        let mut binding=self.saved_binding_display(session_id).await?.ok_or_else(||session_error("native.session.bindingMissing","invalid_session: missing binding"))?;
         if binding["recovery"] == response.output["recovery"] {
             // Metadata polling is observational when recovery is unchanged. Rewriting
             // updatedAt would invalidate a pending plugin replacement confirmation.
             // A no-op must still reject replies from an obsolete runtime generation.
             let current: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM session_bindings WHERE session_id=? AND generation_id=?)")
                 .bind(session_id).bind(&response.generation_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
-            return if current { Ok(()) } else { Err("invalid_session: recovery generation changed".into()) };
+            return if current { Ok(()) } else { Err(session_error("native.session.recoveryGeneration","invalid_session: recovery generation changed")) };
         }
         binding["recovery"]=response.output["recovery"].clone();binding["updatedAt"]=json!(crate::now_iso());
-        if !crate::session_contract::binding_schema().is_valid(&binding) {return Err("invalid_output: recovery".into());}
+        if !crate::session_contract::binding_schema().is_valid(&binding) {return Err(session_error("native.session.invalidRecovery","invalid_output: recovery"));}
         let updated=sqlx::query("UPDATE session_bindings SET plugin_binding_json=? WHERE session_id=? AND generation_id=?").bind(binding.to_string()).bind(session_id).bind(&response.generation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
-        if updated.rows_affected()!=1 {return Err("invalid_session: recovery generation changed".into());}Ok(())
+        if updated.rows_affected()!=1 {return Err(session_error("native.session.recoveryGeneration","invalid_session: recovery generation changed"));}Ok(())
     }
     pub async fn active_timeline_from(&self, caller: &str, session_id: &str) -> Result<Vec<crate::TimelineItem>, String> {
+        self.active_timeline_display_from(caller, session_id).await.map_err(|error|error.diagnostic)
+    }
+    pub(crate) async fn active_timeline_display_from(&self, caller: &str, session_id: &str) -> Result<Vec<crate::TimelineItem>, HostMessage> {
         let running = self.live.lock().await.get(session_id).cloned();
         if let Some(run) = running {
             if let Some(branch) = run.active_branch {
                 let mut timeline = (*branch).clone();
-                let rows = sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,status,created_at,updated_at FROM messages WHERE session_id=? AND turn_id=? ORDER BY created_at,sequence,id")
+                let rows = sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,localized_content_json,status,created_at,updated_at FROM messages WHERE session_id=? AND turn_id=? ORDER BY created_at,sequence,id")
                     .bind(session_id).bind(&run.request_id).fetch_all(&self.db).await.map_err(|e|e.to_string())?;
                 for row in rows { timeline.push(crate::row_to_timeline_item(&row).map_err(|e|e.to_string())?); }
                 return Ok(timeline);
             }
         }
-        let snapshot = self.invoke_capability_from(caller, session_id, "session.timeline", json!({})).await?;
+        let snapshot = self.invoke_capability_display_from(caller, session_id, "session.timeline", json!({})).await?;
         Ok(crate::session_snapshot_timeline(&snapshot, session_id))
     }
     pub async fn invoke_capability_from(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,String> {
+        self.invoke_capability_display_from(caller, session_id, capability, input).await.map_err(|error|error.diagnostic)
+    }
+    /// Preserve explicit host display metadata at IPC; internal string callers keep diagnostics.
+    pub(crate) async fn invoke_capability_display_from(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,crate::ui_i18n::HostMessage> {
         if capability == "queue.manage" && self.host_queue_supported(session_id).await? {
             return self.queue_operation(caller, session_id, input).await;
         }
         self.invoke_provider_capability(caller, session_id, capability, input).await
     }
-    async fn invoke_provider_capability(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,String> {
+    async fn invoke_provider_capability(&self,caller:&str,session_id:&str,capability:&str,input:Value)->Result<Value,HostMessage> {
         if capability == "goal.resume" {
-            if input.as_object().is_none_or(|value| !value.is_empty()) {return Err("invalid_input: goal.resume takes no parameters".into());}
+            if input.as_object().is_none_or(|value| !value.is_empty()) {return Err(session_error("native.session.goalResumeInput","invalid_input: goal.resume takes no parameters"));}
             let _guard=self.session_operation(session_id).await;
             let approval=crate::session_permissions::turn_request(&self.db,session_id,caller).await?;
-            self.run_admitted(caller,session_id,"继续执行当前目标",Some(approval),true,None).await?;
+            let prompt=HostMessage::new("native.goal.resumePrompt",json!({}));
+            self.run_admitted(caller,session_id,&prompt.diagnostic,Some(approval),true,None).await?;
             return Ok(json!({"accepted":true}));
         }
         loop {
@@ -400,14 +431,14 @@ impl SessionHost {
                 admission = Some(self.session_operation(session_id).await);
                 // A send may have won admission while this caller was waiting.
                 running = self.live.lock().await.get(session_id).cloned();
-                if running.is_none() { self.open(caller,session_id).await?; }
+                if running.is_none() { self.open_display(caller,session_id).await?; }
             }
             if let Some(run) = &running {
                 if passive_session_read(capability, &input) {
                     drop(admission);
                     let mut phase = run.phase.subscribe();
                     while *phase.borrow_and_update() != TurnPhase::Finished {
-                        phase.changed().await.map_err(|_| "provider_unavailable: session lifecycle stopped")?;
+                        phase.changed().await.map_err(|_| session_error("native.session.lifecycleStopped","provider_unavailable: session lifecycle stopped"))?;
                     }
                     continue;
                 }
@@ -415,61 +446,64 @@ impl SessionHost {
             // Live controls (queue, user input, etc.) must not wait behind an idle
             // operation or hold admission for the duration of an Agent turn.
             if running.is_some() { drop(admission.take()); }
-            let (session,manifest)=self.metadata(session_id).await?;
-            if !session.capabilities.iter().any(|cap| cap == capability) { return Err(format!("capability_unsupported: {capability}")); }
+            let (session,manifest)=self.metadata_display(session_id).await?;
+            if !session.capabilities.iter().any(|cap| cap == capability) { return Err(HostMessage::with_diagnostic("native.session.unsupportedCapability",json!({"capability":capability}),format!("capability_unsupported: {capability}"))); }
             let qualified=format!("{}.{}",manifest["pluginId"].as_str().ok_or("invalid_manifest")?,capability);
             let reference_turn = running.as_ref().filter(|_| capability == "queue.manage"
                 && matches!(input["action"].as_str(), Some("steer" | "followUp")))
                 .map(|run| run.request_id.clone());
-            if capability == "model.context-window" && running.is_some() { return Err("busy: context window changes require an idle session".into()); }
+            if capability == "model.context-window" && running.is_some() { return Err(session_error("native.session.contextWindowIdle","busy: context window changes require an idle session")); }
             let response=if let Some(run)=running {
-                if run.caller!=caller {return Err("permission_denied: invocation belongs to another window".into());}
+                if run.caller!=caller {return Err(session_error("native.session.otherWindow","permission_denied: invocation belongs to another window"));}
                 let generation: String = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
                     .bind(session_id).fetch_one(&self.db).await.map_err(|e|e.to_string())?;
                 let mut phase = run.phase.subscribe();
                 loop {
                     if matches!(*phase.borrow_and_update(), TurnPhase::Settling | TurnPhase::Finished) {
-                        return Err("busy: the turn has finished accepting interactions".into());
+                        return Err(session_error("native.session.interactionsFinished","busy: the turn has finished accepting interactions"));
                     }
                     if self.broker.request_is_live(caller, &run.request_id, &generation).await { break; }
                     tokio::select! {
                         _ = tokio::time::sleep(Duration::from_millis(10)) => {},
-                        changed = phase.changed() => { changed.map_err(|_| "provider_unavailable: session lifecycle stopped")?; },
+                        changed = phase.changed() => { changed.map_err(|_| session_error("native.session.lifecycleStopped","provider_unavailable: session lifecycle stopped"))?; },
                     }
                 }
-                self.broker.control(caller,CapabilityControl {request_id:run.request_id,capability:qualified,version:"1.0.0".into(),input:input.clone()}).await.map_err(|e|e.message)?
+                self.broker.control(caller,CapabilityControl {request_id:run.request_id,capability:qualified,version:"1.0.0".into(),input:input.clone()}).await.map_err(crate::capability_broker::Failure::into_host_message)?
             } else {
                 let binding=Self::binding(&session,&qualified)?;let id=ulid::Ulid::new().to_string();
-                let saved=self.saved_binding(session_id).await?.ok_or("invalid_session")?;
-                self.broker.invoke_bound_observed(caller,Request {scope:binding.scope.clone(),capability:qualified,version:"1.0.0".into(),request_id:id.clone(),turn_id:None,input:input.clone()},&binding,Some(self.observer(session,saved,caller.into(),id,None,false))).await.map_err(|e|e.message)?
+                let saved=self.saved_binding_display(session_id).await?.ok_or_else(||session_error("native.session.bindingMissing","invalid_session"))?;
+                self.broker.invoke_bound_observed(caller,Request {scope:binding.scope.clone(),capability:qualified,version:"1.0.0".into(),request_id:id.clone(),turn_id:None,input:input.clone()},&binding,Some(self.observer(session,saved,caller.into(),id,None,false))).await.map_err(crate::capability_broker::Failure::into_host_message)?
             };
             if let Some(turn) = reference_turn {
                 crate::session_context::consume_queued(&self.db, session_id, &turn, input["message"].as_str().unwrap_or_default()).await.map_err(|e|e.to_string())?;
             }
-            self.save_recovery(session_id,&response).await?;
+            self.save_recovery_display(session_id,&response).await?;
             if capability == "background-tasks.list" {
-                let saved = self.saved_binding(session_id).await?.ok_or("invalid_session")?;
-                let session = crate::session_by_id(&self.db, session_id).await.map_err(|e|e.to_string())?;
-                for task in response.output["tasks"].as_array().ok_or("invalid_output: background tasks")? {
-                    self.project_event(session_id, &session.workspace_id, &response.generation_id, &saved,
+                let saved = self.saved_binding_display(session_id).await?.ok_or_else(||session_error("native.session.bindingMissing","invalid_session"))?;
+                let session = crate::session_by_id(&self.db, session_id).await.map_err(crate::ui_i18n::core_message)?;
+                for task in response.output["tasks"].as_array().ok_or_else(||session_error("native.session.invalidBackgroundTasks","invalid_output: background tasks"))? {
+                    self.project_event_display(session_id, &session.workspace_id, &response.generation_id, &saved,
                         json!({"nativeSessionId":saved["nativeSessionId"],"turnId":null,"type":"background-task.updated","correlation":null,"payload":task}), EventOrigin::Plugin).await?;
                 }
             }
             if input["action"]=="set" && matches!(capability,"model.select"|"model.reasoning") {
-                let mut profile=crate::session_execution_profile(&self.db,session_id).await.map_err(|e|e.to_string())?.profile;
+                let mut profile=crate::session_execution_profile(&self.db,session_id).await.map_err(crate::ui_i18n::core_message)?.profile;
                 if apply_model_configuration(&mut profile,capability,&input,&response.output) {execution_profile::save_for_session(&self.db,session_id,&profile).await.map_err(|e|e.to_string())?;}
             }
             return Ok(response.output);
         }
     }
     pub async fn cancel_from(&self,caller:&str,session_id:&str)->Result<(),String> {
+        self.cancel_from_display(caller,session_id).await.map_err(|error|error.diagnostic)
+    }
+    pub async fn cancel_from_display(&self,caller:&str,session_id:&str)->Result<(),HostMessage> {
         if self.live.lock().await.contains_key(session_id) { return self.cancel_admitted(caller, session_id).await; }
         let _guard = self.session_operation(session_id).await;
         self.cancel_admitted(caller, session_id).await
     }
-    async fn cancel_admitted(&self,caller:&str,session_id:&str)->Result<(),String> {
+    async fn cancel_admitted(&self,caller:&str,session_id:&str)->Result<(),HostMessage> {
         if let Some(run)=self.live.lock().await.get(session_id).cloned() {
-            if run.caller!=caller {return Err("permission_denied: invocation belongs to another window".into());}
+            if run.caller!=caller {return Err(session_error("native.session.otherWindow","permission_denied: invocation belongs to another window"));}
             self.pause_queue(session_id).await?;
             run.cancel.store(true,Ordering::Release);self.broker.cancel(caller,&run.request_id).await;
         }
@@ -477,23 +511,29 @@ impl SessionHost {
         Ok(())
     }
     pub async fn close_from(&self,caller:&str,session_id:&str)->Result<(),String> {
-        self.cancel_from(caller,session_id).await?;
+        self.close_from_display(caller,session_id).await.map_err(|error|error.diagnostic)
+    }
+    pub async fn close_from_display(&self,caller:&str,session_id:&str)->Result<(),HostMessage> {
+        self.cancel_from_display(caller,session_id).await?;
         let _guard=self.session_operation(session_id).await;
         self.close_admitted(caller, session_id).await
     }
-    pub(crate) async fn close_admitted(&self,caller:&str,session_id:&str)->Result<(),String> {
+    pub(crate) async fn close_admitted(&self,caller:&str,session_id:&str)->Result<(),HostMessage> {
         // Recheck after admission: a queued send may have started in between.
         self.cancel_admitted(caller,session_id).await?;
-        tokio::time::timeout(Duration::from_secs(7),async {while self.live.lock().await.contains_key(session_id) {tokio::time::sleep(Duration::from_millis(10)).await;}}).await.map_err(|_|"busy: session is still stopping")?;
-        self.broker.stop_session(session_id).await.map_err(|e|e.message)?;
+        tokio::time::timeout(Duration::from_secs(7),async {while self.live.lock().await.contains_key(session_id) {tokio::time::sleep(Duration::from_millis(10)).await;}}).await.map_err(|_|session_error("native.session.stillStopping","busy: session is still stopping"))?;
+        self.broker.stop_session(session_id).await.map_err(crate::capability_broker::Failure::into_host_message)?;
         sqlx::query("UPDATE session_bindings SET generation_id=NULL WHERE session_id=?").bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         sqlx::query("UPDATE sessions SET state='closed',updated_at=? WHERE id=?").bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;Ok(())
     }
     pub async fn archive_from(&self,caller:&str,session_id:&str)->Result<Session,String> {
-        if self.live.lock().await.contains_key(session_id) {return Err("busy: session has an active invocation".into());}
-        self.close_from(caller,session_id).await?;
+        self.archive_from_display(caller,session_id).await.map_err(|error|error.diagnostic)
+    }
+    pub async fn archive_from_display(&self,caller:&str,session_id:&str)->Result<Session,HostMessage> {
+        if self.live.lock().await.contains_key(session_id) {return Err(session_error("native.session.activeInvocation","busy: session has an active invocation"));}
+        self.close_from_display(caller,session_id).await?;
         sqlx::query("UPDATE sessions SET archived=1 WHERE id=?").bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
-        crate::session_by_id(&self.db,session_id).await.map_err(|e|e.to_string())
+        crate::session_by_id(&self.db,session_id).await.map_err(crate::ui_i18n::core_message)
     }
     pub async fn unarchive(&self,session_id:&str)->Result<Session,String> {
         let _guard=self.session_operation(session_id).await;
@@ -504,7 +544,7 @@ impl SessionHost {
         let baseline=self.turn_baselines.lock().await.remove(turn_id).flatten();
         let workspace=crate::workspace_by_id(&self.db,workspace_id).await.map_err(|e|e.to_string())?;
         let (result,error)=match capture_workspace(Path::new(&workspace.path)).await {Ok(snapshot)=>(Some(snapshot),None),Err(error)=>(None,Some(error))};
-        persist_change_set(&self.db,workspace_id,session_id,turn_id,baseline.as_ref(),result.as_ref(),error.as_deref()).await.map_err(|e|e.to_string())?;Ok(())
+        persist_change_set(&self.db,workspace_id,session_id,turn_id,baseline.as_ref(),result.as_ref(),error.as_ref()).await.map_err(|e|e.to_string())?;Ok(())
     }
 }
 

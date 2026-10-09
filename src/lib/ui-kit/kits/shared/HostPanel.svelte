@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { onMount, tick } from 'svelte';
   import Button from '../../runtime/Button.svelte';
   import Icon from '../../runtime/Icon.svelte';
@@ -49,7 +50,7 @@
       {#if onBack}<Button variant="ghost" size="sm" onclick={onBack}>← {backLabel}</Button>{/if}
       <h2 id={id} bind:this={heading} tabindex="-1">{title}</h2>
       {@render actions?.()}
-      <Button variant="ghost" size="icon" aria-label={`关闭${title}`} title="关闭" onclick={onClose}><Icon name="close" size={16} /></Button>
+      <Button variant="ghost" size="icon" aria-label={$t('host.closePanel', { title })} title={$t('common.close')} onclick={onClose}><Icon name="close" size={16} /></Button>
     </header>
     <div bind:this={body} class="host-panel-body" onscroll={rememberScroll}>{@render children()}</div>
   </div>

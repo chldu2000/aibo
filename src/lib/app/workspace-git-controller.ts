@@ -1,16 +1,20 @@
+import {nativeListMessages} from './turn-change-presentation.ts';
+import { localizedMessage, translateMessage } from '../../../packages/i18n/index.js';
+import type { Locale, LocalizedText } from '../../../packages/i18n/index.js';
 import type {
   WorkspaceChanges, WorkspaceFileDiff, GitBranch, GitCommit, GitCommitFileList,
   GitRemoteStatus, GitStashEntry, GitWorkspaceAction, GitSyncAction,
   GitWorkspaceActionResult, GitFileActionResult, GitCommitResult, ExecutionProfile, Session,
 } from '../types';
 import type { GitRepositoryDiscovery, GitRepositoryState } from '../../../packages/plugin-protocol/src/presentation-git';
-import { toErrorMessage } from './error-utils.ts';
+import { toErrorText, readNativeMessage } from './error-utils.ts';
+import { workspaceFileDiffPresentation } from './workspace-file-diff.ts';
 import { repositoryDraftKey, readRepositoryViews, writeRepositoryViews } from './git-repository-state.ts';
 import { emptyGitPanelState, readWorkbenchDrafts, writeWorkbenchDrafts, type GitPanelState } from './workbench-drafts.ts';
 import type { SetNotice } from './notifications';
 
 export type WorkspaceGitPorts = {
-  listWorkspaceGitRepositories(workspace: string, budget: number): Promise<GitRepositoryDiscovery>;
+  listWorkspaceGitRepositories(workspace: string, budget: number): Promise<GitRepositoryDiscovery & {localizedWarnings?: unknown}>;
   getWorkspaceChanges(workspace: string, repository?: string): Promise<WorkspaceChanges>;
   getWorkspaceFileDiff(workspace: string, path: string, staged: boolean, repository?: string): Promise<WorkspaceFileDiff>;
   listWorkspaceGitBranches(workspace: string, repository?: string): Promise<GitBranch[]>;
@@ -31,23 +35,23 @@ export type WorkspaceGitPorts = {
 
 export type WorkspaceGitState = {
   workspaceId: string | null;
-  repositories: GitRepositoryState[];
+  repositories: (Omit<GitRepositoryState, 'error' | 'changes'> & { error: LocalizedText | null; changes: WorkspaceChanges | null })[];
   repositoryId: string | null;
   repositorySearch: string;
   repositoryPickerOpen: boolean;
   collapsedRepositories: string[];
   discoveryLimited: boolean;
-  discoveryWarnings: string[];
+  discoveryWarnings: LocalizedText[];
   changes: WorkspaceChanges | null;
   loading: boolean;
-  error: string | null;
+  error: LocalizedText | null;
   branches: GitBranch[];
   history: GitCommit[];
   historyHasMore: boolean;
   historyLoadingMore: boolean;
-  historyLoadMoreError: string | null;
+  historyLoadMoreError: LocalizedText | null;
   metadataLoading: boolean;
-  metadataError: string | null;
+  metadataError: LocalizedText | null;
   commitFiles: GitCommitFileList | null;
   commitFilesLoading: boolean;
   remoteStatus: GitRemoteStatus | null;
@@ -58,11 +62,23 @@ export type WorkspaceGitState = {
   previewRepositoryId: string | null;
   fileDiff: WorkspaceFileDiff | null;
   fileDiffLoading: boolean;
-  fileDiffError: string | null;
+  fileDiffError: LocalizedText | null;
   fileDiffPath: string | null;
   fileDiffStaged: boolean;
-  fileDiffContextLabel: string | null;
+  fileDiffContextLabel: LocalizedText | null;
 };
+export function workspaceChangesPresentation(changes: WorkspaceChanges | null, locale: Locale): Omit<WorkspaceChanges, 'localizedCaptureError'> | null {
+  if (!changes) return null;
+  const { localizedCaptureError, ...value } = changes;
+  return { ...value, captureError: value.captureError === null ? null : translateMessage(locale, readNativeMessage(localizedCaptureError) ?? value.captureError) };
+}
+export function workspaceGitPresentation(state: WorkspaceGitState, locale: Locale) {
+  const text = (value: LocalizedText | null) => value === null ? null : translateMessage(locale, value);
+  return { ...state, changes:workspaceChangesPresentation(state.changes,locale), discoveryWarnings:state.discoveryWarnings.map(value=>translateMessage(locale,value)), repositories: state.repositories.map(repo => ({ ...repo, changes:workspaceChangesPresentation(repo.changes,locale), error: text(repo.error) })),
+    error: text(state.error), metadataError: text(state.metadataError), historyLoadMoreError: text(state.historyLoadMoreError),
+    fileDiff: workspaceFileDiffPresentation(state.fileDiff, locale),
+    fileDiffError: text(state.fileDiffError), fileDiffContextLabel: text(state.fileDiffContextLabel) };
+}
 export const emptyWorkspaceGit = (): WorkspaceGitState => ({
   workspaceId: null, repositories: [], repositoryId: null, repositorySearch: '', repositoryPickerOpen: false,
   collapsedRepositories: [], discoveryLimited: false, discoveryWarnings: [], changes: null, loading: false, error: null,
@@ -79,7 +95,7 @@ type Options = {
   api: WorkspaceGitPorts;
   desktop(): boolean;
   changed(state: WorkspaceGitState): void;
-  error(message: string | null): void;
+  error(message: LocalizedText | null): void;
   notice: SetNotice;
   storage: Pick<Storage, 'getItem' | 'setItem'> | null;
   windowId: string;
@@ -208,15 +224,15 @@ export function createWorkspaceGitController(options: Options) {
         views = { ...views, [workspace]: { ...remembered, selected, collapsed: remembered?.collapsed ?? [] } };
         saveViews(); resetMetadata();
       }
-      set({ repositories, repositoryId: selected, discoveryLimited: discovery.limited, discoveryWarnings: discovery.warnings,
+      set({ repositories, repositoryId: selected, discoveryLimited: discovery.limited, discoveryWarnings: nativeListMessages(discovery.warnings,discovery.localizedWarnings),
         collapsedRepositories: views[workspace].collapsed, draft: draftFor(workspace, selected),
         changes: repositories.find(repo => repo.id === selected)?.changes ?? null });
       // Publish discovery first, then bounded batches; each repository settles separately.
       for (let offset = 0; offset < repositories.length && live(); offset += 4) {
         await Promise.all(repositories.slice(offset, offset + 4).map(async repo => {
-          let changes: WorkspaceChanges | null = null, error: string | null = null;
+          let changes: WorkspaceChanges | null = null, error: LocalizedText | null = null;
           try { changes = await api.getWorkspaceChanges(workspace, repo.id); }
-          catch (failure) { error = toErrorMessage(failure); }
+          catch (failure) { error = toErrorText(failure); }
           if (!live()) return;
           const next = state.repositories.map(item => item.id === repo.id ? { ...item, changes, error } : item);
           set({ repositories: next, changes: next.find(item => item.id === state.repositoryId)?.changes ?? null });
@@ -227,7 +243,7 @@ export function createWorkspaceGitController(options: Options) {
         if (restoringWorkspace) restoreRepositoryFile(workspace, state.repositoryId);
       }
     } catch (error) {
-      if (live() && !background) set({ changes: null, error: toErrorMessage(error) });
+      if (live() && !background) set({ changes: null, error: toErrorText(error) });
     } finally {
       if (live()) set({ loading: false });
       if (changesBackground === request) changesBackground = null;
@@ -255,14 +271,14 @@ export function createWorkspaceGitController(options: Options) {
       `${state.repositories.find(repo => repo.id === repository)?.name ?? ''} · ${path}`,
       () => api.getWorkspaceFileDiff(workspace, path, staged, repository));
   }
-  async function readDiff(workspace: string, repository: string, path: string, staged: boolean, label: string, read: () => Promise<WorkspaceFileDiff>) {
+  async function readDiff(workspace: string, repository: string, path: string, staged: boolean, label: LocalizedText, read: () => Promise<WorkspaceFileDiff>) {
     const request = ++previewRequest;
     const viewEpoch = epoch;
     const live = () => current(workspace) && request === previewRequest && viewEpoch === epoch;
     set({ previewRepositoryId: repository, fileDiffPath: path, fileDiffStaged: staged,
       fileDiffContextLabel: label, fileDiff: null, fileDiffLoading: true, fileDiffError: null });
     try { const fileDiff = await read(); if (live()) set({ fileDiff }); }
-    catch (error) { if (live()) set({ fileDiffError: toErrorMessage(error) }); }
+    catch (error) { if (live()) set({ fileDiffError: toErrorText(error) }); }
     finally { if (live()) set({ fileDiffLoading: false }); }
   }
   async function refreshWorkspaceGitMetadata(workspace: string, background = false) {
@@ -285,7 +301,7 @@ export function createWorkspaceGitController(options: Options) {
       const history = previous >= 0 ? [...newest, ...state.history.slice(previous + 1)] : newest;
       historyOffset = history.length;
       set({ branches, history, historyHasMore: previous >= 0 ? state.historyHasMore : page.length > historyPageSize, remoteStatus, stashes });
-    } catch (error) { if (live() && !background) set({ metadataError: toErrorMessage(error) }); }
+    } catch (error) { if (live() && !background) set({ metadataError: toErrorText(error) }); }
     finally {
       if (live()) set({ metadataLoading: false });
       if (metadataBackground === request) metadataBackground = null;
@@ -303,7 +319,7 @@ export function createWorkspaceGitController(options: Options) {
       const next = page.slice(0, historyPageSize), seen = new Set(state.history.map(commit => commit.hash));
       historyOffset = offset + next.length;
       set({ history: [...state.history, ...next.filter(commit => !seen.has(commit.hash))], historyHasMore: page.length > historyPageSize });
-    } catch (error) { if (live()) set({ historyLoadMoreError: toErrorMessage(error) }); }
+    } catch (error) { if (live()) set({ historyLoadMoreError: toErrorText(error) }); }
     finally { if (live()) set({ historyLoadingMore: false }); }
   }
   async function loadWorkspaceCommitFiles(workspace: string, commit: string, append = false) {
@@ -317,17 +333,17 @@ export function createWorkspaceGitController(options: Options) {
       const result = await api.listWorkspaceGitCommitFiles(workspace, commit, offset, 10, repository);
       if (live()) set({ commitFiles: append && state.commitFiles?.commit === commit
         ? { ...result, files: [...state.commitFiles.files, ...result.files] } : result });
-    } catch (error) { if (live()) set({ metadataError: toErrorMessage(error) }); }
+    } catch (error) { if (live()) set({ metadataError: toErrorText(error) }); }
     finally { if (live()) set({ commitFilesLoading: false }); }
   }
   async function openWorkspaceCommitFileDiff(workspace: string, commit: string, path: string) {
     const repository = state.repositoryId;
     if (!current(workspace) || !repository) return;
     await readDiff(workspace, repository, path, false,
-      `${state.repositories.find(repo => repo.id === repository)?.name ?? ''} · 提交 ${commit.slice(0, 8)} · ${path}`,
+      localizedMessage('git.commitPreviewTitle', {repository: state.repositories.find(repo => repo.id === repository)?.name ?? '', commit: commit.slice(0, 8), path}),
       () => api.getWorkspaceGitCommitFileDiff(workspace, commit, path, repository));
   }
-  async function write(workspace: string, repository: string | null, operation: (repository: string) => Promise<{ ok: boolean; message: string; notice: string }>, settled?: () => void, closeDiff = false) {
+  async function write(workspace: string, repository: string | null, operation: (repository: string) => Promise<{ ok: boolean; message: LocalizedText; notice: LocalizedText }>, settled?: () => void, closeDiff = false) {
     if (!current(workspace) || !repository || state.operationBusy) return false;
     const viewEpoch = epoch;
     set({ operationBusy: true }); options.error(null);
@@ -345,35 +361,35 @@ export function createWorkspaceGitController(options: Options) {
         }
       }
       return true;
-    } catch (error) { options.error(toErrorMessage(error)); return false; }
+    } catch (error) { options.error(toErrorText(error)); return false; }
     finally { set({ operationBusy: false }); }
   }
-  const applied = (result: GitWorkspaceActionResult | GitFileActionResult, notice: string) => ({ ok: result.applied, message: result.message, notice });
+  const applied = (result: GitWorkspaceActionResult | GitFileActionResult, notice: LocalizedText) => ({ ok: result.applied, message: ('localizedMessage' in result ? readNativeMessage(result.localizedMessage) : null) ?? result.message, notice });
   const checkoutWorkspaceBranch = (workspace: string, branch: string) => write(workspace, state.repositoryId,
-    async repository => applied(await api.checkoutWorkspaceGitBranch(workspace, branch, undefined, repository), `已切换到 ${branch}。`), undefined, true);
+    async repository => applied(await api.checkoutWorkspaceGitBranch(workspace, branch, undefined, repository), localizedMessage('git.branchSwitched', {branch})), undefined, true);
   function createWorkspaceBranch(workspace: string, branch: string) {
     const repository = state.repositoryId;
     return write(workspace, repository,
-      async id => applied(await api.createWorkspaceGitBranch(workspace, branch, undefined, id), `已创建并切换到 ${branch}。`),
+      async id => applied(await api.createWorkspaceGitBranch(workspace, branch, undefined, id), localizedMessage('git.branchCreated', {branch})),
       () => clearSubmittedDraft(workspace, repository!, 'branchDraft', branch), true);
   }
   const syncWorkspaceBranch = (workspace: string, action: GitSyncAction) => write(workspace, state.repositoryId,
     async repository => applied(await api.syncWorkspaceGit(workspace, action, undefined, repository),
-      action === 'fetch' ? '已刷新远端状态。' : action === 'pull' ? '已拉取远端更改。' : '已推送本地更改。'));
+      action === 'fetch' ? localizedMessage('git.fetched') : action === 'pull' ? localizedMessage('git.pulled') : localizedMessage('git.pushed')));
   const saveWorkspaceStash = (workspace: string) => write(workspace, state.repositoryId,
-    async repository => applied(await api.stashWorkspaceGit(workspace, undefined, undefined, repository), '已保存当前更改到暂存栈。'));
+    async repository => applied(await api.stashWorkspaceGit(workspace, undefined, undefined, repository), localizedMessage('git.stashSaved')));
   const applyWorkspaceStash = (workspace: string, reference: string) => write(workspace, state.repositoryId,
-    async repository => applied(await api.applyWorkspaceGitStash(workspace, reference, undefined, repository), `已应用 ${reference}。`));
+    async repository => applied(await api.applyWorkspaceGitStash(workspace, reference, undefined, repository), localizedMessage('git.stashApplied', {reference})));
   const applyWorkspaceGitAction = (workspace: string, path: string, action: 'stage' | 'unstage', repository?: string) => write(workspace, repository ?? state.repositoryId,
-    async id => applied(await api.applyWorkspaceGitFileAction(workspace, path, action, undefined, id), action === 'stage' ? `已暂存 ${path}` : `已取消暂存 ${path}`));
+    async id => applied(await api.applyWorkspaceGitFileAction(workspace, path, action, undefined, id), action === 'stage' ? localizedMessage('git.fileStaged', {path}) : localizedMessage('git.fileUnstaged', {path})));
   const applyWorkspaceGitWorkspaceAction = (workspace: string, action: GitWorkspaceAction, repository?: string) => write(workspace, repository ?? state.repositoryId,
     async id => applied(await api.applyWorkspaceGitAction(workspace, action, undefined, id),
-      { stage_all: '已暂存仓库中的全部更改。', stage_changed: '已暂存“更改”分组中的文件。', stage_untracked: '已暂存未跟踪的文件。', unstage_all: '已取消全部暂存。' }[action]));
+      { stage_all: localizedMessage('git.allStaged'), stage_changed: localizedMessage('git.changedStaged'), stage_untracked: localizedMessage('git.untrackedStaged'), unstage_all: localizedMessage('git.allUnstaged') }[action]));
   function commitWorkspaceGitChanges(workspace: string, message: string) {
     const repository = state.repositoryId;
     return write(workspace, repository, async id => {
       const result = await api.commitWorkspaceChanges(workspace, message, undefined, id);
-      return { ok: result.committed, message: result.message, notice: result.hash ? `已创建提交 ${result.hash.slice(0, 8)}。` : '已创建提交。' };
+      return { ok: result.committed, message: readNativeMessage(result.localizedMessage) ?? result.message, notice: result.hash ? localizedMessage('git.commitCreatedHash', {hash: result.hash.slice(0, 8)}) : localizedMessage('git.commitCreated') };
     }, () => clearSubmittedDraft(workspace, repository!, 'commitMessage', message), true);
   }
   async function requestWorkspaceAgentReview(workspace: string) {
@@ -381,7 +397,7 @@ export function createWorkspaceGitController(options: Options) {
     if (!current(workspace) || !repository) return;
     const { session, running, profile } = options.reviewContext();
     if (!session || session.workspaceId !== workspace || session.archived) {
-      options.error('请先选择当前工作区中的可用 Agent 会话。'); return;
+      options.error(localizedMessage('git.reviewSessionRequired')); return;
     }
     if (running || state.reviewBusy) return;
     set({ reviewBusy: true }); options.error(null);
@@ -415,8 +431,8 @@ export function createWorkspaceGitController(options: Options) {
         length >= limit ? '\n\n部分 diff 因长度限制已截断。' : '',
       ].join('\n');
       await options.startReview({ workspaceId: workspace, session, profile: reviewProfile, prompt });
-      options.notice('已在独立的只读会话中请求 Agent 审查 Git 变更。', 'info');
-    } catch (error) { options.error(toErrorMessage(error)); }
+      options.notice(localizedMessage('git.reviewRequested'), 'info');
+    } catch (error) { options.error(toErrorText(error)); }
     finally { set({ reviewBusy: false }); }
   }
   return {

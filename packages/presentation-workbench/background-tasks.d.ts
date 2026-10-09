@@ -3,4 +3,4 @@ export interface BackgroundTask {
   status: 'running' | 'completed' | 'failed' | 'stopped' | 'unknown'; outputPath?: string; exitCode?: number | null;
 }
 export const backgroundTaskLabels: Record<BackgroundTask['status'], string>;
-export function parseBackgroundTask(item: {toolName?: string | null; content: string; status: string}): BackgroundTask | null;
+export function parseBackgroundTask(item: {toolName?: string | null; content: string; status: string}, locale?: 'zh-CN' | 'en'): BackgroundTask | null;

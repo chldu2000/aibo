@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createServer} from 'vite';
@@ -26,8 +27,8 @@ test('audit scope failures remain recoverable without enabling or invoking a pro
  try{
   const {createCapabilityHistoryController}=await server.ssrLoadModule('/src/lib/app/capability-history-controller.ts');let state,fail=true,wrong=false;
   controller=createCapabilityHistoryController({list:async()=>{if(fail)throw Error('database unavailable');return catalog(['deleted']);},read:async()=>page(wrong?'other':'deleted'),publish:next=>state=next});
-  await controller.open();assert.match(state.error,/unavailable/);fail=false;await controller.open();assert.equal(state.page.scope.id,'deleted');
-  wrong=true;await controller.refresh();assert.match(state.error,/不匹配/);assert.equal(state.page.scope.id,'deleted');
+  await controller.open();assert.match(translateMessage('zh-CN',state.error),/unavailable/);fail=false;await controller.open();assert.equal(state.page.scope.id,'deleted');
+  wrong=true;await controller.refresh();assert.match(translateMessage('zh-CN',state.error),/不匹配/);assert.equal(state.page.scope.id,'deleted');
  }finally{controller?.close();await server.close();}
 });
 
@@ -44,7 +45,7 @@ test('legacy snapshots have an isolated source and reject late or mismatched eve
   const opening=controller.open();await new Promise(resolve=>setTimeout(resolve,0));
   await controller.selectSource('legacy');assert.equal(state.source,'legacy');assert.equal(state.page.events[0].payload.type,'legacy_snapshot');
   pending.resolve(page('deleted'));await opening;assert.equal(state.page.source,'legacy');
-  wrong=true;await controller.refresh();assert.match(state.error,/不匹配/);assert.equal(state.page.source,'legacy');
+  wrong=true;await controller.refresh();assert.match(translateMessage('zh-CN',state.error),/不匹配/);assert.equal(state.page.source,'legacy');
   wrong=false;await controller.open();assert.equal(state.source,'legacy');assert.equal(sources.at(-1),'legacy');
   controller.close();await controller.open();assert.equal(state.source,'events');
  }finally{controller?.close();await server.close();}

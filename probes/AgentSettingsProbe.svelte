@@ -1,5 +1,7 @@
 <script lang="ts">
   import { AgentSettingsForm } from '../src/lib/ui-kit';
+  import { locale } from '../src/lib/i18n/runtime';
+  import { translateMessage } from '../packages/i18n/index.js';
   import { createAgentSettingsController, type AgentSettingsState } from '../src/lib/app/agent-settings-controller';
   import type { AgentSettingsSnapshot } from '../packages/plugin-protocol/src/settings';
   let state = $state<AgentSettingsState>({target:null,snapshot:null,draft:{},loading:false,saving:false,error:null,notice:null});
@@ -14,10 +16,12 @@
     ]},
     revision:0,values:{},inheritedValues:{text:'Default',instructions:'',enabled:true,limit:10,length:'normal'},effectiveValues:{text:'Default',instructions:'',enabled:true,limit:10,length:'normal'},
   };
-  const probe = {fail:false,saves:[] as unknown[]};
+  const probe = {fail:false,errorKey:'',attempts:0,saves:[] as unknown[]};
   const controller = createAgentSettingsController({
     read:async()=>structuredClone(saved),
     save:async request=>{
+      probe.attempts++;
+      if(probe.errorKey)throw {message:'settings_conflict: 原始诊断',localized:{schema:'aibo.host-message/v1',key:probe.errorKey,params:probe.errorKey==='native.settings.valueInvalid'?{name:'text'}:{}}};
       if (probe.fail) throw Error('settings_conflict: 配置已被其他窗口修改');
       probe.saves.push(request);
       saved={...saved,revision:saved.revision+1,values:request.values,effectiveValues:{...saved.inheritedValues,...request.values}};
@@ -29,5 +33,5 @@
   void controller.select(saved.target);
 </script>
 {#if state.snapshot}
-  <AgentSettingsForm snapshot={state.snapshot} draft={state.draft} busy={state.loading || state.saving} error={state.error} notice={state.notice} onChange={controller.change} onSave={() => void controller.save()} onReset={controller.reset} onReload={() => void controller.reload()} />
+  <AgentSettingsForm snapshot={state.snapshot} draft={state.draft} busy={state.loading || state.saving} error={state.error === null ? null : translateMessage($locale,state.error)} notice={state.notice === null ? null : translateMessage($locale,state.notice)} onChange={controller.change} onSave={() => void controller.save()} onReset={controller.reset} onReload={() => void controller.reload()} />
 {/if}

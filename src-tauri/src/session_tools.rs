@@ -547,44 +547,50 @@ impl SessionHost {
     /// The v1 pi-tool namespace belongs to Core, regardless of the agent identity.
     /// Expired Core approvals must never fall through to a provider operation.
     pub async fn resolve_approval_from(&self, caller: &str, session_id: &str, request_id: &str, decision: &str) -> Result<(), String> {
+        self.resolve_approval_display_from(caller,session_id,request_id,decision).await.map_err(|error|error.diagnostic)
+    }
+    pub(crate) async fn resolve_approval_display_from(&self, caller: &str, session_id: &str, request_id: &str, decision: &str) -> Result<(), HostMessage> {
         if request_id.starts_with("pi-tool:") {
-            return self.resolve_core_tool_approval_from(caller, session_id, request_id, decision).await;
+            return self.resolve_core_tool_approval_display_from(caller, session_id, request_id, decision).await;
         }
-        self.invoke_capability_from(caller, session_id, "approval.respond", json!({"requestId": request_id, "decision": decision})).await?;
+        self.invoke_capability_display_from(caller, session_id, "approval.respond", json!({"requestId": request_id, "decision": decision})).await?;
         Ok(())
     }
 
     /// Option approvals answer with one offered option ID. The provider's declared
     /// approval.respond variant rejects the shape it does not accept; Core tools use decisions only.
     pub async fn resolve_approval_option_from(&self, caller: &str, session_id: &str, request_id: &str, option_id: &str) -> Result<(), String> {
+        self.resolve_approval_option_display_from(caller,session_id,request_id,option_id).await.map_err(|error|error.diagnostic)
+    }
+    pub(crate) async fn resolve_approval_option_display_from(&self, caller: &str, session_id: &str, request_id: &str, option_id: &str) -> Result<(), HostMessage> {
         if request_id.starts_with("pi-tool:") {
-            return Err("invalid_request: Core tool approvals take a decision".into());
+            return Err(session_error("native.approval.coreDecision","invalid_request: Core tool approvals take a decision"));
         }
         if option_id.is_empty() || option_id.len() > 256 {
-            return Err("invalid_request: invalid approval option".into());
+            return Err(session_error("native.approval.invalidOption","invalid_request: invalid approval option"));
         }
         let answer = json!({"requestId": request_id, "optionId": option_id});
         let Some(transition) = self.approval_transition(caller, session_id, request_id, option_id).await? else {
-            self.invoke_capability_from(caller, session_id, "approval.respond", answer).await?;
+            self.invoke_capability_display_from(caller, session_id, "approval.respond", answer).await?;
             return Ok(());
         };
         // The host commits the new control before the agent may act on it; a refused answer restores it.
         execution_profile::save_for_session(&self.db, session_id, &transition.target).await.map_err(|error| error.to_string())?;
-        if let Err(error) = self.invoke_capability_from(caller, session_id, "approval.respond", answer).await {
+        if let Err(error) = self.invoke_capability_display_from(caller, session_id, "approval.respond", answer).await {
             execution_profile::save_for_session(&self.db, session_id, &transition.previous).await.map_err(|error| error.to_string())?;
-            return Err(error);
+            return Err(error.into());
         }
         let event = json!({"nativeSessionId":transition.binding["nativeSessionId"],"turnId":transition.turn_id,"type":"session.control_changed",
             "correlation":{"requestId":request_id},
             "payload":{"controlId":transition.to,"previousControlId":transition.from,"label":transition.label,"cause":"approval","requestId":request_id}});
         let mut event = event;
         if transition.context_reset { event["payload"]["contextReset"] = json!(true); }
-        self.project_event(session_id, &transition.workspace_id, &transition.generation, &transition.binding, event, EventOrigin::Host).await
+        self.project_event_display(session_id, &transition.workspace_id, &transition.generation, &transition.binding, event, EventOrigin::Host).await
     }
 
     /// Reads the offered option from the recorded request: the effect is what the provider offered,
     /// never what the window claims. Options without effects answer the agent unchanged.
-    async fn approval_transition(&self, caller: &str, session_id: &str, request_id: &str, option_id: &str) -> Result<Option<ControlTransition>, String> {
+    async fn approval_transition(&self, caller: &str, session_id: &str, request_id: &str, option_id: &str) -> Result<Option<ControlTransition>, HostMessage> {
         let (generation, binding_json): (String, String) = sqlx::query_as("SELECT generation_id,plugin_binding_json FROM session_bindings WHERE session_id=?")
             .bind(session_id).fetch_one(&self.db).await.map_err(|error| error.to_string())?;
         let recorded: Vec<String> = sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=? AND generation_id=? AND event_type='approval.requested' ORDER BY sequence DESC LIMIT 64")
@@ -592,41 +598,38 @@ impl SessionHost {
         let Some(event) = recorded.iter().filter_map(|raw| serde_json::from_str::<Value>(raw).ok()).find(|event| event["payload"]["requestId"] == request_id) else { return Ok(None); };
         let Some(option) = event["payload"]["options"].as_array().and_then(|options| options.iter().find(|option| option["id"] == option_id)) else { return Ok(None); };
         let Some(target) = option["effects"]["sessionControl"].as_str() else { return Ok(None); };
-        let turn_id = event["turnId"].as_str().ok_or("invalid_session: transition approval has no turn")?.to_owned();
-        let live = self.live.lock().await.get(session_id).cloned().ok_or("busy: the turn has finished accepting interactions")?;
-        if live.caller != caller { return Err("permission_denied: invocation belongs to another window".into()); }
+        let turn_id = event["turnId"].as_str().ok_or_else(||session_error("native.approval.missingTurn","invalid_session: transition approval has no turn"))?.to_owned();
+        let live = self.live.lock().await.get(session_id).cloned().ok_or_else(||session_error("native.approval.turnFinished","busy: the turn has finished accepting interactions"))?;
+        if live.caller != caller { return Err(session_error("native.approval.otherWindow","permission_denied: invocation belongs to another window")); }
         let running: Option<String> = sqlx::query_scalar("SELECT id FROM turns WHERE session_id=? AND status='running'")
             .bind(session_id).fetch_optional(&self.db).await.map_err(|error| error.to_string())?;
-        if running.as_deref() != Some(turn_id.as_str()) { return Err("invalid_session: approval belongs to another turn".into()); }
-        let session = crate::session_by_id(&self.db, session_id).await.map_err(|error| error.to_string())?;
-        if session.archived { return Err("invalid_session: archived sessions cannot switch controls".into()); }
-        let previous = crate::session_execution_profile(&self.db, session_id).await.map_err(|error| error.to_string())?.profile;
+        if running.as_deref() != Some(turn_id.as_str()) { return Err(session_error("native.approval.differentTurn","invalid_session: approval belongs to another turn")); }
+        let session = crate::session_by_id(&self.db, session_id).await.map_err(crate::ui_i18n::core_message)?;
+        if session.archived { return Err(session_error("native.approval.archived","invalid_session: archived sessions cannot switch controls")); }
+        let previous = crate::session_execution_profile(&self.db, session_id).await.map_err(crate::ui_i18n::core_message)?.profile;
         let (source, mut next) = crate::session_controls::transition(&previous, target)?;
         next.adapter_capabilities = previous.adapter_capabilities.clone();
-        let workspace = crate::workspace_by_id(&self.db, &session.workspace_id).await.map_err(|error| error.to_string())?;
-        crate::require_trusted_workspace(&workspace, &next).map_err(|error| format!("workspace_untrusted: {error}"))?;
+        let workspace = crate::workspace_by_id(&self.db, &session.workspace_id).await.map_err(crate::ui_i18n::core_message)?;
+        crate::require_trusted_workspace(&workspace, &next).map_err(|error|HostMessage::with_diagnostic("native.approval.workspaceTrust",json!({}),format!("workspace_untrusted: {error}")))?;
         let label = previous.session_controls.iter().find(|control| control.id == target).map(|control| control.label.clone()).unwrap_or_else(|| target.to_owned());
-        let binding = serde_json::from_str(&binding_json).map_err(|_| "invalid_recovery_data: invalid plugin binding".to_owned())?;
+        let binding = serde_json::from_str(&binding_json).map_err(|_|session_error("native.approval.invalidBinding","invalid_recovery_data: invalid plugin binding"))?;
         let context_reset = option["effects"]["contextReset"] == true;
         Ok(Some(ControlTransition { previous, target: next, from: source.id, to: target.to_owned(), label, context_reset, turn_id, generation, workspace_id: session.workspace_id, binding }))
     }
 
-    pub async fn resolve_core_tool_approval_from(
-        &self,
-        caller: &str,
-        session_id: &str,
-        request_id: &str,
-        decision: &str,
-    ) -> Result<(), String> {
+    pub async fn resolve_core_tool_approval_from(&self,caller:&str,session_id:&str,request_id:&str,decision:&str)->Result<(),String> {
+        self.resolve_core_tool_approval_display_from(caller,session_id,request_id,decision).await.map_err(|error|error.diagnostic)
+    }
+    async fn resolve_core_tool_approval_display_from(&self,caller:&str,session_id:&str,request_id:&str,decision:&str)->Result<(),HostMessage> {
         if !matches!(decision, "accept" | "cancel") {
-            return Err("invalid_request: approval decision must be accept or cancel".into());
+            return Err(session_error("native.approval.decision","invalid_request: approval decision must be accept or cancel"));
         }
         let pending = {
             let mut pending_tools = self.pending_tools.lock().await;
             let pending = pending_tools.get(request_id)
-                .ok_or_else(|| "invalid_request: Core tool approval is no longer pending".to_owned())?;
+                .ok_or_else(||session_error("native.approval.notPending","invalid_request: Core tool approval is no longer pending"))?;
             if pending.session_id != session_id || pending.runtime.caller != caller {
-                return Err("invalid_session: approval session mismatch".into());
+                return Err(session_error("native.approval.sessionMismatch","invalid_session: approval session mismatch"));
             }
             pending_tools.remove(request_id).expect("pending request checked under lock")
         };
@@ -637,13 +640,13 @@ impl SessionHost {
                 .await
                 .map_err(|error| error.to_string())?;
         let binding: Value = serde_json::from_str(&binding_json)
-            .map_err(|_| "invalid_recovery_data: invalid plugin binding".to_owned())?;
+            .map_err(|_|session_error("native.approval.invalidBinding","invalid_recovery_data: invalid plugin binding"))?;
         let event = json!({
             "nativeSessionId":binding["nativeSessionId"],"turnId":pending.turn_id,
             "type":"approval.resolved","correlation":{"requestId":request_id},"payload":{"requestId":request_id,"decision":decision,"tool":pending.tool}
         });
         if let Err(error) = self
-            .project_event(
+            .project_event_display(
                 session_id,
                 &pending.workspace_id,
                 &pending.generation_id,
@@ -653,7 +656,7 @@ impl SessionHost {
             )
             .await
         {
-            let _ = pending.runtime.reply(pending.request_id, Err(error.clone())).await;
+            let _ = pending.runtime.reply(pending.request_id, Err(error.diagnostic.clone())).await;
             return Err(error);
         }
         let result = if decision == "accept" {
@@ -662,7 +665,7 @@ impl SessionHost {
         } else {
             Err("permission_denied: Pi tool request was rejected".into())
         };
-        pending.runtime.reply(pending.request_id, result).await
+        pending.runtime.reply(pending.request_id, result).await.map_err(HostMessage::from)
     }
 
 

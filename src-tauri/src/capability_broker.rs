@@ -67,9 +67,21 @@ pub(crate) struct Binding {
 }
 #[derive(Clone, Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct Failure { pub code: String, pub message: String, pub invocation_id: Option<String> }
-fn fail(code: &str, message: &str) -> Failure { Failure { code: code.into(), message: message.into(), invocation_id: None } }
-fn database(_: impl std::fmt::Display) -> Failure { fail("provider_unavailable", "Capability storage is unavailable") }
+pub(crate) struct Failure {
+    pub code: String, pub message: String, pub invocation_id: Option<String>,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub localized: Option<Value>,
+}
+impl Failure {
+    pub(crate) fn into_host_message(self) -> crate::ui_i18n::HostMessage {
+        crate::ui_i18n::HostMessage {diagnostic:self.message,localized:self.localized}
+    }
+}
+fn fail(code: &str, message: &str) -> Failure { Failure { code: code.into(), message: message.into(), invocation_id: None, localized:None } }
+fn fail_display(code: &str, message: &str, key: &str) -> Failure {
+    Failure {localized:Some(crate::ui_i18n::display_descriptor(key,json!({}))),..fail(code,message)}
+}
+fn database(_: impl std::fmt::Display) -> Failure { fail_display("provider_unavailable", "Capability storage is unavailable", "native.broker.storage") }
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Response { pub instance_id: String, pub invocation_id: String, pub installation_id: String, pub generation_id: String, pub output: Value, #[serde(skip)] pub negotiated_operations: Value }
@@ -158,7 +170,7 @@ impl Broker {
         let mut slots=self.slots.lock().await;
         let keys:Vec<_>=slots.keys().filter(|key|key.2==scope).cloned().collect();
         let retired:Vec<_>=keys.into_iter().filter_map(|key|slots.remove(&key)).collect();drop(slots);
-        for slot in retired {if let Some(runtime)=slot.runtime.lock().await.clone() {if !runtime.stop_and_wait().await {return Err(fail("outcome_unknown","Session process cleanup did not finish"));}}}
+        for slot in retired {if let Some(runtime)=slot.runtime.lock().await.clone() {if !runtime.stop_and_wait().await {return Err(fail_display("outcome_unknown", "Session process cleanup did not finish", "native.broker.sessionCleanup"));}}}
         Ok(())
     }
     // Serialize desktop lifecycle mutations so re-enable cannot race with drain/uninstall.
@@ -173,16 +185,16 @@ impl Broker {
         let id = match scope {
             Scope::Application => return Ok(None), Scope::Workspace(id) => id.clone(),
             Scope::Session(id) => sqlx::query_scalar::<_, String>("SELECT workspace_id FROM sessions WHERE id=?")
-                .bind(id).fetch_optional(&self.db).await.map_err(database)?.ok_or_else(||fail("provider_unavailable", "Session no longer exists"))?,
+                .bind(id).fetch_optional(&self.db).await.map_err(database)?.ok_or_else(||fail_display("provider_unavailable", "Session no longer exists", "native.broker.sessionMissing"))?,
         };
-        let workspace = crate::workspace_by_id(&self.db, &id).await.map_err(|_|fail("provider_unavailable", "Workspace no longer exists"))?;
-        if workspace.trust != "trusted" { return Err(fail("permission_denied", "Workspace must be trusted")); }
+        let workspace = crate::workspace_by_id(&self.db, &id).await.map_err(|_|fail_display("provider_unavailable", "Workspace no longer exists", "native.broker.workspaceMissing"))?;
+        if workspace.trust != "trusted" { return Err(fail_display("permission_denied", "Workspace must be trusted", "native.broker.workspaceTrust")); }
         Ok(Some(workspace))
     }
     /// Cursor-based audit access; window ownership is supplied by trusted IPC.
     pub async fn events(&self, caller: &str, scope: &Scope, after: i64, limit: u32) -> Result<Vec<Value>, Failure> {
         Self::identity(scope,"audit","1.0.0")?;
-        if after < 0 || limit == 0 || limit > 100 { return Err(fail("invalid_input", "Invalid event page")); }
+        if after < 0 || limit == 0 || limit > 100 { return Err(fail_display("invalid_input", "Invalid event page", "native.broker.eventPage")); }
         self.workspace(scope).await?;
         let (kind,id) = scope.key();
         let rows = sqlx::query("SELECT sequence,payload_json FROM capability_events WHERE caller_window=? AND scope_kind=? AND scope_id=? AND sequence>? ORDER BY sequence LIMIT ?")
@@ -195,18 +207,18 @@ impl Broker {
     }
     async fn validate_turn(&self, request: &Request) -> Result<(), Failure> {
         let Some(turn) = &request.turn_id else { return Ok(()); };
-        if turn.is_empty() || turn.len() > 160 { return Err(fail("invalid_input", "Invalid turn identity")); }
+        if turn.is_empty() || turn.len() > 160 { return Err(fail_display("invalid_input", "Invalid turn identity", "native.broker.turnIdentity")); }
         let owner: Option<(String,String)> = sqlx::query_as("SELECT t.session_id,s.workspace_id FROM turns t JOIN sessions s ON s.id=t.session_id WHERE t.id=?")
             .bind(turn).fetch_optional(&self.db).await.map_err(database)?;
         let allowed = owner.is_some_and(|(session,workspace)|match &request.scope {
             Scope::Application => false, Scope::Workspace(id) => *id == workspace, Scope::Session(id) => *id == session,
         });
-        if !allowed { return Err(fail("permission_denied", "Turn does not belong to the invocation scope")); }
+        if !allowed { return Err(fail_display("permission_denied", "Turn does not belong to the invocation scope", "native.broker.turnScope")); }
         Ok(())
     }
     fn identity(scope: &Scope, capability: &str, version: &str) -> Result<(), Failure> {
         if scope.key().1.is_empty() || scope.key().1.len() > 160 || capability.len() > 160 || capability.is_empty() || version.len() > 128 || semver::Version::parse(version).is_err() {
-            return Err(fail("unsupported", "Invalid scope or capability version"));
+            return Err(fail_display("unsupported", "Invalid scope or capability version", "native.broker.scopeVersion"));
         }
         Ok(())
     }
@@ -217,7 +229,7 @@ impl Broker {
         Self::identity(scope, capability, version)?;
         if let Scope::Session(id)=scope {
             let retired:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_session_retirements WHERE session_id=?)").bind(id).fetch_one(&self.db).await.map_err(database)?;
-            if retired { return Err(fail("provider_unavailable","Session plugin data was removed; only business history remains")); }
+            if retired { return Err(fail_display("provider_unavailable", "Session plugin data was removed; only business history remains", "native.broker.retiredData")); }
         }
         self.workspace(scope).await?;
         let rows = sqlx::query("SELECT id,plugin_id,manifest_json,install_path,package_digest FROM plugin_installations WHERE installed=1 AND enabled=1 AND (? IS NULL OR id=?)")
@@ -237,7 +249,7 @@ impl Broker {
                 }
             }
         }
-        if providers.is_empty() && other_version { return Err(fail("incompatible_version", "No provider implements the requested contract version")); }
+        if providers.is_empty() && other_version { return Err(fail_display("incompatible_version", "No provider implements the requested contract version", "native.broker.contractVersion")); }
         Ok(providers)
     }
     pub async fn bind(&self, binding: Binding) -> Result<(), Failure> {
@@ -245,14 +257,14 @@ impl Broker {
         if self.fail_next_dynamic_binding.swap(false,Ordering::AcqRel) {return Err(database("injected dynamic binding storage failure"));}
         let offers = self.providers(&binding.scope, &binding.capability, &binding.version).await?;
         if !offers.iter().any(|provider|provider.installation_id == binding.installation_id && provider.contribution_id == binding.contribution_id) {
-            return Err(fail("provider_unavailable", "Selected provider is unavailable"));
+            return Err(fail_display("provider_unavailable", "Selected provider is unavailable", "native.broker.selectedUnavailable"));
         }
         if let Scope::Session(id) = &binding.scope {
             let pinned: Option<String> = sqlx::query_scalar("SELECT plugin_installation_id FROM sessions WHERE id=?").bind(id).fetch_one(&self.db).await.map_err(database)?;
-            if pinned.as_deref() != Some(binding.installation_id.as_str()) { return Err(fail("permission_denied", "Session provider must match its pinned installation")); }
+            if pinned.as_deref() != Some(binding.installation_id.as_str()) { return Err(fail_display("permission_denied", "Session provider must match its pinned installation", "native.broker.pinnedInstallation")); }
         }
         let dependencies = crate::plugin_dependencies::resolve(&self.db,&binding.installation_id,true).await.map_err(database)?;
-        if !dependencies.supports(&binding.contribution_id) { return Err(fail("provider_unavailable", "Selected contribution has an unavailable dependency")); }
+        if !dependencies.supports(&binding.contribution_id) { return Err(fail_display("provider_unavailable", "Selected contribution has an unavailable dependency", "native.broker.dependencyUnavailable")); }
         self.select_binding(&binding).await
     }
     async fn provider(&self, request: &Request) -> Result<Provider, Failure> {
@@ -264,7 +276,7 @@ impl Broker {
         let offers = match self.providers(&request.scope, &request.capability, &request.version).await {
             Err(error) => {
                 if let Some((token, _, _)) = &candidate { self.discard_candidate(token).await?; }
-                if binding.is_some() && error.code == "incompatible_version" { return Err(fail("provider_unavailable", "Bound contract version is unavailable")); }
+                if binding.is_some() && error.code == "incompatible_version" { return Err(fail_display("provider_unavailable", "Bound contract version is unavailable", "native.broker.boundVersion")); }
                 return Err(error);
             }
             Ok(offers) => offers,
@@ -274,7 +286,7 @@ impl Broker {
                 let pinned: Option<String> = sqlx::query_scalar("SELECT plugin_installation_id FROM sessions WHERE id=?").bind(session).fetch_one(&self.db).await.map_err(database)?;
                 if pinned.as_deref() != Some(installation.as_str()) {
                     self.discard_candidate(&token).await?;
-                    return Err(fail("provider_unavailable", "Candidate no longer matches the session's pinned installation"));
+                    return Err(fail_display("provider_unavailable", "Candidate no longer matches the session's pinned installation", "native.broker.candidatePinned"));
                 }
             }
             if let Some(mut provider) = offers.iter().find(|provider|provider.installation_id == installation && provider.contribution_id == contribution).cloned() {
@@ -282,18 +294,18 @@ impl Broker {
                 return Ok(provider);
             }
             self.discard_candidate(&token).await?;
-            return Err(fail("provider_unavailable", "Candidate provider is unavailable; confirmed binding was retained"));
+            return Err(fail_display("provider_unavailable", "Candidate provider is unavailable; confirmed binding was retained", "native.broker.candidateUnavailable"));
         }
         if let Some((installation,contribution)) = binding {
             if let Scope::Session(id) = &request.scope {
                 let pinned: Option<String> = sqlx::query_scalar("SELECT plugin_installation_id FROM sessions WHERE id=?").bind(id).fetch_one(&self.db).await.map_err(database)?;
-                if pinned.as_deref() != Some(installation.as_str()) { return Err(fail("provider_unavailable", "Session binding no longer matches its pinned installation")); }
+                if pinned.as_deref() != Some(installation.as_str()) { return Err(fail_display("provider_unavailable", "Session binding no longer matches its pinned installation", "native.broker.bindingPinned")); }
             }
             return offers.into_iter().find(|provider|provider.installation_id == installation && provider.contribution_id == contribution)
-                .ok_or_else(||fail("provider_unavailable", "Bound release is unavailable; choose a provider explicitly"));
+                .ok_or_else(||fail_display("provider_unavailable", "Bound release is unavailable; choose a provider explicitly", "native.broker.boundRelease"));
         }
-        if offers.is_empty() { return Err(fail("unsupported", "No provider declares this capability")); }
-        Err(fail("provider_selection_required", "Choose and bind a provider before calling it"))
+        if offers.is_empty() { return Err(fail_display("unsupported", "No provider declares this capability", "native.broker.noProvider")); }
+        Err(fail_display("provider_selection_required", "Choose and bind a provider before calling it", "native.broker.selectionRequired"))
     }
     /// Host-selected semantic contribution binding; never accepts plugin-provided caller authority.
     pub(crate) async fn invoke_bound(&self, caller: &str, request: Request, binding: &Binding) -> Result<Response,Failure> {
@@ -301,8 +313,8 @@ impl Broker {
     }
     pub(crate) async fn invoke_bound_observed(&self, caller: &str, request: Request, binding: &Binding, observer: Option<EventObserver>) -> Result<Response,Failure> {
         Self::identity(&request.scope,&request.capability,&request.version)?;
-        if request.request_id.is_empty() || request.request_id.len()>160 || request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version || request.input.to_string().len() > input_limit(&request.capability) { return Err(fail("invalid_input", "Contribution binding mismatch")); }
-        let provider = self.offers(&request.scope,&request.capability,&request.version,Some(&binding.installation_id)).await?.into_iter().find(|offer|offer.contribution_id == binding.contribution_id).ok_or_else(||fail("provider_unavailable", "Contribution provider is unavailable"))?;
+        if request.request_id.is_empty() || request.request_id.len()>160 || request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version || request.input.to_string().len() > input_limit(&request.capability) { return Err(fail_display("invalid_input", "Contribution binding mismatch", "native.broker.bindingMismatch")); }
+        let provider = self.offers(&request.scope,&request.capability,&request.version,Some(&binding.installation_id)).await?.into_iter().find(|offer|offer.contribution_id == binding.contribution_id).ok_or_else(||fail_display("provider_unavailable", "Contribution provider is unavailable", "native.broker.contributionUnavailable"))?;
         self.invoke_selected_observed(caller,request,provider,None,None,observer).await
     }
     pub async fn cancel(&self, caller: &str, request_id: &str) -> bool {
@@ -310,12 +322,12 @@ impl Broker {
             .bind(crate::now_iso()).bind(caller).bind(request_id).execute(&self.db).await.is_ok_and(|result|result.rows_affected() > 0);
         self.flights.lock().await.get(&(caller.into(),request_id.into())).is_some_and(|flight|flight.cancel.send(true).is_ok()) || durable
     }
-    pub(crate) async fn claim_plugin_undo(&self,target:&str)->Result<String,String>{
+    pub(crate) async fn claim_plugin_undo(&self,target:&str)->Result<String,crate::ui_i18n::HostMessage>{
         let flights=self.flights.lock().await;
-        if flights.values().any(|flight|flight.installation_id==target){return Err("新版正在使用，不能撤销升级".into());}
+        if flights.values().any(|flight|flight.installation_id==target){return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.plugin.undoInUse",json!({}),"新版正在使用，不能撤销升级"));}
         let plugin:Option<String>=sqlx::query_scalar("UPDATE plugin_replacements SET phase='preparing' WHERE target_id=? AND phase='ready' RETURNING plugin_id")
             .bind(target).fetch_optional(&self.db).await.map_err(|e|e.to_string())?;
-        plugin.ok_or("新版已开始使用或没有可撤销的升级；如需降级，请选择清除数据重装".into())
+        plugin.ok_or_else(||crate::ui_i18n::HostMessage::with_diagnostic("native.plugin.undoUnavailable",json!({}),"新版已开始使用或没有可撤销的升级；如需降级，请选择清除数据重装"))
     }
     pub async fn stop_installation(&self, installation: &str) -> Result<(), Failure> {
         self.stop_contributions(installation,None).await
@@ -330,12 +342,12 @@ impl Broker {
         let keys: Vec<_> = slots.keys().filter(|key|key.0 == installation && matches(&key.1)).cloned().collect();
         let retired: Vec<_> = keys.into_iter().filter_map(|key|slots.remove(&key)).collect();
         drop(slots);
-        for slot in retired { if let Some(runtime) = slot.runtime.lock().await.clone() { if !runtime.stop_and_wait().await { return Err(fail("outcome_unknown", "Provider cleanup did not complete")); } } }
+        for slot in retired { if let Some(runtime) = slot.runtime.lock().await.clone() { if !runtime.stop_and_wait().await { return Err(fail_display("outcome_unknown", "Provider cleanup did not complete", "native.broker.providerCleanup")); } } }
         tokio::time::timeout(Duration::from_secs(6),async {
             while self.flights.lock().await.values().any(|flight|flight.installation_id == installation && matches(&flight.contribution_id)) {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
-        }).await.map_err(|_|fail("busy", "Provider invocations are still draining"))?;
+        }).await.map_err(|_|fail_display("busy", "Provider invocations are still draining", "native.broker.draining"))?;
         Ok(())
     }
     pub async fn stop_workspace(&self, workspace: &str) -> Result<(), Failure> {
@@ -347,7 +359,7 @@ impl Broker {
         let keys: Vec<_> = slots.keys().filter(|key|match &key.2 { Scope::Workspace(id) => id == workspace, Scope::Session(id) => sessions.contains(id), Scope::Application => false }).cloned().collect();
         let retired: Vec<_> = keys.into_iter().filter_map(|key|slots.remove(&key)).collect();
         drop(slots);
-        for slot in retired { if let Some(runtime) = slot.runtime.lock().await.clone() { if !runtime.stop_and_wait().await { return Err(fail("outcome_unknown", "Provider cleanup did not complete")); } } }
+        for slot in retired { if let Some(runtime) = slot.runtime.lock().await.clone() { if !runtime.stop_and_wait().await { return Err(fail_display("outcome_unknown", "Provider cleanup did not complete", "native.broker.providerCleanup")); } } }
         Ok(())
     }
     async fn slot(&self, provider: &Provider, scope: &Scope) -> Result<Arc<Slot>, Failure> {
@@ -359,7 +371,7 @@ impl Broker {
         }
         for key in expired { if let Some(slot) = slots.remove(&key) { if let Some(runtime) = slot.runtime.lock().await.take() { runtime.stop().await; } } }
         if let Some(slot) = slots.get(&key) { return Ok(slot.clone()); }
-        if slots.len() >= MAX_INSTANCES { return Err(fail("busy", "Capability instance limit reached")); }
+        if slots.len() >= MAX_INSTANCES { return Err(fail_display("busy", "Capability instance limit reached", "native.broker.instanceLimit")); }
         let (kind, scope_id) = scope.key();
         sqlx::query("INSERT INTO capability_instances(id,installation_id,contribution_id,scope_kind,scope_id,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(installation_id,contribution_id,scope_kind,scope_id) DO NOTHING")
             .bind(ulid::Ulid::new().to_string()).bind(&provider.installation_id).bind(&provider.contribution_id).bind(kind).bind(scope_id).bind(crate::now_iso()).execute(&self.db).await.map_err(database)?;
@@ -370,7 +382,7 @@ impl Broker {
     }
     pub async fn invoke(&self, caller: &str, request: Request) -> Result<Response, Failure> {
         Self::identity(&request.scope,&request.capability,&request.version)?;
-        if request.request_id.is_empty() || request.request_id.len() > 160 || request.input.to_string().len() > input_limit(&request.capability) { return Err(fail("invalid_input", "Request size or identity limit")); }
+        if request.request_id.is_empty() || request.request_id.len() > 160 || request.input.to_string().len() > input_limit(&request.capability) { return Err(fail_display("invalid_input", "Request size or identity limit", "native.broker.requestLimit")); }
         let provider = self.provider(&request).await?;
         self.invoke_selected(caller,request,provider,None,None).await
     }
@@ -379,40 +391,40 @@ impl Broker {
     }
     fn invoke_selected_observed<'a>(&'a self, caller: &'a str, request: Request, provider: Provider, parent: Option<Chain>, write: Option<writes::WriteContext>, observer: Option<EventObserver>) -> std::pin::Pin<Box<dyn std::future::Future<Output=Result<Response,Failure>> + Send + 'a>> {
         Box::pin(async move {
-        if provider.operation["effect"] != "read" && write.is_none() { return Err(fail("permission_denied", "Write operation requires host approval")); }
+        if provider.operation["effect"] != "read" && write.is_none() { return Err(fail_display("permission_denied", "Write operation requires host approval", "native.broker.writeApproval")); }
         let workspace = self.workspace(&request.scope).await?;
         self.validate_turn(&request).await?;
-        if provider.operation["permissions"].as_array().unwrap().iter().any(|permission| (permission != "workspace.read" && !(permission == "workspace.write" && write.is_some())) || workspace.is_none()) { return Err(fail("permission_denied", "Operation requires an unavailable permission")); }
-        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
+        if provider.operation["permissions"].as_array().unwrap().iter().any(|permission| (permission != "workspace.read" && !(permission == "workspace.write" && write.is_some())) || workspace.is_none()) { return Err(fail_display("permission_denied", "Operation requires an unavailable permission", "native.broker.permissionUnavailable")); }
+        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail_display("invalid_input", "Input does not match the capability contract", "native.broker.inputContract")); }
         let permissions: Vec<String> = provider.operation["permissions"].as_array().unwrap().iter().map(|value|value.as_str().unwrap().to_owned()).collect();
         if let Some(parent) = &parent {
-            if permissions.iter().any(|permission|!parent.permissions.contains(permission)) { return Err(fail("permission_denied", "Dependency call exceeds its caller permissions")); }
+            if permissions.iter().any(|permission|!parent.permissions.contains(permission)) { return Err(fail_display("permission_denied", "Dependency call exceeds its caller permissions", "native.broker.callerPermissions")); }
             if parent.sites.len() >= MAX_CALL_DEPTH || parent.sites.iter().any(|site|site.installation_id == provider.installation_id && site.contribution_id == provider.contribution_id) {
-                return Err(fail("busy", "Dependency call cycle or depth limit"));
+                return Err(fail_display("busy", "Dependency call cycle or depth limit", "native.broker.dependencyCycle"));
             }
         }
         let slot = self.slot(&provider,&request.scope).await?;
-        let _permit = slot.permit.clone().try_acquire_owned().map_err(|_|fail("busy", "An invocation is already active in this scope"))?;
+        let _permit = slot.permit.clone().try_acquire_owned().map_err(|_|fail_display("busy", "An invocation is already active in this scope", "native.broker.scopeBusy"))?;
         let key = (caller.to_string(),request.request_id.clone());
         let (cancel,cancelled) = watch::channel(false);
         {
             let mut flights = self.flights.lock().await;
             let available: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_installations WHERE id=? AND installed=1 AND enabled=1)")
                 .bind(&provider.installation_id).fetch_one(&self.db).await.map_err(database)?;
-            if !available { return Err(fail("provider_unavailable", "Provider was disabled before admission")); }
+            if !available { return Err(fail_display("provider_unavailable", "Provider was disabled before admission", "native.broker.disabledAdmission")); }
             let replacing:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM plugin_replacements r JOIN plugin_installations p ON p.plugin_id=r.plugin_id WHERE p.id=? AND r.phase='preparing')")
                 .bind(&provider.installation_id).fetch_one(&self.db).await.map_err(database)?;
             if replacing && !(caller=="plugin-upgrade" && request.capability=="aibo.session.open") {
-                return Err(fail("busy","Plugin replacement is in progress"));
+                return Err(fail_display("busy", "Plugin replacement is in progress", "native.broker.replacementBusy"));
             }
             if let Scope::Session(session)=&request.scope {
                 let candidate:Option<String>=sqlx::query_scalar("SELECT installation_id FROM plugin_session_candidates WHERE session_id=?")
                     .bind(session).fetch_optional(&self.db).await.map_err(database)?;
                 if candidate.is_some() && !(candidate.as_deref()==Some(provider.installation_id.as_str()) && caller=="plugin-upgrade" && request.capability=="aibo.session.open") {
-                    return Err(fail("busy", "Session is migrating to another plugin release"));
+                    return Err(fail_display("busy", "Session is migrating to another plugin release", "native.broker.migrationBusy"));
                 }
             }
-            if flights.len() >= MAX_ACTIVE || flights.contains_key(&key) { return Err(fail("busy", "Invocation limit or duplicate request ID")); }
+            if flights.len() >= MAX_ACTIVE || flights.contains_key(&key) { return Err(fail_display("busy", "Invocation limit or duplicate request ID", "native.broker.invocationLimit")); }
             flights.insert(key.clone(),Flight { cancel, installation_id: provider.installation_id.clone(), contribution_id: provider.contribution_id.clone(), workspace_id: workspace.as_ref().map(|workspace|workspace.id.clone()), scope:request.scope.clone(), interaction:None });
         }
         let id = ulid::Ulid::new().to_string();
@@ -433,11 +445,16 @@ impl Broker {
         let mut result = self.execute(&id,&request,&provider,&slot,workspace.as_ref(),&chain,observer.as_ref()).await;
         if result.is_err() { if let Some(token) = &provider.candidate { if let Err(error) = self.discard_candidate(token).await { result = Err(error); } } }
         if let Some(write) = &chain.write {
-            if write.is_uncertain() { result = Err(fail("outcome_unknown", "A descendant write has an unknown outcome")); }
+            if write.is_uncertain() { result = Err(fail_display("outcome_unknown", "A descendant write has an unknown outcome", "native.broker.descendantUnknown")); }
             if let Some(runtime) = slot.runtime.lock().await.take() {
-                if !runtime.stop_and_wait().await { result = Err(fail("outcome_unknown", "Capability process cleanup could not be confirmed")); }
+                if !runtime.stop_and_wait().await { result = Err(fail_display("outcome_unknown", "Capability process cleanup could not be confirmed", "native.broker.cleanupUnconfirmed")); }
             }
-            if let Err(error) = &mut result { write.mark_uncertain(); error.message = format!("Approved capability execution did not produce a confirmed result ({}); inspect its effects before another request",error.code); error.code = "outcome_unknown".into(); }
+            if let Err(error) = &mut result {
+                write.mark_uncertain();
+                error.message = format!("Approved capability execution did not produce a confirmed result ({}); inspect its effects before another request",error.code);
+                error.localized=Some(crate::ui_i18n::display_descriptor("native.broker.writeUnconfirmed",json!({"code":error.code})));
+                error.code = "outcome_unknown".into();
+            }
         } else if result.is_err() { if let Some(runtime) = slot.runtime.lock().await.take() { runtime.stop().await; } }
         *slot.touched.lock().await = Instant::now();
         self.flights.lock().await.remove(&key);
@@ -457,15 +474,15 @@ impl Broker {
         self.check_executables(&provider.manifest, chain).await?;
         let prepare = async {
         let current: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plugin_installations WHERE id=? AND enabled=1 AND installed=1").bind(&provider.installation_id).fetch_one(&self.db).await.map_err(database)?;
-        if current != 1 { return Err(fail("provider_unavailable", "Provider was disabled")); }
-        let (_,_,digest) = plugin_registry::inspect(&provider.directory).map_err(|_|fail("provider_unavailable", "Installed package integrity check failed"))?;
-        if digest != provider.digest { return Err(fail("provider_unavailable", "Installed package changed")); }
+        if current != 1 { return Err(fail_display("provider_unavailable", "Provider was disabled", "native.broker.disabled")); }
+        let (_,_,digest) = plugin_registry::inspect(&provider.directory).map_err(|_|fail_display("provider_unavailable", "Installed package integrity check failed", "native.broker.packageIntegrity"))?;
+        if digest != provider.digest { return Err(fail_display("provider_unavailable", "Installed package changed", "native.broker.packageChanged")); }
         let dependencies = crate::plugin_dependencies::resolve_metadata_pinned(&self.db,&provider.installation_id).await.map_err(database)?;
-        if !dependencies.supports(&provider.contribution_id) { return Err(fail("provider_unavailable", "A pinned package dependency is unavailable")); }
+        if !dependencies.supports(&provider.contribution_id) { return Err(fail_display("provider_unavailable", "A pinned package dependency is unavailable", "native.broker.pinnedPackageDependency")); }
         // Recheck scope authority immediately before giving a runtime its workspace.
         self.workspace(&request.scope).await?;
         self.validate_turn(request).await?;
-        crate::git_capability_guard::check(&request.capability,&request.input,workspace.map(|workspace|workspace.path.as_str())).map_err(|_|fail("permission_denied", "Git target is outside the allowed workspace resources"))?;
+        crate::git_capability_guard::check(&request.capability,&request.input,workspace.map(|workspace|workspace.path.as_str())).map_err(|_|fail_display("permission_denied", "Git target is outside the allowed workspace resources", "native.broker.gitScope"))?;
         let mut active = slot.runtime.lock().await;
         if active.as_ref().is_some_and(|runtime|runtime.was_stopped() || runtime.has_exited()) { *active = None; }
         if active.is_none() {
@@ -474,17 +491,17 @@ impl Broker {
             let executable = if entrypoint.extension().is_some_and(|extension|extension == "mjs" || extension == "js") {
                 args.insert(0,entrypoint.to_string_lossy().into_owned());
                 if provider.manifest.get("hostSdk").is_some() {
-                    let registry = provider.directory.parent().ok_or_else(||fail("provider_unavailable", "Plugin registry is unavailable"))?;
-                    let preload = crate::plugin_sdk::prepare(registry).map_err(|_|fail("provider_unavailable", "Host SDK integrity check failed"))?;
+                    let registry = provider.directory.parent().ok_or_else(||fail_display("provider_unavailable", "Plugin registry is unavailable", "native.broker.registryUnavailable"))?;
+                    let preload = crate::plugin_sdk::prepare(registry).map_err(|_|fail_display("provider_unavailable", "Host SDK integrity check failed", "native.broker.sdkIntegrity"))?;
                     // URL encoding handles spaces, #, %, non-ASCII and Windows paths.
-                    let url = tauri::Url::from_file_path(preload).map_err(|_|fail("provider_unavailable", "Host SDK path is invalid"))?;
+                    let url = tauri::Url::from_file_path(preload).map_err(|_|fail_display("provider_unavailable", "Host SDK path is invalid", "native.broker.sdkPath"))?;
                     args.splice(0..0, ["--import".into(), url.to_string()]);
                 }
-                crate::node_runtime::for_manifest(&provider.manifest).ok_or_else(||fail("provider_unavailable", "Compatible Node is unavailable; open Settings → Runtime to download or select Node"))?
+                crate::node_runtime::for_manifest(&provider.manifest).ok_or_else(||fail_display("provider_unavailable", "Compatible Node is unavailable; open Settings → Runtime to download or select Node","native.broker.nodeUnavailable"))?
             } else { entrypoint };
             let runtime = if protocol == "2.1" { PluginRuntime::spawn_interactive(&executable,&args,&provider.directory,self.sdk_module.as_deref()) }
                 else { PluginRuntime::spawn_capability(&executable,&args,&provider.directory) }
-                .map_err(|_|fail("provider_unavailable", "Capability process could not start"))?;
+                .map_err(|_|fail_display("provider_unavailable", "Capability process could not start", "native.broker.processStart"))?;
             *active = Some(runtime);
         }
         let runtime = active.as_ref().unwrap().clone();
@@ -495,15 +512,15 @@ impl Broker {
         let handshake = runtime.request("capability.initialize",json!({"protocol":protocol,"instanceId":slot.id,"privateData":{"path":private_data,"formatVersion":1},"generationId":runtime.generation_id,"installationId":provider.installation_id,"pluginId":provider.plugin_id,"pluginVersion":provider.manifest["version"],"contributionId":provider.contribution_id}),Duration::from_secs(5)).await.map_err(transport)?;
         let expected = json!({"capability":request.capability,"version":request.version,"operationId":provider.operation["id"]});
         if handshake["protocol"] != protocol || handshake["pluginId"] != provider.plugin_id || handshake["pluginVersion"] != provider.manifest["version"] || handshake["generationId"] != runtime.generation_id || !handshake["operations"].as_array().is_some_and(|operations|operations.contains(&expected)) {
-            return Err(fail("incompatible_version", "Runtime did not negotiate the declared operation"));
+            return Err(fail_display("incompatible_version", "Runtime did not negotiate the declared operation", "native.broker.operationNegotiation"));
         }
         sqlx::query("UPDATE capability_invocations SET generation_id=? WHERE id=?").bind(&runtime.generation_id).bind(id).execute(&self.db).await.map_err(database)?;
         Ok::<_,Failure>((runtime, handshake["operations"].clone()))
         };
         let (runtime, negotiated_operations) = tokio::select! {
             biased;
-            _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
-            _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
+            _ = chain.cancelled() => return Err(fail_display("cancelled", "Invocation was cancelled", "native.broker.cancelled")),
+            _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail_display("timeout", "Invocation deadline expired", "native.broker.deadline")),
             runtime = prepare => runtime?,
         };
         if let Some(token) = &provider.candidate { self.promote_candidate(token).await?; }
@@ -512,7 +529,7 @@ impl Broker {
                 flight.interaction = Some(interaction::Interaction {runtime:runtime.clone(),instance_id:slot.id.clone(),invocation_id:id.into(),scope:request.scope.clone(),provider:provider.clone(),permissions:chain.permissions.clone(),deadline:chain.deadline,control_permit:Arc::new(Semaphore::new(1))});
             }
         }
-        let settings = crate::agent_settings::invocation_context(&self.db, &provider.manifest, &provider.installation_id, &provider.contribution_id, &request.scope).await.map_err(|_| fail("provider_unavailable", "Agent settings could not be resolved"))?;
+        let settings = crate::agent_settings::invocation_context(&self.db, &provider.manifest, &provider.installation_id, &provider.contribution_id, &request.scope).await.map_err(|_| fail_display("provider_unavailable", "Agent settings could not be resolved", "native.broker.settings"))?;
         let mut invocation = json!({"invocationId":id,"instanceId":slot.id,"generationId":runtime.generation_id,"contributionId":provider.contribution_id,"capability":request.capability,"contractVersion":request.version,"operationId":provider.operation["id"],"scope":request.scope,"deadlineUnixMs":chain.deadline_ms,"context":{"turnId":request.turn_id,"workspaceId":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read" || permission == "workspace.write")).map(|workspace|&workspace.id),"workspacePath":workspace.filter(|_|chain.permissions.iter().any(|permission|permission == "workspace.read" || permission == "workspace.write")).map(|workspace|&workspace.path),"originalCaller":{"kind":"window","id":chain.caller},"permissions":chain.permissions,"callChain":chain.sites},"input":request.input});
         if matches!(&request.scope, Scope::Session(_)) && protocol == "2.1" && crate::session_history_tools::offered(&provider.manifest, &provider.contribution_id, &negotiated_operations) {
             invocation["context"]["hostTools"] = crate::session_history_tools::catalog().clone();
@@ -533,8 +550,8 @@ impl Broker {
         let raw = loop {
             tokio::select! {
                 biased;
-                _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
-                _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
+                _ = chain.cancelled() => return Err(fail_display("cancelled", "Invocation was cancelled", "native.broker.cancelled")),
+                _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail_display("timeout", "Invocation deadline expired", "native.broker.deadline")),
                 message = notifications.recv() => {
                     let Some(message) = message else { break call.await.map_err(transport)?; };
                     if protocol == "2.1" && message["method"] == "capability.event" {
@@ -547,23 +564,23 @@ impl Broker {
                         if let Some(observer) = observer {
                             tokio::select! {
                                 biased;
-                                _ = chain.cancelled() => return Err(fail("cancelled","Invocation was cancelled during projection")),
-                                _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout","Invocation deadline expired during projection")),
-                                result = observer(event) => result.map_err(|_|fail("invalid_output","Host rejected the capability event"))?,
+                                _ = chain.cancelled() => return Err(fail_display("cancelled", "Invocation was cancelled during projection", "native.broker.projectionCancelled")),
+                                _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail_display("timeout", "Invocation deadline expired during projection", "native.broker.projectionDeadline")),
+                                result = observer(event) => result.map_err(|_|fail_display("invalid_output", "Host rejected the capability event", "native.broker.eventRejected"))?,
                             }
                         }
                         continue;
                     }
-                    let child_id = message["id"].as_str().ok_or_else(||fail("invalid_input", "Missing child request ID"))?;
-                    if message["method"] != "capability.call" || child_ids.len() >= MAX_CHILD_CALLS || !child_ids.insert(child_id.to_owned()) { return Err(fail("busy", "Duplicate child request or call count limit")); }
+                    let child_id = message["id"].as_str().ok_or_else(||fail_display("invalid_input", "Missing child request ID", "native.broker.childIdentity"))?;
+                    if message["method"] != "capability.call" || child_ids.len() >= MAX_CHILD_CALLS || !child_ids.insert(child_id.to_owned()) { return Err(fail_display("busy", "Duplicate child request or call count limit", "native.broker.childLimit")); }
                     let result = self.child_call(child_id,&message["params"],id,&runtime,request,provider,chain).await;
-                    if chain.write.as_ref().is_some_and(|write|write.is_uncertain()) { return Err(fail("outcome_unknown", "A descendant write has an unknown outcome")); }
+                    if chain.write.as_ref().is_some_and(|write|write.is_uncertain()) { return Err(fail_display("outcome_unknown", "A descendant write has an unknown outcome", "native.broker.descendantUnknown")); }
                     // Failures are structured data, so no plugin-provided text is reflected.
-                    let reply = match result { Ok(response) => json!({"ok":true,"response":response}), Err(error) => json!({"ok":false,"error":error}) };
+                    let reply = match result { Ok(response) => json!({"ok":true,"response":response}), Err(error) => json!({"ok":false,"error":{"code":error.code,"message":error.message,"invocationId":error.invocation_id}}) };
                     tokio::select! {
                         biased;
-                        _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
-                        _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
+                        _ = chain.cancelled() => return Err(fail_display("cancelled", "Invocation was cancelled", "native.broker.cancelled")),
+                        _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail_display("timeout", "Invocation deadline expired", "native.broker.deadline")),
                         result = runtime.reply(message["id"].clone(),Ok(reply)) => result.map_err(transport)?,
                     }
                 }
@@ -571,7 +588,7 @@ impl Broker {
             }
         };
         if raw["invocationId"] != id || raw["generationId"] != runtime.generation_id || raw["output"].to_string().len() > MAX_OUTPUT || !raw.as_object().is_some_and(|object|object.len() == 3 && object.contains_key("output")) || !jsonschema::options().build(&provider.operation["outputSchema"]).map_err(database)?.is_valid(&raw["output"]) {
-            return Err(fail("invalid_output", "Runtime returned a stale or invalid result"));
+            return Err(fail_display("invalid_output", "Runtime returned a stale or invalid result", "native.broker.invalidResult"));
         }
         if matches!(request.capability.as_str(), "aibo.session.turn" | "aibo.session.turn.write" | "aibo.session.goal.resume" | "aibo.session.goal.resume.write") {
             if let Some(turn) = &request.turn_id {
@@ -582,16 +599,16 @@ impl Broker {
         Ok(Response { instance_id: slot.id.clone(), invocation_id: id.into(), installation_id: provider.installation_id.clone(), generation_id: runtime.generation_id.clone(), output: raw["output"].clone(), negotiated_operations })
     }
     async fn child_call(&self, child_id: &str, params: &Value, parent_id: &str, runtime: &PluginRuntime, request: &Request, provider: &Provider, chain: &Chain) -> Result<Response, Failure> {
-        let child: ChildRequest = serde_json::from_value(params.clone()).map_err(|_|fail("invalid_input", "Invalid dependency call envelope"))?;
-        if child.invocation_id != parent_id || child.generation_id != runtime.generation_id { return Err(fail("permission_denied", "Dependency call does not belong to this invocation")); }
-        if child.input.to_string().len() > input_limit(&child.capability) { return Err(fail("invalid_input", "Dependency input exceeds limit")); }
+        let child: ChildRequest = serde_json::from_value(params.clone()).map_err(|_|fail_display("invalid_input", "Invalid dependency call envelope", "native.broker.dependencyEnvelope"))?;
+        if child.invocation_id != parent_id || child.generation_id != runtime.generation_id { return Err(fail_display("permission_denied", "Dependency call does not belong to this invocation", "native.broker.dependencyInvocation")); }
+        if child.input.to_string().len() > input_limit(&child.capability) { return Err(fail_display("invalid_input", "Dependency input exceeds limit", "native.broker.dependencyInput")); }
         let child_request = Request { turn_id:request.turn_id.clone(), scope:request.scope.clone(), capability:child.capability.clone(), version:child.version.clone(),
             request_id: {use sha2::{Digest,Sha256}; format!("child-{:x}",Sha256::digest(format!("{parent_id}\0{child_id}")))}, input:child.input.clone() };
         let prepare = self.dependency_provider(&child_request,provider,&child.plugin_id,&child.contribution_id,true);
         let selected = tokio::select! {
             biased;
-            _ = chain.cancelled() => return Err(fail("cancelled", "Invocation was cancelled")),
-            _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail("timeout", "Invocation deadline expired")),
+            _ = chain.cancelled() => return Err(fail_display("cancelled", "Invocation was cancelled", "native.broker.cancelled")),
+            _ = tokio::time::sleep_until(chain.deadline.into()) => return Err(fail_display("timeout", "Invocation deadline expired", "native.broker.deadline")),
             selected = prepare => selected?,
         };
         let mut child_chain = chain.clone();
@@ -605,7 +622,7 @@ impl Broker {
 }
 fn transport(error: String) -> Failure {
     let code = error.split(':').next().unwrap_or("");
-    fail(match code { "busy" | "timeout" | "cancelled" | "unsupported" | "incompatible_version" | "permission_denied" | "invalid_output" | "invalid_input" | "approval_rejected" | "outcome_unknown" => code, _ => "provider_unavailable" }, "Capability transport failed")
+    fail_display(match code { "busy" | "timeout" | "cancelled" | "unsupported" | "incompatible_version" | "permission_denied" | "invalid_output" | "invalid_input" | "approval_rejected" | "outcome_unknown" => code, _ => "provider_unavailable" }, "Capability transport failed", "native.broker.transport")
 }
 
 #[cfg(test)]
@@ -728,7 +745,13 @@ mod tests {
             }
         }).await.unwrap();
         let control=||interaction::Control {request_id:"interactive".into(),capability:"dev.aibo.capability-echo.answer".into(),version:"1.0.0".into(),input:json!({"value":"answered"})};
-        assert!(fixture.broker.control("another-window",control()).await.is_err());
+        let foreign=fixture.broker.control("another-window",control()).await.unwrap_err();
+        assert_eq!(foreign.code,"provider_unavailable");assert_eq!(foreign.message,"No interactive invocation belongs to this caller");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,foreign.localized.as_ref().unwrap()),"没有属于当前调用者的交互调用。");
+        let mut invalid=control();invalid.input=json!({"value":123});
+        let invalid=fixture.broker.control("main",invalid).await.unwrap_err();
+        assert_eq!(invalid.code,"invalid_input");assert_eq!(invalid.message,"Control input does not match its contract");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,invalid.localized.as_ref().unwrap()),"控制请求输入不符合合同。");
         let mut invalid=control();invalid.input=json!({"unexpected":true});
         assert_eq!(fixture.broker.control("main",invalid).await.unwrap_err().code,"invalid_input");
         let answered=fixture.broker.control("main",control()).await.unwrap();
@@ -1028,10 +1051,22 @@ mod tests {
         let first = { let broker = fixture.broker.clone(); tokio::spawn(async move { broker.invoke("main",request("a","cancel",json!({"value":"first","delayMs":500}))).await }) };
         let second = { let broker = fixture.broker.clone(); tokio::spawn(async move { broker.invoke("main",request("b","keep",json!({"value":"second","delayMs":500}))).await }) };
         running(&fixture,2).await;
+        let calls:i64=sqlx::query_scalar("SELECT COUNT(*) FROM capability_invocations").fetch_one(&fixture.db).await.unwrap();
+        let error=fixture.broker.claim_plugin_undo(&fixture.installation).await.unwrap_err();
+        assert_eq!(error.diagnostic,"新版正在使用，不能撤销升级");
+        assert_eq!(error.display()["key"],"native.plugin.undoInUse");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&error.display()),error.diagnostic);
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&error.display()),"The new version is in use. Its upgrade cannot be undone.");
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM capability_invocations").fetch_one(&fixture.db).await.unwrap(),calls);
         assert!(!fixture.broker.cancel("other-window","cancel").await);
-        assert_eq!(fixture.broker.invoke("main",request("a","duplicate-scope",json!({"value":"busy"}))).await.unwrap_err().code,"busy");
+        let busy=fixture.broker.invoke("main",request("a","duplicate-scope",json!({"value":"busy"}))).await.unwrap_err();
+        assert_eq!(busy.code,"busy");assert_eq!(busy.message,"An invocation is already active in this scope");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,busy.localized.as_ref().unwrap()),"此作用域已有运行中的调用。");
         assert!(fixture.broker.cancel("main","cancel").await);
-        assert_eq!(first.await.unwrap().unwrap_err().code,"cancelled");
+        let cancelled=first.await.unwrap().unwrap_err();assert_eq!(cancelled.code,"cancelled");
+        let display=cancelled.localized.as_ref().unwrap();assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,display),cancelled.message);
+        assert_ne!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,display),cancelled.message);
+        assert!(cancelled.invocation_id.is_some());
         assert_eq!(second.await.unwrap().unwrap().output["value"],"second");
         assert!(!fixture.broker.cancel("main","cancel").await);
         fixture.finish().await;
@@ -1041,10 +1076,19 @@ mod tests {
         let fixture = Fixture::new().await;
         let scope = Scope::Workspace("a".into());
         fixture.bind(scope.clone(),&fixture.installation).await;
-        assert!(matches!(fixture.broker.providers(&scope,CAP,"2.0.0").await,Err(Failure { code, .. }) if code == "incompatible_version"));
-        assert_eq!(fixture.broker.invoke("main",request("a","bad",json!({"value":"hello","workspacePath":"/etc"}))).await.unwrap_err().code,"invalid_input");
+        let version=fixture.broker.providers(&scope,CAP,"2.0.0").await.err().unwrap();
+        assert_eq!(version.code,"incompatible_version");assert_eq!(version.message,"No provider implements the requested contract version");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,version.localized.as_ref().unwrap()),"没有提供者实现所请求的合同版本。");
+        let invalid=fixture.broker.invoke("main",request("a","bad",json!({"value":"hello","workspacePath":"/etc"}))).await.unwrap_err();
+        assert_eq!(invalid.code,"invalid_input");assert_eq!(invalid.message,"Input does not match the capability contract");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,invalid.localized.as_ref().unwrap()),"输入不符合能力合同。");
+        let serialized=serde_json::to_value(&invalid).unwrap();assert_eq!(serialized["localized"]["schema"],"aibo.host-message/v1");assert_eq!(serialized["invocationId"],Value::Null);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM capability_invocations").fetch_one(&fixture.db).await.unwrap(),0,"rejection must not execute a provider");
+        assert_eq!(invalid.into_host_message().display(),serialized["localized"]);
         for mode in ["wrong-generation","wrong-output"] {
-            assert_eq!(fixture.broker.invoke("main",request("a",mode,json!({"value":"hello","mode":mode}))).await.unwrap_err().code,"invalid_output");
+            let invalid=fixture.broker.invoke("main",request("a",mode,json!({"value":"hello","mode":mode}))).await.unwrap_err();
+            assert_eq!(invalid.code,"invalid_output");assert_eq!(invalid.message,"Runtime returned a stale or invalid result");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,invalid.localized.as_ref().unwrap()),"运行时返回了过期或无效的结果。");
         }
         assert_eq!(fixture.broker.invoke("main",request("a","crash",json!({"value":"hello","mode":"crash"}))).await.unwrap_err().code,"provider_unavailable");
         assert!(fixture.broker.invoke("main",request("a","after-crash",json!({"value":"healthy"}))).await.is_ok());
@@ -1059,6 +1103,10 @@ mod tests {
         fixture.bind(Scope::Workspace("a".into()),&fixture.installation).await;
         let error = fixture.broker.invoke("main",request("a","timeout",json!({"value":"slow","delayMs":3000}))).await.unwrap_err();
         assert_eq!(error.code,"timeout");
+        let display=error.localized.as_ref().unwrap();assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,display),error.message);
+        assert_ne!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,display),error.message);
+        let payload=serde_json::to_value(&error).unwrap();assert_eq!(payload["message"],error.message);assert_eq!(payload["code"],"timeout");
+        assert_eq!(payload["invocationId"],error.invocation_id.as_ref().unwrap().as_str());
         let status: String = sqlx::query_scalar("SELECT status FROM capability_invocations WHERE id=?").bind(error.invocation_id).fetch_one(&fixture.db).await.unwrap();
         assert_eq!(status,"timeout");
         let active = { let broker = fixture.broker.clone(); tokio::spawn(async move {broker.invoke("main",request("a","revoked",json!({"value":"revoked","delayMs":500}))).await}) };

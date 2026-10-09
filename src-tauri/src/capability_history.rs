@@ -6,13 +6,13 @@ use sqlx::{Row, SqlitePool};
 
 fn boundary(before: Option<String>) -> Result<Option<i64>, CoreError> {
     before.map(|value| {
-        if value.len() > 19 { return Err(CoreError::InvalidWorkspacePath("invalid audit cursor".into())); }
-        value.parse::<i64>().ok().filter(|value| *value > 0).ok_or_else(|| CoreError::InvalidWorkspacePath("invalid audit cursor".into()))
+        if value.len() > 19 { return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.audit.cursor",serde_json::json!({}),"invalid audit cursor"))); }
+        value.parse::<i64>().ok().filter(|value| *value > 0).ok_or_else(|| crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.audit.cursor",serde_json::json!({}),"invalid audit cursor")))
     }).transpose()
 }
 fn scope_key(scope: &Scope) -> Result<(&str, &str), CoreError> {
     let key = match scope { Scope::Application => ("application", "application"), Scope::Workspace(id) => ("workspace", id.as_str()), Scope::Session(id) => ("session", id.as_str()) };
-    if key.1.is_empty() || key.1.len() > 160 { return Err(CoreError::InvalidWorkspacePath("invalid audit scope".into())); }
+    if key.1.is_empty() || key.1.len() > 160 { return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.audit.scope",serde_json::json!({}),"invalid audit scope"))); }
     Ok(key)
 }
 #[derive(Serialize)]
@@ -41,7 +41,7 @@ pub(crate) async fn scopes_from(db: &SqlitePool, caller: &str, before: Option<St
     let next_before = if more { rows.last().map(|row| row.get::<i64,_>("sequence").to_string()) } else { None };
     let items = rows.iter().map(|row| {
         let id: String = row.try_get("scope_id")?;
-        let scope = match row.get::<&str,_>("scope_kind") { "application" => Scope::Application, "workspace" => Scope::Workspace(id), "session" => Scope::Session(id), _ => return Err(CoreError::Initialization("unknown persisted audit scope".into())) };
+        let scope = match row.get::<&str,_>("scope_kind") { "application" => Scope::Application, "workspace" => Scope::Workspace(id), "session" => Scope::Session(id), _ => return Err(crate::ui_i18n::initialization_message(crate::ui_i18n::HostMessage::with_diagnostic("native.audit.persistedScope",serde_json::json!({}),"unknown persisted audit scope"))) };
         Ok(ScopeItem { scope, label: row.try_get("label")? })
     }).collect::<Result<Vec<_>,CoreError>>()?;
     Ok(ScopePage { schema:"aibo.capability-history-scopes/v1", source:if legacy {"legacy"} else {"events"}, items, next_before })
@@ -106,6 +106,24 @@ mod tests {
         let db=crate::open_database(&path).await.unwrap();assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM capability_legacy_history").fetch_one(&db).await.unwrap(),56);db.close().await;
         let readonly=sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(&path).read_only(true)).await.unwrap();
         assert_eq!(events_from(&readonly,"main",Scope::Workspace("deleted".into()),None,true).await.unwrap().events.len(),50);
+        let original=serde_json::to_value(events(&readonly,"main",Scope::Workspace("w".into()),None).await.unwrap()).unwrap();
+        for cursor in ["", "-1", "0", "raw /{cursor}", "9223372036854775808", "12345678901234567890"] {
+            for error in [scopes_from(&readonly,"main",Some(cursor.into()),false).await.err().unwrap(),
+                events_from(&readonly,"main",Scope::Workspace("w".into()),Some(cursor.into()),false).await.err().unwrap(),
+                scopes_from(&readonly,"main",Some(cursor.into()),true).await.err().unwrap()] {
+                let payload=serde_json::to_value(error).unwrap();assert_eq!(payload["code"],"invalid_workspace_path");
+                assert_eq!(payload["message"],"invalid workspace path: invalid audit cursor");assert_eq!(payload["localized"]["key"],"native.audit.cursor");
+                assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]),"审计记录分页参数无效。");
+            }
+        }
+        for id in [String::new(),"x".repeat(161)] {
+            for scope in [Scope::Workspace(id.clone()),Scope::Session(id)] {
+                let payload=serde_json::to_value(events(&readonly,"main",scope,None).await.err().unwrap()).unwrap();
+                assert_eq!(payload["code"],"invalid_workspace_path");assert_eq!(payload["message"],"invalid workspace path: invalid audit scope");
+                assert_eq!(payload["localized"]["key"],"native.audit.scope");
+            }
+        }
+        assert_eq!(serde_json::to_value(events(&readonly,"main",Scope::Workspace("w".into()),None).await.unwrap()).unwrap(),original);
         readonly.close().await;std::fs::remove_dir_all(root).unwrap();
     }
     #[tokio::test]
@@ -147,6 +165,24 @@ mod tests {
         assert!(scopes(&readonly,"unknown",None).await.unwrap().items.is_empty());
         assert!(events(&readonly,"main",Scope::Workspace("w".into()),Some("-1".into())).await.is_err());
         assert!(scopes(&readonly,"main",Some("9223372036854775808".into())).await.is_err());
+        let original=serde_json::to_value(events(&readonly,"main",Scope::Workspace("w".into()),None).await.unwrap()).unwrap();
+        for cursor in ["", "-1", "0", "raw /{cursor}", "9223372036854775808", "12345678901234567890"] {
+            for error in [scopes_from(&readonly,"main",Some(cursor.into()),false).await.err().unwrap(),
+                events_from(&readonly,"main",Scope::Workspace("w".into()),Some(cursor.into()),false).await.err().unwrap(),
+                scopes_from(&readonly,"main",Some(cursor.into()),true).await.err().unwrap()] {
+                let payload=serde_json::to_value(error).unwrap();assert_eq!(payload["code"],"invalid_workspace_path");
+                assert_eq!(payload["message"],"invalid workspace path: invalid audit cursor");assert_eq!(payload["localized"]["key"],"native.audit.cursor");
+                assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]),"审计记录分页参数无效。");
+            }
+        }
+        for id in [String::new(),"x".repeat(161)] {
+            for scope in [Scope::Workspace(id.clone()),Scope::Session(id)] {
+                let payload=serde_json::to_value(events(&readonly,"main",scope,None).await.err().unwrap()).unwrap();
+                assert_eq!(payload["code"],"invalid_workspace_path");assert_eq!(payload["message"],"invalid workspace path: invalid audit scope");
+                assert_eq!(payload["localized"]["key"],"native.audit.scope");
+            }
+        }
+        assert_eq!(serde_json::to_value(events(&readonly,"main",Scope::Workspace("w".into()),None).await.unwrap()).unwrap(),original);
         readonly.close().await;std::fs::remove_dir_all(root).unwrap();
     }
 }

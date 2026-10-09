@@ -20,8 +20,9 @@ const server = await createServer({
 await server.listen();
 const browser = await chromium.launch({ headless: true });
 try {
-  for (const skin of ['material3', 'ak-ui']) for (const kit of ['light', 'dark']) {
+  for (const skin of ['material3', 'ak-ui']) for (const kit of ['light', 'dark']) for (const locale of ['zh-CN','en']) {
   const page = await browser.newPage();
+  await page.addInitScript(locale => localStorage.setItem('aibo.language.v1',locale),locale);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
@@ -64,7 +65,7 @@ try {
   await page.getByText('Input session a', { exact: true }).click();
   await input.fill('back in a');
   assert.equal(await input.inputValue(), 'back in a');
-  assert.equal(await page.getByRole('button', { name: '发送', exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole('button', { name: locale === 'en' ? 'Send' : '发送', exact: true }).isEnabled(), true);
   // @references render as tags in a mirror layer; it must share the textarea's exact box or the caret drifts.
   await input.fill('请看 @src/lib/ui-kit/contract.ts 然后 ' + '换行文字 '.repeat(40) + '\n'.repeat(12) + '@docs/x.md 末尾');
   const mirror = await page.evaluate(() => {
@@ -81,7 +82,7 @@ try {
   assert(mirror.scroll[0] > 0, 'fixture overflows so the scroll sync is exercised');
   await input.fill('back in a');
   assert.deepEqual(errors, []);
-  console.log(`${kit}: initial selection, session switches, typing and presentation remount passed`);
+  console.log(`${skin} ${kit} ${locale}: initial selection, session switches, typing and presentation remount passed`);
   await page.close();
   }
 } finally { await browser.close(); await server.close(); }

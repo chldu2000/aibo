@@ -1,6 +1,8 @@
 import type { UiAgentStatusMarkProps, UiAttachmentListProps, UiFileChangeMarkProps, UiGoalBarProps, UiModelContextSelectProps, UiModelMatrixProps, UiSelectProps, UiSessionControlMarkProps, UiSubagentCardProps } from '../ui-kit/contract';
 import type { PresentationPackageManifest } from '../../../packages/plugin-protocol/src/presentation-package';
-import { fileChangeStates } from '../ui-kit/file-change.ts';
+import { translate } from '../../../packages/i18n/index.js';
+import type { Locale } from '../../../packages/i18n/index.js';
+import { fileChangeState } from '../ui-kit/file-change.ts';
 import { sessionControlAppearance } from '../ui-kit/session-control-appearance.ts';
 import type { PresentationControlData } from '../../../packages/plugin-protocol/src/presentation-controls';
 import type { PresentationContext, PresentationInput, PresentationIntent } from '../../../packages/plugin-protocol/src/presentation-runtime';
@@ -34,23 +36,23 @@ type Run = () => void | Promise<void>;
 export type HostMenu = { label: string; options: { value: string; label: string; disabled: boolean }[]; value: string };
 export type ControlEffect<Props> =
   | { kind: 'run'; run: Run }
-  | { kind: 'menu'; menu(props: Props): HostMenu | null; choose(props: Props, value: string): Run | null };
+  | { kind: 'menu'; menu(props: Props, locale?: Locale): HostMenu | null; choose(props: Props, value: string): Run | null };
 
 type ControlDefinition<Name extends PresentationControlData['control'], Props> = {
   /** First host API that sends this control; older packages keep inheriting the kit rendering. */
   since: HostApi;
-  project(props: Props): Omit<ControlData<Name>, 'control'>;
+  project(props: Props, locale: Locale): Omit<ControlData<Name>, 'control'>;
   /** Re-resolve against current props; stale or disabled tokens resolve to nothing. */
   resolve(props: Props, intent: Pick<PresentationIntent, 'id' | 'event'>): ControlEffect<Props> | null;
   preflight: Props;
   /** Frame size: a fixed panel, a 20px mark, the measured size of the default control, or the rendered content height. */
   frame: 'panel' | 'mark' | 'footprint' | 'content';
   /** Decorative controls never take pointer input; a null label hides them from assistive technology. */
-  decorative?: { label(props: Props): string | null };
+  decorative?: { label(props: Props, locale: Locale): string | null };
 };
 
 /** A menu control opens only when enabled with at least one enabled option. */
-function menuControl<Props>(menu: (props: Props) => HostMenu | null, select: (props: Props, value: string) => Run): Pick<ControlDefinition<never, Props>, 'resolve'> & { actions(props: Props): { token: 'open'; kind: 'open' }[] } {
+function menuControl<Props>(menu: (props: Props, locale?: Locale) => HostMenu | null, select: (props: Props, value: string) => Run): Pick<ControlDefinition<never, Props>, 'resolve'> & { actions(props: Props): { token: 'open'; kind: 'open' }[] } {
   const effect: ControlEffect<Props> = {
     kind: 'menu', menu,
     choose(props, value) {
@@ -65,17 +67,17 @@ function menuControl<Props>(menu: (props: Props) => HostMenu | null, select: (pr
   };
 }
 
-const selectMenu = (props: UiSelectProps): HostMenu | null =>
+const selectMenu = (props: UiSelectProps, locale: Locale = 'zh-CN'): HostMenu | null =>
   props.disabled || !props.options.some(option => !option.disabled) ? null : {
-    label: props['aria-label'] ?? props.title ?? props.placeholder ?? '请选择',
+    label: props['aria-label'] ?? props.title ?? props.placeholder ?? translate(locale, 'select.choose'),
     options: props.options.map(({ value, label, disabled }) => ({ value, label, disabled: Boolean(disabled) })),
     value: props.value,
   };
 const select = menuControl(selectMenu, (props: UiSelectProps, value) => () => props.onSelect(value));
 
-const contextMenu = (props: UiModelContextSelectProps): HostMenu | null =>
+const contextMenu = (props: UiModelContextSelectProps, locale: Locale = 'zh-CN'): HostMenu | null =>
   props.disabled || props.options.length === 0 ? null : {
-    label: '模型上下文大小',
+    label: translate(locale, 'context.size'),
     options: props.options.map(option => ({ value: option.id, label: option.label, disabled: false })),
     value: props.options.some(option => option.id === props.current) ? props.current ?? '' : '',
   };
@@ -134,11 +136,11 @@ const registry: { [Name in PresentationControl]: ControlDefinition<Name, Control
   },
   FileChangeMark: {
     since: '1.1.0',
-    project: ({ kind, decorative = false }) => ({ props: { kind, label: fileChangeStates[kind].label, decorative }, actions: [] }),
+    project: ({ kind, decorative = false }, locale) => ({ props: { kind, label: fileChangeState(kind, locale).label, decorative }, actions: [] }),
     resolve: () => null,
     preflight: { kind: 'modified' },
     frame: 'mark',
-    decorative: { label: ({ kind, decorative }) => decorative ? null : fileChangeStates[kind].label },
+    decorative: { label: ({ kind, decorative }, locale) => decorative ? null : fileChangeState(kind, locale).label },
   },
   SessionControlMark: {
     since: '1.1.0',
@@ -154,11 +156,11 @@ const registry: { [Name in PresentationControl]: ControlDefinition<Name, Control
   },
   Select: {
     since: '1.1.0',
-    project: props => ({
+    project: (props, locale) => ({
       props: {
         options: props.options.map(({ value, label, disabled }) => ({ value, label, disabled: Boolean(disabled) })),
-        value: props.value, placeholder: props.placeholder ?? '请选择', disabled: Boolean(props.disabled),
-        label: props['aria-label'] ?? props.title ?? props.placeholder ?? '请选择',
+        value: props.value, placeholder: props.placeholder ?? translate(locale, 'select.choose'), disabled: Boolean(props.disabled),
+        label: props['aria-label'] ?? props.title ?? props.placeholder ?? translate(locale, 'select.choose'),
       },
       actions: select.actions(props),
     }),
@@ -181,10 +183,10 @@ const registry: { [Name in PresentationControl]: ControlDefinition<Name, Control
   },
   AttachmentList: {
     since: '1.1.0',
-    project: props => ({
+    project: (props, locale) => ({
       props: {
         items: props.items.map(({ id, path, mediaType, sizeLabel }) => ({ id, name: fileName(path), mediaType, sizeLabel: sizeLabel ?? null })),
-        removable: Boolean(props.onRemove), disabled: Boolean(props.disabled), label: props.onRemove ? '上下文附件' : '消息附件',
+        removable: Boolean(props.onRemove), disabled: Boolean(props.disabled), label: translate(locale, props.onRemove ? 'inspector.attachments' : 'attachments.messages'),
       },
       actions: removals(props),
     }),
@@ -229,9 +231,9 @@ export function controlAvailable(control: PresentationControl, hostApi: string) 
 }
 
 export function controlInput<Name extends PresentationControl>(control: Name, props: ControlProps[Name],
-  context: PresentationContext, theme: Readonly<Record<string, string>> = {}): PresentationInput {
-  const data = { control, ...definition(control).project(props) };
-  return { surface: 'controls', context, data: JSON.parse(JSON.stringify(data)), theme };
+  context: PresentationContext, theme: Readonly<Record<string, string>> = {}, locale?: PresentationInput['locale']): PresentationInput {
+  const data = { control, ...definition(control).project(props, locale ?? 'zh-CN') };
+  return { ...(locale ? {locale} : {}), surface: 'controls', context, data: JSON.parse(JSON.stringify(data)), theme };
 }
 
 export function resolveControlIntent<Name extends PresentationControl>(control: Name, props: ControlProps[Name], intent: Pick<PresentationIntent, 'id' | 'event'>) {
@@ -242,12 +244,12 @@ export const isDecorativeControl = (control: PresentationControl) => Boolean(reg
 export const controlFrame = (control: PresentationControl) => registry[control].frame;
 
 /** Accessible name for decorative controls; null for interactive ones. */
-export function decorativeLabel<Name extends PresentationControl>(control: Name, props: ControlProps[Name]) {
-  return definition(control).decorative?.label(props) ?? null;
+export function decorativeLabel<Name extends PresentationControl>(control: Name, props: ControlProps[Name], locale: Locale = 'zh-CN') {
+  return definition(control).decorative?.label(props, locale) ?? null;
 }
 
-export function controlPreflights(hostApi: string = '1.0.0'): PresentationInput[] {
+export function controlPreflights(hostApi: string = '1.0.0', locale?: PresentationInput['locale']): PresentationInput[] {
   const context = { workspaceId: 'preflight', sessionId: 'preflight', revision: 1 };
   return presentationControls.filter(control => controlAvailable(control, hostApi))
-    .map(control => controlInput(control, definition(control).preflight, context));
+    .map(control => controlInput(control, definition(control).preflight, context, {}, locale));
 }

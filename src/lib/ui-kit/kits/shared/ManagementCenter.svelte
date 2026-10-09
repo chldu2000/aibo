@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { onMount, tick } from 'svelte';
   import type { UiManagementCenterProps, UiManagementSection } from '../../contract';
   import Button from './Button.svelte';
@@ -8,13 +9,13 @@
   // Capture before the sibling workbench becomes inert in this render.
   const previous = typeof document === 'undefined' ? null : document.activeElement;
   const previousFocus = typeof HTMLElement !== 'undefined' && previous instanceof HTMLElement ? previous.dataset.presentationFocus : undefined;
-  const sections: readonly { id: UiManagementSection; label: string; description: string }[] = [
-    { id: 'appearance', label: '外观', description: '主题与当前皮肤' },
-    { id: 'layout', label: '布局', description: '侧边区域与工作台恢复' },
-    { id: 'workspace', label: '工作区', description: '默认信任与宿主操作确认' },
-    { id: 'extensions', label: '插件与能力', description: '安装管理与插件配置' },
-    { id: 'runtime', label: '运行与诊断', description: '环境、连接与执行记录' },
-  ];
+  const sections: readonly { id: UiManagementSection; label: string; description: string }[] = $derived([
+    { id: 'appearance', label: $t('settings.appearance'), description: $t('settings.appearance.description') },
+    { id: 'layout', label: $t('settings.layout'), description: $t('settings.layout.description') },
+    { id: 'workspace', label: $t('settings.workspace'), description: $t('settings.workspace.description') },
+    { id: 'extensions', label: $t('settings.extensions'), description: $t('settings.extensions.description') },
+    { id: 'runtime', label: $t('settings.runtime'), description: $t('settings.runtime.description') },
+  ]);
   $effect(() => {
     activeSection;
     dialog?.querySelector<HTMLElement>('.management-content')?.scrollTo(0, 0);
@@ -58,9 +59,9 @@
   const r = dialog.getBoundingClientRect();
   if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) onClose();
 }}>
-  <header class="management-header"><div><h1 id="management-title">{title}</h1></div><Button variant="ghost" size="icon" aria-label="关闭设置" onclick={onClose}><Icon name="close" /></Button></header>
+  <header class="management-header"><div><h1 id="management-title">{title}</h1></div><Button variant="ghost" size="icon" aria-label={$t('settings.close')} onclick={onClose}><Icon name="close" /></Button></header>
   <div class="management-body">
-    <div class="management-nav" role="tablist" aria-label="设置分类" aria-orientation="vertical">
+    <div class="management-nav" role="tablist" aria-label={$t('settings.categories')} aria-orientation="vertical">
       {#each sections as section, index (section.id)}
         <button type="button" class:management-tools-start={section.id === 'extensions'} id={`management-tab-${section.id}`} role="tab" aria-selected={activeSection === section.id} aria-controls="management-content" tabindex={activeSection === section.id ? 0 : -1} onclick={() => onSelectSection(section.id)} onkeydown={event => move(event, index)}><strong>{section.label}</strong><small>{section.description}</small></button>
       {/each}

@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
@@ -79,7 +80,7 @@ test('option approvals parse provider options and answer only with an offered op
     assert.deepEqual(calls, [], 'an option the provider did not offer is never sent');
     await controller.resolveApproval(approval, { optionId: 'plan' });
     assert.deepEqual(calls, [['s', 'r', { optionId: 'plan' }]]);
-    assert.equal(notices.at(-1), '已选择：批准计划并用 Manual 实施。');
+    assert.equal(translateMessage('zh-CN',notices.at(-1)), '已选择：批准计划并用 Manual 实施。');
     assert.deepEqual(pending, []);
   } finally { await server.close(); }
 });

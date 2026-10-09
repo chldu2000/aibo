@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { tick, untrack } from 'svelte';
   import { SubagentDialog, Badge, Button } from '$lib/ui-kit';
   import MarkdownContent from './MarkdownContent.svelte';
-  import { subagentStatusLabels, type SubagentTask, type SubagentEntry } from '$lib/app/subagents';
+  import { type SubagentTask, type SubagentEntry } from '$lib/app/subagents';
   let {open, agent, entries, loading, error, onClose, onRetry, onOpenLink}: {
     open: boolean; agent: SubagentTask; entries: SubagentEntry[]; loading: boolean; error: string | null;
     onClose: () => void; onRetry: () => void;
@@ -33,19 +34,19 @@
   });
   function latest() { pinned = true; unread = false; if(feed) feed.scrollTop = feed.scrollHeight; }
 </script>
-<SubagentDialog {open} title={agent.name} task={agent.task} statusLabel={subagentStatusLabels[agent.status]} {onClose}>
-  {#if loading}<p class="subagent-feedback" role="status">正在读取过程记录…</p>{/if}
-  {#if error}<div class="subagent-feedback" role="alert">{error}<Button variant="outline" size="sm" onclick={onRetry}>重试</Button></div>{/if}
+<SubagentDialog {open} title={agent.name} task={agent.task} statusLabel={$t(`subagent.status.${agent.status}`)} {onClose}>
+  {#if loading}<p class="subagent-feedback" role="status">{$t('subagent.loading')}</p>{/if}
+  {#if error}<div class="subagent-feedback" role="alert">{error}<Button variant="outline" size="sm" onclick={onRetry}>{$t('common.retry')}</Button></div>{/if}
   <div class="subagent-feed" bind:this={feed} onscroll={savePosition}>
     {#each entries as entry (entry.id)}
       <article class="subagent-entry">
-        <div class="entry-meta"><Badge variant="outline">{entry.role === 'assistant' ? agent.name : entry.role === 'tool' ? '工具' : entry.role === 'system' ? '思考摘要' : '任务'}</Badge><Badge variant={entry.status === 'failed' ? 'destructive' : 'outline'}>{entry.status === 'streaming' ? '进行中' : entry.status === 'failed' ? '失败' : entry.status === 'interrupted' ? '已中断' : '完成'}</Badge></div>
+        <div class="entry-meta"><Badge variant="outline">{entry.role === 'assistant' ? agent.name : entry.role === 'tool' ? $t('role.tool') : entry.role === 'system' ? $t('subagent.reasoningSummary') : $t('subagent.task')}</Badge><Badge variant={entry.status === 'failed' ? 'destructive' : 'outline'}>{entry.status === 'streaming' ? $t('subagent.inProgress') : entry.status === 'failed' ? $t('subagent.failed') : entry.status === 'interrupted' ? $t('subagent.interrupted') : $t('common.done')}</Badge></div>
         {#if entry.role === 'tool' || entry.role === 'system'}
-          <details class="tool-output"><summary>{entry.toolName === 'reasoning' ? '查看思考摘要' : entry.toolName || '查看工具输出'}</summary>{#if entry.role === 'system'}<MarkdownContent {onOpenLink} content={entry.content}/>{:else}<pre>{entry.content || '等待工具输出…'}</pre>{/if}</details>
+          <details class="tool-output"><summary>{entry.toolName === 'reasoning' ? $t('subagent.viewReasoning') : entry.toolName || $t('subagent.viewTool')}</summary>{#if entry.role === 'system'}<MarkdownContent {onOpenLink} content={entry.content}/>{:else}<pre>{entry.content || $t('subagent.waitingOutput')}</pre>{/if}</details>
         {:else}<div class="entry-content"><MarkdownContent {onOpenLink} content={entry.content}/></div>{/if}
       </article>
     {/each}
-    {#if !entries.length && !loading && !error}<p class="subagent-feedback">尚无过程消息，新的活动会显示在这里。</p>{/if}
+    {#if !entries.length && !loading && !error}<p class="subagent-feedback">{$t('subagent.noActivity')}</p>{/if}
   </div>
-  {#if unread}<div class="subagent-new"><Button variant="secondary" size="sm" onclick={latest}>有新内容 · 查看最新</Button></div>{/if}
+  {#if unread}<div class="subagent-new"><Button variant="secondary" size="sm" onclick={latest}>{$t('subagent.newContent')}</Button></div>{/if}
 </SubagentDialog>

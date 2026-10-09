@@ -1,36 +1,44 @@
 use super::*;
 impl SessionHost {
+    // Provider callbacks retain their original string error contract.
     pub(super) async fn project_event(&self, session_id: &str, workspace_id: &str, generation: &str, binding: &Value, event: Value, origin: EventOrigin) -> Result<(), String> {
-        if !crate::session_contract::event_schema().is_valid(&event) { return Err("invalid_output: session event schema".into()); }
+        self.project_event_display(session_id, workspace_id, generation, binding, event, origin).await.map_err(|error|error.diagnostic)
+    }
+    pub(super) async fn project_event_display(&self, session_id: &str, workspace_id: &str, generation: &str, binding: &Value, event: Value, origin: EventOrigin) -> Result<(), HostMessage> {
+        if !crate::session_contract::event_schema().is_valid(&event) { return Err(session_error("native.event.schema","invalid_output: session event schema")); }
         let p = &event;
         let _guard = self.database_writes.lock().await;
         let mut tx = self.db.begin_with("BEGIN IMMEDIATE").await.map_err(|e|e.to_string())?;
         let active:(String,String) = sqlx::query_as("SELECT generation_id,plugin_capabilities_json FROM session_bindings WHERE session_id=?")
             .bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
-        if active.0 != generation { return Err("invalid_session: stale session generation".into()); }
+        if active.0 != generation { return Err(session_error("native.event.generation","invalid_session: stale session generation")); }
         let sequence:i64=sqlx::query_scalar("SELECT COALESCE(MAX(sequence),-1)+1 FROM agent_events WHERE session_id=? AND generation_id=?")
             .bind(session_id).bind(generation).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
-            if p["nativeSessionId"] != binding["nativeSessionId"] { return Err("invalid_session: native binding".into()); }
+            if p["nativeSessionId"] != binding["nativeSessionId"] { return Err(session_error("native.event.binding","invalid_session: native binding")); }
             let now = crate::now_iso();
             let event_id = ulid::Ulid::new().to_string();
-            let event = json!({"schemaVersion":"2.0","eventId":event_id,"generationId":generation,"sequence":sequence,"occurredAt":now,
+            let mut event = json!({"schemaVersion":"2.0","eventId":event_id,"generationId":generation,"sequence":sequence,"occurredAt":now,
                 "source":{"pluginId":binding["pluginId"],"pluginVersion":binding["pluginVersion"],"agentId":binding["agentId"],"runtimeProtocolVersion":"2.1"},
                 "workspaceId":workspace_id,"sessionId":session_id,"nativeSessionId":p["nativeSessionId"],"turnId":p["turnId"],"type":p["type"],"correlation":p["correlation"],"payload":p["payload"],"rawRef":null});
+            // This optional display field is reserved for host failures, never provider text.
+            if origin == EventOrigin::Plugin {
+                event["payload"].as_object_mut().unwrap().remove("localizedReason");
+            }
             let emitted_event = event.clone();
             let kind = p["type"].as_str().unwrap();
             if !["background-task.updated","subagent.updated","subagent.message","session.started","session.info_changed","goal.updated","turn.started","message.delta","message.completed","reasoning.updated","reasoning.completed","tool.started","tool.updated","tool.completed","turn.completed","turn.failed","approval.requested","approval.resolved","user_input.requested","user_input.resolved","usage.updated","queue.updated","compaction.started","compaction.completed","retry.started","retry.completed","extension.updated","adapter.crashed","session.control_changed"].contains(&kind) {
-                return Err("capability_unsupported: event outside minimal lifecycle".into());
+                return Err(session_error("native.event.lifecycle","capability_unsupported: event outside minimal lifecycle"));
             }
             // Only the host commits a session control; a provider cannot announce its own mode switch.
             if kind == "session.control_changed" && origin != EventOrigin::Host {
-                return Err("permission_denied: session control changes are committed by the host".into());
+                return Err(session_error("native.event.hostControl","permission_denied: session control changes are committed by the host"));
             }
-            let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|"manifest_mismatch: negotiated capabilities missing")?;
+            let negotiated: Value = serde_json::from_str(&active.1).map_err(|_|session_error("native.event.negotiation","manifest_mismatch: negotiated capabilities missing"))?;
             if event_capability_required(kind, origin).is_some_and(|capability|!negotiated.as_array().is_some_and(|items|items.contains(&json!(capability)))) {
-                return Err("capability_unsupported: event capability was not negotiated".into());
+                return Err(session_error("native.event.capability","capability_unsupported: event capability was not negotiated"));
             }
             let turn_id = p["turnId"].as_str();
-            if (kind.starts_with("turn.") || kind.starts_with("message.") || kind.starts_with("reasoning.") || kind.starts_with("tool.")) && turn_id.is_none() { return Err("invalid_session: turn identity required".into()); }
+            if (kind.starts_with("turn.") || kind.starts_with("message.") || kind.starts_with("reasoning.") || kind.starts_with("tool.")) && turn_id.is_none() { return Err(session_error("native.event.turn","invalid_session: turn identity required")); }
             if origin == EventOrigin::Plugin {
                 if let Some(turn) = turn_id {
                     sqlx::query("UPDATE turn_delivery SET state='responded' WHERE turn_id=?")
@@ -38,28 +46,28 @@ impl SessionHost {
                 }
             }
             if kind == "session.info_changed" {
-                if turn_id.is_some() { return Err("invalid_session: recovery update cannot belong to a turn".into()); }
+                if turn_id.is_some() { return Err(session_error("native.event.recoveryTurn","invalid_session: recovery update cannot belong to a turn")); }
                 let previous: String = sqlx::query_scalar("SELECT plugin_binding_json FROM session_bindings WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
-                let mut current: Value = serde_json::from_str(&previous).map_err(|_|"invalid_recovery_data")?;
+                let mut current: Value = serde_json::from_str(&previous).map_err(|_|session_error("native.event.recoveryData","invalid_recovery_data"))?;
                 current["recovery"] = p["payload"]["recovery"].clone();
                 current["updatedAt"] = json!(now);
-                if !crate::session_contract::binding_schema().is_valid(&current) { return Err("invalid_recovery_data: recovery update".into()); }
+                if !crate::session_contract::binding_schema().is_valid(&current) { return Err(session_error("native.event.recoveryUpdate","invalid_recovery_data: recovery update")); }
                 sqlx::query("UPDATE session_bindings SET plugin_binding_json=? WHERE session_id=?").bind(current.to_string()).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
             }
             if kind == "background-task.updated" {
                 let payload = &p["payload"];
-                let root = payload["rootTurnId"].as_str().ok_or("invalid_output: background parent turn")?;
+                let root = payload["rootTurnId"].as_str().ok_or_else(||session_error("native.event.backgroundRoot","invalid_output: background parent turn"))?;
                 let exists: i64 = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM turns WHERE id=? AND session_id=?)")
                     .bind(root).bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
-                if exists == 0 { return Err("invalid_session: background parent turn".into()); }
-                let id = payload["id"].as_str().ok_or("invalid_output: background id")?;
+                if exists == 0 { return Err(session_error("native.event.backgroundOwner","invalid_session: background parent turn")); }
+                let id = payload["id"].as_str().ok_or_else(||session_error("native.event.backgroundId","invalid_output: background id"))?;
                 let message_id = format!("{session_id}:background:{id}");
                 let status = match payload["status"].as_str() { Some("running") => "streaming", Some("failed") => "failed", Some("unknown" | "stopped") => "interrupted", _ => "completed" };
                 let previous: Option<(String,String)> = sqlx::query_as("SELECT content,status FROM messages WHERE id=?")
                     .bind(&message_id).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?;
                 if let Some((previous, previous_status)) = previous {
                     let old: Value = serde_json::from_str(&previous).map_err(|e|e.to_string())?;
-                    if old["rootTurnId"] != payload["rootTurnId"] { return Err("invalid_session: background task changed parent".into()); }
+                    if old["rootTurnId"] != payload["rootTurnId"] { return Err(session_error("native.event.backgroundChanged","invalid_session: background task changed parent")); }
                     if old == *payload && previous_status == status { return Ok(()); }
                 }
                 sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system','background_task',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status=excluded.status,updated_at=excluded.updated_at")
@@ -67,11 +75,11 @@ impl SessionHost {
             }
             if kind.starts_with("subagent.") {
                 let payload = &p["payload"];
-                let root_turn = payload["rootTurnId"].as_str().ok_or("invalid_output: child parent turn")?;
+                let root_turn = payload["rootTurnId"].as_str().ok_or_else(||session_error("native.event.childRoot","invalid_output: child parent turn"))?;
                 let exists: i64 = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM turns WHERE id=? AND session_id=?)").bind(root_turn).bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
-                if exists == 0 { return Err("invalid_session: child parent turn".into()); }
+                if exists == 0 { return Err(session_error("native.event.childOwner","invalid_session: child parent turn")); }
                 if kind == "subagent.updated" {
-                    let id = payload["id"].as_str().filter(|id|!id.is_empty()).ok_or("invalid_output: child id")?;
+                    let id = payload["id"].as_str().filter(|id|!id.is_empty()).ok_or_else(||session_error("native.event.childId","invalid_output: child id"))?;
                     let status = match payload["status"].as_str().unwrap_or_default() {
                         "pending" | "running" | "waiting" => "streaming", "failed" | "unavailable" => "failed", "interrupted" => "interrupted", _ => "completed"
                     };
@@ -79,13 +87,13 @@ impl SessionHost {
                     sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,tool_name,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system','subagent',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status=excluded.status,updated_at=excluded.updated_at")
                         .bind(message_id).bind(session_id).bind(root_turn).bind(format!("subagent:{id}")).bind(payload.to_string()).bind(status).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if !payload["agentId"].is_string() || !payload["entry"]["id"].is_string() || !payload["entry"]["content"].is_string() {
-                    return Err("invalid_output: child message".into());
+                    return Err(session_error("native.event.childMessage","invalid_output: child message"));
                 }
             }
             if let Some(turn) = turn_id {
                 let state: Option<String> = sqlx::query_scalar("SELECT status FROM turns WHERE id=? AND session_id=?").bind(turn).bind(session_id).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?;
                 // Host records may land after a fast turn ends: a crash report, or the control an answer already committed.
-                if state.as_deref() != Some("running") && !(origin == EventOrigin::Host && matches!(kind, "adapter.crashed" | "session.control_changed") && state.is_some()) { return Err("invalid_session: event for inactive turn".into()); }
+                if state.as_deref() != Some("running") && !(origin == EventOrigin::Host && matches!(kind, "adapter.crashed" | "session.control_changed") && state.is_some()) { return Err(session_error("native.event.inactiveTurn","invalid_session: event for inactive turn")); }
                 if kind == "turn.started" {
                     if let Some(native_turn) = p["payload"]["nativeTurnId"].as_str().filter(|id| !id.is_empty()) {
                         sqlx::query("UPDATE turns SET external_turn_id=? WHERE id=? AND session_id=?")
@@ -93,7 +101,7 @@ impl SessionHost {
                     }
                 }
                 if origin == EventOrigin::Host && kind == "adapter.crashed" {
-                    let status = p["payload"]["status"].as_str().filter(|status| ["failed", "interrupted"].contains(status)).ok_or("invalid_output: host failure status")?;
+                    let status = p["payload"]["status"].as_str().filter(|status| ["failed", "interrupted"].contains(status)).ok_or_else(||session_error("native.event.failureStatus","invalid_output: host failure status"))?;
                     sqlx::query("UPDATE turns SET status=?,completed_at=? WHERE id=? AND session_id=?")
                         .bind(status).bind(&now).bind(turn).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?")
@@ -101,7 +109,7 @@ impl SessionHost {
                     sqlx::query("UPDATE messages SET status='failed',updated_at=? WHERE turn_id=? AND status='streaming'")
                         .bind(&now).bind(turn).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "message.delta" || kind == "message.completed" {
-                    let text = p["payload"][if kind == "message.delta" {"delta"} else {"text"}].as_str().ok_or("invalid_request: message text")?;
+                    let text = p["payload"][if kind == "message.delta" {"delta"} else {"text"}].as_str().ok_or_else(||session_error("native.event.message","invalid_request: message text"))?;
                     let item_id = p["payload"]["itemId"].as_str().or_else(||p["correlation"]["itemId"].as_str()).filter(|value|!value.is_empty()).unwrap_or("assistant");
                     let external_item_id = scoped_external_item_id(turn, item_id);
                     let id = format!("{turn}:assistant:{item_id}");
@@ -113,7 +121,7 @@ impl SessionHost {
                             .bind(id).bind(session_id).bind(turn).bind(&external_item_id).bind(text).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     }
                 } else if kind.starts_with("reasoning.") {
-                    let item_id = p["payload"]["itemId"].as_str().filter(|value| !value.is_empty()).ok_or("invalid_request: reasoning item id")?;
+                    let item_id = p["payload"]["itemId"].as_str().filter(|value| !value.is_empty()).ok_or_else(||session_error("native.event.reasoningId","invalid_request: reasoning item id"))?;
                     let value = p["payload"][if kind == "reasoning.updated" { "delta" } else { "summary" }].as_str();
                     let mut chars = value.unwrap_or_default().chars();
                     let mut content: String = chars.by_ref().take(12_000).collect();
@@ -127,8 +135,8 @@ impl SessionHost {
                         .execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind.starts_with("tool.") {
                     let payload = &p["payload"];
-                    let item_id = payload["itemId"].as_str().filter(|value| !value.is_empty()).ok_or("invalid_request: tool item id")?;
-                    let item_type = payload["itemType"].as_str().filter(|value| !value.is_empty()).ok_or("invalid_request: tool item type")?;
+                    let item_id = payload["itemId"].as_str().filter(|value| !value.is_empty()).ok_or_else(||session_error("native.event.toolId","invalid_request: tool item id"))?;
+                    let item_type = payload["itemType"].as_str().filter(|value| !value.is_empty()).ok_or_else(||session_error("native.event.toolType","invalid_request: tool item type"))?;
                     let limit = |value: Option<&str>, max: usize| value.map(|text| {
                         let mut chars = text.chars();
                         let result: String = chars.by_ref().take(max).collect();
@@ -153,16 +161,19 @@ impl SessionHost {
                         .bind(message_id).bind(session_id).bind(turn).bind(external_item_id).bind(item_type).bind(command).bind(cwd).bind(exit_code).bind(content).bind(status).bind(sequence).bind(&now).bind(&now).bind(if append { 1_i64 } else { 0_i64 })
                         .execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "approval.requested" || kind == "user_input.requested" {
-                    let request_id = p["payload"]["requestId"].as_str().ok_or("invalid_request: request id")?;
-                    if request_id.is_empty() { return Err("invalid_request: request id".into()); }
+                    let request_id = p["payload"]["requestId"].as_str().ok_or_else(||session_error("native.event.request","invalid_request: request id"))?;
+                    if request_id.is_empty() { return Err(session_error("native.event.request","invalid_request: request id")); }
                     let waiting = if kind == "approval.requested" { "waiting_approval" } else { "waiting_user" };
                     sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?").bind(waiting).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "session.control_changed" {
                     let request_id = p["payload"]["requestId"].as_str().unwrap_or_default();
                     let label = p["payload"]["label"].as_str().unwrap_or_default();
-                    sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,content,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system',?,'completed',?,?,?)")
+                    let notice = crate::ui_i18n::HostMessage::new(if p["payload"]["contextReset"] == true {
+                        "native.session.controlResetChanged"
+                    } else { "native.session.controlChanged" }, json!({"label":label}));
+                    sqlx::query("INSERT INTO messages(id,session_id,turn_id,external_message_id,role,content,localized_content_json,status,sequence,created_at,updated_at) VALUES(?,?,?,?,'system',?,?,'completed',?,?,?)")
                         .bind(format!("{turn}:control:{request_id}")).bind(session_id).bind(turn).bind(scoped_external_item_id(turn, &format!("control:{request_id}")))
-                        .bind(if p["payload"]["contextReset"] == true { format!("审批后清空上下文并切换到 {label}") } else { format!("审批后切换到 {label}") }).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                        .bind(&notice.diagnostic).bind(notice.display().to_string()).bind(sequence).bind(&now).bind(&now).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "approval.resolved" || kind == "user_input.resolved" {
                     sqlx::query("UPDATE sessions SET state='running',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "compaction.started" {
@@ -173,14 +184,14 @@ impl SessionHost {
                     sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?")
                         .bind(if running != 0 { "running" } else { "idle" }).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 } else if kind == "turn.completed" || kind == "turn.failed" {
-                    let status = if kind == "turn.failed" { "failed" } else { p["payload"]["status"].as_str().ok_or("invalid_request: terminal status")? };
-                    if !["completed","interrupted","failed"].contains(&status) { return Err("invalid_request: terminal status".into()); }
+                    let status = if kind == "turn.failed" { "failed" } else { p["payload"]["status"].as_str().ok_or_else(||session_error("native.event.terminalStatus","invalid_request: terminal status"))? };
+                    if !["completed","interrupted","failed"].contains(&status) { return Err(session_error("native.event.terminalStatus","invalid_request: terminal status")); }
                     sqlx::query("UPDATE turns SET status=?,completed_at=? WHERE id=? AND status='running'").bind(status).bind(&now).bind(turn).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                     let session_state = match status {
                         "completed" => "idle",
                         "interrupted" => "interrupted",
                         "failed" => "failed",
-                        _ => return Err("invalid_request: terminal status".into()),
+                        _ => return Err(session_error("native.event.terminalStatus","invalid_request: terminal status")),
                     };
                     sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?").bind(session_state).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 }

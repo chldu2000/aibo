@@ -1,9 +1,19 @@
+import { translateMessage } from '../../../packages/i18n/index.js';
+import type { Locale, LocalizedText } from '../../../packages/i18n/index.js';
+import type { PresentationCapabilityView } from '../../../packages/plugin-protocol/src/presentation-capability';
 import { createInstalledController, type InstalledContribution, type InstalledPort, type InstalledScope } from '../presentation/installed-controller.ts';
 import type { ViewStateStore } from './view-state-storage';
 import { actionMessage } from '../presentation/actions.ts';
 import type { Snapshot, ActionMessage } from '../presentation/contract';
 
-export type InstalledWorkbenchState = import('../../../packages/plugin-protocol/src/presentation-capability').PresentationCapabilityView;
+export type InstalledWorkbenchState = Omit<PresentationCapabilityView, 'error'> & { error: LocalizedText; hostMessage?: LocalizedText | null };
+
+/** Resolve host messages at the presentation boundary; plugin text remains unchanged. */
+export function installedWorkbenchPresentation(state: InstalledWorkbenchState, locale: Locale): PresentationCapabilityView {
+  const { hostMessage, ...view } = state;
+  return { ...view, error: translateMessage(locale, state.error), snapshot: hostMessage && state.snapshot
+    ? { ...state.snapshot, state: { ...state.snapshot.state, message: translateMessage(locale, hostMessage) } } : state.snapshot };
+}
 
 export const emptyInstalledWorkbench = (): InstalledWorkbenchState => ({snapshot:null,error:'',enhanced:true,layout:'central',focusTarget:null,restoring:false});
 
@@ -23,14 +33,14 @@ export function createInstalledWorkbenchController(port: InstalledPort, stateSto
       selection:state.focusTarget,detail:state.snapshot.view.kind==='detail'?state.snapshot.view.itemId:null,offset,layout:state.layout,
     });
   }
-  const controller = createInstalledController(port,(snapshot,error)=>{
+  const controller = createInstalledController(port,(snapshot,error,hostMessage)=>{
     if (disposed) return;
     if(snapshot?.view.kind==='collection'&&snapshot.state.status!=='loading') {
       offset=snapshot.view.page.offset;
       if(!snapshot.view.items.some(item=>item.id===state.focusTarget))state={...state,focusTarget:null};
       snapshot.view.selection=state.focusTarget;
     }
-    changed({snapshot,error});save();
+    changed({snapshot,error,hostMessage:hostMessage??null});save();
   });
   async function restore() {
     if(!selection||disposed)return;

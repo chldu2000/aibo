@@ -1,4 +1,6 @@
 import type { AgentGoal } from '$lib/types';
+import { translate } from '../../../packages/i18n/index.js';
+import type { Locale } from '../../../packages/i18n/index.js';
 
 export function normalizeAgentGoal(value: Record<string, unknown>): AgentGoal | null {
   const candidate = value.goal && typeof value.goal === 'object' ? value.goal as Record<string, unknown> : value;
@@ -14,10 +16,10 @@ export function normalizeAgentGoal(value: Record<string, unknown>): AgentGoal | 
   };
 }
 
-export function goalStatusLabel(goal: AgentGoal, running: boolean): string {
-  if (goal.status === 'paused' && running) return '目标已暂停，当前回合尚未结束';
-  if (goal.status === 'active') return running ? '目标进行中' : '目标待继续';
-  return {paused: '目标已暂停', completed: '目标已完成', cleared: '目标已清除', blocked: '目标受阻', usageLimited: '额度受限', budgetLimited: '目标预算已耗尽', unknown: '目标状态未知'}[goal.status];
+export function goalStatusLabel(goal: AgentGoal, running: boolean, locale: Locale = 'zh-CN'): string {
+  if (goal.status === 'paused' && running) return translate(locale, 'goal.status.pausedRunning');
+  if (goal.status === 'active') return translate(locale, running ? 'goal.status.activeRunning' : 'goal.status.activeIdle');
+  return translate(locale, `goal.status.${goal.status}`);
 }
 
 export function goalCanResume(goal: AgentGoal | null): boolean {

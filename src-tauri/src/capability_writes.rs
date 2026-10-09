@@ -15,7 +15,10 @@ impl WriteContext {
 }
 
 const OPERATION: &str = "capability.invoke";
-fn core(error: Failure) -> CoreError { CoreError::WriteReplay { code: error.code, message: error.message } }
+fn core(error: Failure) -> CoreError {
+    let diagnostic=CoreError::WriteReplay {code:error.code,message:error.message};
+    match error.localized {Some(localized)=>CoreError::Localized {error:Box::new(diagnostic),localized},None=>diagnostic}
+}
 fn failure(error: CoreError) -> Failure {
     let value = serde_json::to_value(&error).unwrap_or(Value::Null);
     let code = match value["code"].as_str().unwrap_or("provider_unavailable") {
@@ -24,7 +27,27 @@ fn failure(error: CoreError) -> Failure {
         "invalid_workspace_path" => "invalid_input",
         code => code,
     };
-    fail(code, value["message"].as_str().unwrap_or("Capability write could not settle"))
+    match value["message"].as_str() {
+        Some(message)=>Failure {localized:value.get("localized").cloned(),..fail(code,message)},
+        None=>fail_display(code,"Capability write could not settle","native.broker.writeSettlement"),
+    }
+}
+fn unknown_failure(error: Failure, include_invocation: bool) -> CoreError {
+    let diagnostic=if include_invocation {
+        format!("{}; invocation {}",error.message,error.invocation_id.as_deref().unwrap_or("not assigned"))
+    } else {error.message.clone()};
+    let reason=error.localized.unwrap_or_else(||json!(error.message));
+    let reason=if include_invocation {
+        crate::ui_i18n::display_descriptor("native.broker.invocationReason",json!({"error":reason,"id":error.invocation_id.map(Value::String).unwrap_or_else(||crate::ui_i18n::descriptor("native.broker.invocationUnassigned",json!({})))}))
+    } else {reason};
+    CoreError::Localized {error:Box::new(CoreError::WriteOutcomeUnknown(diagnostic)),localized:crate::ui_i18n::display_descriptor("native.error.writeOutcomeUnknown",json!({"error":reason}))}
+}
+fn preflight_error(key: &str, diagnostic: &str) -> CoreError {
+    crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic(key,json!({}),diagnostic))
+}
+fn cancelled_before_dispatch(diagnostic: &str) -> CoreError {
+    CoreError::Localized {error:Box::new(CoreError::WriteReplay {code:"cancelled".into(),message:diagnostic.into()}),
+        localized:crate::ui_i18n::display_descriptor("native.capabilityWrite.cancelledBeforeDispatch",json!({}))}
 }
 fn input(request: &Request) -> Value {
     json!({"scope":request.scope,"capability":request.capability,"contractVersion":request.version,"turnId":request.turn_id,"input":request.input})
@@ -35,19 +58,19 @@ impl Broker {
     pub(super) async fn check_executables(&self, manifest: &Value, chain: &Chain) -> Result<(), Failure> {
         for dependency in manifest["executableDependencies"].as_array().into_iter().flatten() {
             if dependency["required"] != true { continue; }
-            let executable = (if dependency["name"] == "node" { crate::node_runtime::for_manifest(manifest) } else { crate::find_executable(dependency["name"].as_str().unwrap()) }).ok_or_else(||fail("provider_unavailable", "Executable dependency is unavailable"))?;
+            let executable = (if dependency["name"] == "node" { crate::node_runtime::for_manifest(manifest) } else { crate::find_executable(dependency["name"].as_str().unwrap()) }).ok_or_else(||fail_display("provider_unavailable", "Executable dependency is unavailable", "native.broker.executableUnavailable"))?;
             let Some(range) = dependency["versionRange"].as_str() else { continue; };
             let remaining = chain.deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() { return Err(fail("timeout", "Dependency inspection deadline expired")); }
+            if remaining.is_zero() { return Err(fail_display("timeout", "Dependency inspection deadline expired", "native.broker.inspectionDeadline")); }
             let command = plugin_registry::version_command(&executable);
-            let output = crate::controlled_process::execute_cancellable(command, remaining.min(Duration::from_secs(2)), 8193, chain.cancelled()).await.map_err(|_|fail("provider_unavailable", "Executable version probe failed"))?;
-            if output.cancelled { return Err(fail("cancelled", "Dependency inspection cancelled")); }
-            if output.timed_out { return Err(fail("timeout", "Dependency inspection timed out")); }
+            let output = crate::controlled_process::execute_cancellable(command, remaining.min(Duration::from_secs(2)), 8193, chain.cancelled()).await.map_err(|_|fail_display("provider_unavailable", "Executable version probe failed", "native.broker.versionProbe"))?;
+            if output.cancelled { return Err(fail_display("cancelled", "Dependency inspection cancelled", "native.broker.inspectionCancelled")); }
+            if output.timed_out { return Err(fail_display("timeout", "Dependency inspection timed out", "native.broker.inspectionTimeout")); }
             let mut bytes = output.stdout; let stderr = output.stderr;
-            if !output.success || bytes.len() > 8192 || stderr.len() > 8192 { return Err(fail("provider_unavailable", "Executable version probe failed or exceeded output bounds")); }
+            if !output.success || bytes.len() > 8192 || stderr.len() > 8192 { return Err(fail_display("provider_unavailable", "Executable version probe failed or exceeded output bounds", "native.broker.versionBounds")); }
             bytes.extend(stderr);
             let version = plugin_registry::parse_dependency_version(&String::from_utf8_lossy(&bytes));
-            if !version.is_some_and(|version|semver::VersionReq::parse(range).is_ok_and(|range|range.matches(&version))) { return Err(fail("provider_unavailable", "Executable version does not satisfy its declaration")); }
+            if !version.is_some_and(|version|semver::VersionReq::parse(range).is_ok_and(|range|range.matches(&version))) { return Err(fail_display("provider_unavailable", "Executable version does not satisfy its declaration", "native.broker.versionDeclaration")); }
         }
         Ok(())
     }
@@ -61,7 +84,7 @@ impl Broker {
     pub(crate) async fn invoke_authorized_observed(&self, caller: &str, request: Request, approval: &workspace_write_runs::Request,observer:Option<EventObserver>) -> Result<Response, Failure> {
         Self::identity(&request.scope, &request.capability, &request.version)?;
         if !approval.matches(&request.request_id, caller) || request.request_id.is_empty() || request.request_id.len() > 160 || request.input.to_string().len() > input_limit(&request.capability) {
-            return Err(fail("invalid_input", "Invalid capability request or host approval identity"));
+            return Err(fail_display("invalid_input", "Invalid capability request or host approval identity", "native.broker.approvalIdentity"));
         }
         let workspace_id: Option<String> = match &request.scope {
             Scope::Application => None,
@@ -86,7 +109,7 @@ impl Broker {
         if request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version
             || !approval.matches(&request.request_id, caller) || request.request_id.is_empty()
             || request.request_id.len() > 160 || request.input.to_string().len() > input_limit(&request.capability) {
-            return Err(fail("invalid_input", "Invalid bound capability request or host approval identity"));
+            return Err(fail_display("invalid_input", "Invalid bound capability request or host approval identity", "native.broker.boundApprovalIdentity"));
         }
         let workspace_id: Option<String> = match &request.scope {
             Scope::Application => None,
@@ -99,8 +122,8 @@ impl Broker {
         }
         let provider = self.offers(&request.scope, &request.capability, &request.version, Some(&binding.installation_id)).await?
             .into_iter().find(|offer|offer.contribution_id == binding.contribution_id)
-            .ok_or_else(||fail("provider_unavailable", "Bound contribution provider is unavailable"))?;
-        if provider.operation["effect"] != "write" { return Err(fail("invalid_input", "Bound authorized invocation must be a write operation")); }
+            .ok_or_else(||fail_display("provider_unavailable", "Bound contribution provider is unavailable", "native.broker.boundContribution"))?;
+        if provider.operation["effect"] != "write" { return Err(fail_display("invalid_input", "Bound authorized invocation must be a write operation", "native.broker.writeEffect")); }
         self.execute_authorized_write(caller, request, provider, approval, Some(binding), observer).await
     }
 
@@ -108,41 +131,41 @@ impl Broker {
     // writes share ledger admission, cancellation and unknown-outcome handling.
     async fn execute_authorized_write(&self, caller: &str, request: Request, provider: Provider,
         approval: &workspace_write_runs::Request, binding: Option<&Binding>, observer: Option<EventObserver>) -> Result<Response, Failure> {
-        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail("permission_denied", "Capability writes require a workspace"))?;
+        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail_display("permission_denied", "Capability writes require a workspace", "native.broker.writeWorkspace"))?;
         self.validate_turn(&request).await?;
-        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
+        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail_display("invalid_input", "Input does not match the capability contract", "native.broker.inputContract")); }
         workspace_write_runs::execute_with_context(&self.db, &workspace, OPERATION, input(&request), approval,
             || self.prepare_write(&request, &provider, &workspace, None, binding),
             |cancel| async {
-                if cancel.is_requested().await { return Err(CoreError::WriteReplay { code:"cancelled".into(),message:"Capability was cancelled before dispatch".into() }); }
+                if cancel.is_requested().await { return Err(cancelled_before_dispatch("Capability was cancelled before dispatch")); }
                 self.invoke_selected_observed(caller, request.clone(), provider.clone(), None, Some(WriteContext { cancellation:cancel, approval:approval.clone(), uncertain:Default::default() }),observer.clone()).await.map_err(|error| {
-                    CoreError::WriteOutcomeUnknown(format!("{}; invocation {}", error.message, error.invocation_id.as_deref().unwrap_or("not assigned")))
+                    unknown_failure(error,true)
                 })
             }).await.map_err(failure)
     }
 
     pub(super) async fn dependency_provider(&self, request: &Request, owner: &Provider, plugin: &str, contribution: &str, persist: bool) -> Result<Provider,Failure> {
         let current: Option<(String,String)> = sqlx::query_as("SELECT manifest_json,package_digest FROM plugin_installations WHERE id=? AND installed=1 AND enabled=1").bind(&owner.installation_id).fetch_optional(&self.db).await.map_err(database)?;
-        if !current.is_some_and(|(manifest,digest)|digest == owner.digest && serde_json::from_str::<Value>(&manifest).ok().as_ref() == Some(&owner.manifest)) { return Err(fail("provider_unavailable", "Calling release changed")); }
+        if !current.is_some_and(|(manifest,digest)|digest == owner.digest && serde_json::from_str::<Value>(&manifest).ok().as_ref() == Some(&owner.manifest)) { return Err(fail_display("provider_unavailable", "Calling release changed", "native.broker.callingRelease")); }
         let dependencies = if persist {crate::plugin_dependencies::resolve_metadata_pinned(&self.db,&owner.installation_id).await} else {crate::plugin_dependencies::resolve_metadata(&self.db,&owner.installation_id).await}.map_err(database)?;
         let dependency = dependencies.dependencies.iter().find(|dependency|dependency.plugin_id == plugin && dependency.contribution_ids.contains(&owner.contribution_id))
-            .ok_or_else(||fail("permission_denied", "Calling contribution has not declared this dependency"))?;
-        if !dependencies.supports(&owner.contribution_id) || !dependency.available { return Err(fail("provider_unavailable", "Pinned dependency is unavailable")); }
+            .ok_or_else(||fail_display("permission_denied", "Calling contribution has not declared this dependency", "native.broker.dependencyUndeclared"))?;
+        if !dependencies.supports(&owner.contribution_id) || !dependency.available { return Err(fail_display("provider_unavailable", "Pinned dependency is unavailable", "native.broker.pinnedDependency")); }
         let offers = self.offers(&request.scope,&request.capability,&request.version,dependency.installation_id.as_deref()).await?;
         offers.into_iter().find(|offer|Some(&offer.installation_id) == dependency.installation_id.as_ref() && offer.contribution_id == contribution)
-            .ok_or_else(||fail("provider_unavailable", "Pinned dependency does not provide this contribution"))
+            .ok_or_else(||fail_display("provider_unavailable", "Pinned dependency does not provide this contribution", "native.broker.dependencyContribution"))
     }
 
     pub(super) async fn invoke_child_write(&self, request: Request, provider: Provider, owner: &Provider, chain: Chain) -> Result<Response,Failure> {
-        let write = chain.write.as_ref().ok_or_else(||fail("permission_denied", "A read call cannot acquire write authority through a dependency"))?;
+        let write = chain.write.as_ref().ok_or_else(||fail_display("permission_denied", "A read call cannot acquire write authority through a dependency", "native.broker.readWriteAuthority"))?;
         if provider.operation["permissions"].as_array().unwrap().iter().any(|permission|!chain.permissions.iter().any(|allowed|permission == allowed)) {
-            return Err(fail("permission_denied", "Dependency call exceeds its caller permissions"));
+            return Err(fail_display("permission_denied", "Dependency call exceeds its caller permissions", "native.broker.callerPermissions"));
         }
         if chain.sites.len() >= MAX_CALL_DEPTH || chain.sites.iter().any(|site|site.installation_id == provider.installation_id && site.contribution_id == provider.contribution_id) {
-            return Err(fail("busy", "Dependency call cycle or depth limit"));
+            return Err(fail_display("busy", "Dependency call cycle or depth limit", "native.broker.dependencyCycle"));
         }
-        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail("invalid_input", "Input does not match the capability contract")); }
-        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail("permission_denied", "Dependency write requires a workspace"))?;
+        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) { return Err(fail_display("invalid_input", "Input does not match the capability contract", "native.broker.inputContract")); }
+        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail_display("permission_denied", "Dependency write requires a workspace", "native.broker.dependencyWriteWorkspace"))?;
         let approval = write.approval.child(request.request_id.clone());
         let mut identity = input(&request);
         identity["parentInvocationId"] = json!(chain.sites.last().map(|site|&site.invocation_id));
@@ -155,17 +178,17 @@ impl Broker {
             |cancel| async {
                 let context = WriteContext {cancellation:cancel,approval:approval.clone(),uncertain:write.uncertain.clone()};
                 self.invoke_selected(&chain.caller,request.clone(),provider.clone(),Some(chain.clone()),Some(context)).await
-                    .map_err(|error|CoreError::WriteOutcomeUnknown(format!("{}; invocation {}",error.message,error.invocation_id.as_deref().unwrap_or("not assigned"))))
+                    .map_err(|error|unknown_failure(error,true))
             }).await.map_err(failure);
         if result.as_ref().is_err_and(|error|error.code == "outcome_unknown") { write.mark_uncertain(); }
         result
     }
 
     async fn bound_write_provider(&self, request: &Request, binding: &Binding) -> Result<Provider,Failure> {
-        if request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version {return Err(fail("invalid_input","Semantic write binding mismatch"));}
+        if request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version {return Err(fail_display("invalid_input", "Semantic write binding mismatch", "native.broker.semanticBinding"));}
         self.offers(&request.scope,&request.capability,&request.version,Some(&binding.installation_id)).await?.into_iter()
             .find(|provider|provider.contribution_id == binding.contribution_id && provider.operation["effect"] == "write")
-            .ok_or_else(||fail("provider_unavailable","Semantic write provider is unavailable"))
+            .ok_or_else(||fail_display("provider_unavailable", "Semantic write provider is unavailable", "native.broker.semanticProvider"))
     }
 
     /// The semantic host supplies its own immutable action identity and a fresh
@@ -173,78 +196,78 @@ impl Broker {
     pub(crate) async fn invoke_semantic_write<P,Fut>(&self, caller: &str, request: Request, binding: &Binding,
         identity: Value, approval: &workspace_write_runs::Request, check_view: P) -> Result<Response,Failure>
     where P: Fn() -> Fut, Fut: std::future::Future<Output=Result<Value,CoreError>> {
-        if !approval.matches(&request.request_id,caller) || request.input.to_string().len() > MAX_INPUT {return Err(fail("invalid_input","Invalid semantic write identity or size"));}
+        if !approval.matches(&request.request_id,caller) || request.input.to_string().len() > MAX_INPUT {return Err(fail_display("invalid_input", "Invalid semantic write identity or size", "native.broker.semanticIdentity"));}
         let provider = self.bound_write_provider(&request,binding).await?;
-        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) {return Err(fail("invalid_input","Input does not match the capability contract"));}
-        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail("permission_denied","Semantic writes require a workspace"))?;
+        if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) {return Err(fail_display("invalid_input", "Input does not match the capability contract", "native.broker.inputContract"));}
+        let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail_display("permission_denied", "Semantic writes require a workspace", "native.broker.semanticWorkspace"))?;
         workspace_write_runs::execute_with_context(&self.db,&workspace,"semantic.write",identity,approval,
             || async {
                 let mut context = self.prepare_write(&request,&provider,&workspace,None,Some(binding)).await?;
                 context["semantic"] = check_view().await?;
                 context["capabilityInput"] = request.input.clone();
-                context["approvalDescription"] = json!(format!("{}\n视图动作：{}\n能力输入：{}",context["approvalDescription"].as_str().unwrap_or(""),context["semantic"],request.input));
+                context["approvalDescription"] = crate::ui_i18n::descriptor("native.semanticDescription", json!({"base":context["approvalDescription"],"semantic":context["semantic"].to_string(),"input":request.input.to_string()}));
                 Ok(context)
             },
             |cancel| async {
-                if cancel.is_requested().await {return Err(CoreError::WriteReplay {code:"cancelled".into(),message:"Semantic write cancelled before dispatch".into()});}
+                if cancel.is_requested().await {return Err(cancelled_before_dispatch("Semantic write cancelled before dispatch"));}
                 self.invoke_selected(caller,request.clone(),provider.clone(),None,Some(WriteContext {cancellation:cancel,approval:approval.clone(),uncertain:Default::default()})).await
-                    .map_err(|error|CoreError::WriteOutcomeUnknown(error.message))
+                    .map_err(|error|unknown_failure(error,false))
             }).await.map_err(failure)
     }
 
     async fn prepare_write(&self, request: &Request, provider: &Provider, workspace: &crate::Workspace, parent: Option<(&Provider,&Chain)>, bound: Option<&Binding>) -> Result<Value, CoreError> {
         let current = self.workspace(&request.scope).await.map_err(core)?.ok_or(CoreError::WorkspaceTrustRequired)?;
-        if current.id != workspace.id || current.path != workspace.path { return Err(CoreError::InvalidWorkspacePath("Capability workspace changed".into())); }
+        if current.id != workspace.id || current.path != workspace.path { return Err(preflight_error("native.capabilityWrite.workspaceChanged","Capability workspace changed")); }
         self.validate_turn(request).await.map_err(core)?;
         let root = tokio::fs::canonicalize(&current.path).await.map_err(|error|CoreError::InvalidWorkspacePath(error.to_string()))?;
         let metadata = tokio::fs::metadata(&root).await.map_err(|error|CoreError::InvalidWorkspacePath(error.to_string()))?;
-        if !metadata.is_dir() { return Err(CoreError::InvalidWorkspacePath("Capability workspace is not a directory".into())); }
+        if !metadata.is_dir() { return Err(preflight_error("native.capabilityWrite.workspaceDirectory","Capability workspace is not a directory")); }
         #[cfg(unix)] let root_identity = { use std::os::unix::fs::MetadataExt; json!({"device":metadata.dev(),"inode":metadata.ino()}) };
         #[cfg(not(unix))] let root_identity = json!({"created":metadata.created().ok().map(|value|format!("{value:?}"))});
         let mut ancestry = Vec::new();
         let selected = if let Some((owner, chain)) = parent {
-            if chain.deadline <= Instant::now() || chain.is_cancelled().await { return Err(CoreError::InvalidWorkspacePath("Parent invocation is no longer active".into())); }
+            if chain.deadline <= Instant::now() || chain.is_cancelled().await { return Err(preflight_error("native.capabilityWrite.parentInactive","Parent invocation is no longer active")); }
             let write = chain.write.as_ref().ok_or(CoreError::WorkspaceTrustRequired)?;
             let original: String = sqlx::query_scalar("SELECT snapshot_json FROM workspace_write_runs WHERE id=?").bind(write.cancellation.root_run_id()).fetch_one(&self.db).await?;
             let original: Value = serde_json::from_str(&original).map_err(|error|CoreError::Initialization(error.to_string()))?;
             if original["approvalContext"]["rootIdentity"] != root_identity || original["approvalContext"]["root"] != json!(root) {
-                return Err(CoreError::InvalidWorkspacePath("Root write workspace directory changed".into()));
+                return Err(preflight_error("native.capabilityWrite.rootDirectoryChanged","Root write workspace directory changed"));
             }
             for site in &chain.sites {
                 let proof: Option<String> = sqlx::query_scalar("SELECT json_object('invocationId',i.id,'generationId',i.generation_id,'installationId',p.id,'packageDigest',p.package_digest,'contributionId',i.contribution_id) FROM capability_invocations i JOIN plugin_installations p ON p.id=i.installation_id WHERE i.id=? AND i.caller_window=? AND i.scope_kind=? AND i.scope_id=? AND i.status='running' AND p.installed=1 AND p.enabled=1")
                     .bind(&site.invocation_id).bind(&chain.caller).bind(request.scope.key().0).bind(request.scope.key().1).fetch_optional(&self.db).await?;
-                ancestry.push(proof.ok_or_else(||CoreError::InvalidWorkspacePath("Calling plugin chain changed".into()))?);
+                ancestry.push(proof.ok_or_else(||preflight_error("native.capabilityWrite.callerChainChanged","Calling plugin chain changed"))?);
             }
-            let (_,_,digest) = plugin_registry::inspect(&owner.directory).map_err(|_|CoreError::InvalidWorkspacePath("Calling plugin integrity check failed".into()))?;
-            if digest != owner.digest { return Err(CoreError::InvalidWorkspacePath("Calling plugin package changed".into())); }
+            let (_,_,digest) = plugin_registry::inspect(&owner.directory).map_err(|_|preflight_error("native.capabilityWrite.callerIntegrity","Calling plugin integrity check failed"))?;
+            if digest != owner.digest { return Err(preflight_error("native.capabilityWrite.callerPackageChanged","Calling plugin package changed")); }
             self.dependency_provider(request,owner,&provider.plugin_id,&provider.contribution_id,false).await.map_err(core)?
         } else if let Some(bound) = bound {self.bound_write_provider(request,bound).await.map_err(core)?} else { self.provider(request).await.map_err(core)? };
         if selected.installation_id != provider.installation_id || selected.contribution_id != provider.contribution_id || selected.digest != provider.digest || selected.operation != provider.operation || selected.candidate != provider.candidate {
-            return Err(CoreError::InvalidWorkspacePath("Capability provider changed before approval".into()));
+            return Err(preflight_error("native.capabilityWrite.providerChanged","Capability provider changed before approval"));
         }
-        let (_, _, digest) = plugin_registry::inspect(&selected.directory).map_err(|_|CoreError::InvalidWorkspacePath("Capability package integrity check failed".into()))?;
-        if digest != selected.digest { return Err(CoreError::InvalidWorkspacePath("Capability package changed".into())); }
-        let dependencies = crate::plugin_dependencies::resolve_metadata(&self.db, &selected.installation_id).await.map_err(|_|CoreError::InvalidWorkspacePath("Capability dependencies changed".into()))?;
-        if !dependencies.supports(&selected.contribution_id) { return Err(CoreError::InvalidWorkspacePath("Capability dependencies are unavailable".into())); }
+        let (_, _, digest) = plugin_registry::inspect(&selected.directory).map_err(|_|preflight_error("native.capabilityWrite.packageIntegrity","Capability package integrity check failed"))?;
+        if digest != selected.digest { return Err(preflight_error("native.capabilityWrite.packageChanged","Capability package changed")); }
+        let dependencies = crate::plugin_dependencies::resolve_metadata(&self.db, &selected.installation_id).await.map_err(|_|preflight_error("native.capabilityWrite.dependenciesChanged","Capability dependencies changed"))?;
+        if !dependencies.supports(&selected.contribution_id) { return Err(preflight_error("native.capabilityWrite.dependenciesUnavailable","Capability dependencies are unavailable")); }
         let (kind, id) = request.scope.key();
         let binding: Value = if let Some(bound) = bound {json!({"source":"semantic-contribution","binding":bound})} else if parent.is_some() {json!({"source":"pinned-dependency","callChain":ancestry})} else {json!(sqlx::query_scalar::<_,String>("SELECT json_object('installationId',installation_id,'contributionId',contribution_id,'updatedAt',updated_at) FROM capability_provider_bindings WHERE scope_kind=? AND scope_id=? AND capability_id=? AND contract_version=?")
             .bind(kind).bind(id).bind(&request.capability).bind(&request.version).fetch_one(&self.db).await?)};
         let session = if let Scope::Session(id) = &request.scope {
             let value: Option<String> = sqlx::query_scalar("SELECT json_object('id',id,'state',state,'archived',archived,'updatedAt',updated_at,'installationId',plugin_installation_id) FROM sessions WHERE id=? AND archived=0")
                 .bind(id).fetch_optional(&self.db).await?;
-            Some(value.ok_or_else(||CoreError::InvalidWorkspacePath("Capability session is archived or unavailable".into()))?)
+            Some(value.ok_or_else(||preflight_error("native.capabilityWrite.sessionUnavailable","Capability session is archived or unavailable"))?)
         } else { None };
         let turn: Option<String> = if let Some(id) = &request.turn_id {
             sqlx::query_scalar("SELECT json_object('id',id,'status',status,'sessionId',session_id) FROM turns WHERE id=?").bind(id).fetch_optional(&self.db).await?
         } else { None };
         // Input is already rendered in full by the ledger. It is an operation
         // request, not a generic filesystem revision contract.
-        let caller_description = parent.map(|(_,chain)|format!("\n原始调用窗口：{}\n调用链：{}\n父写入已获准且可能已经修改文件；本次批准只允许下面的子操作继续。",chain.caller,serde_json::to_string(&chain.sites).unwrap())).unwrap_or_default();
+        let caller_description = parent.map(|(_,chain)|crate::ui_i18n::descriptor("native.capabilityChain", json!({"caller":chain.caller,"sites":serde_json::to_string(&chain.sites).unwrap()}))).unwrap_or_else(||json!(""));
         Ok(json!({"schema":"aibo.capability-write-context/v1","root":root,"rootIdentity":root_identity,
             "workspaceId":current.id,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,
             "provider":{"installationId":selected.installation_id,"contributionId":selected.contribution_id,"pluginId":selected.plugin_id,"packageDigest":digest,"operation":selected.operation,"candidateId":selected.candidate},
             "dependencies":dependencies,"binding":binding,
-            "approvalDescription":format!("能力插件：{}\n贡献：{}\n安装版本：{}\n权限：{}\n此请求允许插件在当前工作区执行写入；批准后才启动执行和依赖版本检查。宿主不提供任意本机代码的操作系统沙箱。{}",selected.plugin_id,selected.contribution_id,selected.installation_id,selected.operation["permissions"],caller_description)}))
+            "approvalDescription":crate::ui_i18n::descriptor("native.capabilityDescription", json!({"plugin":selected.plugin_id,"contribution":selected.contribution_id,"installation":selected.installation_id,"permissions":selected.operation["permissions"].to_string(),"chain":caller_description}))}))
     }
 }
 
@@ -297,6 +320,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn preflight_package_and_workspace_changes_preserve_display_without_execution() {
+        let f=Fixture::new().await;
+        let invocation=request("preflight","normal");
+        let provider=f.broker.provider(&invocation).await.unwrap();
+        let workspace=f.broker.workspace(&invocation.scope).await.unwrap().unwrap();
+        let worker=provider.directory.join("worker.mjs");let original=fs::read(&worker).unwrap();
+        for (change,key,diagnostic) in [
+            ("workspace","native.capabilityWrite.workspaceChanged","Capability workspace changed"),
+            ("package","native.capabilityWrite.packageChanged","Capability package changed"),
+        ] {
+            if change=="workspace" {
+                fs::create_dir_all(f.root.join("replacement")).unwrap();
+                sqlx::query("UPDATE workspaces SET path=? WHERE id='a'").bind(f.root.join("replacement").to_str().unwrap()).execute(&f.db).await.unwrap();
+            } else {fs::write(&worker,"throw Error('changed without dispatch')").unwrap();}
+            let error=f.broker.prepare_write(&invocation,&provider,&workspace,None,None).await.unwrap_err();
+            let payload=serde_json::to_value(&error).unwrap();
+            assert_eq!(payload["code"],"invalid_workspace_path");assert_eq!(payload["message"],format!("invalid workspace path: {diagnostic}"));
+            assert_eq!(payload["localized"]["key"],key);
+            let failure=failure(error);assert_eq!(failure.code,"invalid_input");assert_eq!(failure.message,payload["message"].as_str().unwrap());
+            assert_eq!(failure.localized.as_ref().unwrap(),&payload["localized"]);
+            assert_ne!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,failure.localized.as_ref().unwrap()),diagnostic);
+            assert!(!f.root.join("started").exists());assert!(!f.root.join("a/effect.txt").exists());assert!(f.rows().await.is_empty());
+            assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM capability_invocations").fetch_one(&f.db).await.unwrap(),0);
+            sqlx::query("UPDATE workspaces SET path=? WHERE id='a'").bind(&workspace.path).execute(&f.db).await.unwrap();fs::write(&worker,&original).unwrap();
+        }
+        f.broker.invoke_authorized("main",request("recovered","normal"),&approve("recovered")).await.unwrap();
+        assert!(f.root.join("a/effect.txt").exists());f.finish().await;
+    }
+
+    #[tokio::test]
     async fn failed_write_candidate_requires_approval_and_retains_old_binding() {
         let f = Fixture::new().await;
         let package = f.root.join("candidate"); fs::create_dir_all(&package).unwrap();
@@ -325,16 +378,28 @@ mod tests {
         let allow = workspace_write_runs::Request::with_confirmation("try-candidate".into(), "main".into(), move |_| {
             let root = root.clone(); async move { assert!(!root.join("started").exists()); assert!(!root.join("version-ran").exists()); Ok(true) }
         });
-        assert_eq!(f.broker.invoke_authorized("main", request("try-candidate", "normal"), &allow).await.unwrap_err().code, "outcome_unknown");
+        let failure=f.broker.invoke_authorized("main", request("try-candidate", "normal"), &allow).await.unwrap_err();
+        assert_eq!(failure.code,"outcome_unknown");
+        let payload=serde_json::to_value(&failure).unwrap();
+        assert_eq!(payload["localized"]["key"],"native.error.writeOutcomeUnknown");
+        assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&payload["localized"]).contains("Approved capability execution did not produce a confirmed result"));
+        assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]).contains("已批准的能力执行未产生确认结果"));
         assert!(f.root.join("started").exists());
         let confirmed: String = sqlx::query_scalar("SELECT installation_id FROM capability_provider_bindings WHERE scope_id='a'").fetch_one(&f.db).await.unwrap();
         assert_eq!(confirmed, f.installation);
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM capability_binding_candidates").fetch_one(&f.db).await.unwrap(), 0);
         let never = workspace_write_runs::Request::with_confirmation("try-candidate".into(), "main".into(), |_|async {panic!("unknown write must replay without executing the old provider")});
-        assert_eq!(f.broker.invoke_authorized("main", request("try-candidate", "normal"), &never).await.unwrap_err().code, "outcome_unknown");
+        let replay=f.broker.invoke_authorized("main", request("try-candidate", "normal"), &never).await.unwrap_err();
+        assert_eq!(serde_json::to_value(replay).unwrap(),payload);
         assert!(!f.root.join("a/effect.txt").exists());
         f.broker.stop_installation(&candidate.id).await.unwrap();
-        f.finish().await;
+        f.broker.stop_installation(&f.installation).await.unwrap();
+        f.db.close().await;
+        let reopened=crate::open_database(&f.root.join("data/host.db")).await.unwrap();
+        let replay=Broker::new(reopened.clone()).invoke_authorized("main",request("try-candidate","normal"),&never).await.unwrap_err();
+        assert_eq!(serde_json::to_value(replay).unwrap(),payload);
+        assert!(!f.root.join("a/effect.txt").exists());
+        reopened.close().await;fs::remove_dir_all(f.root).unwrap();
     }
     #[tokio::test]
     async fn native_authority_denial_and_durable_replay_survive_uninstall_and_trust_revocation() {

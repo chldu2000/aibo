@@ -1,8 +1,10 @@
+import { toErrorText } from './error-utils.ts';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 import type { WorkspaceFileDiff } from '../types';
 import type { GitRepositoryState } from '../../../packages/plugin-protocol/src/presentation-git';
 import { sessionChangeFile } from './session-change-file.ts';
 
-export type SessionDiffState = { repositoryId: string | null; path: string | null; staged: boolean; diff: WorkspaceFileDiff | null; loading: boolean; error: string | null };
+export type SessionDiffState = { repositoryId: string | null; path: string | null; staged: boolean; diff: WorkspaceFileDiff | null; loading: boolean; error: LocalizedText | null };
 export const emptySessionDiff = (): SessionDiffState => ({ repositoryId: null, path: null, staged: false, diff: null, loading: false, error: null });
 
 /** Discard reads after closing, selecting another file, or switching sessions. */
@@ -27,7 +29,7 @@ export function createSessionDiffController(read: (workspaceId: string, path: st
         const diff = await read(workspaceId, path, staged, repositoryId);
         if (ticket === generation) update({ repositoryId, path, staged, diff, loading: false, error: null });
       } catch (error) {
-        if (ticket === generation) update({ repositoryId, path, staged, diff: null, loading: false, error: String(error) });
+        if (ticket === generation) update({ repositoryId, path, staged, diff: null, loading: false, error: toErrorText(error) });
       }
     },
   };

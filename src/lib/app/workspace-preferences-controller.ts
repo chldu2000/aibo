@@ -1,9 +1,11 @@
+import { LocalizedError, toErrorText } from './error-utils.ts';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 export type WorkspacePreferences = { trustNewWorkspaces: boolean };
 export type WorkspacePreferencesState = {
   value: WorkspacePreferences | null;
   loading: boolean;
   saving: boolean;
-  error: string | null;
+  error: LocalizedText | null;
 };
 export const emptyWorkspacePreferences = (): WorkspacePreferencesState => ({ value: null, loading: false, saving: false, error: null });
 
@@ -16,10 +18,10 @@ export function createWorkspacePreferencesController(ports: {
   let generation = 0;
   const publish = () => ports.changed({ ...state, value: state.value ? { ...state.value } : null });
   function validated(value: WorkspacePreferences): WorkspacePreferences {
-    if (!value || typeof value.trustNewWorkspaces !== 'boolean') throw new Error('工作区设置返回了无效数据，请重试。');
+    if (!value || typeof value.trustNewWorkspaces !== 'boolean') throw new LocalizedError('error.workspacePreferences');
     return { trustNewWorkspaces: value.trustNewWorkspaces };
   }
-  const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+  const message = toErrorText;
   return {
     async load() {
       if (state.saving) return;

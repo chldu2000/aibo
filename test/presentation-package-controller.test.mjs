@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPresentationPackageController } from '../src/lib/app/presentation-package-controller.ts';
@@ -88,4 +89,14 @@ test('an unusable built-in release still leaves the host default',async()=>{
   const f=withBuiltin(fixture());await f.controller.refresh();await f.controller.select('a');
   const read=f.ports.read;f.ports.read=async digest=>{if(digest==='c')throw Error('builtin missing');return read(digest);};
   await f.controller.restore();assert.equal(f.saved,null);assert.equal(f.state.active,null);
+});
+
+test('native selection failures remain translatable without replacing the active release',async()=>{
+ const f=fixture();await f.controller.select('a');
+ const failure={code:'workspace_write_busy',message:'original diagnostic',localized:{schema:'aibo.host-message/v1',key:'native.error.workspaceWriteBusy',params:{}}};
+ f.ports.read=async()=>{throw failure};
+ await assert.rejects(f.controller.select('b'),error=>error===failure);
+ assert.equal(f.state.active.release.digest,'a');assert.equal(f.saved.digest,'a');
+ assert.match(translateMessage('en',f.state.error),/unfinished write/);assert.match(translateMessage('zh-CN',f.state.error),/尚未结束的写入/);
+ assert.equal(f.effects.filter(([operation])=>operation==='activate').length,1);
 });

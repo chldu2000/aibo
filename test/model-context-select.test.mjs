@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { translate } from '../packages/i18n/index.js';
 import { createServer } from 'vite';
 
 test('context dropdown renders confirmed values and disabled fallback in both default themes', async () => {
@@ -8,16 +9,18 @@ test('context dropdown renders confirmed values and disabled fallback in both de
     const { render } = await server.ssrLoadModule('svelte/server');
     const { default: Select } = await server.ssrLoadModule('/src/lib/ui-kit/runtime/ModelContextSelect.svelte');
     const { setUiTheme } = await server.ssrLoadModule('/src/lib/ui-kit/registry.ts');
-    for (const kit of ['light', 'dark']) {
+    const { language } = await server.ssrLoadModule('/src/lib/i18n/runtime.ts');
+    for (const locale of ['zh-CN', 'en']) for (const kit of ['light', 'dark']) {
+      language.set({preference:locale,locale});
       setUiTheme(kit);
       const props = { current: 'long', options: [{ id: 'standard', label: '128K', description: null }, { id: 'long', label: '1M', description: 'Extended context' }], disabled: false, onSelect() {} };
       const html = render(Select, { props }).body;
-      assert.match(html, /aria-label="模型上下文大小"/);
+      assert.ok(html.includes(`aria-label="${translate(locale, 'context.size')}"`));
       assert.match(html, /role="option"[^>]*aria-selected="true"/);
       assert.doesNotMatch(html, /<button[^>]*role="combobox"[^>]*disabled/);
       assert.match(render(Select, { props: { ...props, disabled: true } }).body, /<button[^>]*role="combobox"[^>]*disabled/);
       const fallback = render(Select, { props: { ...props, options: [], current: null } }).body;
-      assert.match(fallback, /<button[^>]*role="combobox"[^>]*disabled/); assert.match(fallback, /不支持/);
+      assert.match(fallback, /<button[^>]*role="combobox"[^>]*disabled/); assert.ok(fallback.includes(translate(locale, 'context.unsupported')));
     }
   } finally { await server.close(); }
 });

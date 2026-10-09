@@ -1,6 +1,8 @@
+import { localizedMessage } from '../../../packages/i18n/index.js';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 import type { SetNotice } from './notifications';
 import type { CodexThreadSummary, PiSessionTreeSnapshot, Session, Workspace } from '$lib/types';
-import { toErrorMessage } from './error-utils';
+import { toErrorText } from './error-utils';
 import { ensureWorkspaceExpanded, removeWorkspace as removeWorkspaceState } from './session-transitions';
 
 export type WorkspaceControllerContext = {
@@ -31,7 +33,7 @@ export type WorkspaceControllerContext = {
   refreshSessions: (workspaceId: string) => Promise<void> | void;
   refreshCodexThreads: (workspaceId: string) => Promise<void> | void;
   setBusy: (value: boolean) => void;
-  setErrorMessage: (value: string | null) => void;
+  setErrorMessage: (value: LocalizedText | null) => void;
   setNotice: SetNotice;
   selectWorkspace: (workspaceId: string) => void;
 };
@@ -40,12 +42,12 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
   async function createWorkspace(path: string): Promise<void> {
     const normalizedPath = path.trim();
     if (!normalizedPath) {
-      context.setErrorMessage('请选择一个已经存在的本地目录。');
+      context.setErrorMessage(localizedMessage('workspace.existingDirectory'));
       return;
     }
 
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；工作区变更需要在 Tauri 桌面模式中保存。', 'warning');
+      context.setNotice(localizedMessage('workspace.saveDesktopOnly'), 'warning');
       return;
     }
 
@@ -59,9 +61,9 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
         ...context.getWorkspaces().filter(({ id }) => id !== workspace.id),
       ]);
       context.selectWorkspace(workspace.id);
-      context.setNotice(workspace.trust === 'trusted' ? '工作区已添加，当前为可信状态。' : '工作区已添加，运行 Agent 前需确认信任。', workspace.trust === 'trusted' ? 'success' : 'warning');
+      context.setNotice(workspace.trust === 'trusted' ? localizedMessage('workspace.addedTrusted') : localizedMessage('workspace.addedUntrusted'), workspace.trust === 'trusted' ? 'success' : 'warning');
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }
@@ -69,7 +71,7 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
 
   async function chooseWorkspaceDirectory(): Promise<void> {
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；请在 Tauri 桌面模式中使用系统目录选择器。', 'warning');
+      context.setNotice(localizedMessage('workspace.pickerDesktopOnly'), 'warning');
       return;
     }
 
@@ -79,7 +81,7 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
       const selectedPath = await context.chooseDirectory();
       if (selectedPath?.trim()) await createWorkspace(selectedPath);
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }
@@ -87,7 +89,7 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
 
   async function toggleTrust(workspace: Workspace): Promise<void> {
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；信任状态只会在 Tauri 桌面模式中写入。', 'warning');
+      context.setNotice(localizedMessage('workspace.trustDesktopOnly'), 'warning');
       return;
     }
 
@@ -101,9 +103,9 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
       context.setWorkspaces(
         context.getWorkspaces().map((item) => (item.id === updated.id ? updated : item)),
       );
-      context.setNotice(updated.trust === 'trusted' ? '工作区已标记为可信。' : '工作区已撤销信任。', 'success');
+      context.setNotice(updated.trust === 'trusted' ? localizedMessage('workspace.trusted') : localizedMessage('workspace.untrusted'), 'success');
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }
@@ -111,7 +113,7 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
 
   async function deleteWorkspace(workspace: Workspace): Promise<void> {
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；删除操作需要在 Tauri 桌面模式中执行。', 'warning');
+      context.setNotice(localizedMessage('workspace.removeDesktopOnly'), 'warning');
       return;
     }
     if (workspace.id === context.getArchivingWorkspaceId()) return;
@@ -150,9 +152,9 @@ export function createWorkspaceController(context: WorkspaceControllerContext) {
         void context.refreshSessions(nextSelectedWorkspaceId);
         void context.refreshCodexThreads(nextSelectedWorkspaceId);
       }
-      context.setNotice('工作区已从 Aibo 移除；本地目录未被删除。', 'success');
+      context.setNotice(localizedMessage('workspace.removed'), 'success');
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }

@@ -82,11 +82,11 @@ test('management center owns plugin administration while plugin sessions stay in
   assert.match(app, /onOpenManagement=\{\(\) => openManagementCenter\('appearance'\)\}/);
   assert.doesNotMatch(app, /<PluginWorkspacePanel/);
   assert.match(app, /<PluginManagerPanel/);
-  assert.match(titlebar, /打开工作台设置/);
+  assert.match(titlebar, /\$t\('window.openSettings'\)/);
   assert.doesNotMatch(titlebar, /打开 Agent 诊断|data-host-navigation="plugins"/);
   assert.match(settings, /<ManagementCenter/);
-  assert.match(management, /label: '外观'.*label: '布局'.*label: '工作区'.*label: '插件与能力'.*label: '运行与诊断'/s);
-  assert.match(app, /catch \(error\) \{ pluginError = toErrorMessage\(error\); \}/);
+  assert.match(management, /label: \$t\('settings.appearance'\).*label: \$t\('settings.layout'\).*label: \$t\('settings.workspace'\).*label: \$t\('settings.extensions'\).*label: \$t\('settings.runtime'\)/s);
+  assert.match(app, /catch \(error\) \{ pluginError = toErrorText\(error\); \}/);
   assert.match(app, /finally \{ pluginBusy = false; \}/);
   assert.match(app, /settingsOpen = false;/, 'creating an extension session returns to the main workbench');
   assert.match(app, /await createPluginSession\(choice\.installationId, choice\.contributionId, workspaceId\);\s*errorMessage = pluginError;/, 'a successful extension session clears any stale creation error');

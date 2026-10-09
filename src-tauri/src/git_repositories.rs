@@ -22,6 +22,8 @@ pub(crate) struct Discovery {
     repositories: Vec<Repository>,
     limited: bool,
     warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    localized_warnings: Option<Vec<serde_json::Value>>,
     scan_budget: usize,
 }
 fn invalid(message: impl Into<String>) -> CoreError {
@@ -60,17 +62,17 @@ pub(crate) fn resolve(workspace: &str, id: Option<&str>) -> Result<String, CoreE
                 .components()
                 .any(|c| !matches!(c, Component::Normal(_)))
         {
-            return Err(invalid("invalid repository ID"));
+            return Err(CoreError::Localized {error:Box::new(invalid("invalid repository ID")),localized:crate::ui_i18n::display_descriptor("native.repository.invalidId",serde_json::json!({}))});
         }
         let path = std::fs::canonicalize(root.join(id)).map_err(|e| invalid(e.to_string()))?;
         if !path.starts_with(&root) {
-            return Err(invalid("repository escapes workspace"));
+            return Err(CoreError::Localized {error:Box::new(invalid("repository escapes workspace")),localized:crate::ui_i18n::display_descriptor("native.repository.outside",serde_json::json!({}))});
         }
         path
     };
-    let top = top_level(&candidate).ok_or_else(|| invalid("repository is no longer available"))?;
+    let top = top_level(&candidate).ok_or_else(|| CoreError::Localized {error:Box::new(invalid("repository is no longer available")),localized:crate::ui_i18n::display_descriptor("native.repository.unavailable",serde_json::json!({}))})?;
     if id != "." && top != candidate {
-        return Err(invalid("repository boundary changed"));
+        return Err(CoreError::Localized {error:Box::new(invalid("repository boundary changed")),localized:crate::ui_i18n::display_descriptor("native.repository.boundaryChanged",serde_json::json!({}))});
     }
     Ok(candidate.to_string_lossy().into_owned())
 }
@@ -80,6 +82,7 @@ fn discover(workspace: &str, budget: usize) -> Result<Discovery, CoreError> {
         repositories: vec![],
         limited: false,
         warnings: vec![],
+        localized_warnings: Some(vec![]),
         scan_budget: budget,
     };
     let mut pending = VecDeque::from([(root.clone(), 0)]);
@@ -136,10 +139,9 @@ fn discover(workspace: &str, budget: usize) -> Result<Discovery, CoreError> {
                     });
                 }
             } else if marker.exists() {
-                result.warnings.push(format!(
-                    "无法读取仓库 {}",
-                    path.strip_prefix(&root).unwrap().display()
-                ));
+                let message=crate::ui_i18n::HostMessage::new("native.repository.unreadable",serde_json::json!({"path":path.strip_prefix(&root).unwrap().to_string_lossy()}));
+                result.warnings.push(message.diagnostic);
+                result.localized_warnings.as_mut().unwrap().push(message.localized.unwrap());
             }
         }
         let entries = match std::fs::read_dir(&path) {
@@ -149,6 +151,7 @@ fn discover(workspace: &str, budget: usize) -> Result<Discovery, CoreError> {
                     "{}: {e}",
                     path.strip_prefix(&root).unwrap().display()
                 ));
+                result.localized_warnings.as_mut().unwrap().push(serde_json::Value::Null);
                 continue;
             }
         };
@@ -468,6 +471,25 @@ mod tests {
         }
         std::fs::remove_file(project.join("module/.git")).unwrap();
         assert!(resolve(project.to_str().unwrap(), Some("module")).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+    #[test]
+    fn broken_repository_warnings_keep_paths_and_bilingual_display_metadata() {
+        let root=std::env::temp_dir().join(format!("aibo-repository-display-{}",ulid::Ulid::new()));
+        let name="坏仓库{path}";std::fs::create_dir_all(root.join(name)).unwrap();std::fs::write(root.join(name).join(".git"),"invalid git marker").unwrap();
+        let result=discover(root.to_str().unwrap(),2000).unwrap();assert!(result.repositories.is_empty());assert!(!result.limited);
+        assert_eq!(result.warnings,vec![format!("无法读取仓库 {name}")]);let displays=result.localized_warnings.as_ref().unwrap();assert_eq!(displays.len(),result.warnings.len());
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&displays[0]),format!("Unable to read repository {name}."));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&displays[0]),result.warnings[0]);
+        for (id,key,raw) in [("../outside","invalidId","invalid repository ID"),(name,"unavailable","repository is no longer available")] {
+            let error=resolve(root.to_str().unwrap(),Some(id)).unwrap_err();let payload=serde_json::to_value(error).unwrap();
+            assert_eq!(payload["code"],"invalid_workspace_path");assert_eq!(payload["message"],format!("invalid workspace path: {raw}"));assert_eq!(payload["localized"]["key"],format!("native.repository.{key}"));
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 }

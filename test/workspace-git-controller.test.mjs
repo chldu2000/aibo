@@ -1,6 +1,8 @@
+import { LocalizedError } from '../src/lib/app/error-utils.ts';
+import { translateMessage } from '../packages/i18n/index.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorkspaceGitController } from '../src/lib/app/workspace-git-controller.ts';
+import { createWorkspaceGitController, workspaceGitPresentation } from '../src/lib/app/workspace-git-controller.ts';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -163,7 +165,7 @@ test('commit file paging and repository section selection share host-owned draft
   await f.controller.loadWorkspaceCommitFiles('a', 'hash'); await f.controller.loadWorkspaceCommitFiles('a', 'hash', true);
   assert.deepEqual(f.controller.snapshot.commitFiles.files.map(item => item.path), ['0', '1']);
   await f.controller.openWorkspaceCommitFileDiff('a', 'hash', 'old.txt');
-  assert.match(f.controller.snapshot.fileDiffContextLabel, /two.*提交 hash.*old.txt/);
+  assert.match(translateMessage('zh-CN', f.controller.snapshot.fileDiffContextLabel), /two.*提交 hash.*old.txt/);
 });
 
 test('review captures the original repository and read-only profile even while the user navigates away', async () => {
@@ -205,4 +207,70 @@ test('branch, sync, stash and grouped staging all preserve the selected reposito
   assert.ok(writes.every(call => call[1] === 'a' && call.at(-1) === 'two'));
   assert.equal(f.notices.length, 8);
   assert.equal(f.controller.snapshot.operationBusy, false);
+});
+
+test('Git previews and host failures translate at display time and preserve repository identity and provider text',async()=>{
+ const f=fixture({getWorkspaceGitCommitFileDiff:async()=>{throw new LocalizedError('error.operationFailed')}});
+ await select(f.controller,'a','two');await f.controller.openWorkspaceCommitFileDiff('a','hash123456','用户文件.txt');
+ const state=f.controller.snapshot;
+ const zh=workspaceGitPresentation(state,'zh-CN'),en=workspaceGitPresentation(state,'en');
+ assert.equal(zh.fileDiffContextLabel,'two · 提交 hash1234 · 用户文件.txt');assert.equal(en.fileDiffContextLabel,'two · Commit hash1234 · 用户文件.txt');
+ assert.match(en.fileDiffError,/operation failed/);assert.match(zh.fileDiffError,/操作失败/);
+ assert.equal(en.repositoryId,'two');assert.deepEqual(en.draft,state.draft);assert.deepEqual(en.repositories.map(repo=>repo.id),state.repositories.map(repo=>repo.id));
+ assert.deepEqual(f.calls.find(call=>call[0]==='getWorkspaceGitCommitFileDiff'),['getWorkspaceGitCommitFileDiff','a','hash123456','用户文件.txt','two']);
+ const provider=fixture({getWorkspaceChanges:async()=>{throw Error('提供者原文')}});await select(provider.controller);
+ assert.equal(workspaceGitPresentation(provider.controller.snapshot,'en').repositories[0].error,'提供者原文');
+});
+
+test('native commit validation and empty results keep display metadata and preserve drafts without repeating writes',async()=>{
+ for(const [key,message,english,structured] of [
+  ['native.git.emptyCommit','提交信息不能为空','The commit message cannot be empty.',true],
+  ['native.git.noStagedChanges','没有已暂存的更改可提交','There are no staged changes to commit.',false],
+ ]){
+  const display={schema:'aibo.host-message/v1',key,params:{}};
+  const payload=structured?{code:'database_error',message:'database error: '+message,localized:display}:{committed:false,hash:null,message,localizedMessage:display};
+  const original=structuredClone(payload);
+  const f=fixture({commitWorkspaceChanges:async()=>{if(structured)throw payload;return payload}});
+  await select(f.controller);f.controller.changeDraft({commitMessage:'原始提交 {message}'});
+  assert.equal(await f.controller.commitWorkspaceGitChanges('a','原始提交 {message}'),false);
+  const error=f.errors.at(-1);assert.equal(translateMessage('en',error),english);assert.equal(translateMessage('zh-CN',error),message);
+  assert.equal(f.controller.snapshot.draft.commitMessage,'原始提交 {message}');assert.equal(f.controller.snapshot.operationBusy,false);
+  assert.deepEqual(f.calls.filter(call=>call[0]==='commitWorkspaceChanges'),[['commitWorkspaceChanges','a','原始提交 {message}',undefined,'one']]);
+  assert.equal(translateMessage('en',error),english);assert.deepEqual(payload,original);
+ }
+ const f=fixture({commitWorkspaceChanges:async()=>({committed:false,message:'提供者原始错误',localizedMessage:{schema:'invalid',key:'native.git.noStagedChanges',params:{}}})});
+ await select(f.controller);await f.controller.commitWorkspaceGitChanges('a','raw');assert.equal(f.errors.at(-1),'提供者原始错误');
+});
+
+test('repository warning projections translate explicit metadata without rediscovery or changing targets',async()=>{
+ const raw={...discovery('one'),warnings:['无法读取仓库 原文{path}','底层错误原文'],localizedWarnings:[{schema:'aibo.host-message/v1',key:'native.repository.unreadable',params:{path:'原文{path}'}},null]};
+ const before=structuredClone(raw),f=fixture({listWorkspaceGitRepositories:async()=>raw});await select(f.controller);
+ const calls=f.calls.length,en=workspaceGitPresentation(f.controller.snapshot,'en'),zh=workspaceGitPresentation(f.controller.snapshot,'zh-CN');
+ assert.deepEqual(en.discoveryWarnings,['Unable to read repository 原文{path}.','底层错误原文']);assert.deepEqual(zh.discoveryWarnings,raw.warnings);
+ assert.equal(f.calls.length,calls);assert.deepEqual(raw,before);assert.equal(en.repositoryId,'one');assert.equal(en.repositories[0].id,'one');
+ for(const localizedWarnings of [undefined,[],[{},null]]){
+  const f=fixture({listWorkspaceGitRepositories:async()=>({...raw,localizedWarnings})});await select(f.controller);assert.deepEqual(workspaceGitPresentation(f.controller.snapshot,'en').discoveryWarnings,raw.warnings);
+ }
+});
+
+
+test('workspace capture warnings defer translation, remove private metadata and preserve raw controller state', async () => {
+ const descriptor=key=>({schema:'aibo.host-message/v1',key,params:{}});
+ const raw={...changes('a'),captureStatus:'unsupported',captureError:'非 Git 工作区暂不提供全局变更归属；本轮变更仍可用',localizedCaptureError:descriptor('native.changes.nonGit')};
+ const f=fixture({getWorkspaceChanges:async()=>structuredClone(raw)});await select(f.controller);
+ const state=structuredClone(f.controller.snapshot),calls=structuredClone(f.calls);
+ for(const locale of ['zh-CN','en','zh-CN']){
+  const view=workspaceGitPresentation(f.controller.snapshot,locale);
+  assert.equal(view.changes.captureError,translateMessage(locale,raw.localizedCaptureError));
+  for(const repo of view.repositories){assert.equal(repo.changes.captureError,translateMessage(locale,raw.localizedCaptureError));assert.equal('localizedCaptureError' in repo.changes,false);}
+  assert.equal('localizedCaptureError' in view.changes,false);
+  assert.deepEqual(f.controller.snapshot,state);assert.deepEqual(f.calls,calls);
+ }
+ for(const metadata of [undefined,{schema:'other/v1',key:'native.changes.nonGit',params:{}},descriptor('native.changes.unknown'),{}]){
+  const f=fixture({getWorkspaceChanges:async()=>({...raw,localizedCaptureError:metadata})});await select(f.controller);
+  const view=workspaceGitPresentation(f.controller.snapshot,'en');assert.equal(view.changes.captureError,raw.captureError);assert.equal('localizedCaptureError' in view.changes,false);
+ }
+ const restored={...raw,captureStatus:'captured',captureError:null,localizedCaptureError:descriptor('native.changes.nonGit')};
+ const normal=fixture({getWorkspaceChanges:async()=>restored});await select(normal.controller);
+ assert.equal(workspaceGitPresentation(normal.controller.snapshot,'en').changes.captureError,null);
 });

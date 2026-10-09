@@ -1,6 +1,13 @@
+import {nativeTextWithSuffix} from './native-text.ts';
 /** Host-owned search: sources return data; activation is revalidated by composition. */
+import { LocalizedError, toErrorText, readNativeMessage } from './error-utils.ts';
+import { localizedMessage, translate, translateMessage } from '../../../packages/i18n/index.js';
+import type { Locale, LocalizedText } from '../../../packages/i18n/index.js';
 export const searchKinds = ['workspace', 'session', 'message', 'file', 'command', 'setting', 'plugin', 'attachment', 'artifact', 'execution'] as const;
 export type SearchKind = typeof searchKinds[number];
+export function localizedSearchKindLabels(locale: Locale): Record<SearchKind, string> {
+  return Object.fromEntries(searchKinds.map(kind => [kind, translate(locale, `search.kind.${kind}`)])) as Record<SearchKind, string>;
+}
 export const searchKindLabels: Record<SearchKind, string> = {
   workspace: '工作区', session: '会话', message: '消息', file: '文件', command: '命令',
   setting: '设置', plugin: '插件', attachment: '附件', artifact: '产物', execution: '执行记录',
@@ -12,15 +19,35 @@ export type SearchTarget = {
 export type SearchResult = {
   id: string; kind: SearchKind; title: string; description: string; excerpt?: string;
   target: SearchTarget; score: number; disabledReason?: string; shortcut?: string;
+  localizedTitle?: unknown; localizedDescription?: unknown;
+  hostCatalog?: boolean;
 };
 export type SearchRequest = { query: string; kind: SearchKind | null; workspaceId: string | null; limit: number };
-export type SearchPage = { items: SearchResult[]; hasMore: boolean; warnings: string[] };
+export type SearchPage = { items: SearchResult[]; hasMore: boolean; warnings: string[]; localizedWarnings?: unknown };
 export type SearchState = {
   query: string; kind: SearchKind | null; workspaceId: string | null; limit: number;
-  items: SearchResult[]; pending: string[]; errors: string[]; warnings: string[]; hasMore: boolean;
+  items: SearchResult[]; pending: string[]; errors: LocalizedText[]; warnings: LocalizedText[]; hasMore: boolean;
 };
-export type SearchSource = { id: string; search(request: SearchRequest, signal: AbortSignal): Promise<SearchPage> };
+export type SearchSource = { id: string; label?: LocalizedText; search(request: SearchRequest, signal: AbortSignal): Promise<SearchPage> };
 export const emptySearch = (): SearchState => ({ query: '', kind: null, workspaceId: null, limit: 50, items: [], pending: [], errors: [], warnings: [], hasMore: false });
+
+export function searchPresentation(state: SearchState, locale: Locale, catalog: SearchResult[] = []) {
+  const current = new Map(catalog.map(item => [item.id, item]));
+  return { ...state, items: state.items.map(({localizedTitle, localizedDescription, hostCatalog, ...item}) => {
+    const candidate = hostCatalog ? current.get(item.id) : undefined;
+    const display = candidate && JSON.stringify(candidate.target) === JSON.stringify(item.target) ? candidate : undefined;
+    return {...item,
+      title: display?.title ?? translateMessage(locale, readNativeMessage(localizedTitle) ?? item.title),
+      description: display?.description ?? translateMessage(locale, readNativeMessage(localizedDescription) ?? item.description),
+      disabledReason: display ? display.disabledReason : item.disabledReason,
+    };
+  }) };
+}
+export function searchPreviewPresentation<T extends {content: string; localizedContent?: unknown; localizedSuffix?: unknown}>(preview: T | null, locale: Locale): Omit<T, 'localizedContent' | 'localizedSuffix'> | null {
+  if (!preview) return null;
+  const {localizedContent, localizedSuffix, ...value} = preview;
+  return {...value, content: translateMessage(locale, readNativeMessage(localizedContent) ?? nativeTextWithSuffix(value.content, localizedSuffix, locale))};
+}
 export function parseSearch(query: string, kind: SearchKind | null): { query: string; kind: SearchKind | null } {
   const trimmed = query.trim();
   return { query: /^[>@]/.test(trimmed) ? trimmed.slice(1).trim() : trimmed,
@@ -41,7 +68,7 @@ export function matchSearch(title: string, description: string, query: string): 
 export function searchCatalog(items: SearchResult[], request: SearchRequest): SearchPage {
   const matches = items.filter(item => (!request.kind || item.kind === request.kind)
     && (!request.workspaceId || !item.target.workspaceId || item.target.workspaceId === request.workspaceId))
-    .map(item => ({ ...item, score: matchSearch(item.title, item.description, request.query) }))
+    .map(item => ({ ...item, hostCatalog: true, score: matchSearch(item.title, item.description, request.query) }))
     .filter(item => item.score > 0).sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
   return { items: matches.slice(0, request.limit), hasMore: matches.length > request.limit, warnings: [] };
 }
@@ -55,7 +82,10 @@ export function createSearchController(ports: { sources: SearchSource[]; publish
     state = { ...state, items: [...unique.values()].sort((a, b) => {
       const boost = (item: SearchResult) => (item.target.workspaceId === current ? 3 : 0) + (recent.includes(item.id) ? 5 - recent.indexOf(item.id) / 20 : 0);
       return (b.score + boost(b)) - (a.score + boost(a)) || a.id.localeCompare(b.id);
-    }), hasMore: [...pages.values()].some(page => page.hasMore), warnings: [...pages.values()].flatMap(page => page.warnings) };
+    }), hasMore: [...pages.values()].some(page => page.hasMore), warnings: [...pages.values()].flatMap(page => {
+      const metadata = Array.isArray(page.localizedWarnings) && page.localizedWarnings.length === page.warnings.length ? page.localizedWarnings : [];
+      return page.warnings.map((text, index) => readNativeMessage(metadata[index]) ?? text);
+    }) };
     ports.publish(state);
   };
   return {
@@ -71,11 +101,11 @@ export function createSearchController(ports: { sources: SearchSource[]; publish
           if (!page || !Array.isArray(page.items) || typeof page.hasMore !== 'boolean' || !Array.isArray(page.warnings)
             || page.warnings.some(message => typeof message !== 'string') || page.items.some(item => !item || typeof item.id !== 'string'
               || !searchKinds.includes(item.kind) || typeof item.title !== 'string' || typeof item.description !== 'string'
-              || !Number.isFinite(item.score) || !item.target || typeof item.target.source !== 'string' || typeof item.target.id !== 'string')) throw Error('搜索来源返回了无效结果');
+              || !Number.isFinite(item.score) || !item.target || typeof item.target.source !== 'string' || typeof item.target.id !== 'string')) throw new LocalizedError('search.sourceInvalid');
           pages.set(source.id, page);
         } catch (error) {
           if (revision !== generation) return;
-          state = { ...state, errors: [...state.errors, `${source.id}：${error instanceof Error ? error.message : String(error)}`] };
+          state = { ...state, errors: [...state.errors, localizedMessage('search.sourceError',{source:source.label??source.id,error:toErrorText(error)})] };
         } finally {
           if (revision === generation) { state = { ...state, pending: state.pending.filter(id => id !== source.id) }; publish(); }
         }

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::SqlitePool;
 use std::collections::HashSet;
+use crate::ui_i18n::HostMessage;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -19,16 +20,16 @@ pub(crate) struct SessionControl {
     pub profile: Value,
 }
 
-pub(crate) fn validate_declaration(entry: &Value) -> Result<(), String> {
+pub(crate) fn validate_declaration(entry: &Value) -> Result<(), crate::ui_i18n::HostMessage> {
     if entry.get("executionPolicy").is_some() && (!matches!(entry["executionPolicy"].as_str(),Some("agent-managed" | "core-proxy"))
         || entry["scope"] != "session"
         || !entry["operations"].as_array().is_some_and(|ops| ops.iter().any(|op| op["capability"]["id"] == "aibo.session.open"))) {
-        return Err("invalid_manifest: execution policy requires a session provider".into());
+        return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.manifest.executionPolicy", serde_json::json!({}), "invalid_manifest: execution policy requires a session provider"));
     }
     let Some(raw) = entry.get("sessionControls") else { return Ok(()); };
     if entry["scope"] != "session" || !entry["operations"].as_array().is_some_and(|ops|
         ops.iter().any(|op|op["capability"]["id"] == "aibo.session.open")) {
-        return Err("invalid_manifest: session controls require a session provider".into());
+        return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.manifest.controlsProvider", serde_json::json!({}), "invalid_manifest: session controls require a session provider"));
     }
     let controls: Vec<SessionControl> = serde_json::from_value(raw.clone()).map_err(|e| e.to_string())?;
     let mut ids = HashSet::new();
@@ -36,39 +37,39 @@ pub(crate) fn validate_declaration(entry: &Value) -> Result<(), String> {
     // Plugins may add aliases for their controls, never replace host management commands.
     let reserved = ["settings","new","name","trust","session","resume","archive","tree","fork","compact","model","thinking","reload","goal","skills"];
     for control in &controls {
-        if !ids.insert(control.id.clone()) { return Err("invalid_manifest: duplicate session control ID".into()); }
+        if !ids.insert(control.id.clone()) { return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.manifest.duplicateControl", serde_json::json!({}), "invalid_manifest: duplicate session control ID")); }
     }
     for control in &controls {
         // Transitions are explicit: equal profiles (Manual and Accept edits) cannot be ordered by the host.
         if control.transitions.iter().any(|target| target == &control.id || !ids.contains(target))
             || control.transitions.iter().collect::<HashSet<_>>().len() != control.transitions.len() {
-            return Err("invalid_manifest: session control transitions must name other declared controls".into());
+            return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.manifest.controlTransitions", serde_json::json!({}), "invalid_manifest: session control transitions must name other declared controls"));
         }
     }
     for control in controls {
         if let Some(command) = control.command {
             if reserved.contains(&command.as_str()) || !commands.insert(command) {
-                return Err("invalid_manifest: duplicate or reserved session control command".into());
+                return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.manifest.controlCommand", serde_json::json!({}), "invalid_manifest: duplicate or reserved session control command"));
             }
         }
     }
     Ok(())
 }
 
-fn apply(backend: EnforcementBackend, current: &ExecutionProfile, option: &SessionControl) -> Result<ResolvedExecutionProfile, String> {
+fn apply(backend: EnforcementBackend, current: &ExecutionProfile, option: &SessionControl) -> Result<ResolvedExecutionProfile, HostMessage> {
     let mut value = serde_json::to_value(current).map_err(|e|e.to_string())?;
-    let patch = option.profile.as_object().ok_or("invalid session control profile")?;
+    let patch = option.profile.as_object().ok_or_else(||HostMessage::with_diagnostic("native.controls.profile",serde_json::json!({}),"invalid session control profile"))?;
     for (key, item) in patch { value[key] = item.clone(); }
     let requested: ExecutionProfile = serde_json::from_value(value).map_err(|e|e.to_string())?;
     if backend == EnforcementBackend::CoreProxy && (requested.filesystem_policy == "danger-full-access"
         || requested.command_policy == "trusted" || requested.approval_reviewer == "auto-review") {
-        return Err("permission_denied: session control requires native enforcement".into());
+        return Err(HostMessage::with_diagnostic("native.controls.nativeEnforcement",serde_json::json!({}),"permission_denied: session control requires native enforcement"));
     }
     let resolved = execution_profile::resolve_with_backend(backend, Some(requested), crate::now_iso())?;
     // A declaration cannot expand the backend's authority or silently promise a
     // configuration that Core will downgrade (e.g. a native grant on a third-party plugin).
     if resolved.requested != resolved.enforced {
-        return Err("permission_denied: session control exceeds execution authority".into());
+        return Err(HostMessage::with_diagnostic("native.controls.authority",serde_json::json!({}),"permission_denied: session control exceeds execution authority"));
     }
     Ok(resolved)
 }
@@ -86,15 +87,15 @@ pub(crate) async fn for_installation(db: &SqlitePool, installation: &str, contri
     Ok(declared.into_iter().filter(|option|apply(profile.enforcement_backend, &profile.requested, option).is_ok()).collect())
 }
 
-pub(crate) fn select(profile: &ResolvedExecutionProfile, id: &str) -> Result<ResolvedExecutionProfile, String> {
+pub(crate) fn select(profile: &ResolvedExecutionProfile, id: &str) -> Result<ResolvedExecutionProfile, HostMessage> {
     let option = profile.session_controls.iter().find(|option|option.id == id)
-        .ok_or("unsupported: session control is unavailable")?;
+        .ok_or_else(||HostMessage::with_diagnostic("native.controls.unavailable",serde_json::json!({}),"unsupported: session control is unavailable"))?;
     apply(profile.enforcement_backend, &profile.requested, option)
 }
 
 /// Only for new sessions with no explicit profile. Never infer write authorization
 /// from declaration order, and never rewrite a saved session during resume.
-pub(crate) fn initial_profile(profile: ResolvedExecutionProfile) -> Result<ResolvedExecutionProfile, String> {
+pub(crate) fn initial_profile(profile: ResolvedExecutionProfile) -> Result<ResolvedExecutionProfile, HostMessage> {
     let modes: Vec<_> = profile.session_controls.iter().filter(|option| option.kind == "mode")
         .filter_map(|option| apply(profile.enforcement_backend, &profile.requested, option).ok()).collect();
     if modes.is_empty() || modes.iter().any(|candidate| candidate.enforced == profile.enforced) {
@@ -107,16 +108,16 @@ pub(crate) fn initial_profile(profile: ResolvedExecutionProfile) -> Result<Resol
             return Ok(candidate);
         }
     }
-    Err("unsupported: provider has no compatible read-only initial mode; request an explicit supported profile".into())
+    Err(HostMessage::with_diagnostic("native.controls.initialMode",serde_json::json!({}),"unsupported: provider has no compatible read-only initial mode; request an explicit supported profile"))
 }
 
 /// An in-turn switch to `target`, allowed only when a control matching the current profile
 /// declares it in `transitions`. Returns the source control and the resolved target profile.
-pub(crate) fn transition(profile: &ResolvedExecutionProfile, target: &str) -> Result<(SessionControl, ResolvedExecutionProfile), String> {
+pub(crate) fn transition(profile: &ResolvedExecutionProfile, target: &str) -> Result<(SessionControl, ResolvedExecutionProfile), HostMessage> {
     let next = select(profile, target)?;
     let source = profile.session_controls.iter().find(|control| control.transitions.iter().any(|id| id == target)
         && apply(profile.enforcement_backend, &profile.requested, control).is_ok_and(|applied| applied.enforced == profile.enforced))
-        .ok_or("permission_denied: the current session control does not allow this transition")?;
+        .ok_or_else(||HostMessage::with_diagnostic("native.controls.transition",serde_json::json!({}),"permission_denied: the current session control does not allow this transition"))?;
     Ok((source.clone(), next))
 }
 
@@ -145,7 +146,10 @@ mod tests {
         declared.session_controls.pop();
         assert_eq!(initial_profile(declared.clone()).unwrap().enforced.interaction_mode, "plan");
         declared.session_controls.pop();
-        assert!(initial_profile(declared).unwrap_err().contains("read-only initial mode"));
+        let error=initial_profile(declared).unwrap_err();
+        assert!(error.diagnostic.contains("read-only initial mode"));
+        assert_eq!(error.display()["key"],"native.controls.initialMode");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&error.display()),"提供者没有兼容的只读初始模式，请明确请求受支持的配置。");
     }
 
     #[tokio::test]
@@ -278,7 +282,23 @@ mod tests {
             assert_eq!(selected.requested.interaction_mode, "plan");
         }
         current.enforcement_backend = EnforcementBackend::Unnegotiated;
-        assert!(select(&current, "full-access").is_err());
+        let before=current.clone();
+        let error=select(&current,"full-access").unwrap_err();
+        assert_eq!(error.diagnostic,"permission_denied: session control exceeds execution authority");
+        assert_eq!(error.display()["key"],"native.controls.authority");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&error.display()),"此会话控件超出了已授予的执行权限。");
+        assert_eq!(current,before);
+        current.enforcement_backend=EnforcementBackend::CoreProxy;
+        let error=select(&current,"full-access").unwrap_err();
+        assert_eq!(error.diagnostic,"permission_denied: session control requires native enforcement");assert_eq!(error.display()["key"],"native.controls.nativeEnforcement");
+        let error=select(&current,"unknown {id}").unwrap_err();
+        assert_eq!(error.diagnostic,"unsupported: session control is unavailable");assert_eq!(error.display()["key"],"native.controls.unavailable");
+        current.enforcement_backend=EnforcementBackend::CodexNative;
+        let original=current.clone();
+        let error=transition(&current,"full-access").unwrap_err();
+        assert_eq!(error.diagnostic,"permission_denied: the current session control does not allow this transition");
+        assert_eq!(error.display()["key"],"native.controls.transition");assert_eq!(current,original);
+
     }
 
     #[test]

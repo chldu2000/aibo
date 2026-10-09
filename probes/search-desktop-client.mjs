@@ -2,6 +2,9 @@ import '/src/app.css';
 import {invoke} from '@tauri-apps/api/core';
 import {mount,tick} from 'svelte';
 import App from '/src/App.svelte';
+import {language} from '/src/lib/i18n/runtime.ts';
+import {toErrorText} from '/src/lib/app/error-utils.ts';
+import {translateMessage} from '/packages/i18n/index.js';
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(find,label){for(let n=0;n<300;n++){const value=await find();if(value)return value;await delay(50);}throw Error(`timeout: ${label}`);}
 const evidence=[];
@@ -18,6 +21,19 @@ try {
   const catalog=await invoke('search_global',{request:{...request,query:'workspace',kind:'workspace'}});
   if(!catalog.items.some(item=>item.target.id===workspace.id))throw Error('native workspace index missing');
   evidence.push({nativeFileSearch:true,ignoreRules:true,nativePreview:true,nativeWorkspaceIndex:true});
+  for(const [id,key,zh,en] of [
+    ['binary.dat','binaryPreview','二进制文件不提供文本预览','Text previews are unavailable for binary files.'],
+    ['invalid.dat','notUtf8','文件不是 UTF-8 文本','This file is not UTF-8 text.'],
+  ]) {
+    let failure;
+    try { await invoke('read_search_result',{target:{source:'file',id,workspaceId:workspace.id}}); } catch(error) { failure=error; }
+    if(failure?.code!=='session_operation_error'||failure.message!==`session operation failed: ${zh}`||failure.localized?.key!==`native.search.${key}`)throw Error('native read error lost legacy diagnostic or explicit metadata: '+JSON.stringify(failure));
+    const message=toErrorText(failure);
+    if(translateMessage('en',message)!==en||translateMessage('zh-CN',message)!==zh)throw Error('native IPC read error cannot switch languages');
+    evidence.push({nativeReadError:id,codePreserved:true,diagnosticPreserved:true,english:en,chinese:zh});
+  }
+  localStorage.setItem('aibo.language.v1','zh-CN');
+  language.set({preference:'zh-CN',locale:'zh-CN'});
   mount(App,{target:document.getElementById('app')});
   await until(()=>document.querySelector('[aria-label="全局搜索"]'),'host search entry');
   for(let n=0;n<2;n++)for(const type of ['keydown','keyup'])window.dispatchEvent(new KeyboardEvent(type,{key:'Shift',bubbles:true}));

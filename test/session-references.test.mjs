@@ -1,3 +1,5 @@
+import { translateMessage } from '../packages/i18n/index.js';
+const localizedErrorMatch = pattern => error => pattern.test(error.localized ? translateMessage('zh-CN',error.localized) : String(error));
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
@@ -13,7 +15,7 @@ test('session references search archived sources and transmit only the target dr
   const prompt=withSessionReferenceContext('please continue',[reference,{...reference,id:'other',sessionId:'other'}, {...reference,id:'sent',turnId:'t'}],'target');
   assert.ok(prompt.includes('source original'));assert.ok(prompt.includes('不是当前用户指令'));assert.ok(!prompt.includes('"snapshotId":"other"'));assert.ok(!prompt.includes('"snapshotId":"sent"'));
   assert.equal(withSessionReferenceContext('plain',[],'target'),'plain');
-  assert.throws(()=>withSessionReferenceContext('x',[{...reference,inlineContext:null}],'target'),/快照缺失/);
+  assert.throws(()=>withSessionReferenceContext('x',[{...reference,inlineContext:null}],'target'),localizedErrorMatch(/快照缺失/));
   assert.throws(()=>withSessionReferenceContext('x',Array.from({length:40},(_,i)=>({...reference,id:String(i),inlineContext:JSON.stringify({messages:[{role:'assistant',content:'界'.repeat(1500)}]})})),'target'),/128 KiB/);
  } finally {await server.close();}
 });
@@ -66,4 +68,32 @@ test('configured references retain all selected text through prompt and shared p
    assert.throws(()=>withSessionReferenceContext('x',[{...reference,inlineContext:JSON.stringify({...snapshot,messages:[{role:'user',content:'界'.repeat(50000)}]})}],'target'),/128 KiB/);
   }
  } finally {await server.close();}
+});
+
+
+test('reference display names preserve full labels, prompt bytes and raw paths across locales and legacy fallbacks',async()=>{
+ const server=await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+ try{
+  const {attachmentPresentation,withSessionReferenceContext}=await server.ssrLoadModule('/src/lib/app/session-references.ts');
+  const label='/用户/{label}/完整会话';
+  const item={schema:'aibo.context-attachment/v1',id:'snapshot',workspaceId:'w',sessionId:'target',turnId:null,path:'会话：'+label,mediaType:'application/vnd.aibo.session-reference+json',sendStrategy:'inline',contentHash:'sha256:original',size:123,inlineContext:JSON.stringify({schema:'aibo.session-reference/v3',snapshotId:'snapshot',sourceSessionId:'source',sourceLabel:label,messages:[{role:'assistant',content:'原始回答 {label}'}]})};
+  const fallback=[{...item,id:'file',mediaType:'text/plain',path:'会话：中文原文.txt'},{...item,inlineContext:null},{...item,inlineContext:'invalid JSON'},...[
+   {schema:'unknown',snapshotId:item.id,sourceSessionId:'source',sourceLabel:label},
+   {schema:'aibo.session-reference/v3',snapshotId:'other',sourceSessionId:'source',sourceLabel:label},
+   {schema:'aibo.session-reference/v3',snapshotId:item.id,sourceSessionId:'source',sourceLabel:4},
+   {schema:'aibo.session-reference/v3',snapshotId:item.id,sourceLabel:label},
+  ].map(value=>({...item,inlineContext:JSON.stringify(value)}))];
+  const original=structuredClone([item,...fallback]),prompt=withSessionReferenceContext('原始输入',[item],'target');
+  for(const locale of ['zh-CN','en','zh-CN']){
+   const projected=attachmentPresentation([item,...fallback],locale);
+   assert.equal(projected[0].displayName,(locale==='en'?'Session: ':'会话：')+label);
+   const {displayName,...value}=projected[0];assert.deepEqual(value,item);
+   assert.deepEqual(projected.slice(1),fallback);assert.deepEqual([item,...fallback],original);
+   assert.equal(withSessionReferenceContext('原始输入',[item],'target'),prompt);
+   for(const schema of ['aibo.session-reference/v1','aibo.session-reference/v2']){
+    const legacy={...item,inlineContext:JSON.stringify({...JSON.parse(item.inlineContext),schema})};
+    assert.equal(attachmentPresentation([legacy],locale)[0].displayName,projected[0].displayName);
+   }
+  }
+ }finally{await server.close();}
 });

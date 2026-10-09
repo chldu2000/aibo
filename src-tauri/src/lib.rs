@@ -10,6 +10,7 @@ mod session_reference_preferences;
 mod agent_settings;
 mod workspace_preferences;
 mod host_confirmation;
+mod ui_i18n;
 mod project_actions;
 mod controlled_process;
 mod workspace_git;
@@ -139,6 +140,8 @@ pub struct AgentDiagnostic {
     capabilities: Vec<String>,
     auth_state: String,
     message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    localized_message: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -158,6 +161,8 @@ pub struct WorkspaceCapabilityInventory {
     tools: Vec<CapabilityEntry>,
     mcp_servers: Vec<CapabilityEntry>,
     warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    localized_warnings: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -260,6 +265,10 @@ pub struct TimelineItem {
     pub(crate) tool_name: Option<String>,
     pub(crate) entry_type: Option<String>,
     pub(crate) content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_content: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_activity: Option<serde_json::Value>,
     pub(crate) status: String,
     pub(crate) created_at: String,
     pub(crate) updated_at: String,
@@ -272,6 +281,10 @@ pub struct RestoreTurnChangeSetResult {
     pub(crate) restored: Vec<String>,
     pub(crate) conflicts: Vec<String>,
     pub(crate) unsupported: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_conflicts: Option<Vec<serde_json::Value>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_unsupported: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -299,6 +312,8 @@ pub struct WorkspaceChanges {
     pub(crate) files: Vec<WorkspaceFileChange>,
     pub(crate) capture_status: String,
     pub(crate) capture_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_capture_error: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -358,6 +373,8 @@ pub struct GitFileActionResult {
     pub(crate) action: String,
     pub(crate) applied: bool,
     pub(crate) message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_message: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -366,6 +383,8 @@ pub struct GitWorkspaceActionResult {
     pub(crate) action: String,
     pub(crate) applied: bool,
     pub(crate) message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_message: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -374,6 +393,8 @@ pub struct GitCommitResult {
     pub(crate) committed: bool,
     pub(crate) hash: Option<String>,
     pub(crate) message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_message: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -384,6 +405,8 @@ pub struct GitHunkActionResult {
     pub(crate) action: String,
     pub(crate) applied: bool,
     pub(crate) message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_message: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -438,6 +461,8 @@ pub struct ProjectActionRun {
     pub(crate) status: String,
     pub(crate) exit_code: Option<i64>,
     pub(crate) output: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_output: Option<serde_json::Value>,
     pub(crate) artifact_id: Option<String>,
     pub(crate) started_at: String,
     pub(crate) completed_at: Option<String>,
@@ -473,6 +498,12 @@ pub enum CoreError {
     AgentProbe(String),
     #[error("session operation failed: {0}")]
     SessionOperation(String),
+    /// Display metadata for an explicit host-owned read diagnostic.
+    #[error("{message}")]
+    ReadDiagnostic { message: String, localized: serde_json::Value },
+    /// Display metadata wraps an existing diagnostic without changing its code or text.
+    #[error("{error}")]
+    Localized { error: Box<CoreError>, localized: serde_json::Value },
     #[error("app initialization failed: {0}")]
     Initialization(String),
 }
@@ -486,6 +517,8 @@ impl Serialize for CoreError {
         struct ErrorPayload<'a> {
             code: &'a str,
             message: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            localized: Option<serde_json::Value>,
         }
 
         let code = match self {
@@ -495,6 +528,11 @@ impl Serialize for CoreError {
             Self::WorkspaceWriteBusy => "workspace_write_busy",
             Self::WriteOutcomeUnknown(_) => "outcome_unknown",
             Self::WriteReplay { code, .. } => code.as_str(),
+            Self::Localized { error, localized } => {
+                let mut payload = serde_json::to_value(error).map_err(serde::ser::Error::custom)?;
+                payload["localized"] = localized.clone();
+                return payload.serialize(serializer);
+            },
             Self::SessionNotFound(_) => "session_not_found",
             Self::SessionBusy => "session_busy",
             Self::InvalidSessionLabel(_) => "invalid_session_label",
@@ -503,11 +541,16 @@ impl Serialize for CoreError {
             Self::Database(_) => "database_error",
             Self::AgentProbe(_) => "agent_probe_error",
             Self::SessionOperation(_) => "session_operation_error",
+            Self::ReadDiagnostic { .. } => "session_operation_error",
             Self::Initialization(_) => "initialization_error",
         };
         ErrorPayload {
             code,
             message: &self.to_string(),
+            localized: match self {
+                Self::ReadDiagnostic { localized, .. } => Some(localized.clone()),
+                _ => ui_i18n::core_error_localization(self,code),
+            },
         }
         .serialize(serializer)
     }
@@ -695,10 +738,10 @@ async fn save_composer_draft(
 
 async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
     let parent = path.parent().ok_or_else(|| {
-        CoreError::Initialization("database path has no parent directory".to_owned())
+        crate::ui_i18n::initialization_message(crate::ui_i18n::HostMessage::with_diagnostic("native.database.parent",serde_json::json!({}),"database path has no parent directory"))
     })?;
     fs::create_dir_all(parent).map_err(|error| {
-        CoreError::Initialization(format!("create app data directory: {error}"))
+        ui_i18n::initialization_message(ui_i18n::HostMessage::with_diagnostic("native.database.createDirectory",serde_json::json!({"error":error.to_string()}),format!("create app data directory: {error}")))
     })?;
 
     let options = SqliteConnectOptions::new()
@@ -714,7 +757,7 @@ async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
     let mut migration_connection = sqlx::SqliteConnection::connect_with(&options.clone().foreign_keys(false)).await?;
     database_migrations::run(&mut migration_connection).await?;
     let violations = sqlx::query("PRAGMA foreign_key_check").fetch_all(&mut migration_connection).await?;
-    if !violations.is_empty() { return Err(CoreError::Database("migration foreign key check failed".into())); }
+    if !violations.is_empty() { return Err(crate::ui_i18n::database_message(crate::ui_i18n::HostMessage::with_diagnostic("native.database.foreignKeys",serde_json::json!({}),"migration foreign key check failed"))); }
     migration_connection.close().await?;
     let pool = SqlitePoolOptions::new().max_connections(5).connect_with(options).await?;
     Ok(pool)
@@ -723,22 +766,20 @@ async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
 fn canonical_workspace_path(raw_path: &str) -> Result<PathBuf, CoreError> {
     let input = raw_path.trim();
     if input.is_empty() {
-        return Err(CoreError::InvalidWorkspacePath(
-            "path must not be empty".to_owned(),
-        ));
+        return Err(ui_i18n::invalid_path_message(ui_i18n::HostMessage::with_diagnostic(
+            "native.workspace.emptyPath", serde_json::json!({}), "path must not be empty")));
     }
 
     let path = Path::new(input);
     let canonical = fs::canonicalize(path).map_err(|error| {
-        CoreError::InvalidWorkspacePath(format!("{input} is not accessible: {error}"))
+        ui_i18n::invalid_path_message(ui_i18n::HostMessage::with_diagnostic("native.workspace.inaccessible", serde_json::json!({"path":input,"error":error.to_string()}), format!("{input} is not accessible: {error}")))
     })?;
     let metadata = fs::metadata(&canonical).map_err(|error| {
-        CoreError::InvalidWorkspacePath(format!("cannot inspect {input}: {error}"))
+        ui_i18n::invalid_path_message(ui_i18n::HostMessage::with_diagnostic("native.workspace.inspectFailed", serde_json::json!({"path":input,"error":error.to_string()}), format!("cannot inspect {input}: {error}")))
     })?;
     if !metadata.is_dir() {
-        return Err(CoreError::InvalidWorkspacePath(format!(
-            "{input} is not a directory"
-        )));
+        return Err(ui_i18n::invalid_path_message(ui_i18n::HostMessage::with_diagnostic(
+            "native.workspace.notDirectory", serde_json::json!({"path":input}), format!("{input} is not a directory"))));
     }
     Ok(canonical)
 }
@@ -855,7 +896,7 @@ async fn search_global_assets(request: global_search::Request, window: tauri::Wi
 
 #[tauri::command]
 async fn search_global_files(request: global_search::Request, request_id: String, window: tauri::Window, state: State<'_, AppState>) -> Result<global_search::Page, CoreError> {
-    if request_id.len()>128 { return Err(CoreError::SessionOperation("搜索请求标识过长".into())); }
+    if request_id.len()>128 { return Err(ui_i18n::session_operation_message(ui_i18n::HostMessage::new("native.search.requestIdTooLong",serde_json::json!({})))); }
     search_files::search(&state.db, window.label(), &format!("{}:{request_id}",window.label()), request).await
 }
 #[tauri::command]
@@ -973,7 +1014,7 @@ async fn workspace_by_path(db: &SqlitePool, path: &str) -> Result<Workspace, Cor
     .bind(path)
     .fetch_optional(db)
     .await?
-    .ok_or_else(|| CoreError::Database("workspace insert was not readable".to_owned()))?;
+    .ok_or_else(|| crate::ui_i18n::database_message(crate::ui_i18n::HostMessage::with_diagnostic("native.database.workspaceUnreadable",serde_json::json!({}),"workspace insert was not readable")))?;
     row_to_workspace(&row)
 }
 
@@ -1008,7 +1049,7 @@ async fn remove_workspace(
     state: State<'_, AppState>,
 ) -> Result<(), CoreError> {
     let _guard = state.capability_broker.mutation_guard().await;
-    state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|CoreError::SessionOperation(error.message))?;
+    state.capability_broker.stop_workspace(&workspace_id).await.map_err(|error|ui_i18n::session_operation_message(error.into_host_message()))?;
     state
         .plugins
         .close_workspace(&workspace_id)
@@ -1033,9 +1074,7 @@ async fn open_workspace_location(
     let workspace = workspace_by_id(&state.db, &workspace_id).await?;
     let target = target.trim();
     if !matches!(target, "finder" | "terminal" | "editor") {
-        return Err(CoreError::InvalidWorkspacePath(
-            "unsupported workspace location target".to_owned(),
-        ));
+        return Err(ui_i18n::invalid_path_message(ui_i18n::HostMessage::with_diagnostic("native.workspace.locationTarget",serde_json::json!({}),"unsupported workspace location target")));
     }
     let configured_editor = env::var("AIBO_EDITOR")
         .ok()
@@ -1045,9 +1084,7 @@ async fn open_workspace_location(
     let mut process = {
         if target == "editor" {
             let editor = configured_editor.as_deref().ok_or_else(|| {
-                CoreError::Initialization(
-                    "未配置编辑器；请设置 AIBO_EDITOR（macOS 应填写应用名或 .app 路径）".to_owned(),
-                )
+                ui_i18n::initialization_message(ui_i18n::HostMessage::new("native.workspace.editorMac",serde_json::json!({})))
             })?;
             let mut command = Command::new("open");
             command.args(["-a", editor]);
@@ -1064,10 +1101,7 @@ async fn open_workspace_location(
     let mut process = {
         if target == "editor" {
             let editor = configured_editor.as_deref().ok_or_else(|| {
-                CoreError::Initialization(
-                    "未配置编辑器；请设置 AIBO_EDITOR（Windows 应填写编辑器可执行文件路径）"
-                        .to_owned(),
-                )
+                ui_i18n::initialization_message(ui_i18n::HostMessage::new("native.workspace.editorWindows",serde_json::json!({})))
             })?;
             Command::new(editor)
         } else if target == "finder" {
@@ -1084,9 +1118,7 @@ async fn open_workspace_location(
     let mut process = {
         if target == "editor" {
             let editor = configured_editor.as_deref().ok_or_else(|| {
-                CoreError::Initialization(
-                    "未配置编辑器；请设置 AIBO_EDITOR（填写可执行文件路径）".to_owned(),
-                )
+                ui_i18n::initialization_message(ui_i18n::HostMessage::new("native.workspace.editorUnix",serde_json::json!({})))
             })?;
             Command::new(editor)
         } else if target == "finder" {
@@ -1104,7 +1136,7 @@ async fn open_workspace_location(
     #[cfg(not(target_os = "windows"))]
     process.arg(&workspace.path);
     process.spawn().map_err(|error| {
-        CoreError::Initialization(format!("open workspace in {target}: {error}"))
+        ui_i18n::initialization_message(ui_i18n::HostMessage::with_diagnostic("native.workspace.openLocation",serde_json::json!({"target":target,"error":error.to_string()}),format!("open workspace in {target}: {error}")))
     })?;
     Ok(())
 }
@@ -1147,11 +1179,19 @@ fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<Session, CoreError> {
 
 fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, CoreError> {
     let mut content: String = row.try_get("content")?;
+    let mut localized_content: Option<serde_json::Value> = row.try_get::<Option<String>, _>("localized_content_json").ok().flatten().and_then(|value| serde_json::from_str(&value).ok());
+    let mut localized_activity = None;
+    // Forking records an activity descriptor, rather than a replacement JSON body.
+    if localized_content.as_ref().is_some_and(|value|value["key"] == "native.background.forkActivity") {
+        localized_activity = localized_content.take();
+    }
     if row.try_get::<Option<String>, _>("tool_name")?.as_deref() == Some("subagent") && row.try_get::<String, _>("status")? == "failed" {
         if let Ok(mut task) = serde_json::from_str::<serde_json::Value>(&content) {
             if ["pending", "running", "waiting"].contains(&task["status"].as_str().unwrap_or_default()) {
                 task["status"] = serde_json::json!("interrupted");
-                task["activity"] = serde_json::json!("执行已中断，已保留收到的过程记录。");
+                let activity = ui_i18n::HostMessage::new("native.subagent.interruptedActivity", serde_json::json!({}));
+                task["activity"] = serde_json::json!(activity.diagnostic);
+                localized_activity = activity.localized;
                 content = task.to_string();
             }
         }
@@ -1164,6 +1204,8 @@ fn row_to_timeline_item(row: &sqlx::sqlite::SqliteRow) -> Result<TimelineItem, C
         role: row.try_get("role")?,
         tool_name: row.try_get("tool_name")?,
         entry_type: None,
+        localized_content,
+        localized_activity,
         content,
         status: row.try_get("status")?,
         created_at: row.try_get("created_at")?,
@@ -1242,6 +1284,8 @@ fn session_snapshot_timeline(snapshot: &serde_json::Value, session_id: &str) -> 
                     .and_then(serde_json::Value::as_str)
                     .map(ToOwned::to_owned),
                 entry_type: Some(entry_type.to_owned()),
+                localized_content: None,
+                localized_activity: None,
                 content,
                 status: status.to_owned(),
                 created_at: timestamp.clone(),
@@ -1309,14 +1353,14 @@ async fn session_execution_profile(
     } else { execution_profile::EnforcementBackend::legacy_agent(&session.agent) };
     if let Some(row) = row {
         let mut stored = profile_from_row(&row, session_id.to_owned())
-            .map_err(CoreError::InvalidExecutionProfile)?;
+            .map_err(ui_i18n::invalid_execution_profile_message)?;
         if session.plugin_installation_id.is_some() {
             let mut resolved = execution_profile::resolve_with_backend(
                 backend,
                 Some(stored.profile.requested.clone()),
                 stored.profile.resolved_at.clone(),
             )
-            .map_err(CoreError::InvalidExecutionProfile)?;
+            .map_err(ui_i18n::invalid_execution_profile_message)?;
             resolved.adapter_capabilities = session.capabilities;
             resolved.session_controls = session_controls::for_installation(db, session.plugin_installation_id.as_ref().unwrap(), &session.agent, &resolved).await.map_err(CoreError::InvalidExecutionProfile)?;
             stored.profile = resolved;
@@ -1329,7 +1373,7 @@ async fn session_execution_profile(
         None,
         now_iso(),
     )
-    .map_err(CoreError::InvalidExecutionProfile)?;
+    .map_err(ui_i18n::invalid_execution_profile_message)?;
     if session.plugin_installation_id.is_some() {
         resolved.adapter_capabilities = session.capabilities;
         resolved.session_controls = session_controls::for_installation(db, session.plugin_installation_id.as_ref().unwrap(), &session.agent, &resolved).await.map_err(CoreError::InvalidExecutionProfile)?;
@@ -1348,7 +1392,7 @@ async fn resolve_execution_profile(
     agent: String,
     requested: Option<ExecutionProfile>,
 ) -> Result<ResolvedExecutionProfile, CoreError> {
-    resolve_profile(&agent, requested, now_iso()).map_err(CoreError::InvalidExecutionProfile)
+    resolve_profile(&agent, requested, now_iso()).map_err(ui_i18n::invalid_execution_profile_message)
 }
 
 #[tauri::command]
@@ -1368,10 +1412,7 @@ async fn update_session_execution_profile(
     let _admission = state.plugins.session_operation(&session_id).await;
     let session = session_by_id(&state.db, &session_id).await?;
     if session.archived {
-        return Err(CoreError::SessionOperation(
-            "archived sessions must be unarchived before changing their execution profile"
-                .to_owned(),
-        ));
+        return Err(ui_i18n::session_operation_error("native.controls.archived","archived sessions must be unarchived before changing their execution profile"));
     }
     if matches!(
         session.state.as_str(),
@@ -1381,7 +1422,7 @@ async fn update_session_execution_profile(
     }
     let current = session_execution_profile(&state.db, &session_id).await?.profile;
     let mut resolved = session_controls::select(&current, &control_id)
-        .map_err(CoreError::InvalidExecutionProfile)?;
+        .map_err(ui_i18n::invalid_execution_profile_message)?;
     if session.plugin_installation_id.is_some() {
         resolved.adapter_capabilities = session.capabilities.clone();
     }
@@ -1389,10 +1430,10 @@ async fn update_session_execution_profile(
     require_trusted_workspace(&workspace, &resolved)?;
 
     if session.plugin_installation_id.is_none() {
-        return Err(CoreError::SessionOperation("history_only: old session configuration is read-only".into()));
+        return Err(ui_i18n::session_operation_error("native.controls.historyOnly","history_only: old session configuration is read-only"));
     }
     // The next capability open captures the updated host execution profile.
-    state.plugins.close_admitted(window.label(), &session_id).await.map_err(CoreError::SessionOperation)?;
+    state.plugins.close_admitted(window.label(), &session_id).await.map_err(ui_i18n::session_operation_message)?;
     save_session_profile(&state.db, &session_id, &resolved).await?;
     sqlx::query("UPDATE sessions SET state = 'idle', updated_at = ? WHERE id = ?")
         .bind(now_iso())
@@ -1496,14 +1537,10 @@ async fn rename_session(
 ) -> Result<Session, CoreError> {
     let label = label.trim();
     if label.is_empty() {
-        return Err(CoreError::InvalidSessionLabel(
-            "label must not be empty".to_owned(),
-        ));
+        return Err(CoreError::Localized {error:Box::new(CoreError::InvalidSessionLabel("label must not be empty".to_owned())),localized:ui_i18n::display_descriptor("native.error.labelEmpty",serde_json::json!({}))});
     }
     if label.chars().count() > 120 {
-        return Err(CoreError::InvalidSessionLabel(
-            "label must be at most 120 characters".to_owned(),
-        ));
+        return Err(CoreError::Localized {error:Box::new(CoreError::InvalidSessionLabel("label must be at most 120 characters".to_owned())),localized:ui_i18n::display_descriptor("native.error.labelTooLong",serde_json::json!({}))});
     }
     session_by_id(&state.db, &session_id).await?;
     let updated = sqlx::query("UPDATE sessions SET label = ?, updated_at = ? WHERE id = ?")
@@ -1544,10 +1581,10 @@ async fn get_timeline(
         && session.plugin_installation_id.is_some()
         && !session.archived
     {
-        return state.plugins.active_timeline_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation);
+        return state.plugins.active_timeline_display_from(window.label(), &session_id).await.map_err(ui_i18n::session_operation_message);
     }
     let rows = sqlx::query(
-        "SELECT id, session_id, turn_id, external_message_id, role, tool_name, content,
+        "SELECT id, session_id, turn_id, external_message_id, role, tool_name, content, localized_content_json,
                 status, created_at, updated_at
          FROM messages
          WHERE session_id = ?
@@ -1614,6 +1651,7 @@ async fn persist_restore_operation(
         restored: report.restored.clone(),
         conflicts: report.conflicts.clone(),
         unsupported: report.unsupported.clone(),
+        localized_conflicts: None, localized_unsupported: None,
         created_at,
     })
 }
@@ -1638,9 +1676,9 @@ async fn get_workspace_changes(
 ) -> Result<WorkspaceChanges, CoreError> {
     let workspace = workspace_by_id(&state.db, &workspace_id).await?;
     let repository_path = git_repositories::resolve(&workspace.path, repository_id.as_deref())?;
-    let changes = workspace_changes(Path::new(&repository_path))
+    let changes = change_set::workspace_changes_message(Path::new(&repository_path))
         .await
-        .map_err(CoreError::Database)?;
+        .map_err(ui_i18n::database_message)?;
     Ok(WorkspaceChanges {
         workspace_id,
         head: changes.head,
@@ -1664,6 +1702,7 @@ async fn get_workspace_changes(
             .collect(),
         capture_status: changes.capture_status.to_owned(),
         capture_error: changes.capture_error,
+        localized_capture_error: changes.localized_capture_error,
     })
 }
 
@@ -1883,7 +1922,7 @@ async fn reference_session(session_id: String, source_session_id: String, state:
 }
 
 #[tauri::command]
-async fn get_session_attachment_preview(session_id: String, attachment_id: String, state: State<'_, AppState>) -> Result<String, String> {
+async fn get_session_attachment_preview(session_id: String, attachment_id: String, state: State<'_, AppState>) -> Result<String, ui_i18n::HostMessage> {
     clipboard_images::preview(&state.db, &session_id, &attachment_id).await
 }
 
@@ -2030,12 +2069,13 @@ async fn run_project_action(
 ) -> Result<ProjectActionRun, CoreError> {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     let caller = window.label().to_owned();
+    let locale = ui_i18n::window_locale(&window);
     let db = state.db.clone();
-    project_actions::run_project_action_with_confirmation(&state.db, &state.data_dir, workspace_id, action_id, session_id, request_id, caller, |message| async move {
+    project_actions::run_project_action_with_localized_confirmation(&state.db, &state.data_dir, workspace_id, action_id, session_id, request_id, caller, locale, |message| async move {
         host_confirmation::confirm(&db, host_confirmation::Category::ProjectAction, || async move {
             let (send, receive) = tokio::sync::oneshot::channel();
-            window.app_handle().dialog().message(message).parent(&window).title(host_confirmation::Category::ProjectAction.title())
-                .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
+            window.app_handle().dialog().message(message).parent(&window).title(host_confirmation::Category::ProjectAction.title(locale))
+                .buttons(MessageDialogButtons::OkCancelCustom(ui_i18n::message(locale,"native.allowOnce",&serde_json::json!({})), ui_i18n::message(locale,"native.cancel",&serde_json::json!({}))))
                 .show(move |accepted| { let _ = send.send(accepted); });
             receive.await.map_err(|_| "confirmation_unavailable".to_owned())
         }).await
@@ -2055,19 +2095,20 @@ fn git_write_request(request_id: String, window: tauri::WebviewWindow, db: Sqlit
 
 fn host_write_request(request_id: String, window: tauri::WebviewWindow, db: SqlitePool, category: host_confirmation::Category) -> workspace_write_runs::Request {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    let locale = ui_i18n::window_locale(&window);
     workspace_write_runs::Request::with_confirmation(request_id, window.label().into(), move |message| {
         let window = window.clone();
         let db = db.clone();
         async move {
             host_confirmation::confirm(&db, category, || async move {
                 let (send, receive) = tokio::sync::oneshot::channel();
-                window.app_handle().dialog().message(message).parent(&window).title(category.title())
-                    .buttons(MessageDialogButtons::OkCancelCustom("允许本次执行".into(), "取消".into()))
+                window.app_handle().dialog().message(message).parent(&window).title(category.title(locale))
+                    .buttons(MessageDialogButtons::OkCancelCustom(ui_i18n::message(locale,"native.allowOnce",&serde_json::json!({})), ui_i18n::message(locale,"native.cancel",&serde_json::json!({}))))
                     .show(move |accepted| { let _ = send.send(accepted); });
                 receive.await.map_err(|_| "confirmation_unavailable".to_owned())
             }).await
         }
-    })
+    }).with_locale(locale)
 }
 
 #[tauri::command]
@@ -2154,13 +2195,13 @@ async fn list_codex_threads(workspace_id: String, window: tauri::WebviewWindow, 
 
 #[tauri::command]
 async fn read_codex_thread(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, CoreError> {
-    let result = state.plugins.invoke_capability_from(window.label(), &session_id, "session.snapshot", serde_json::json!({})).await.map_err(CoreError::SessionOperation)?;
+    let result = state.plugins.invoke_capability_display_from(window.label(), &session_id, "session.snapshot", serde_json::json!({})).await.map_err(ui_i18n::session_operation_message)?;
     Ok(result["thread"].clone())
 }
 
 #[tauri::command]
 async fn fork_codex_thread(session_id: String, through_turn_id: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, CoreError> {
-    state.plugins.fork_from(window.label(), &session_id, through_turn_id.as_deref()).await.map_err(CoreError::SessionOperation)
+    state.plugins.fork_display_from(window.label(), &session_id, through_turn_id.as_deref(), ui_i18n::window_locale(&window)).await.map_err(ui_i18n::session_operation_message)
 }
 
 #[tauri::command]
@@ -2175,7 +2216,7 @@ async fn unarchive_codex_thread(session_id: String, state: State<'_, AppState>) 
 
 #[tauri::command]
 async fn archive_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, CoreError> {
-    state.plugins.archive_from(window.label(), &session_id).await.map_err(CoreError::SessionOperation)
+    state.plugins.archive_from_display(window.label(), &session_id).await.map_err(ui_i18n::session_operation_message)
 }
 
 #[tauri::command]
@@ -2198,7 +2239,7 @@ async fn invoke_capability(request: capability_broker::Request, window: tauri::W
     let caller = window.label().to_owned();
     let approval = host_write_request(request.request_id.clone(), window, state.db.clone(), host_confirmation::Category::CapabilityWrite);
     // Execution belongs to Core even if the calling view disappears.
-    tokio::spawn(async move { broker.invoke_authorized(&caller, request, &approval).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None })?
+    tokio::spawn(async move { broker.invoke_authorized(&caller, request, &approval).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None, localized:Some(ui_i18n::display_descriptor("native.broker.taskStopped",serde_json::json!({}))) })?
 }
 #[tauri::command]
 async fn list_capability_history_scopes(before: Option<String>, legacy: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::ScopePage, CoreError> {
@@ -2220,61 +2261,61 @@ async fn cancel_capability(request_id: String, window: tauri::WebviewWindow, sta
 }
 
 #[tauri::command]
-async fn read_agent_settings(target: agent_settings::Target, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+async fn read_agent_settings(target: agent_settings::Target, state: State<'_, AppState>) -> Result<serde_json::Value, ui_i18n::HostMessage> {
     agent_settings::read(&state.db, &target).await
 }
 #[tauri::command]
-async fn save_agent_settings(request: agent_settings::Save, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+async fn save_agent_settings(request: agent_settings::Save, state: State<'_, AppState>) -> Result<serde_json::Value, ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
     agent_settings::save(&state.db, request).await
 }
 
 #[tauri::command]
-async fn plugin_authentication_action(id: String, action: plugin_authentication::Action, state: State<'_, AppState>) -> Result<plugin_authentication::Status, String> {
+async fn plugin_authentication_action(id: String, action: plugin_authentication::Action, state: State<'_, AppState>) -> Result<plugin_authentication::Status, ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
     plugin_authentication::execute(&state.db, &state.data_dir, &id, action).await
 }
 
 #[tauri::command]
-async fn list_plugin_installations(state: State<'_, AppState>) -> Result<Vec<plugin_registry::PluginInstallation>, String> {
+async fn list_plugin_installations(state: State<'_, AppState>) -> Result<Vec<plugin_registry::PluginInstallation>, ui_i18n::HostMessage> {
     plugin_registry::list(&state.db).await
 }
 
 #[tauri::command]
-async fn list_presentation_packages(state: State<'_, AppState>) -> Result<Vec<presentation_packages::Release>, String> {
+async fn list_presentation_packages(state: State<'_, AppState>) -> Result<Vec<presentation_packages::Release>, ui_i18n::HostMessage> {
     presentation_packages::list(&state.db).await
 }
 #[tauri::command]
-async fn install_presentation_package(path: String, state: State<'_, AppState>) -> Result<presentation_packages::Release, String> {
+async fn install_presentation_package(path: String, state: State<'_, AppState>) -> Result<presentation_packages::Release, ui_i18n::HostMessage> {
     presentation_packages::install(&state.db, &state.data_dir, Path::new(&path)).await
 }
 #[tauri::command]
-async fn read_presentation_package(digest: String, state: State<'_, AppState>) -> Result<presentation_packages::Package, String> {
+async fn read_presentation_package(digest: String, state: State<'_, AppState>) -> Result<presentation_packages::Package, ui_i18n::HostMessage> {
     presentation_packages::package(&state.db, &state.data_dir, &digest).await
 }
 #[tauri::command]
-async fn set_presentation_package_enabled(digest: String, enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
+async fn set_presentation_package_enabled(digest: String, enabled: bool, state: State<'_, AppState>) -> Result<(), ui_i18n::HostMessage> {
     presentation_packages::enable(&state.db, &digest, enabled).await
 }
 #[tauri::command]
-async fn preview_presentation_removal(digest: String, state: State<'_, AppState>) -> Result<Vec<String>, String> {
+async fn preview_presentation_removal(digest: String, state: State<'_, AppState>) -> Result<Vec<String>, ui_i18n::HostMessage> {
     presentation_packages::removal_windows(&state.db,&digest).await
 }
 #[tauri::command]
-async fn uninstall_presentation_package(digest: String, expected_windows: Vec<String>, state: State<'_, AppState>) -> Result<(), String> {
+async fn uninstall_presentation_package(digest: String, expected_windows: Vec<String>, state: State<'_, AppState>) -> Result<(), ui_i18n::HostMessage> {
     presentation_packages::uninstall(&state.db, &state.data_dir, &digest, &expected_windows).await
 }
 #[tauri::command]
-async fn get_presentation_selection(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Option<presentation_packages::Selection>, String> {
+async fn get_presentation_selection(window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Option<presentation_packages::Selection>, ui_i18n::HostMessage> {
     presentation_packages::selection(&state.db, window.label()).await
 }
 #[tauri::command]
-async fn select_presentation_package(digest: Option<String>, theme_id: Option<String>, expected_digest: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+async fn select_presentation_package(digest: Option<String>, theme_id: Option<String>, expected_digest: Option<String>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), ui_i18n::HostMessage> {
     presentation_packages::select(&state.db, &state.data_dir, window.label(), digest.as_deref(), theme_id.as_deref(), expected_digest.as_deref()).await
 }
 
 #[tauri::command]
-async fn install_agent_plugin(path: String, token: Option<String>, reinstall: Option<bool>, skip_archived: Option<bool>, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation, String> {
+async fn install_agent_plugin(path: String, token: Option<String>, reinstall: Option<bool>, skip_archived: Option<bool>, state: State<'_, AppState>) -> Result<plugin_registry::PluginInstallation,ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
     let previous=plugin_replacement::preview(&state.db,Path::new(&path)).await?.impacts;
     let installed=state.plugins.replace_plugin(&state.data_dir, Path::new(&path), token.as_deref(), reinstall.unwrap_or(false), skip_archived.unwrap_or(true)).await?;
@@ -2283,16 +2324,16 @@ async fn install_agent_plugin(path: String, token: Option<String>, reinstall: Op
 }
 
 #[tauri::command]
-async fn preview_plugin_install(path:String,state:State<'_,AppState>)->Result<plugin_replacement::Preview,String>{
+async fn preview_plugin_install(path:String,state:State<'_,AppState>)->Result<plugin_replacement::Preview,ui_i18n::HostMessage>{
     plugin_replacement::preview(&state.db,Path::new(&path)).await
 }
 #[tauri::command]
-async fn list_plugin_undo_targets(state:State<'_,AppState>)->Result<Vec<String>,String>{
+async fn list_plugin_undo_targets(state:State<'_,AppState>)->Result<Vec<String>,ui_i18n::HostMessage>{
     plugin_replacement::collect(&state.db,&state.data_dir).await?;
-    plugin_replacement::undo_targets(&state.db).await
+    plugin_replacement::undo_targets(&state.db).await.map_err(Into::into)
 }
 #[tauri::command]
-async fn undo_plugin_replacement(id:String,state:State<'_,AppState>)->Result<(),String>{
+async fn undo_plugin_replacement(id:String,state:State<'_,AppState>)->Result<(),ui_i18n::HostMessage>{
     let _guard=state.capability_broker.mutation_guard().await;
     state.plugins.undo_plugin_replacement(&state.data_dir,&id).await?;
     state.semantic_plugins.invalidate(&state.capability_broker,&id,None).await;
@@ -2300,92 +2341,92 @@ async fn undo_plugin_replacement(id:String,state:State<'_,AppState>)->Result<(),
 }
 
 #[tauri::command]
-async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> Result<plugin_lifecycle::MigrationReport, String> {
+async fn set_agent_plugin_enabled(id: String, enabled: bool, state: State<'_, AppState>) -> Result<plugin_lifecycle::MigrationReport, ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
     plugin_registry::enable(&state.db, &id, enabled).await?;
     if !enabled {
         for (installation,contributions) in plugin_dependencies::invalidations(&state.db,&id).await? {
             state.semantic_plugins.invalidate(&state.capability_broker,&installation,contributions.as_deref()).await;
-            state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(|error|error.message)?;
+            state.capability_broker.stop_contributions(&installation,contributions.as_deref()).await.map_err(capability_broker::Failure::into_host_message)?;
         }
     }
     Ok(plugin_lifecycle::MigrationReport::default())
 }
 
 #[tauri::command]
-async fn preview_plugin_removal(id: String, state: State<'_, AppState>) -> Result<plugin_lifecycle::Impact, String> {
+async fn preview_plugin_removal(id: String, state: State<'_, AppState>) -> Result<plugin_lifecycle::Impact,ui_i18n::HostMessage> {
     plugin_lifecycle::impact(&state.db,&id).await
 }
 #[tauri::command]
-async fn migrate_plugin_sessions(id: String, target: String, state: State<'_, AppState>) -> Result<plugin_lifecycle::MigrationReport, String> {
+async fn migrate_plugin_sessions(id: String, target: String, state: State<'_, AppState>) -> Result<plugin_lifecycle::MigrationReport,ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
     state.plugins.migrate_release(&state.data_dir,&id,&target).await
 }
 #[tauri::command]
-async fn uninstall_agent_plugin(id: String, token: String, keep_history: bool, state: State<'_, AppState>) -> Result<(), String> {
+async fn uninstall_agent_plugin(id: String, token: String, keep_history: bool, state: State<'_, AppState>) -> Result<(),ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
     let impact=plugin_lifecycle::impact(&state.db,&id).await?;
-    if impact.token!=token { return Err("引用已变化，请重新查看卸载影响".into()); }
+    if impact.token!=token { return Err(ui_i18n::HostMessage::new("native.plugin.removalChanged",serde_json::json!({}))); }
     state.plugins.remove_release(&state.data_dir,&impact,keep_history).await?;
     state.semantic_plugins.invalidate(&state.capability_broker,&id,None).await;
     Ok(())
 }
 
 #[tauri::command]
-async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, requested_profile: Option<ExecutionProfile>, defer_start: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
+async fn create_agent_session(workspace_id: String, agent_id: String, installation_id: Option<String>, requested_profile: Option<ExecutionProfile>, defer_start: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, ui_i18n::HostMessage> {
     let _guard = state.capability_broker.mutation_guard().await;
     let installation_id = match installation_id {
         Some(id) => id,
         None => sqlx::query_scalar(
             "SELECT p.id FROM agent_contributions a JOIN plugin_installations p ON p.id=a.installation_id WHERE a.agent_id=? AND p.installed=1 AND p.enabled=1 ORDER BY p.enabled_at DESC, p.created_at DESC LIMIT 1",
         ).bind(&agent_id).fetch_optional(&state.db).await.map_err(|error|error.to_string())?
-            .ok_or("provider_unavailable: no enabled installation for this contribution")?,
+            .ok_or_else(||ui_i18n::HostMessage::with_diagnostic("native.session.noEnabledInstallation",serde_json::json!({}),"provider_unavailable: no enabled installation for this contribution"))?,
     };
     let backend = execution_profile::installation_backend(&state.db, &installation_id, &agent_id).await?;
     // Preserve absence: SessionHost chooses a compatible declared initial mode.
     let profile = requested_profile.map(|requested| execution_profile::resolve_with_backend(backend, Some(requested), now_iso())).transpose()?;
-    let session = state.plugins.prepare_with_profile(&workspace_id, &installation_id, &agent_id, profile).await?;
+    let session = state.plugins.prepare_with_profile_display(&workspace_id, &installation_id, &agent_id, profile).await?;
     drop(_guard);
     if defer_start == Some(true) { return Ok(session); }
-    state.plugins.resume_from(window.label(), &session.id).await?;
-    session_by_id(&state.db,&session.id).await.map_err(|error|error.to_string())
+    state.plugins.resume_from_display(window.label(), &session.id).await?;
+    session_by_id(&state.db,&session.id).await.map_err(|error|ui_i18n::HostMessage::from(error.to_string()))
 }
 
 #[tauri::command]
-async fn send_agent_prompt(session_id: String, input: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
+async fn send_agent_prompt(session_id: String, input: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, ui_i18n::HostMessage> {
     let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
-    if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
+    if session.plugin_installation_id.is_none() { return Err(ui_i18n::HostMessage::with_diagnostic("native.session.newCapabilitySession",serde_json::json!({}),"history_only: create a new capability session")); }
     state.plugins.send_configured_from(window.label(), &session_id, &input).await?;
-    session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())
+    session_by_id(&state.db, &session_id).await.map_err(|error|ui_i18n::HostMessage::from(error.to_string()))
 }
 
 #[tauri::command]
-async fn cancel_agent_turn(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+async fn cancel_agent_turn(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), ui_i18n::HostMessage> {
     let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
-    if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
-    state.plugins.cancel_from(window.label(), &session_id).await?;
+    if session.plugin_installation_id.is_none() { return Err(ui_i18n::HostMessage::with_diagnostic("native.session.newCapabilitySession",serde_json::json!({}),"history_only: create a new capability session")); }
+    state.plugins.cancel_from_display(window.label(), &session_id).await?;
     Ok(())
 }
 
 #[tauri::command]
-async fn resume_agent_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, String> {
+async fn resume_agent_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<Session, ui_i18n::HostMessage> {
     let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
-    if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
-    state.plugins.resume_from(window.label(), &session_id).await?;
-    session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())
+    if session.plugin_installation_id.is_none() { return Err(ui_i18n::HostMessage::with_diagnostic("native.session.newCapabilitySession",serde_json::json!({}),"history_only: create a new capability session")); }
+    state.plugins.resume_from_display(window.label(), &session_id).await?;
+    session_by_id(&state.db, &session_id).await.map_err(|error|ui_i18n::HostMessage::from(error.to_string()))
 }
 
 #[tauri::command]
-async fn close_agent_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), String> {
+async fn close_agent_session(session_id: String, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<(), ui_i18n::HostMessage> {
     let session = session_by_id(&state.db, &session_id).await.map_err(|error|error.to_string())?;
-    if session.plugin_installation_id.is_none() { return Err("history_only: create a new capability session".into()); }
-    state.plugins.close_from(window.label(), &session_id).await?;
+    if session.plugin_installation_id.is_none() { return Err(ui_i18n::HostMessage::with_diagnostic("native.session.newCapabilitySession",serde_json::json!({}),"history_only: create a new capability session")); }
+    state.plugins.close_from_display(window.label(), &session_id).await?;
     Ok(())
 }
 
 #[tauri::command]
-async fn invoke_agent_capability(session_id: String, capability: String, input: serde_json::Value, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    state.plugins.invoke_capability_from(window.label(), &session_id, &capability, input).await
+async fn invoke_agent_capability(session_id: String, capability: String, input: serde_json::Value, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, ui_i18n::HostMessage> {
+    state.plugins.invoke_capability_display_from(window.label(), &session_id, &capability, input).await
 }
 
 #[tauri::command]
@@ -2400,14 +2441,14 @@ async fn resolve_agent_approval(
     let session = session_by_id(&state.db, &session_id).await?;
     if session.plugin_installation_id.is_some() {
         let result = match (decision, option_id) {
-            (Some(decision), None) => state.plugins.resolve_approval_from(window.label(), &session_id, &request_id, &decision).await,
-            (None, Some(option)) => state.plugins.resolve_approval_option_from(window.label(), &session_id, &request_id, &option).await,
-            _ => Err("invalid_request: answer an approval with either a decision or an option".into()),
+            (Some(decision), None) => state.plugins.resolve_approval_display_from(window.label(), &session_id, &request_id, &decision).await,
+            (None, Some(option)) => state.plugins.resolve_approval_option_display_from(window.label(), &session_id, &request_id, &option).await,
+            _ => Err(ui_i18n::HostMessage::with_diagnostic("native.approval.answerShape",serde_json::json!({}),"invalid_request: answer an approval with either a decision or an option")),
         };
-        result.map_err(CoreError::SessionOperation)?;
+        result.map_err(ui_i18n::session_operation_message)?;
         return Ok(());
     }
-    Err(CoreError::SessionOperation("history_only: old native session cannot execute".into()))
+    Err(ui_i18n::session_operation_message(ui_i18n::HostMessage::with_diagnostic("native.approval.historyOnly",serde_json::json!({}),"history_only: old native session cannot execute")))
 }
 
 #[tauri::command]
@@ -2422,16 +2463,16 @@ async fn resolve_agent_user_input(
     if session.plugin_installation_id.is_some() {
         state
             .plugins
-            .invoke_capability_from(
+            .invoke_capability_display_from(
                 window.label(), &session_id,
                 "user-input.respond",
                 serde_json::json!({ "requestId": request_id, "answers": answers }),
             )
             .await
-            .map_err(CoreError::SessionOperation)?;
+            .map_err(ui_i18n::session_operation_message)?;
         return Ok(());
     }
-    Err(CoreError::SessionOperation("history_only: old native session cannot execute".into()))
+    Err(ui_i18n::session_operation_error("native.session.userInputHistoryOnly","history_only: old native session cannot execute"))
 }
 
 #[tauri::command]
@@ -2442,11 +2483,11 @@ async fn get_session_models(
 ) -> Result<SessionModelCatalog, CoreError> {
     let session = session_by_id(&state.db, &session_id).await?;
     if session.plugin_installation_id.is_none() {
-        return Err(CoreError::SessionOperation("history_only: model discovery requires a capability session".into()));
+        return Err(ui_i18n::session_operation_error("native.models.historyOnly","history_only: model discovery requires a capability session"));
     }
-    let models = state.plugins.invoke_capability_from(window.label(), &session_id, "model.select", serde_json::json!({"action":"list"})).await.map_err(CoreError::SessionOperation)?;
+    let models = state.plugins.invoke_capability_display_from(window.label(), &session_id, "model.select", serde_json::json!({"action":"list"})).await.map_err(ui_i18n::session_operation_message)?;
     let reasoning = if session.capabilities.iter().any(|capability|capability == "model.reasoning") {
-        Some(state.plugins.invoke_capability_from(window.label(), &session_id, "model.reasoning", serde_json::json!({"action":"list"})).await.map_err(CoreError::SessionOperation)?)
+        Some(state.plugins.invoke_capability_display_from(window.label(), &session_id, "model.reasoning", serde_json::json!({"action":"list"})).await.map_err(ui_i18n::session_operation_message)?)
     } else { None };
     plugin_model_catalog(&models, reasoning.as_ref())
 }
@@ -2455,10 +2496,10 @@ fn plugin_model_catalog(result: &serde_json::Value, reasoning: Option<&serde_jso
     let parameter_scope = match result.get("parameterScope") {
         None => "all-models",
         Some(serde_json::Value::String(scope)) if scope == "all-models" || scope == "current-model" => scope.as_str(),
-        _ => return Err(CoreError::SessionOperation("plugin model catalog returned invalid parameterScope".into())),
+        _ => return Err(ui_i18n::session_operation_error("native.models.parameterScope","plugin model catalog returned invalid parameterScope")),
     }.to_owned();
     let raw_models = result.get("models").and_then(serde_json::Value::as_array)
-        .ok_or_else(|| CoreError::SessionOperation("plugin model catalog did not return models".to_owned()))?;
+        .ok_or_else(|| ui_i18n::session_operation_error("native.models.missingModels","plugin model catalog did not return models"))?;
     let models = raw_models.iter().filter_map(|item| {
         let provider = item.get("provider").and_then(serde_json::Value::as_str).map(ToOwned::to_owned);
         let id = item.get("id").and_then(serde_json::Value::as_str)
@@ -2525,11 +2566,11 @@ async fn get_pi_session_tree(
     if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
         return state
             .plugins
-            .invoke_capability_from(window.label(), &session_id, "session.tree", serde_json::json!({"action":"get"}))
+            .invoke_capability_display_from(window.label(), &session_id, "session.tree", serde_json::json!({"action":"get"}))
             .await
-            .map_err(CoreError::SessionOperation);
+            .map_err(ui_i18n::session_operation_message);
     }
-    Err(CoreError::SessionOperation("history_only: the session tree requires a bound capability session".to_owned()))
+    Err(ui_i18n::session_operation_error("native.tree.historyOnly","history_only: the session tree requires a bound capability session"))
 }
 
 #[tauri::command]
@@ -2544,15 +2585,15 @@ async fn navigate_pi_session_tree(
     if session_by_id(&state.db, &session_id).await?.plugin_installation_id.is_some() {
         return state
             .plugins
-            .invoke_capability_from(window.label(),
+            .invoke_capability_display_from(window.label(),
                 &session_id,
                 "session.tree",
                 serde_json::json!({"action":"navigate","entryId":entry_id,"summarize":summarize,"customInstructions":custom_instructions,"replaceInstructions":replace_instructions}),
             )
             .await
-            .map_err(CoreError::SessionOperation);
+            .map_err(ui_i18n::session_operation_message);
     }
-    Err(CoreError::SessionOperation("legacy Pi session is history-only; tree navigation requires a new Pi SDK plugin session".to_owned()))
+    Err(ui_i18n::session_operation_error("native.tree.navigationHistoryOnly","legacy Pi session is history-only; tree navigation requires a new Pi SDK plugin session"))
 }
 
 fn find_executable(name: &str) -> Option<PathBuf> {
@@ -2658,6 +2699,7 @@ fn is_executable(path: &Path) -> bool {
 
 fn probe_binary(agent: &str, label: &str, capabilities: &[&str]) -> AgentDiagnostic {
     let Some(path) = find_executable(agent) else {
+        let message = ui_i18n::HostMessage::with_diagnostic("native.diagnostics.executableMissing",serde_json::json!({"label":label}),format!("{label} executable was not found on PATH."));
         return AgentDiagnostic {
             agent: agent.to_owned(),
             label: label.to_owned(),
@@ -2666,7 +2708,8 @@ fn probe_binary(agent: &str, label: &str, capabilities: &[&str]) -> AgentDiagnos
             version: None,
             capabilities: capabilities.iter().map(|item| (*item).to_owned()).collect(),
             auth_state: "delegated".to_owned(),
-            message: Some(format!("{label} executable was not found on PATH.")),
+            message: Some(message.diagnostic),
+            localized_message: message.localized,
         };
     };
 
@@ -2680,6 +2723,7 @@ fn probe_binary(agent: &str, label: &str, capabilities: &[&str]) -> AgentDiagnos
                 .map(str::trim)
                 .find(|line| !line.is_empty())
                 .map(ToOwned::to_owned);
+            let message = ui_i18n::HostMessage::with_diagnostic("native.diagnostics.authStore",serde_json::json!({}),"Authentication remains in the native agent store.");
             AgentDiagnostic {
                 agent: agent.to_owned(),
                 label: label.to_owned(),
@@ -2688,28 +2732,37 @@ fn probe_binary(agent: &str, label: &str, capabilities: &[&str]) -> AgentDiagnos
                 version,
                 capabilities: capabilities.iter().map(|item| (*item).to_owned()).collect(),
                 auth_state: "delegated".to_owned(),
-                message: Some("Authentication remains in the native agent store.".to_owned()),
+                message: Some(message.diagnostic),
+                localized_message: message.localized,
             }
         }
-        Ok(output) => AgentDiagnostic {
-            agent: agent.to_owned(),
-            label: label.to_owned(),
-            status: "error".to_owned(),
-            executable: Some(path.to_string_lossy().into_owned()),
-            version: None,
-            capabilities: capabilities.iter().map(|item| (*item).to_owned()).collect(),
-            auth_state: "delegated".to_owned(),
-            message: Some(format!("{label} --version exited with {}.", output.status)),
+        Ok(output) => {
+            let message = ui_i18n::HostMessage::with_diagnostic("native.diagnostics.probeExit",serde_json::json!({"label":label,"status":output.status.to_string()}),format!("{label} --version exited with {}.", output.status));
+            AgentDiagnostic {
+                agent: agent.to_owned(),
+                label: label.to_owned(),
+                status: "error".to_owned(),
+                executable: Some(path.to_string_lossy().into_owned()),
+                version: None,
+                capabilities: capabilities.iter().map(|item| (*item).to_owned()).collect(),
+                auth_state: "delegated".to_owned(),
+                message: Some(message.diagnostic),
+                localized_message: message.localized,
+            }
         },
-        Err(error) => AgentDiagnostic {
-            agent: agent.to_owned(),
-            label: label.to_owned(),
-            status: "error".to_owned(),
-            executable: Some(path.to_string_lossy().into_owned()),
-            version: None,
-            capabilities: capabilities.iter().map(|item| (*item).to_owned()).collect(),
-            auth_state: "delegated".to_owned(),
-            message: Some(format!("Unable to run {label}: {error}")),
+        Err(error) => {
+            let message = ui_i18n::HostMessage::with_diagnostic("native.diagnostics.probeRun",serde_json::json!({"label":label,"error":error.to_string()}),format!("Unable to run {label}: {error}"));
+            AgentDiagnostic {
+                agent: agent.to_owned(),
+                label: label.to_owned(),
+                status: "error".to_owned(),
+                executable: Some(path.to_string_lossy().into_owned()),
+                version: None,
+                capabilities: capabilities.iter().map(|item| (*item).to_owned()).collect(),
+                auth_state: "delegated".to_owned(),
+                message: Some(message.diagnostic),
+                localized_message: message.localized,
+            }
         },
     }
 }
@@ -2717,7 +2770,16 @@ fn probe_binary(agent: &str, label: &str, capabilities: &[&str]) -> AgentDiagnos
 fn probe_pi() -> AgentDiagnostic {
     let cli_path = find_executable("pi");
     let node_path = find_executable("node");
+    pi_diagnostic(cli_path,node_path)
+}
+
+fn pi_diagnostic(cli_path: Option<PathBuf>, node_path: Option<PathBuf>) -> AgentDiagnostic {
     let host_ready = node_path.is_some();
+    let (key,diagnostic) = if host_ready {
+        if cli_path.is_some() { ("native.diagnostics.piReady","Project-locked SDK host ready; workspace writes are mediated by Aibo Core; Pi has no native sandbox.") }
+        else { ("native.diagnostics.piReadyOptional","Project-locked SDK host ready; workspace writes are mediated by Aibo Core; global Pi CLI is optional; Pi has no native sandbox.") }
+    } else { ("native.diagnostics.piNodeRequired","Node.js is required to start the project-locked Pi SDK host.") };
+    let message = ui_i18n::HostMessage::with_diagnostic(key,serde_json::json!({}),diagnostic);
     AgentDiagnostic {
         agent: "pi".to_owned(),
         label: "Pi".to_owned(),
@@ -2741,14 +2803,8 @@ fn probe_pi() -> AgentDiagnostic {
         .map(ToOwned::to_owned)
         .collect(),
         auth_state: "delegated".to_owned(),
-        message: Some(if host_ready {
-            match cli_path {
-                Some(_) => "Project-locked SDK host ready; workspace writes are mediated by Aibo Core; Pi has no native sandbox.".to_owned(),
-                None => "Project-locked SDK host ready; workspace writes are mediated by Aibo Core; global Pi CLI is optional; Pi has no native sandbox.".to_owned(),
-            }
-        } else {
-            "Node.js is required to start the project-locked Pi SDK host.".to_owned()
-        }),
+        message: Some(message.diagnostic),
+        localized_message: message.localized,
     }
 }
 
@@ -2802,7 +2858,7 @@ fn collect_workspace_capabilities(root: &Path) -> WorkspaceCapabilityInventory {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => {
-                warnings.push(format!("无法读取技能目录 {relative_directory}: {error}"));
+                warnings.push(ui_i18n::HostMessage::new("native.inventory.skillRead",serde_json::json!({"path":relative_directory,"error":error.to_string()})));
                 continue;
             }
         };
@@ -2812,7 +2868,7 @@ fn collect_workspace_capabilities(root: &Path) -> WorkspaceCapabilityInventory {
         let entries = match fs::read_dir(&directory) {
             Ok(entries) => entries,
             Err(error) => {
-                warnings.push(format!("无法读取技能目录 {relative_directory}: {error}"));
+                warnings.push(ui_i18n::HostMessage::new("native.inventory.skillRead",serde_json::json!({"path":relative_directory,"error":error.to_string()})));
                 continue;
             }
         };
@@ -2841,7 +2897,7 @@ fn collect_workspace_capabilities(root: &Path) -> WorkspaceCapabilityInventory {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => {
-                warnings.push(format!("无法读取 MCP 配置 {relative}: {error}"));
+                warnings.push(ui_i18n::HostMessage::new("native.inventory.mcpRead",serde_json::json!({"path":relative,"error":error.to_string()})));
                 continue;
             }
         };
@@ -2851,14 +2907,14 @@ fn collect_workspace_capabilities(root: &Path) -> WorkspaceCapabilityInventory {
         let contents = match fs::read_to_string(&path) {
             Ok(contents) => contents,
             Err(error) => {
-                warnings.push(format!("无法读取 MCP 配置 {relative}: {error}"));
+                warnings.push(ui_i18n::HostMessage::new("native.inventory.mcpRead",serde_json::json!({"path":relative,"error":error.to_string()})));
                 continue;
             }
         };
         let value: serde_json::Value = match serde_json::from_str(&contents) {
             Ok(value) => value,
             Err(error) => {
-                warnings.push(format!("MCP 配置 {relative} 不是有效 JSON: {error}"));
+                warnings.push(ui_i18n::HostMessage::new("native.inventory.mcpJson",serde_json::json!({"path":relative,"error":error.to_string()})));
                 continue;
             }
         };
@@ -2867,7 +2923,7 @@ fn collect_workspace_capabilities(root: &Path) -> WorkspaceCapabilityInventory {
             .or_else(|| value.get("servers"))
             .and_then(serde_json::Value::as_object)
         else {
-            warnings.push(format!("MCP 配置 {relative} 缺少 mcpServers/servers"));
+            warnings.push(ui_i18n::HostMessage::new("native.inventory.mcpServers",serde_json::json!({"path":relative})));
             continue;
         };
         for name in servers.keys() {
@@ -2887,6 +2943,9 @@ fn collect_workspace_capabilities(root: &Path) -> WorkspaceCapabilityInventory {
     .map(|(name, source)| capability_entry(name, source))
     .collect();
 
+    let localized_warnings = warnings.iter().map(ui_i18n::HostMessage::display).collect();
+    let warnings = warnings.into_iter().map(|warning| warning.diagnostic).collect();
+
     WorkspaceCapabilityInventory {
         workspace_id: String::new(),
         inspected_at: now_iso(),
@@ -2895,6 +2954,7 @@ fn collect_workspace_capabilities(root: &Path) -> WorkspaceCapabilityInventory {
         tools,
         mcp_servers,
         warnings,
+        localized_warnings,
     }
 }
 
@@ -3018,6 +3078,10 @@ pub fn run() {
         .try_init();
 
     tauri::Builder::default()
+        .manage(ui_i18n::WindowLanguages::default())
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) { window.state::<ui_i18n::WindowLanguages>().remove(window.label()); }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         .setup(|app| {
@@ -3032,7 +3096,7 @@ pub fn run() {
             let db = tauri::async_runtime::block_on(open_database(&db_path))
                 .map_err(|error| Box::new(error) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(plugin_replacement::recover(&db,&data_dir))
-                .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
+                .map_err(|error| Box::new(ui_i18n::initialization_message(error)) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(plugin_registry::install_builtins(&db, &data_dir))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("install built-in plugins: {error}"))) as Box<dyn Error>)?;
             tauri::async_runtime::block_on(presentation_packages::register_builtins(&db))
@@ -3068,6 +3132,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            ui_i18n::set_window_locale,
             semantic_plugins::cancel_semantic_open,
             semantic_plugins::list_semantic_contributions,
             semantic_plugins::open_semantic_contribution,
@@ -3205,6 +3270,25 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn database_owned_failures_preserve_diagnostics_and_do_not_create_a_database() {
+        let root=tempfile::tempdir().unwrap();let blocked=root.path().join("file");std::fs::write(&blocked,"sentinel").unwrap();
+        let path=blocked.join("child").join("host.db");
+        let error=super::open_database(&path).await.unwrap_err();let payload=serde_json::to_value(error).unwrap();
+        assert_eq!(payload["code"],"initialization_error");assert_eq!(payload["localized"]["key"],"native.database.createDirectory");
+        let raw=payload["localized"]["params"]["error"].as_str().unwrap();
+        assert_eq!(payload["message"],format!("app initialization failed: create app data directory: {raw}"));
+        assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]).ends_with(raw));
+        assert_eq!(std::fs::read_to_string(&blocked).unwrap(),"sentinel");assert!(!path.exists());
+        let payload=serde_json::to_value(super::open_database(std::path::Path::new("")).await.unwrap_err()).unwrap();
+        assert_eq!(payload["message"],"app initialization failed: database path has no parent directory");
+        assert_eq!(payload["localized"]["key"],"native.database.parent");
+        let db=super::open_database(&root.path().join("valid.db")).await.unwrap();
+        let payload=serde_json::to_value(super::workspace_by_path(&db,"missing /{path}").await.unwrap_err()).unwrap();
+        assert_eq!(payload["code"],"database_error");assert_eq!(payload["message"],"database error: workspace insert was not readable");
+        assert_eq!(payload["localized"]["key"],"native.database.workspaceUnreadable");
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM workspaces").fetch_one(&db).await.unwrap(),0);db.close().await;
+    }
     use super::{
         auto_name_session_from_first_message,
         canonical_workspace_path, collect_workspace_capabilities,
@@ -3230,6 +3314,59 @@ mod tests {
         path
     }
 
+    #[tokio::test]
+    async fn interrupted_subagent_display_preserves_persisted_snapshots_and_reopens_without_provider() {
+        use serde_json::{json, Value};
+        let directory = test_directory();
+        let path = directory.join("aibo.sqlite3");
+        let db = open_database(&path).await.unwrap();
+        sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'Test',1,'now','now')")
+            .bind(directory.to_string_lossy().as_ref()).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,archived,created_at,updated_at) VALUES('s','w','third.party','原始会话','interrupted',1,'now','now')")
+            .execute(&db).await.unwrap();
+        let base = json!({"id":"child","parentId":"parent","rootTurnId":"turn","name":"名称原文 {name}","task":"任务原文 {task}","activity":"提供者活动 {activity}","providerExtra":{"content":"过程原文 {content}"}});
+        let mut fixtures = Vec::new();
+        for (index, (task_status, message_status, tool)) in [
+            ("pending","failed","subagent"),("running","failed","subagent"),("waiting","failed","subagent"),
+            ("completed","failed","subagent"),("failed","failed","subagent"),("interrupted","failed","subagent"),
+            ("running","streaming","subagent"),("running","failed","shell"),
+        ].into_iter().enumerate() {
+            let mut task = base.clone(); task["status"] = json!(task_status);
+            fixtures.push((format!("card-{index}"),task.to_string(),message_status,tool,index < 3));
+        }
+        fixtures.push(("malformed".into(),"not JSON".into(),"failed","subagent",false));
+        for (id,content,status,tool,_) in &fixtures {
+            sqlx::query("INSERT INTO messages(id,session_id,role,tool_name,content,status,created_at,updated_at) VALUES(?,'s','system',?,?,?,'2026-10-09','2026-10-09')")
+                .bind(id).bind(tool).bind(content).bind(status).execute(&db).await.unwrap();
+        }
+        db.close().await;
+        for _ in 0..2 {
+            let db = open_database(&path).await.unwrap();
+            let page = serde_json::to_value(crate::session_history::read(&db,"w".into(),"s".into(),None).await.unwrap()).unwrap();
+            let around = serde_json::to_value(crate::session_history::around(&db,"w".into(),"s".into(),"card-0".into()).await.unwrap()).unwrap();
+            assert_eq!(page["items"],around["items"]);
+            for (id,raw,status,_,localized) in &fixtures {
+                let item = page["items"].as_array().unwrap().iter().find(|item|item["id"]==*id).unwrap();
+                assert_eq!(item["status"],*status);
+                let stored: String = sqlx::query_scalar("SELECT content FROM messages WHERE id=?").bind(id).fetch_one(&db).await.unwrap();
+                assert_eq!(&stored,raw);
+                if *localized {
+                    let task: Value = serde_json::from_str(item["content"].as_str().unwrap()).unwrap();
+                    let mut expected: Value = serde_json::from_str(raw).unwrap();
+                    expected["status"] = json!("interrupted"); expected["activity"] = json!("执行已中断，已保留收到的过程记录。");
+                    assert_eq!(task,expected);
+                    assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&item["localizedActivity"]),"Execution was interrupted. The received process records have been retained.");
+                    assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&item["localizedActivity"]),task["activity"].as_str().unwrap());
+                } else {
+                    assert_eq!(item["content"],*raw); assert!(item.get("localizedActivity").is_none());
+                }
+            }
+            assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM turns").fetch_one(&db).await.unwrap(),0);
+            db.close().await;
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
+
     #[test]
     #[ignore = "requires an isolated SQLite backup in AIBO_MIGRATION_PROBE_DB"]
     fn database_upgrade_snapshot_probe() {
@@ -3238,6 +3375,51 @@ mod tests {
             let pool = open_database(&path).await.expect("existing database must upgrade and reopen");
             pool.close().await;
         });
+    }
+
+    #[tokio::test]
+    async fn invalid_workspace_additions_preserve_existing_rows_and_allow_later_valid_addition() {
+        use crate::ui_i18n::{Locale, render};
+        let directory = tempfile::tempdir().unwrap();
+        let db = open_database(&directory.path().join("app.db")).await.unwrap();
+        let existing = directory.path().join("现有{path}");
+        fs::create_dir(&existing).unwrap();
+        let original = super::add_workspace_in_db(existing.to_str().unwrap(), &db).await.unwrap();
+        let snapshot = sqlx::query_scalar::<_,String>("SELECT json_object('id',id,'path',path,'label',label,'trusted',trusted,'createdAt',created_at,'updatedAt',updated_at,'lastOpenedAt',last_opened_at) FROM workspaces ORDER BY id").fetch_all(&db).await.unwrap();
+        let file = directory.path().join("文件{path}.txt");
+        fs::write(&file, "原始正文").unwrap();
+        let missing = directory.path().join("不存在{error}");
+        let os_error = fs::canonicalize(&missing).unwrap_err().to_string();
+        for (path, key, diagnostic) in [
+            ("   ".to_owned(), "native.workspace.emptyPath", "path must not be empty".to_owned()),
+            (format!("  {}  ",file.display()), "native.workspace.notDirectory", format!("{} is not a directory",file.display())),
+            (format!("  {}  ",missing.display()), "native.workspace.inaccessible", format!("{} is not accessible: {os_error}",missing.display())),
+        ] {
+            let error = super::add_workspace_in_db(&path, &db).await.unwrap_err();
+            let value = serde_json::to_value(error).unwrap();
+            assert_eq!(value["code"], "invalid_workspace_path");
+            assert_eq!(value["message"], format!("invalid workspace path: {diagnostic}"));
+            assert_eq!(value["localized"]["key"], key);
+            assert_eq!(render(Locale::En, &value["localized"]), diagnostic);
+            if key != "native.workspace.emptyPath" {
+                assert_eq!(value["localized"]["params"]["path"], path.trim());
+                assert!(render(Locale::ZhCn, &value["localized"]).contains(path.trim()));
+            }
+            if key == "native.workspace.inaccessible" { assert_eq!(value["localized"]["params"]["error"], os_error); }
+            assert_eq!(sqlx::query_scalar::<_,String>("SELECT json_object('id',id,'path',path,'label',label,'trusted',trusted,'createdAt',created_at,'updatedAt',updated_at,'lastOpenedAt',last_opened_at) FROM workspaces ORDER BY id").fetch_all(&db).await.unwrap(), snapshot);
+            assert_eq!(fs::read_to_string(&file).unwrap(), "原始正文");
+            assert!(!missing.exists());
+        }
+        let valid = directory.path().join("正常{path}");
+        fs::create_dir(&valid).unwrap();
+        let added = super::add_workspace_in_db(&format!("  {}  ",valid.display()), &db).await.unwrap();
+        assert_eq!(added.path, fs::canonicalize(&valid).unwrap().to_string_lossy());
+        assert_eq!(added.label, "正常{path}");
+        let repeated = super::add_workspace_in_db(valid.to_str().unwrap(), &db).await.unwrap();
+        assert_eq!(repeated.id, added.id);
+        assert_ne!(original.id, added.id);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM workspaces").fetch_one(&db).await.unwrap(), 2);
+        db.close().await;
     }
 
     #[test]
@@ -3746,6 +3928,126 @@ mod tests {
     }
 
     #[test]
+    fn runtime_diagnostics_preserve_original_messages_and_probe_results() {
+        use crate::ui_i18n::{render,Locale};
+        let label="程序原文 {label}";
+        let missing=super::probe_binary(&format!("aibo-missing-{}",Ulid::new()),label,&["capability.raw"]);
+        assert_eq!(missing.status,"missing");assert_eq!(missing.message.as_deref(),Some(format!("{label} executable was not found on PATH.").as_str()));
+        assert_eq!(missing.capabilities,["capability.raw"]);
+        assert_eq!(render(Locale::En,missing.localized_message.as_ref().unwrap()),missing.message.unwrap());
+        assert_eq!(render(Locale::ZhCn,missing.localized_message.as_ref().unwrap()),format!("未在 PATH 中找到 {label} 可执行文件。"));
+        for (cli,node,key,diagnostic) in [
+            (true,true,"native.diagnostics.piReady","Project-locked SDK host ready; workspace writes are mediated by Aibo Core; Pi has no native sandbox."),
+            (false,true,"native.diagnostics.piReadyOptional","Project-locked SDK host ready; workspace writes are mediated by Aibo Core; global Pi CLI is optional; Pi has no native sandbox."),
+            (false,false,"native.diagnostics.piNodeRequired","Node.js is required to start the project-locked Pi SDK host."),
+        ] {
+            let value=super::pi_diagnostic(cli.then(||PathBuf::from("/raw/pi")),node.then(||PathBuf::from("/raw/node")));
+            assert_eq!(value.status,if node {"ready"}else{"missing"});assert_eq!(value.message.as_deref(),Some(diagnostic));
+            assert_eq!(value.localized_message.as_ref().unwrap()["key"],key);
+            assert_eq!(render(Locale::En,value.localized_message.as_ref().unwrap()),diagnostic);
+            assert_eq!(value.version.as_deref(),Some(format!("SDK {}",super::PI_SDK_VERSION).as_str()));
+            assert_eq!(value.executable.as_deref(),node.then_some("/raw/node"));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn executable_diagnostics_keep_exit_status_version_and_io_error_raw() {
+        use crate::ui_i18n::{render,Locale};
+        use std::os::unix::fs::PermissionsExt;
+        let directory=test_directory();let program=directory.join("probe");
+        for (body,key,status,version) in [
+            ("#!/bin/sh\nprintf 'version {raw}\\n'\n","native.diagnostics.authStore","ready",Some("version {raw}")),
+            ("#!/bin/sh\nprintf 'secret-output' >&2\nexit 7\n","native.diagnostics.probeExit","error",None),
+            ("#!/aibo-test-nonexistent-interpreter-9c9ea001\n","native.diagnostics.probeRun","error",None),
+        ] {
+            fs::write(&program,body).unwrap();fs::set_permissions(&program,fs::Permissions::from_mode(0o700)).unwrap();
+            let value=super::probe_binary(program.to_str().unwrap(),"程序原文 {label}",&["capability.raw"]);
+            assert_eq!(value.status,status);assert_eq!(value.version.as_deref(),version);
+            assert_eq!(value.executable.as_deref(),program.to_str());
+            let display=value.localized_message.as_ref().unwrap();assert_eq!(display["key"],key);
+            assert_eq!(render(Locale::En,display),*value.message.as_ref().unwrap());
+            assert_ne!(render(Locale::ZhCn,display),*value.message.as_ref().unwrap());
+            assert!(!serde_json::to_value(value).unwrap().to_string().contains("secret-output"));
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn workspace_open_and_search_errors_keep_original_codes_and_diagnostics() {
+        use crate::ui_i18n::{self,HostMessage};
+        for (key,diagnostic) in [
+            ("native.workspace.editorMac","未配置编辑器；请设置 AIBO_EDITOR（macOS 应填写应用名或 .app 路径）"),
+            ("native.workspace.editorWindows","未配置编辑器；请设置 AIBO_EDITOR（Windows 应填写编辑器可执行文件路径）"),
+            ("native.workspace.editorUnix","未配置编辑器；请设置 AIBO_EDITOR（填写可执行文件路径）"),
+        ] {
+            let error=ui_i18n::initialization_message(HostMessage::new(key,serde_json::json!({})));
+            let original=serde_json::to_value(CoreError::Initialization(diagnostic.into())).unwrap();
+            let value=serde_json::to_value(error).unwrap();assert_eq!(value["code"],original["code"]);assert_eq!(value["message"],original["message"]);
+            assert!(ui_i18n::render(ui_i18n::Locale::En,&value["localized"]).starts_with("No editor is configured."));
+        }
+        for (error,original) in [
+            (ui_i18n::invalid_path_message(HostMessage::with_diagnostic("native.workspace.locationTarget",serde_json::json!({}),"unsupported workspace location target")),CoreError::InvalidWorkspacePath("unsupported workspace location target".into())),
+            (ui_i18n::initialization_message(HostMessage::with_diagnostic("native.workspace.openLocation",serde_json::json!({"target":"editor","error":"底层诊断 {error}"}),"open workspace in editor: 底层诊断 {error}")),CoreError::Initialization("open workspace in editor: 底层诊断 {error}".into())),
+            (ui_i18n::session_operation_message(HostMessage::new("native.search.requestIdTooLong",serde_json::json!({}))),CoreError::SessionOperation("搜索请求标识过长".into())),
+        ] {
+            let value=serde_json::to_value(error).unwrap();let raw=serde_json::to_value(original).unwrap();
+            assert_eq!(value["code"],raw["code"]);assert_eq!(value["message"],raw["message"]);
+            assert!(value["localized"]["key"].as_str().unwrap().starts_with("native."));
+        }
+    }
+
+    #[test]
+    fn workspace_capability_warnings_preserve_raw_diagnostics_and_resource_names() {
+        use crate::ui_i18n;
+        let directory = test_directory();
+        fs::create_dir_all(directory.join(".codex/skills/技能 {id}")).unwrap();
+        fs::create_dir_all(directory.join(".pi")).unwrap();
+        fs::write(directory.join(".mcp.json"),r#"{"mcpServers":{"服务器原文 {id}":{"command":"secret-command"}}}"#).unwrap();
+        let ready = collect_workspace_capabilities(&directory);
+        assert_eq!(ready.skills[0].name,"技能 {id}");
+        assert_eq!(ready.mcp_servers[0].name,"服务器原文 {id}");
+        assert!(ready.warnings.is_empty());
+        assert!(serde_json::to_value(ready).unwrap().get("localizedWarnings").is_none());
+        fs::write(directory.join(".mcp.json"),r#"{"secret":"not-a-server-or-warning"}"#).unwrap();
+        fs::write(directory.join(".codex/mcp.json"),"invalid JSON").unwrap();
+        fs::write(directory.join(".pi/mcp.json"),[0xff,0xfe]).unwrap();
+        // An ordinary file in place of a parent produces a genuine metadata read error.
+        fs::write(directory.join(".aibo"),"do not read this as a directory").unwrap();
+        let inventory = collect_workspace_capabilities(&directory);
+        assert_eq!(inventory.warnings.len(),inventory.localized_warnings.len());
+        assert_eq!(inventory.skills[0].name,"技能 {id}");
+        let mut keys = std::collections::HashSet::new();
+        for (raw,display) in inventory.warnings.iter().zip(&inventory.localized_warnings) {
+            keys.insert(display["key"].as_str().unwrap());
+            assert_eq!(ui_i18n::render(ui_i18n::Locale::ZhCn,display),*raw);
+            let english = ui_i18n::render(ui_i18n::Locale::En,display);
+            assert_ne!(english,*raw);
+            let path=display["params"]["path"].as_str().unwrap();
+            let error=display["params"]["error"].as_str().unwrap_or_default();
+            let legacy = match display["key"].as_str().unwrap() {
+                "native.inventory.skillRead" => format!("无法读取技能目录 {path}: {error}"),
+                "native.inventory.mcpRead" => format!("无法读取 MCP 配置 {path}: {error}"),
+                "native.inventory.mcpJson" => format!("MCP 配置 {path} 不是有效 JSON: {error}"),
+                "native.inventory.mcpServers" => format!("MCP 配置 {path} 缺少 mcpServers/servers"),
+                key => panic!("unexpected host warning: {key}"),
+            };
+            assert_eq!(*raw,legacy);
+            assert!(raw.contains(path));assert!(english.contains(path));
+            if let Some(error)=display["params"]["error"].as_str() { assert!(raw.ends_with(error));assert!(english.ends_with(error)); }
+        }
+        assert!(keys.contains("native.inventory.mcpServers"));
+        assert!(keys.contains("native.inventory.mcpJson"));
+        assert!(keys.contains("native.inventory.mcpRead"));
+        #[cfg(unix)] assert!(keys.contains("native.inventory.skillRead"));
+        let serialized=serde_json::to_value(&inventory).unwrap();
+        assert_eq!(serialized["warnings"],serde_json::json!(inventory.warnings));
+        assert_eq!(serialized["localizedWarnings"],serde_json::json!(inventory.localized_warnings));
+        assert!(!serialized.to_string().contains("not-a-server-or-warning"));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn workspace_capability_inventory_lists_safe_resource_names() {
         let directory = test_directory();
         fs::write(directory.join("AGENTS.md"), "instructions").expect("instruction file");
@@ -3869,8 +4171,28 @@ mod tests {
         }
         for invalid in [serde_json::json!("matrix"), serde_json::json!(null), serde_json::json!(true)] {
             value["parameterScope"] = invalid;
-            assert!(plugin_model_catalog(&value, None).is_err());
+            let original=value.clone();
+            let error=serde_json::to_value(plugin_model_catalog(&value,None).unwrap_err()).unwrap();
+            assert_eq!(error["code"],"session_operation_error");
+            assert_eq!(error["message"],"session operation failed: plugin model catalog returned invalid parameterScope");
+            assert_eq!(error["localized"]["key"],"native.models.parameterScope");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&error["localized"]),"插件模型目录返回了无效的 parameterScope。");
+            assert_eq!(value,original);
         }
+    }
+
+    #[test]
+    fn plugin_model_catalog_missing_models_keeps_diagnostic_and_owned_display() {
+        for value in [serde_json::json!({}),serde_json::json!({"models":null}),serde_json::json!({"models":"提供者原文 {models}"})] {
+            let original=value.clone();
+            let payload=serde_json::to_value(plugin_model_catalog(&value,None).unwrap_err()).unwrap();
+            assert_eq!(payload["code"],"session_operation_error");
+            assert_eq!(payload["message"],"session operation failed: plugin model catalog did not return models");
+            assert_eq!(payload["localized"]["key"],"native.models.missingModels");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&payload["localized"]),"The plugin model catalog did not return a model list.");
+            assert_eq!(value,original);
+        }
+        assert!(plugin_model_catalog(&serde_json::json!({"models":[]}),None).unwrap().models.is_empty());
     }
 
     #[test]
@@ -3925,5 +4247,16 @@ mod tests {
         assert_eq!(catalog.current.as_ref().unwrap().reasoning_efforts[0].id, "off");
         assert_eq!(catalog.current_reasoning_effort.as_deref(), Some("off"));
         assert!(catalog.models.iter().all(|model| model.service_tiers.is_empty()), "Pi does not advertise undiscoverable service tiers");
+    }
+}
+
+impl CoreError {
+    pub(crate) fn is_write_outcome_unknown(&self) -> bool {
+        match self {
+            Self::WriteOutcomeUnknown(_) => true,
+            Self::Localized {error,..} => error.is_write_outcome_unknown(),
+            Self::WriteReplay {code,..} => code == "outcome_unknown",
+            _ => false,
+        }
     }
 }

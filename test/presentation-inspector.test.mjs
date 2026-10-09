@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectorActions,createInspectorDirectory} from '../src/lib/presentation-runtime/inspector.ts';
@@ -30,6 +31,6 @@ test('host artifact preview ignores superseded and closed reads and preserves re
  pending.get('a').resolve({artifact:{id:'a',sessionId:'s'},content:'A',truncated:false});await first;assert.equal(latest.content.content,'B');
  const third=controller.toggle('s','c');controller.reset();pending.get('c').resolve({artifact:{id:'c',sessionId:'s'},content:'C'});await third;assert.equal(latest.artifactId,null);
  const fourth=controller.toggle('s','d');session='other';controller.reset();pending.get('d').reject(Error('old failure'));await fourth;assert.equal(latest.error,null);
- session='s';const invalid=controller.toggle('s','e');pending.get('e').resolve({artifact:{id:'wrong',sessionId:'s'},content:'bad'});await invalid;assert.equal(latest.error,'artifact_identity_mismatch');
+ session='s';const invalid=controller.toggle('s','e');pending.get('e').resolve({artifact:{id:'wrong',sessionId:'s'},content:'bad'});await invalid;assert.equal(translateMessage('en',latest.error),'The artifact changed or does not belong to this session. Reload it.');assert.equal(translateMessage('zh-CN',latest.error),'产物已变化或不属于当前会话，请重新加载。');
  const retry=controller.toggle('s','e');pending.get('e').resolve({artifact:{id:'e',sessionId:'s'},content:'recovered',truncated:false});await retry;assert.equal(latest.content.content,'recovered');
 });

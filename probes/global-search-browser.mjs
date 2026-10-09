@@ -6,15 +6,17 @@ const built = await buildPresentationSkins();
 const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}}); await server.listen();
 const browser = await chromium.launch({headless:true});
 try {
-  for (const [theme,pkg] of [['light',null],['dark',null],['light',built.packages[0]],['dark',built.packages[1]]]) {
+  const cases=['material3','ak-ui'].flatMap(kit=>['light','dark'].map(theme=>({kit,theme,pkg:null})));
+  for(const pkg of built.packages)cases.push({kit:'material3',theme:'light',pkg});
+  for (const {kit,theme,pkg} of cases) {
     const page = await browser.newPage({viewport:{width:1280,height:900}}); page.setDefaultTimeout(12000);
     const errors=[];page.on('pageerror',error=>errors.push(error.stack??error.message));
-    await page.addInitScript(({theme,pkg})=>{
+    await page.addInitScript(({kit,theme,pkg})=>{
       if(window!==window.top)return;
-      localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:'ak-ui',themeId:theme}));
+      localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:kit,themeId:theme}));
       const workspaces=['w1','w2'].map(id=>({id,path:'/probe/'+id,label:id==='w1'?'当前工程':'其他工程',trust:'trusted',createdAt:'2026-09-25',updatedAt:'2026-09-25',lastOpenedAt:null}));
       const sessions=[{id:'s1',workspaceId:'w1',agent:'fixture',label:'当前会话',state:'idle',archived:false,createdAt:'2026-09-25',updatedAt:'2026-09-25',capabilities:[],pluginInstallationId:null},{id:'s2',workspaceId:'w2',agent:'disabled',label:'归档搜索会话',state:'closed',archived:true,createdAt:'2026-09-24',updatedAt:'2026-09-24',capabilities:[],pluginInstallationId:null}];
-      const item={id:'message:m',kind:'message',title:'assistant',description:'其他工程 · 归档搜索会话 · 已归档',excerpt:'中文连续正文中的搜索命中',target:{source:'message',id:'m',workspaceId:'w2',sessionId:'s2'},score:50};
+      const item={id:'message:m',kind:'message',title:'assistant',description:'其他工程 · 归档搜索会话 · 已归档',excerpt:'中文连续正文中的搜索命中',target:{source:'message',id:'m',workspaceId:'w2',sessionId:'s2'},score:50,localizedTitle:{schema:'aibo.host-message/v1',key:'native.search.assistant',params:{}},localizedDescription:{schema:'aibo.host-message/v1',key:'native.search.description',params:{base:'其他工程 · 归档搜索会话',archived:{key:'native.search.archived',params:{prefix:' · '}},line:''}}};
       let callback=0;window.searchCalls=[];
       window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback(fn){const id=++callback;window['_'+id]=fn;return id;},unregisterCallback(id){delete window['_'+id];},async invoke(command,args={}){
         window.searchCalls.push({command,args});
@@ -30,9 +32,9 @@ try {
           if(args.request.query==='slow')await new Promise(resolve=>setTimeout(resolve,500));
           return {items:args.request.query.includes('正文')?[item]:[],hasMore:false,warnings:[]};
         }
-        if(command==='search_global_files'||command==='search_global_assets')return {items:[],hasMore:false,warnings:[]};
+        if(command==='search_global_files'||command==='search_global_assets')return {items:[],hasMore:false,warnings:command==='search_global_files'?['原始诊断','插件警告原文']:[],localizedWarnings:command==='search_global_files'?[{schema:'aibo.host-message/v1',key:'native.search.namedWarning',params:{name:'原文{workspace}',warning:{key:'native.search.directoryLimit',params:{}}}},null]:[]};
         if(command==='cancel_global_file_search')return;
-        if(command==='read_search_result')return {title:'命中消息',content:'中文连续正文中的搜索命中',target:item.target,truncated:false};
+        if(command==='read_search_result')return {title:'命中消息',content:'中文连续正文中的搜索命中\n…内容过长，预览已截断',localizedSuffix:{schema:'aibo.host-message/v1',key:'native.search.truncatedSuffix',params:{}},target:item.target,truncated:true};
         if(command==='read_session_history'||command==='read_session_history_around')return {schema:'aibo.session-history-page/v1',source:'persisted-core',session:sessions.find(session=>session.id===args.sessionId),items:[{id:'m',sessionId:args.sessionId,turnId:null,role:'assistant',toolName:null,content:'中文连续正文中的搜索命中',status:'completed',createdAt:'2026-09-24',updatedAt:'2026-09-24'}],nextBefore:null};
         if(command==='inspect_workspace_capabilities')return {workspaceId:args.workspaceId,inspectedAt:'now',instructions:[],skills:[],tools:[],mcpServers:[],warnings:[]};
         if(command==='get_workspace_changes')return {workspaceId:args.workspaceId,head:null,branch:null,dirty:false,files:[],captureStatus:'captured'};
@@ -40,8 +42,9 @@ try {
         if(command==='read_workspace_preferences')return {trustNewWorkspaces:true};
         return [];
       }};
-    },{theme,pkg});
-    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
+    },{kit,theme,pkg});
+    await page.addInitScript(() => { if (window === window.top && location.protocol === 'http:') localStorage.setItem('aibo.language.v1','zh-CN'); });
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`,{timeout:60000});
     await page.getByRole('button',{name:'全局搜索',exact:true}).waitFor();
     if(pkg)await page.locator('.presentation-external iframe:visible').waitFor();
     assert.equal(await page.locator('[data-ui-component="workspace-sidebar"]').getByRole('button',{name:'搜索会话',exact:true}).count(),0);
@@ -52,6 +55,26 @@ try {
     const categories=dialog.locator('.global-search-categories');
     const labels=['全部','工作区','会话','消息','文件','命令','设置','插件','附件','产物','执行记录'];
     const selectedKind=()=>categories.locator('[aria-pressed="true"]').innerText();
+    await input.fill('正文');await dialog.getByRole('option').filter({hasText:'中文连续正文'}).waitFor();
+    await dialog.getByText('原文{workspace}：目录过大，文件索引尚未覆盖全部内容；请缩小工作区范围',{exact:true}).waitFor();
+    const reads=await page.evaluate(()=>window.searchCalls.filter(call=>['search_global','search_global_files','search_global_assets'].includes(call.command)).length);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'en',locale:'en'});});
+    const live=page.locator('dialog.global-search');
+    await live.getByRole('option').filter({hasText:'Assistant message'}).waitFor();
+    await live.getByText('其他工程 · 归档搜索会话 · Archived',{exact:true}).waitFor();
+    await live.getByText('原文{workspace}: The directory is too large to index completely. Narrow the workspace scope.',{exact:true}).waitFor();
+    await live.getByText('插件警告原文',{exact:true}).waitFor();
+    assert.equal(await page.locator('#global-search-input').inputValue(),'正文');
+    assert.equal(await page.evaluate(()=>window.searchCalls.filter(call=>['search_global','search_global_files','search_global_assets'].includes(call.command)).length),reads);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'});});
+    await dialog.getByRole('option').filter({hasText:'助手消息'}).waitFor();
+    await input.fill('> 打开工作台设置');await dialog.getByRole('option').filter({hasText:'打开工作台设置'}).waitFor();
+    const catalogReads=await page.evaluate(()=>window.searchCalls.filter(call=>['search_global','search_global_files','search_global_assets'].includes(call.command)).length);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'en',locale:'en'});});
+    await live.getByRole('option').filter({hasText:'Open workbench settings'}).waitFor();
+    assert.equal(await page.evaluate(()=>window.searchCalls.filter(call=>['search_global','search_global_files','search_global_assets'].includes(call.command)).length),catalogReads);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'});});
+    await dialog.getByRole('option').filter({hasText:'打开工作台设置'}).waitFor();
     await input.fill('类型轮换');
     for(const label of [...labels.slice(1),labels[0]]){
       await page.keyboard.press('Tab');
@@ -77,6 +100,14 @@ try {
     await categories.getByRole('button',{name:'全部',exact:true}).click();
     await input.fill('正文');await dialog.getByRole('option').filter({hasText:'中文连续正文'}).waitFor();
     await page.keyboard.press('Enter');await dialog.getByRole('region',{name:'搜索结果详情'}).waitFor();
+    await dialog.getByText('…内容过长，预览已截断',{exact:false}).waitFor();
+    const detailReads=await page.evaluate(()=>window.searchCalls.filter(call=>call.command==='read_search_result').length);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'en',locale:'en'});});
+    await live.getByText('…Content is too long; the preview was truncated.',{exact:false}).waitFor();
+    await live.getByText('中文连续正文中的搜索命中',{exact:false}).waitFor();
+    assert.equal(await page.evaluate(()=>window.searchCalls.filter(call=>call.command==='read_search_result').length),detailReads);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'});});
+    await dialog.getByText('…内容过长，预览已截断',{exact:false}).waitFor();
     await dialog.getByRole('button',{name:'← 搜索结果',exact:true}).focus();await page.keyboard.press('Tab');
     assert.equal(await dialog.getByRole('button',{name:'打开所属会话'}).evaluate(el=>el===document.activeElement),true);
     assert.equal(await selectedKind(),'全部');
@@ -121,6 +152,6 @@ try {
     await page.keyboard.press('Control+k');await dialog.waitFor();await page.keyboard.press('Escape');
     await dialog.waitFor({state:'detached'});
     assert.equal(await page.getByRole('button',{name:'全局搜索',exact:true}).evaluate(el=>el===document.activeElement),true);
-    assert.deepEqual(errors,[]);await page.close();console.log(`${theme} ${pkg?.release.manifest.displayName??'ak-ui'}: Tab type cycling, shortcuts, scopes, race, history anchor, command activation, narrow layout, focus passed`);
+    assert.deepEqual(errors,[]);await page.close();console.log(`${kit}/${theme} ${pkg?.release.manifest.displayName??'builtin'}: Tab type cycling, shortcuts, scopes, race, history anchor, command activation, narrow layout, focus passed`);
   }
 } finally {await browser.close();await server.close();await built.dispose();}

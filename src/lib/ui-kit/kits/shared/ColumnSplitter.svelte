@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import type { UiColumnSplitterProps } from '../../contract';
 
   let { label, width, onPointerDown, onKeyDown }: UiColumnSplitterProps = $props();
@@ -7,7 +8,7 @@
 <button
   type="button"
   class="workspace-splitter"
-  aria-label={`${label}，当前 ${width} 像素`}
+  aria-label={$t('splitter.width', { label, width })}
   onpointerdown={onPointerDown}
   onkeydown={onKeyDown}
 >

@@ -1,8 +1,10 @@
+import { localizedMessage, localizedList } from '../../../packages/i18n/index.js';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 import type { SetNotice } from './notifications';
 import type { ApprovalRequest, ContextAttachment, ContextAttachmentValidation, Session, Workspace } from '$lib/types';
 import { withSessionReferenceContext } from './session-references';
 import { createAgentFacade } from './agent-facade';
-import { toErrorMessage } from './error-utils';
+import { toErrorText, LocalizedError } from './error-utils';
 import { upsertSession } from './session-transitions';
 
 export type MessageControllerContext = {
@@ -40,7 +42,7 @@ export type MessageControllerContext = {
   refreshAttachments: (sessionId: string) => Promise<void>;
   refreshTurnChangeSet?: (sessionId: string) => Promise<void>;
   setBusy: (value: boolean) => void;
-  setErrorMessage: (value: string | null) => void;
+  setErrorMessage: (value: LocalizedText | null) => void;
   setNotice: SetNotice;
 };
 
@@ -51,7 +53,7 @@ export function createMessageController(context: MessageControllerContext) {
     const attachments = context.getAttachments().filter((attachment) => attachment.sessionId === sessionId && attachment.turnId === null && attachment.mediaType !== 'application/vnd.aibo.session-reference+json');
     const request = attachments.length === 0 ? input : appendFileReferences(input, attachments);
     if (new TextEncoder().encode(request).length > 200_000 || new TextEncoder().encode(JSON.stringify({ text: request })).length > 240_000) {
-      throw new Error('消息与引用上下文超过发送上限，请缩短消息或减少引用。');
+      throw new LocalizedError('message.tooLarge');
     }
     return request;
   }
@@ -81,25 +83,25 @@ export function createMessageController(context: MessageControllerContext) {
     if (!input && !context.getAttachments().some(item => item.sessionId === context.getSelectedSession()?.id && item.turnId === null && item.mediaType.startsWith('image/') && item.sendStrategy === 'inline')) return;
     const workspace = context.getSelectedWorkspace();
     if (!workspace) {
-      context.setErrorMessage('请先选择一个工作区。');
+      context.setErrorMessage(localizedMessage('app.selectWorkspaceFirst'));
       return;
     }
     const selectedSession = context.getSelectedSession();
     if (selectedSession?.state === 'starting') {
-      context.setNotice('会话正在初始化，草稿已保留，请就绪后发送。', 'info');
+      context.setNotice(localizedMessage('app.initializingDraft'), 'info');
       return;
     }
     const draftSessionId = selectedSession?.id ?? null;
     if (selectedSession?.archived) {
-      context.setErrorMessage('已归档的会话不能继续发送消息，请先取消归档或创建分支。');
+      context.setErrorMessage(localizedMessage('message.archived'));
       return;
     }
     if (context.getSelectedSessionArchiving()) {
-      context.setErrorMessage('该会话正在归档，请稍候。');
+      context.setErrorMessage(localizedMessage('message.archiving'));
       return;
     }
     if (!context.getDesktop()) {
-      context.setNotice('当前是 Web 预览；请在 Tauri 桌面模式中发送真实 Codex 请求。', 'warning');
+      context.setNotice(localizedMessage('message.desktopOnly'), 'warning');
       return;
     }
 
@@ -110,17 +112,17 @@ export function createMessageController(context: MessageControllerContext) {
 
     let requestInput: string;
     try { requestInput = withAttachmentContext(input, draftSessionId); }
-    catch (error) { context.setErrorMessage(toErrorMessage(error)); return; }
+    catch (error) { context.setErrorMessage(toErrorText(error)); return; }
     if (selectedSession) {
       const unsupported = unsupportedAttachmentPaths();
       if (unsupported.length > 0) {
-        context.setErrorMessage(`当前 Agent 不支持图片上下文：${unsupported.join('、')}`);
+        context.setErrorMessage(localizedMessage('message.unsupportedImages', {paths: localizedList(unsupported)}));
         return;
       }
       const validation = await context.api.validateSessionAttachments(selectedSession.id);
       const invalid = validation.filter((item) => item.status !== 'ready');
       if (invalid.length > 0) {
-        context.setErrorMessage(`附件已变化或不可用：${invalid.map((item) => item.path).join('、')}`);
+        context.setErrorMessage(localizedMessage('message.invalidAttachments', {paths: localizedList(invalid.map(item => item.path))}));
         return;
       }
     }
@@ -146,11 +148,11 @@ export function createMessageController(context: MessageControllerContext) {
     } catch (error) {
       if (acceptedSession) {
         if (context.getSelectedSession()?.id === acceptedSession.id) {
-          context.setNotice('消息已发送，但会话信息刷新失败，请刷新后查看。', 'warning');
+          context.setNotice(localizedMessage('message.refreshFailed'), 'warning');
         }
       } else {
         if (draftSessionId) context.setComposerDraftStatus?.(draftSessionId, true);
-        context.setErrorMessage(toErrorMessage(error));
+        context.setErrorMessage(toErrorText(error));
       }
     } finally {
       context.setPromptInFlight(false);
@@ -183,7 +185,7 @@ export function createMessageController(context: MessageControllerContext) {
       await context.refreshTimeline(session.id);
       await context.refreshTurnChangeSet?.(session.id);
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }
@@ -198,16 +200,16 @@ export function createMessageController(context: MessageControllerContext) {
     if (mode === 'steer' && context.getSessionRunning() && !session.capabilities.includes('queue.steer')) return;
     let requestInput: string;
     try { requestInput = withAttachmentContext(input, session.id); }
-    catch (error) { context.setErrorMessage(toErrorMessage(error)); return; }
+    catch (error) { context.setErrorMessage(toErrorText(error)); return; }
     const unsupported = unsupportedAttachmentPaths();
     if (unsupported.length > 0) {
-      context.setErrorMessage(`当前 Agent 不支持图片上下文：${unsupported.join('、')}`);
+      context.setErrorMessage(localizedMessage('message.unsupportedImages', {paths: localizedList(unsupported)}));
       return;
     }
     const validation = await context.api.validateSessionAttachments(session.id);
     const invalid = validation.filter((item) => item.status !== 'ready');
     if (invalid.length > 0) {
-      context.setErrorMessage(`附件已变化或不可用：${invalid.map((item) => item.path).join('、')}`);
+      context.setErrorMessage(localizedMessage('message.invalidAttachments', {paths: localizedList(invalid.map(item => item.path))}));
       return;
     }
     context.setBusy(true);
@@ -221,8 +223,8 @@ export function createMessageController(context: MessageControllerContext) {
       await Promise.all([context.refreshTimeline(session.id), context.refreshAttachments(session.id)]);
     } catch (error) {
       if (accepted) {
-        if (context.getSelectedSession()?.id === session.id) context.setNotice('消息已加入队列，但会话信息刷新失败，请刷新后查看。', 'warning');
-      } else context.setErrorMessage(toErrorMessage(error));
+        if (context.getSelectedSession()?.id === session.id) context.setNotice(localizedMessage('message.queueRefreshFailed'), 'warning');
+      } else context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }

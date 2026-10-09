@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 const server = await createServer({ server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false, watch: null }, plugins: [{
   name: 'cursor-command-menu-fixture', enforce: 'pre', transform(code, id) {
     if (!id.endsWith('/src/App.svelte')) return;
-    const commandCall = 'return visibleSessionCommands(sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.sessionControls : []), agentCommands);';
+    const commandCall = 'return visibleSessionCommands(sessionBuiltinCommands(selectedSession, executionProfile?.sessionId === selectedSession.id ? executionProfile.sessionControls : [], $locale), agentCommands);';
     assert.ok(code.includes(commandCall), 'App command projection fixture anchor changed');
     return code.replace('workspaces = previewWorkspaces;', `workspaces = previewWorkspaces;
       workspaceSessionMap = { 'preview-workspace': [{

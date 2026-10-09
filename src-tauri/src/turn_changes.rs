@@ -69,7 +69,9 @@ pub struct TurnChangeSet {
     pub(crate) verification: Vec<VerificationRef>,
     pub(crate) attribution: String,
     pub(crate) capture_status: String,
-    pub(crate) capture_error: Option<String>,
+    pub(crate) capture_error: Option<String>, // Original diagnostic.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_capture_error: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,6 +90,8 @@ pub struct CheckpointFile {
     pub(crate) baseline_dirty: bool,
     pub(crate) available: bool,
     pub(crate) reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_reason: Option<serde_json::Value>,
     pub(crate) created_at: String,
 }
 
@@ -103,6 +107,10 @@ pub struct RestoreOperation {
     pub(crate) restored: Vec<String>,
     pub(crate) conflicts: Vec<String>,
     pub(crate) unsupported: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_conflicts: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_unsupported: Option<Vec<serde_json::Value>>,
     pub(crate) created_at: String,
 }
 
@@ -114,6 +122,10 @@ pub struct TurnFileDiff {
     pub(crate) diff: String,
     pub(crate) hunks: Vec<TurnDiffHunk>,
     pub(crate) reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_reason: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) localized_suffix: Option<serde_json::Value>,
 }
 
 pub(crate) struct TurnDiffSources {
@@ -126,8 +138,8 @@ pub(crate) struct TurnDiffSources {
 
 pub(crate) enum TurnDiffSourceError {
     NotChanged,
-    Unavailable(String),
-    UnsafePath(String),
+    Unavailable(crate::ui_i18n::HostMessage),
+    UnsafePath(crate::ui_i18n::HostMessage),
     Failed(String),
 }
 
@@ -227,7 +239,7 @@ async fn load_sources(
         .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?;
     if matches!(purpose, SourceUse::Apply { .. }) && change_kind == "renamed" {
         return Err(TurnDiffSourceError::Unavailable(
-            "重命名文件请使用“恢复本轮变更”，以便同时恢复源路径".to_owned(),
+            crate::ui_i18n::HostMessage::new("native.turn.renamed", serde_json::json!({})),
         ));
     }
     let baseline_path = previous_path.as_deref().unwrap_or(path);
@@ -257,16 +269,16 @@ async fn load_sources(
         .map_err(|error| TurnDiffSourceError::Failed(error.to_string()))?;
     if matches!(purpose, SourceUse::Apply { .. }) && attribution == "unknown" {
         return Err(TurnDiffSourceError::Unavailable(
-            "本轮变更归属未知，禁止应用 Git 操作".to_owned(),
+            crate::ui_i18n::HostMessage::new("native.turn.unknownAttribution", serde_json::json!({})),
         ));
     }
     if (baseline_exists && baseline_hash.is_none()) || (result_exists && result_hash.is_none()) {
         return Err(TurnDiffSourceError::Unavailable(
-            "文件过大或无法安全哈希".to_owned(),
+            crate::ui_i18n::HostMessage::new("native.turn.unsafeHash", serde_json::json!({})),
         ));
     }
     let root = Path::new(workspace_path);
-    let target = crate::workspace_guard::canonicalize_target(root, Path::new(path))
+    let target = crate::workspace_guard::canonicalize_target_message(root, Path::new(path))
         .map_err(TurnDiffSourceError::UnsafePath)?;
     let baseline = if !baseline_exists {
         Vec::new()
@@ -283,7 +295,7 @@ async fn load_sources(
                 .map_err(|error| TurnDiffSourceError::Failed(format!("read checkpoint: {error}")))?
         } else if baseline_dirty {
             return Err(TurnDiffSourceError::Unavailable(
-                "本轮前已有修改，且 baseline checkpoint 不可用".to_owned(),
+                crate::ui_i18n::HostMessage::new("native.turn.dirtyCheckpointUnavailable", serde_json::json!({})),
             ));
         } else if let Some(head) = baseline_head.as_deref() {
             let command = crate::workspace_git_approval::read_command(
@@ -303,13 +315,13 @@ async fn load_sources(
                 || output.stderr.len() > 10 * 1024 * 1024
             {
                 return Err(TurnDiffSourceError::Unavailable(
-                    "Git baseline 不可用".to_owned(),
+                    crate::ui_i18n::HostMessage::new("native.turn.gitBaselineUnavailable", serde_json::json!({})),
                 ));
             }
             output.stdout
         } else {
             return Err(TurnDiffSourceError::Unavailable(
-                "缺少 baseline checkpoint".to_owned(),
+                crate::ui_i18n::HostMessage::new("native.turn.checkpointMissing", serde_json::json!({})),
             ));
         }
     };
@@ -319,7 +331,7 @@ async fn load_sources(
         let checkpoint_hash = format!("sha256:{:x}", digest.finalize());
         if baseline_hash.as_deref() != Some(checkpoint_hash.as_str()) {
             return Err(TurnDiffSourceError::Unavailable(
-                "baseline checkpoint 校验失败，拒绝还原".to_owned(),
+                crate::ui_i18n::HostMessage::new("native.turn.checkpointInvalid", serde_json::json!({})),
             ));
         }
     }
@@ -334,21 +346,21 @@ async fn load_sources(
         };
         if result_hash.as_deref() != Some(current_hash.as_str()) {
             return Err(TurnDiffSourceError::Unavailable(
-                "当前文件已在本轮后发生变化，拒绝应用 hunk".to_owned(),
+                crate::ui_i18n::HostMessage::new("native.turn.laterChanges", serde_json::json!({})),
             ));
         }
         bytes
     } else {
         if target.exists() {
             return Err(TurnDiffSourceError::Unavailable(
-                "当前文件已在本轮后重新出现，拒绝覆盖后续修改".to_owned(),
+                crate::ui_i18n::HostMessage::new("native.turn.fileReappeared", serde_json::json!({})),
             ));
         }
         Vec::new()
     };
     if baseline.len() > 10 * 1024 * 1024 || result.len() > 10 * 1024 * 1024 {
         return Err(TurnDiffSourceError::Unavailable(
-            "文件超过 inline diff 限额".to_owned(),
+            crate::ui_i18n::HostMessage::new("native.turn.inlineLimit", serde_json::json!({})),
         ));
     }
     if matches!(
@@ -357,7 +369,7 @@ async fn load_sources(
     ) && (std::str::from_utf8(&baseline).is_err() || std::str::from_utf8(&result).is_err())
     {
         return Err(TurnDiffSourceError::Unavailable(
-            "二进制文件暂不支持 hunk 操作".to_owned(),
+            crate::ui_i18n::HostMessage::new("native.turn.binary", serde_json::json!({})),
         ));
     }
     Ok(TurnDiffSources {
@@ -379,7 +391,7 @@ pub(crate) async fn get_turn_change_set(
         "SELECT id, schema_version, workspace_id, session_id, turn_id,
                 baseline_head, baseline_dirty, baseline_captured_at,
                 result_head, result_dirty, result_captured_at,
-                attribution, capture_status, capture_error
+                attribution, capture_status, capture_error, localized_capture_error_json
          FROM turn_change_sets
          WHERE session_id = ? AND (? IS NULL OR turn_id = ?)
          ORDER BY updated_at DESC LIMIT 1",
@@ -482,6 +494,8 @@ pub(crate) async fn get_turn_change_set(
         attribution: row.try_get("attribution")?,
         capture_status: row.try_get("capture_status")?,
         capture_error: row.try_get("capture_error")?,
+        localized_capture_error: row.try_get::<Option<String>,_>("localized_capture_error_json")?
+            .and_then(|text| serde_json::from_str(&text).ok()),
     }))
 }
 
@@ -527,6 +541,7 @@ pub(crate) async fn list_turn_checkpoints(
                 } else {
                     Some("baseline 文件过大、不可哈希或 checkpoint 文件不可用".to_owned())
                 },
+                localized_reason: (!available).then(||crate::ui_i18n::display_descriptor("native.checkpoint.unavailable",serde_json::json!({}))),
                 created_at: row.try_get("created_at")?,
             })
         })
@@ -542,7 +557,7 @@ pub(crate) async fn list_restore_operations(
     let session = session_by_id(db, &session_id).await?;
     let rows = sqlx::query(
         "SELECT schema_version, id, workspace_id, session_id, turn_id, status,
-                restored_json, conflicts_json, unsupported_json, created_at
+                restored_json, conflicts_json, unsupported_json, localized_conflicts_json, localized_unsupported_json, created_at
          FROM restore_operations
          WHERE session_id = ? AND (? IS NULL OR turn_id = ?)
          ORDER BY created_at DESC, id DESC",
@@ -583,6 +598,8 @@ pub(crate) async fn list_restore_operations(
                 restored,
                 conflicts,
                 unsupported,
+                localized_conflicts: row.try_get::<Option<String>, _>("localized_conflicts_json")?.and_then(|value| serde_json::from_str(&value).ok()),
+                localized_unsupported: row.try_get::<Option<String>, _>("localized_unsupported_json")?.and_then(|value| serde_json::from_str(&value).ok()),
                 created_at: row.try_get("created_at")?,
             })
         })
@@ -619,7 +636,7 @@ pub(crate) async fn get_turn_file_diff(
             ))
         }
         Err(TurnDiffSourceError::UnsafePath(reason)) => {
-            return Err(CoreError::InvalidWorkspacePath(reason))
+            return Err(crate::ui_i18n::invalid_path_message(reason))
         }
         Err(TurnDiffSourceError::Failed(reason)) => return Err(CoreError::Database(reason)),
         Err(TurnDiffSourceError::Unavailable(reason)) => {
@@ -628,13 +645,16 @@ pub(crate) async fn get_turn_file_diff(
                 available: false,
                 diff: String::new(),
                 hunks: Vec::new(),
-                reason: Some(reason),
+                reason: Some(reason.diagnostic),
+                localized_reason: reason.localized,
+                localized_suffix: None,
             })
         }
     };
     let mut diff = run_unified_text_diff(&path, &sources.baseline, &sources.result)
         .map_err(CoreError::Database)?;
-    if diff.len() > 200_000 {
+    let truncated = diff.len() > 200_000;
+    if truncated {
         diff = crate::artifact::truncate_utf8(&diff, 200_000, "\n… diff 已截断");
     }
     Ok(TurnFileDiff {
@@ -643,5 +663,43 @@ pub(crate) async fn get_turn_file_diff(
         hunks: parse_unified_hunks(&diff),
         diff,
         reason: None,
+        localized_reason: None,
+        localized_suffix: truncated.then(||crate::ui_i18n::display_descriptor("native.diff.truncatedSuffix", serde_json::json!({}))),
     })
+}
+
+#[cfg(test)]
+mod checkpoint_display_tests {
+    use super::*;
+    #[tokio::test]
+    async fn checkpoint_display_preserves_metadata_availability_and_reopen() {
+        let root = tempfile::tempdir().unwrap(); let path = root.path().join("host.db");
+        let db = crate::open_database(&path).await.unwrap();
+        sqlx::raw_sql("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES ('w','/missing','Project',0,'now','now');
+            INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES ('s','w','disabled','Session','closed','now','now');
+            INSERT INTO turns(id,session_id,external_turn_id,status,started_at) VALUES ('t','s','native','completed','now');")
+            .execute(&db).await.unwrap();
+        for (id, exists, storage) in [("missing",true,None),("stored",true,Some("/raw/{reason}")),("absent",false,None)] {
+            sqlx::query("INSERT INTO checkpoints(id,schema_version,workspace_id,session_id,turn_id,path,file_exists,content_hash,size,storage_path,baseline_dirty,created_at) VALUES (?,'aibo.checkpoint/v1','w','s','t',?,?,'original-hash',7,?,1,'now')")
+                .bind(id).bind(format!("原文{{reason}}/{id}")).bind(exists).bind(storage).execute(&db).await.unwrap();
+        }
+        db.close().await;
+        let db = crate::open_database(&path).await.unwrap();
+        let items = list_turn_checkpoints("s".into(),Some("t".into()),&db).await.unwrap();
+        assert_eq!(items.len(),3);
+        for item in items {
+            assert_eq!(item.workspace_id,"w");assert_eq!(item.session_id,"s");assert_eq!(item.turn_id,"t");
+            assert_eq!(item.path,format!("原文{{reason}}/{}",item.id));assert!(item.baseline_dirty);
+            assert_eq!(item.content_hash.as_deref(),Some("original-hash"));assert_eq!(item.size,Some(7));
+            if item.id == "missing" {
+                assert!(!item.available);assert_eq!(item.reason.as_deref(),Some("baseline 文件过大、不可哈希或 checkpoint 文件不可用"));
+                assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,item.localized_reason.as_ref().unwrap()),"The baseline file is too large, cannot be hashed, or its checkpoint file is unavailable.");
+                assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,item.localized_reason.as_ref().unwrap()),item.reason.unwrap());
+            } else {
+                assert!(item.available);assert!(item.reason.is_none());
+                assert!(serde_json::to_value(item).unwrap().get("localizedReason").is_none());
+            }
+        }
+        db.close().await;
+    }
 }

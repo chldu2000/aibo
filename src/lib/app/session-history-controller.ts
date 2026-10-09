@@ -1,9 +1,14 @@
+import { timelinePresentation } from './turn-change-presentation.ts';
+import type { Locale, LocalizedText } from '../../../packages/i18n/index.js';
 import type { Session, SessionHistoryCursor, SessionHistoryPage } from '../types';
-import { toErrorMessage } from './error-utils';
+import { toErrorText, LocalizedError } from './error-utils';
 export type SessionHistoryState = {
   sessions: Session[]; selectedId: string | null; page: SessionHistoryPage | null;
-  targetMessageId?: string | null; loading: boolean; error: string | null; pageNumber: number;
+  targetMessageId?: string | null; loading: boolean; error: LocalizedText | null; pageNumber: number;
 };
+export function sessionHistoryPresentation(state: SessionHistoryState, locale: Locale): SessionHistoryState {
+  return { ...state, page: state.page ? { ...state.page, items: timelinePresentation(state.page.items, locale) } : null };
+}
 export const emptySessionHistory = (): SessionHistoryState => ({ sessions: [], selectedId: null, page: null, loading: false, error: null, pageNumber: 1 });
 export function createSessionHistoryController(ports: {
   list(workspaceId: string): Promise<Session[]>;
@@ -23,9 +28,9 @@ export function createSessionHistoryController(ports: {
         ? await ports.readAround(view.workspaceId, id, view.state.targetMessageId)
         : await ports.read(view.workspaceId, id, view.before);
       if (current !== view || view.revision !== revision) return;
-      if (page.schema !== 'aibo.session-history-page/v1' || page.source !== 'persisted-core' || page.session.workspaceId !== view.workspaceId || page.session.id !== id || page.items.some(item => item.sessionId !== id)) throw Error('历史响应与当前会话不匹配');
+      if (page.schema !== 'aibo.session-history-page/v1' || page.source !== 'persisted-core' || page.session.workspaceId !== view.workspaceId || page.session.id !== id || page.items.some(item => item.sessionId !== id)) throw new LocalizedError('error.sessionHistoryIdentity');
       view.state = { ...view.state, page, sessions: view.state.sessions.map(session => session.id === id ? page.session : session) };
-    } catch (error) { if (current === view && view.revision === revision) view.state.error = toErrorMessage(error); }
+    } catch (error) { if (current === view && view.revision === revision) view.state.error = toErrorText(error); }
     finally { if (current === view && view.revision === revision) { view.state.loading = false; publish(view); } }
   }
   return {
@@ -38,7 +43,7 @@ export function createSessionHistoryController(ports: {
         view.state.sessions = sessions.filter(session => session.workspaceId === workspaceId);
         view.state.selectedId = view.state.sessions.find(session => session.id === preferredId)?.id ?? view.state.sessions[0]?.id ?? null;
         view.state.loading = false; publish(view); await read(view);
-      } catch (error) { if (current === view) { view.state.loading = false; view.state.error = toErrorMessage(error); publish(view); } }
+      } catch (error) { if (current === view) { view.state.loading = false; view.state.error = toErrorText(error); publish(view); } }
     },
     async select(id: string): Promise<void> {
       const view = current; if (!view || !view.state.sessions.some(session => session.id === id)) return;

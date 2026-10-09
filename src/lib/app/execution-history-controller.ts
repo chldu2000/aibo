@@ -1,26 +1,37 @@
+import {projectTaskOutput} from './project-task-presentation.ts';
 import type { ExecutionCursor, ProjectActionRun, WorkspaceWriteRun } from '../types';
-import { toErrorMessage } from './error-utils';
+import { toErrorText } from './error-utils.ts';
+import { translate, localizedMessage } from '../../../packages/i18n/index.js';
+import type { Locale, MessageKey, LocalizedText } from '../../../packages/i18n/index.js';
 
 export type ExecutionEntry = {
-  key: string; id: string; workspaceId: string; kind: 'task' | 'git'; title: string;
+  key: string; id: string; workspaceId: string; kind: 'task' | 'git'; title: LocalizedText;
   status: string; startedAt: string; completedAt: string | null; output: string;
-  input?: string; caller?: string | null; stopRequested: boolean;
+  localizedOutput?: unknown; input?: string; caller?: string | null; stopRequested: boolean;
 };
-export type ExecutionHistoryState = { entries: ExecutionEntry[]; loading: boolean; errors: string[]; stopping: string[]; page: number; hasOlder: boolean; hasNewer: boolean };
+export type ExecutionHistoryState = { entries: ExecutionEntry[]; loading: boolean; errors: LocalizedText[]; stopping: string[]; page: number; hasOlder: boolean; hasNewer: boolean };
 export const emptyExecutionHistory = (): ExecutionHistoryState => ({ entries: [], loading: false, errors: [], stopping: [], page: 1, hasOlder: false, hasNewer: false });
 export const executionActive = (entry: ExecutionEntry) => ['awaiting_approval', 'running'].includes(entry.status);
-export function executionStatus(entry: ExecutionEntry): string {
-  if (executionActive(entry) && entry.stopRequested) return '已请求停止';
-  return ({ awaiting_approval: '等待宿主批准', running: '执行中', rejected: '未执行', completed: '已结束', failed: '执行失败', timed_out: '执行超时', outcome_unknown: '结果未知，请核对实际更改' } as Record<string, string>)[entry.status] ?? entry.status;
+export function executionStatus(entry: ExecutionEntry, locale: Locale = 'zh-CN'): string {
+  if (executionActive(entry) && entry.stopRequested) return translate(locale, 'execution.status.stopRequested');
+  const statusKeys: Record<string, MessageKey> = {
+    awaiting_approval: 'execution.status.awaiting_approval', running: 'execution.status.running',
+    rejected: 'execution.status.rejected', completed: 'execution.status.completed', failed: 'execution.status.failed',
+    timed_out: 'execution.status.timed_out', outcome_unknown: 'execution.status.outcome_unknown',
+  };
+  return statusKeys[entry.status] ? translate(locale, statusKeys[entry.status]) : entry.status;
+}
+export function executionOutput(entry: ExecutionEntry, locale: Locale): string {
+  return entry.kind === 'task' ? projectTaskOutput(entry.output,entry.localizedOutput,locale) : entry.output;
 }
 export function canStopExecution(entry: ExecutionEntry, windowId: string): boolean {
   return executionActive(entry) && !entry.stopRequested && (entry.kind === 'task' || entry.caller === windowId);
 }
 function taskEntry(run: ProjectActionRun): ExecutionEntry {
-  return { key: `task:${run.id}`, id: run.id, workspaceId: run.workspaceId, kind: 'task', title: run.actionName ?? run.actionId, status: run.status, startedAt: run.startedAt, completedAt: run.completedAt, output: run.output, stopRequested: false };
+  return { key: `task:${run.id}`, id: run.id, workspaceId: run.workspaceId, kind: 'task', title: run.actionName ?? run.actionId, status: run.status, startedAt: run.startedAt, completedAt: run.completedAt, output: run.output, localizedOutput: run.localizedOutput, stopRequested: false };
 }
 function gitEntry(run: WorkspaceWriteRun): ExecutionEntry {
-  const names: Record<string, string> = { 'core.turn-restore': '整轮恢复', 'git.file-revert': '整文件撤销', 'git.hunk': '局部修改', 'git.index': '文件暂存', 'git.index-all': '整体暂存', 'git.commit': '提交', 'git.checkout': '切换分支', 'git.create-branch': '创建分支', 'git.sync': '远程同步', 'git.stash-apply': '应用暂存记录', 'git.stash-push': '保存暂存记录' };
+  const names: Record<string, LocalizedText> = { 'core.turn-restore': localizedMessage('execution.operation.core.turn-restore'), 'git.file-revert': localizedMessage('execution.operation.git.file-revert'), 'git.hunk': localizedMessage('execution.operation.git.hunk'), 'git.index': localizedMessage('execution.operation.git.index'), 'git.index-all': localizedMessage('execution.operation.git.index-all'), 'git.commit': localizedMessage('execution.operation.git.commit'), 'git.checkout': localizedMessage('execution.operation.git.checkout'), 'git.create-branch': localizedMessage('execution.operation.git.create-branch'), 'git.sync': localizedMessage('execution.operation.git.sync'), 'git.stash-apply': localizedMessage('execution.operation.git.stash-apply'), 'git.stash-push': localizedMessage('execution.operation.git.stash-push') };
   return { key: `git:${run.id}`, id: run.id, workspaceId: run.workspaceId, kind: 'git', title: names[run.operation] ?? run.operation, status: run.status, startedAt: run.startedAt, completedAt: run.completedAt, caller: run.callerWindow, input: JSON.stringify(run.snapshot.input, null, 2), output: run.result ? JSON.stringify(run.result, null, 2) : '', stopRequested: !!run.cancelRequestedAt };
 }
 
@@ -51,12 +62,12 @@ export function createExecutionHistoryController(ports: {
     view.pending = (async () => {
       const results = await Promise.allSettled([ports.readTasks(view.workspaceId, view.before), ports.readWrites(view.workspaceId, view.before)]);
       if (current !== view) return;
-      const entries: ExecutionEntry[] = []; const errors: string[] = [];
+      const entries: ExecutionEntry[] = []; const errors: LocalizedText[] = [];
       const rank = (status: string) => status === 'awaiting_approval' ? 0 : status === 'running' ? 1 : 2;
       for (const [index, result] of results.entries()) {
         const kind = index === 0 ? 'task' : 'git';
         if (result.status === 'rejected') {
-          errors.push(`${kind === 'task' ? '工程任务' : '工作区写入'}记录读取失败：${toErrorMessage(result.reason)}`);
+          errors.push(localizedMessage(kind === 'task' ? 'execution.readTasksFailed' : 'execution.readWritesFailed', {error: toErrorText(result.reason)}));
           entries.push(...view.state.entries.filter(entry => entry.kind === kind));
         } else {
           const next = index === 0 ? (result.value as ProjectActionRun[]).map(taskEntry) : (result.value as WorkspaceWriteRun[]).map(gitEntry);
@@ -100,7 +111,7 @@ export function createExecutionHistoryController(ports: {
         if (current !== view) return;
         if (requested) view.state.entries = view.state.entries.map(item => item.key === key ? { ...item, stopRequested: true } : item);
       } catch (error) {
-        if (current === view) view.state.errors = [...view.state.errors, `停止请求失败：${toErrorMessage(error)}`];
+        if (current === view) view.state.errors = [...view.state.errors, localizedMessage('execution.stopFailed', {error: toErrorText(error)})];
       } finally {
         view.state.stopping = view.state.stopping.filter(item => item !== key); publish(view);
       }

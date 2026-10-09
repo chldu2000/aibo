@@ -144,7 +144,7 @@ test('workspace and session rows expose only supported item actions', async () =
   assert.doesNotMatch(sidebar, /在终端中打开|在编辑器中打开/, 'workspace rows must not expose terminal or editor actions');
   assert.doesNotMatch(sidebar, /关闭会话|onCloseSession/, 'session rows must not expose the close action');
   assert.doesNotMatch(sidebar, /onForkSession|创建分支/, 'session rows must not expose the Codex fork action');
-  for (const platformLabel of ['Finder', '文件资源管理器', '文件管理器']) {
+  for (const platformLabel of ['Finder', 'sidebar.fileExplorer', 'sidebar.fileManager']) {
     assert.match(sidebar, new RegExp(`['"]${platformLabel}['"]`), `workspace location action must support ${platformLabel}`);
   }
   assert.match(sidebar, /workspaceLocationLabel/, 'workspace location action must use its platform label');
@@ -155,8 +155,8 @@ test('Codex forks are exposed in the timeline header and completed replies', asy
     readFile(path.join(root, 'src/lib/components/app/TimelinePanel.svelte'), 'utf8'),
     readFile(path.join(root, 'src/lib/components/app/view-types.ts'), 'utf8'),
   ]);
-  assert.match(panel, /从最新完成的回复创建分支/, 'the timeline header must expose the latest-turn fork action');
-  assert.match(panel, /从此回复创建会话分支/, 'completed Codex replies must expose a fork action');
+  assert.match(panel, /\$t\('timeline.latestFork'\)/, 'the timeline header must expose the latest-turn fork action');
+  assert.match(panel, /\$t\('timeline.replyForkLabel'\)/, 'completed Codex replies must expose a fork action');
   assert.match(panel, /lastCompletedAssistantByTurn\.set\(item\.turnId, item\.id\)/, 'each turn must select only its last completed Codex reply');
   assert.match(panel, /forkBoundaryMessageIds\.has\(item\.id\)/, 'reply forks must render only at the selected turn boundary');
   assert.match(views, /'turnId'/, 'timeline view items must retain their turn boundary');
@@ -183,7 +183,7 @@ test('Pi tree navigation exposes all native summary modes', async () => {
     readFile(path.join(root, 'src/lib/api.ts'), 'utf8'),
     readFile(path.join(root, 'src-tauri/capability-plugins/pi/engine.mjs'), 'utf8'),
   ]);
-  for (const label of ['No Summary', 'Summarize', 'Summarize with custom prompt']) {
+  for (const label of ['navigation.mode.none', 'navigation.mode.default', 'navigation.mode.custom']) {
     assert.match(overlays, new RegExp(label), `Pi navigation must expose ${label}`);
   }
   assert.match(api, /summarize: options\.mode !== 'none'/, 'summary selection must reach the native command');
@@ -198,7 +198,7 @@ test('Branch timelines group ordinary system nodes without folding summaries', a
   assert.match(utilities, /entryType !== 'branch_summary'/, 'branch summaries must remain standalone');
   assert.match(utilities, /entryType !== 'compaction'/, 'compaction summaries must remain standalone');
   assert.match(panel, /groupTimelineItems\(visibleTimeline, session\?\.capabilities\.includes\('session.timeline'\) \?\? false\)/, 'system grouping follows negotiated branch timeline semantics');
-  assert.match(panel, /系统消息 · \{renderItem\.items\.length\} 项/, 'the timeline must render a collapsible system group');
+  assert.match(panel, /\$t\('timeline.systemCount', \{ count: renderItem\.items\.length \}\)/, 'the timeline must render a collapsible system group');
 });
 
 test('visible Git panel refreshes external repository changes promptly', async () => {
@@ -310,9 +310,9 @@ test('composer goals use a semantic control implemented by every built-in kit', 
     assert.match(registration, /\n  GoalBar,/);
     const component = await readFile(path.join(root, `src/lib/ui-kit/kits/shared/GoalBar.svelte`), 'utf8');
     assert.match(component, /aria-expanded/);
-    assert.match(component, /aria-label="清除目标"/);
-    assert.match(component, /aria-label="暂停目标"/);
-    assert.match(component, /aria-label="恢复目标"/);
+    assert.match(component, /aria-label=\{\$t\('goal.clear'\)\}/);
+    assert.match(component, /aria-label=\{\$t\('goal.pause'\)\}/);
+    assert.match(component, /aria-label=\{\$t\('goal.resume'\)\}/);
   }
 });
 

@@ -1,3 +1,4 @@
+import { LocalizedError } from './error-utils.ts';
 export type ViewScope = { workspaceId: string; contributionId: string };
 export type ViewState = { selection: string | null; detail: string | null; offset: number; layout: 'central' | 'sidebar' };
 export type ViewStateStore = { read(scope: ViewScope): ViewState; write(scope: ViewScope, state: ViewState): void };
@@ -28,7 +29,7 @@ export function createViewStateStore(storage?: StoragePort, windowId = 'main', n
       return empty();
     },
     write(scope, state) {
-      if (!valid(state)) throw new Error('invalid presentation state');
+      if (!valid(state)) throw new LocalizedError('presentation.invalidState', {}, 'invalid presentation state');
       const record = { state: structuredClone(state), savedAt: now() };
       memory.set(key(scope), record);
       try { storage?.setItem(key(scope), JSON.stringify(record)); } catch { /* Keep working in memory. */ }

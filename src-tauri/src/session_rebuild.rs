@@ -42,11 +42,11 @@ pub(crate) async fn plan(db: &SqlitePool, session: &str) -> Result<Option<Plan>,
 }
 
 // Called only in the successful replacement transaction. Failure history remains untouched.
-pub(crate) async fn restore_draft(tx: &mut SqliteConnection, session: &str, plan: &Plan) -> Result<(), String> {
+pub(crate) async fn restore_draft(tx: &mut SqliteConnection, session: &str, plan: &Plan) -> Result<(), crate::ui_i18n::HostMessage> {
     let (Some(turn), Some(text)) = (&plan.failed_turn, &plan.text) else { return Ok(()); };
     let current: Option<String> = sqlx::query_scalar("SELECT text FROM composer_drafts WHERE session_id=?")
         .bind(session).fetch_optional(&mut *tx).await.map_err(error)?;
-    if current != plan.draft { return Err("草稿已变化，请重新查看安装影响".into()); }
+    if current != plan.draft { return Err(crate::ui_i18n::HostMessage::new("native.plugin.draftChanged",serde_json::json!({}))); }
     sqlx::query("INSERT INTO composer_drafts(session_id,text,send_failed,updated_at) VALUES(?,?,1,?) ON CONFLICT(session_id) DO UPDATE SET text=excluded.text,send_failed=1,updated_at=excluded.updated_at")
         .bind(session).bind(text).bind(crate::now_iso()).execute(&mut *tx).await.map_err(error)?;
     let attachments: Vec<String> = sqlx::query_scalar("SELECT id FROM attachments WHERE session_id=? AND turn_id=?")

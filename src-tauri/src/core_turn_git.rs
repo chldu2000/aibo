@@ -7,7 +7,7 @@ use tokio::io::AsyncWriteExt;
 
 fn validate_path(path: &str) -> Result<(), CoreError> {
     if path.is_empty() || Path::new(path).components().any(|part| !matches!(part, std::path::Component::Normal(_))) {
-        return Err(CoreError::InvalidWorkspacePath("turn Git path must be workspace-relative".into()));
+        return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.turn.pathRelative", serde_json::json!({}), "turn Git path must be workspace-relative")));
     }
     Ok(())
 }
@@ -18,10 +18,10 @@ pub(crate) async fn apply_file(
 ) -> Result<GitFileActionResult, CoreError> {
     validate_path(path)?;
     if !matches!(action, "stage" | "unstage" | "revert") {
-        return Err(CoreError::InvalidWorkspacePath("unsupported Git file action".into()));
+        return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.turn.fileActionUnsupported", serde_json::json!({}), "unsupported Git file action")));
     }
     if action == "revert" && turn_id.is_none() {
-        return Err(CoreError::InvalidWorkspacePath("整文件还原需要明确的本轮变更记录".into()));
+        return Err(crate::ui_i18n::invalid_path_error("native.turn.restoreTurnRequired", serde_json::json!({})));
     }
     let session = crate::session_by_id(db, session_id).await?;
     let workspace = crate::workspace_by_id(db, &session.workspace_id).await?;
@@ -32,27 +32,27 @@ pub(crate) async fn apply_file(
         if action != "revert" {
             return crate::workspace_git::apply_git_index_action(&workspace.path, path, action, Some(cancel)).await;
         }
-        let result = |applied, message: String| GitFileActionResult { path: path.into(), action: action.into(), applied, message };
+        let result = |applied, message: crate::ui_i18n::HostMessage| GitFileActionResult { path: path.into(), action: action.into(), applied, message: message.diagnostic, localized_message: message.localized };
         let sources = match crate::turn_changes::load_turn_diff_sources(db, data_dir, &workspace.path, session_id, turn_id.unwrap(), path, false).await {
             Ok(sources) => sources,
-            Err(TurnDiffSourceError::NotChanged) => return Ok(result(false, "该文件不在本轮变更记录中".into())),
+            Err(TurnDiffSourceError::NotChanged) => return Ok(result(false, crate::ui_i18n::HostMessage::new("native.turn.notChanged", serde_json::json!({})))),
             Err(TurnDiffSourceError::Unavailable(message)) => return Ok(result(false, message)),
-            Err(TurnDiffSourceError::UnsafePath(message)) => return Err(CoreError::InvalidWorkspacePath(message)),
+            Err(TurnDiffSourceError::UnsafePath(message)) => return Err(crate::ui_i18n::invalid_path_message(message)),
             Err(TurnDiffSourceError::Failed(message)) => return Err(CoreError::Database(message)),
         };
         if sources.baseline_dirty {
-            return Ok(result(false, "本轮前已有修改，禁止整文件还原；请审阅后处理".into()));
+            return Ok(result(false, crate::ui_i18n::HostMessage::new("native.turn.dirtyFileRestore", serde_json::json!({}))));
         }
         let git = crate::workspace_git::GitOperation::new(&workspace.path).cancellable(cancel.clone());
         let baseline_mode = if sources.baseline_exists {
             let head: Option<String> = sqlx::query_scalar("SELECT baseline_head FROM turn_change_sets WHERE session_id=? AND turn_id=?")
                 .bind(session_id).bind(turn_id).fetch_one(db).await?;
-            let Some(head) = head else { return Ok(result(false, "缺少 Git 文件类型与权限基线，拒绝整文件还原".into())); };
+            let Some(head) = head else { return Ok(result(false, crate::ui_i18n::HostMessage::new("native.turn.modeBaselineMissing", serde_json::json!({})))); };
             let (output, message) = git.run(&["ls-tree", "--format=%(objectmode)", &head, "--", path], "inspect_restore_mode").await?;
-            if !output.success { return Ok(result(false, message)); }
+            if !output.success { return Ok(result(false, message.into())); }
             match String::from_utf8_lossy(&output.stdout).trim() {
                 "100644" => Some(0o644), "100755" => Some(0o755),
-                _ => return Ok(result(false, "Git 基线不是可恢复的普通文件，拒绝整文件还原".into())),
+                _ => return Ok(result(false, crate::ui_i18n::HostMessage::new("native.turn.modeNotRegular", serde_json::json!({})))),
             }
         } else { None };
         restore_worktree(&workspace.path, path, &sources, baseline_mode, Some(&cancel)).await?;
@@ -64,9 +64,9 @@ pub(crate) async fn apply_file(
             git.run(&["rm", "--cached", "--ignore-unmatch", "--", path], "restore_file_index").await?
         };
         if !output.success {
-            return Err(CoreError::WriteOutcomeUnknown(format!("文件 {path} 已恢复，但 Git 暂存区更新失败；请核对文件与暂存区。\n{message}")));
+            return Err(crate::ui_i18n::unknown_message(crate::ui_i18n::HostMessage::new("native.turn.indexRestoreFailed", serde_json::json!({"path":path,"error":message.display()}))));
         }
-        Ok(result(true, "已恢复到本轮开始前的文件内容并更新 Git 暂存区".into()))
+        Ok(result(true, crate::ui_i18n::HostMessage::new("native.turn.fileRestored", serde_json::json!({}))))
     }).await
 }
 
@@ -82,21 +82,24 @@ pub(crate) async fn restore_worktree(
 ) -> Result<(), CoreError> {
     let root = tokio::fs::canonicalize(workspace_path).await.map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
     let resolve = || {
-        let target = crate::workspace_guard::canonicalize_target(&root, Path::new(path)).map_err(CoreError::InvalidWorkspacePath)?;
+        let target = crate::workspace_guard::canonicalize_target_message(&root, Path::new(path)).map_err(crate::ui_i18n::invalid_path_message)?;
         if target != root.join(path) {
-            return Err(CoreError::InvalidWorkspacePath("整文件还原不支持符号链接路径".into()));
+            return Err(crate::ui_i18n::invalid_path_error("native.turn.restoreSymlink", serde_json::json!({})));
         }
         Ok(target)
     };
     let target = resolve()?;
-    let unknown = |error| CoreError::WriteOutcomeUnknown(format!("恢复文件 {path} 时出错，文件或目录可能已改变：{error}"));
-    let stopped = || CoreError::WriteReplay { code: "cancelled".into(), message: "整文件还原已在替换文件前取消".into() };
+    let unknown = |error: std::io::Error| crate::ui_i18n::unknown_message(crate::ui_i18n::HostMessage::new("native.turn.restoreWriteFailed", serde_json::json!({"path":path,"error":error.to_string()})));
+    let stopped = || {
+        let display = crate::ui_i18n::HostMessage::new("native.turn.restoreCancelled", serde_json::json!({}));
+        CoreError::Localized {error:Box::new(CoreError::WriteReplay {code:"cancelled".into(),message:display.diagnostic}),localized:display.localized.unwrap()}
+    };
     if let Some(cancel) = cancel { if cancel.is_requested().await { return Err(stopped()); } }
     // Prepare a sibling and rename it, rather than truncating a live file or writing
     // through hard links. Await each filesystem step; cancellation does not abandon
     // a blocking filesystem worker that could write after the workspace lock is freed.
     let prepared = if sources.baseline_exists {
-        let parent = target.parent().ok_or_else(|| CoreError::InvalidWorkspacePath("restore target has no parent".into()))?;
+        let parent = target.parent().ok_or_else(|| crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.turn.restoreNoParent", serde_json::json!({}), "restore target has no parent")))?;
         tokio::fs::create_dir_all(parent).await.map_err(unknown)?;
         let temporary = RestoreTemp(parent.join(format!(".aibo-restore-{}", ulid::Ulid::new())));
         let mut options = tokio::fs::OpenOptions::new(); options.write(true).create_new(true);
@@ -119,15 +122,15 @@ pub(crate) async fn restore_worktree(
         Some(temporary)
     } else { None };
     if let Some(cancel) = cancel { if cancel.is_requested().await { return Err(stopped()); } }
-    if resolve()? != target { return Err(CoreError::InvalidWorkspacePath("restore target changed".into())); }
+    if resolve()? != target { return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.turn.restoreTargetChanged", serde_json::json!({}), "restore target changed"))); }
     // Recheck after preparing the replacement. An external writer is not covered by
     // the host lock; this reduces the race but is not a filesystem compare-and-swap.
     if sources.result_exists {
         let current = crate::turn_changes::read_turn_diff_file(&target).await.map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
-        if current != sources.result { return Err(CoreError::InvalidWorkspacePath("文件已在准备恢复期间变化，拒绝覆盖".into())); }
+        if current != sources.result { return Err(crate::ui_i18n::invalid_path_error("native.turn.restoreFileChanged", serde_json::json!({}))); }
     } else {
         match tokio::fs::symlink_metadata(&target).await {
-            Ok(_) => return Err(CoreError::InvalidWorkspacePath("文件已重新出现，拒绝覆盖".into())),
+            Ok(_) => return Err(crate::ui_i18n::invalid_path_error("native.turn.restoreFileReappeared", serde_json::json!({}))),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
             Err(error) => return Err(unknown(error)),
         }
@@ -150,7 +153,7 @@ impl PatchDirectory {
             use std::os::unix::fs::DirBuilderExt;
             builder.mode(0o700);
         }
-        builder.create(&path).map_err(|error| CoreError::Database(format!("create private patch directory: {error}")))?;
+        builder.create(&path).map_err(|error| crate::ui_i18n::database_message(crate::ui_i18n::HostMessage::with_diagnostic("native.turn.patchDirectoryFailed", serde_json::json!({"error":error.to_string()}), format!("create private patch directory: {error}"))))?;
         Ok(Self(path))
     }
 }
@@ -177,7 +180,7 @@ pub(crate) async fn apply_hunk(
     path: &str, hunk_index: i64, action: &str, request: &Request,
 ) -> Result<GitHunkActionResult, CoreError> {
     if !matches!(action, "stage" | "unstage" | "revert") || hunk_index < 0 {
-        return Err(CoreError::InvalidWorkspacePath("unsupported Git hunk action or index".into()));
+        return Err(crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.turn.hunkActionUnsupported", serde_json::json!({}), "unsupported Git hunk action or index")));
     }
     // Patch targets must be relative file names. Resolve containment again after approval.
     validate_path(path)?;
@@ -186,18 +189,18 @@ pub(crate) async fn apply_hunk(
     crate::workspace_write_runs::execute_requested(db, &workspace, "git.hunk", serde_json::json!({
         "sessionId":session_id,"turnId":turn_id,"path":path,"hunkIndex":hunk_index,"action":action,
     }), request, |cancel| async {
-        let result = |applied, message: String| GitHunkActionResult {
-            path: path.into(), hunk_index, action: action.into(), applied, message,
+        let result = |applied, message: crate::ui_i18n::HostMessage| GitHunkActionResult {
+            path: path.into(), hunk_index, action: action.into(), applied, message: message.diagnostic, localized_message: message.localized,
         };
         let sources = match crate::turn_changes::load_turn_diff_sources(db, data_dir, &workspace.path, session_id, turn_id, path, true).await {
             Ok(sources) => sources,
-            Err(TurnDiffSourceError::NotChanged) => return Ok(result(false, "该文件不在本轮变更记录中".into())),
+            Err(TurnDiffSourceError::NotChanged) => return Ok(result(false, crate::ui_i18n::HostMessage::new("native.turn.notChanged", serde_json::json!({})))),
             Err(TurnDiffSourceError::Unavailable(message)) => return Ok(result(false, message)),
-            Err(TurnDiffSourceError::UnsafePath(message)) => return Err(CoreError::InvalidWorkspacePath(message)),
+            Err(TurnDiffSourceError::UnsafePath(message)) => return Err(crate::ui_i18n::invalid_path_message(message)),
             Err(TurnDiffSourceError::Failed(message)) => return Err(CoreError::Database(message)),
         };
         if sources.baseline_dirty {
-            return Ok(result(false, "本轮前已有修改，拒绝执行 hunk 级 Git 操作".into()));
+            return Ok(result(false, crate::ui_i18n::HostMessage::new("native.turn.dirtyHunk", serde_json::json!({}))));
         }
         let operation = crate::workspace_git::GitOperation::new(&workspace.path).cancellable(cancel);
         let directory = PatchDirectory::new()?;
@@ -206,20 +209,20 @@ pub(crate) async fn apply_hunk(
         tokio::fs::write(&current, &sources.result).await.map_err(|error| CoreError::Database(error.to_string()))?;
         let (diff, message) = operation.run(&[
             "diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color", "--unified=3", "--no-prefix", "--",
-            baseline.to_str().ok_or_else(|| CoreError::InvalidWorkspacePath("temporary path is not UTF-8".into()))?,
-            current.to_str().ok_or_else(|| CoreError::InvalidWorkspacePath("temporary path is not UTF-8".into()))?,
+            baseline.to_str().ok_or_else(|| crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.turn.temporaryPathUtf8", serde_json::json!({}), "temporary path is not UTF-8")))?,
+            current.to_str().ok_or_else(|| crate::ui_i18n::invalid_path_message(crate::ui_i18n::HostMessage::with_diagnostic("native.turn.temporaryPathUtf8", serde_json::json!({}), "temporary path is not UTF-8")))?,
         ], "prepare_hunk").await?;
-        if !matches!(diff.exit_code, Some(0 | 1)) { return Ok(result(false, message)); }
+        if !matches!(diff.exit_code, Some(0 | 1)) { return Ok(result(false, message.into())); }
         // The bounded runner drains excess bytes; truncated patches must never be applied.
         if diff.stdout.len() > 256 * 1024 || diff.stderr.len() > 256 * 1024 {
-            return Ok(result(false, "hunk diff 超过 256 KiB，未执行局部修改".into()));
+            return Ok(result(false, crate::ui_i18n::HostMessage::new("native.turn.hunkLimit", serde_json::json!({}))));
         }
         let normalized = crate::text_diff::normalize_unified_diff_headers(
             &String::from_utf8_lossy(&diff.stdout),
             &if sources.baseline_exists { patch_label("a", path) } else { "/dev/null".into() },
             &if sources.result_exists { patch_label("b", path) } else { "/dev/null".into() },
         );
-        let patch = crate::text_diff::select_unified_hunk(&normalized, hunk_index as usize).map_err(CoreError::Database)?;
+        let patch = crate::text_diff::select_unified_hunk(&normalized, hunk_index as usize).map_err(crate::ui_i18n::database_message)?;
         let patch_path = directory.0.join("selected.patch");
         tokio::fs::write(&patch_path, patch).await.map_err(|error| CoreError::Database(error.to_string()))?;
         let mut args = vec!["apply", "--check", "--whitespace=nowarn"];
@@ -227,10 +230,10 @@ pub(crate) async fn apply_hunk(
         if matches!(action, "unstage" | "revert") { args.push("--reverse"); }
         args.push("--"); args.push(patch_path.to_str().unwrap());
         let (check, message) = operation.run(&args, "check_hunk").await?;
-        if !check.success { return Ok(result(false, message)); }
+        if !check.success { return Ok(result(false, message.into())); }
         args.remove(1);
         let (output, message) = operation.run(&args, "apply_hunk").await?;
-        Ok(result(output.success, message))
+        Ok(result(output.success, message.into()))
     }).await
 }
 
@@ -296,6 +299,75 @@ mod tests {
         })
     }
 
+    fn check_display(error: &CoreError, code: &str, diagnostic: &str, english: &str) {
+        let payload = serde_json::to_value(error).unwrap();
+        assert_eq!(payload["code"],code);
+        assert_eq!(payload["message"],diagnostic);
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&payload["localized"]),english);
+        assert_ne!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]),english);
+    }
+
+    #[tokio::test]
+    async fn turn_git_validation_displays_translate_without_changing_diagnostics_or_files() {
+        let f = Fixture::new("file.txt").await;
+        let request = Request::with_confirmation("invalid".into(),"main".into(), |_|async {panic!("invalid input must not ask for approval")});
+        let cases = [
+            (apply_file(&f.db,&f.directory.0,"session","../原文{path}","revert",Some("turn"),&request).await.unwrap_err(),"invalid workspace path: turn Git path must be workspace-relative","Turn Git paths must be relative to the workspace."),
+            (apply_file(&f.db,&f.directory.0,"session","file.txt","unsupported",Some("turn"),&request).await.unwrap_err(),"invalid workspace path: unsupported Git file action","This Git file action is unsupported."),
+            (apply_file(&f.db,&f.directory.0,"session","file.txt","revert",None,&request).await.unwrap_err(),"invalid workspace path: 整文件还原需要明确的本轮变更记录","Whole-file restoration requires an explicit record of this turn’s changes."),
+            (apply_hunk(&f.db,&f.directory.0,"session","turn","file.txt",-1,"stage",&request).await.unwrap_err(),"invalid workspace path: unsupported Git hunk action or index","This Git hunk action or index is unsupported."),
+        ];
+        for (error,diagnostic,english) in cases {check_display(&error,"invalid_workspace_path",diagnostic,english);}
+        assert_eq!(std::fs::read_to_string(f.root.join("file.txt")).unwrap(),f.changed);
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_write_runs").fetch_one(&f.db).await.unwrap();assert_eq!(count,0);
+        f.close().await;
+    }
+
+    #[tokio::test]
+    async fn restore_safety_errors_translate_and_preserve_files() {
+        for appeared in [false,true] {
+            let f = Fixture::new("file.txt").await;
+            std::fs::write(f.root.join("file.txt"),"later user edit {error}").unwrap();
+            let sources = crate::turn_changes::TurnDiffSources {baseline_exists:true,result_exists:!appeared,baseline:f.baseline.as_bytes().to_vec(),result:f.changed.as_bytes().to_vec(),baseline_dirty:false};
+            let error = restore_worktree(f.root.to_str().unwrap(),"file.txt",&sources,Some(0o644),None).await.unwrap_err();
+            check_display(&error,"invalid_workspace_path",if appeared {"invalid workspace path: 文件已重新出现，拒绝覆盖"} else {"invalid workspace path: 文件已在准备恢复期间变化，拒绝覆盖"},if appeared {"The file reappeared. Overwriting it is blocked."} else {"The file changed while restoration was being prepared. Overwriting it is blocked."});
+            assert_eq!(std::fs::read_to_string(f.root.join("file.txt")).unwrap(),"later user edit {error}");
+            assert!(!std::fs::read_dir(&f.root).unwrap().any(|entry|entry.unwrap().file_name().to_string_lossy().starts_with(".aibo-restore-")));
+            f.close().await;
+        }
+        #[cfg(unix)] {
+            let f = Fixture::new("file.txt").await;
+            std::fs::rename(f.root.join("file.txt"),f.root.join("original.txt")).unwrap();
+            std::os::unix::fs::symlink("original.txt",f.root.join("file.txt")).unwrap();
+            let sources = crate::turn_changes::TurnDiffSources {baseline_exists:true,result_exists:true,baseline:f.baseline.as_bytes().to_vec(),result:f.changed.as_bytes().to_vec(),baseline_dirty:false};
+            let error = restore_worktree(f.root.to_str().unwrap(),"file.txt",&sources,Some(0o644),None).await.unwrap_err();
+            check_display(&error,"invalid_workspace_path","invalid workspace path: 整文件还原不支持符号链接路径","Whole-file restoration does not support symbolic-link paths.");
+            assert_eq!(std::fs::read_to_string(f.root.join("original.txt")).unwrap(),f.changed);
+            assert!(std::fs::symlink_metadata(f.root.join("file.txt")).unwrap().file_type().is_symlink());
+            f.close().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_cancelled_before_replacement_preserves_display_and_replays_without_writing() {
+        let f = Fixture::new("file.txt").await;
+        let workspace = crate::workspace_by_id(&f.db,"workspace").await.unwrap();
+        let request = Request::with_confirmation("cancel-before-replacement".into(),"main".into(), |_|async {Ok(true)});
+        let fixture = &f;
+        let run = || crate::workspace_write_runs::execute_with_context(&f.db,&workspace,"core.turn-restore",serde_json::json!({"sessionId":"session","turnId":"turn"}),&request,||async {Ok(serde_json::json!({"fixture":"cancel"}))},|cancel| async move {
+            assert!(crate::workspace_write_runs::cancel(&fixture.db,"workspace",cancel.run_id(),"main").await.unwrap());
+            let sources = crate::turn_changes::TurnDiffSources {baseline_exists:true,result_exists:true,baseline:fixture.baseline.as_bytes().to_vec(),result:fixture.changed.as_bytes().to_vec(),baseline_dirty:false};
+            restore_worktree(fixture.root.to_str().unwrap(),"file.txt",&sources,Some(0o644),Some(&cancel)).await
+        });
+        let error = run().await.unwrap_err();
+        check_display(&error,"cancelled","整文件还原已在替换文件前取消","Whole-file restoration was cancelled before replacing the file.");
+        assert_eq!(std::fs::read_to_string(f.root.join("file.txt")).unwrap(),f.changed);
+        std::fs::write(f.root.join("file.txt"),"later user edit").unwrap();
+        assert_eq!(serde_json::to_value(run().await.unwrap_err()).unwrap(),serde_json::to_value(error).unwrap());
+        assert_eq!(std::fs::read_to_string(f.root.join("file.txt")).unwrap(),"later user edit");
+        f.close().await;
+    }
+
     #[tokio::test]
     async fn whole_file_restore_updates_staged_result_and_replays_without_writing_again() {
         for path in ["file.txt", "literal[1] 空格.txt"] {
@@ -303,6 +375,8 @@ mod tests {
             f.git(&["add", "--", path]);
             let restored = f.file("revert", &approve_file("revert")).await.unwrap();
             assert!(restored.applied, "{}", restored.message);
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,restored.localized_message.as_ref().unwrap()),restored.message);
+            assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,restored.localized_message.as_ref().unwrap()).starts_with("Restored the file"));
             assert_eq!(std::fs::read_to_string(f.root.join(path)).unwrap(), f.baseline);
             assert_eq!(f.git(&["show", &format!(":{path}")]), f.baseline);
             // New edits after settlement must survive retries of the old request.
@@ -326,7 +400,13 @@ mod tests {
         // Read-only approval probes still work while another Git process owns this lock.
         std::fs::write(f.root.join(".git/index.lock"), "fixture lock").unwrap();
         let error = f.file("revert", &approve_file("failed-index")).await.unwrap_err();
-        assert!(matches!(error, CoreError::WriteOutcomeUnknown(_)), "{error}");
+        assert!(error.is_write_outcome_unknown(), "{error}");
+        let payload = serde_json::to_value(&error).unwrap();
+        let display = &payload["localized"];
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,display),error.to_string());
+        let english = crate::ui_i18n::render(crate::ui_i18n::Locale::En,display);
+        assert!(english.contains("File file.txt was restored, but updating the Git index failed."));
+        assert!(english.contains("index.lock"));
         assert_eq!(std::fs::read_to_string(f.root.join("file.txt")).unwrap(), f.baseline);
         assert_eq!(f.git(&["show", ":file.txt"]), f.changed);
         std::fs::remove_file(f.root.join(".git/index.lock")).unwrap();
@@ -456,7 +536,7 @@ mod tests {
             assert!(crate::workspace_write_runs::cancel(&f.db, "workspace", &id, "main").await.unwrap());
         };
         let (result, ()) = tokio::join!(execution, cancellation);
-        let error = result.unwrap_err(); assert!(matches!(error, CoreError::WriteOutcomeUnknown(_)), "{error}");
+        let error = result.unwrap_err(); assert!(error.is_write_outcome_unknown(), "{error}");
         assert!(error.to_string().contains("RESTORE_FILTER_STARTED"));
         assert_eq!(std::fs::read_to_string(f.root.join("file.txt")).unwrap(), f.baseline);
         assert_eq!(f.git(&["show", ":file.txt"]), f.changed);
@@ -528,6 +608,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn truncated_turn_preview_marks_host_suffix_without_authorizing_a_patch() {
+        let f = Fixture::new("file.txt").await;
+        let line = "原文 {suffix}\n… diff 已截断\n";
+        let content = line.repeat((256 * 1024 - 128) / line.len());
+        assert!(content.len() > 200_000 && content.len() < 256 * 1024);
+        std::fs::write(f.root.join("file.txt"), &content).unwrap();
+        sqlx::query("UPDATE file_changes SET result_hash=?").bind(format!("sha256:{:x}",Sha256::digest(content.as_bytes()))).execute(&f.db).await.unwrap();
+        let preview = crate::turn_changes::get_turn_file_diff("session".into(),"turn".into(),"file.txt".into(),&f.db,&f.directory.0).await.unwrap();
+        assert!(preview.available);assert!(preview.diff.len() <= 200_000);assert!(preview.diff.ends_with("\n… diff 已截断"));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,preview.localized_suffix.as_ref().unwrap()),"\n… diff truncated");
+        assert!(preview.hunks.last().unwrap().content.ends_with("\n… diff 已截断"));
+        let result = f.apply("revert",&approve("truncated-preview")).await.unwrap();
+        assert!(!result.applied);assert_eq!(std::fs::read_to_string(f.root.join("file.txt")).unwrap(),content);
+        assert_eq!(f.git(&["show",":file.txt"]),f.baseline);f.close().await;
+    }
+
+    #[tokio::test]
     async fn hunk_refuses_later_edits_dirty_baselines_and_truncated_patches() {
         for condition in ["later-edit", "dirty-baseline", "oversized"] {
             let f = Fixture::new("file.txt").await;
@@ -548,6 +645,14 @@ mod tests {
             let output = f.apply("revert", &approve(condition)).await.unwrap();
             assert!(!output.applied, "{condition}");
             if condition == "oversized" { assert!(output.message.contains("256 KiB")); }
+            let display = output.localized_message.as_ref().unwrap();
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,display),output.message);
+            assert_ne!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,display),output.message);
+            if condition == "later-edit" {
+                let preview = crate::turn_changes::get_turn_file_diff("session".into(),"turn".into(),"file.txt".into(),&f.db,&f.directory.0).await.unwrap();
+                assert!(!preview.available);assert_eq!(preview.reason.as_deref(),Some(output.message.as_str()));
+                assert_eq!(preview.localized_reason,output.localized_message);
+            }
             assert_eq!(std::fs::read(f.root.join("file.txt")).unwrap(), before);
             assert_eq!(f.git(&["show", ":file.txt"]), f.baseline);
             f.close().await;

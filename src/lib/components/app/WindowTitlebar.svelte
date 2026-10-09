@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { Button, Icon } from '$lib/ui-kit';
 
   type WindowTitlebarProps = {
@@ -36,36 +37,36 @@
   data-ui-component="window-titlebar"
   data-tauri-drag-region="deep"
   role="toolbar"
-  aria-label="窗口标题栏"
+  aria-label={$t('window.titlebar')}
   tabindex="-1"
 >
   <span class="window-title">Aibo</span>
   <div class="window-actions">
-    {#if onOpenSearch}<Button variant="ghost" size="icon" aria-label="全局搜索" title="全局搜索 · 双击 Shift" onclick={onOpenSearch}><Icon name="search" size={15} /></Button>{/if}
-    {#if onToggleTheme}<Button variant="ghost" size="icon" aria-label="切换明暗主题" title={themeLabel} onclick={onToggleTheme}><Icon name="eye" size={15} /></Button>{/if}
-    <Button variant={managementNeedsAttention ? 'secondary' : 'ghost'} size="icon" type="button" data-host-navigation="management" aria-label={managementNeedsAttention ? '打开工作台设置，有项目需要处理' : '打开工作台设置'} title={managementNeedsAttention ? '工作台设置 · 需要处理' : '工作台设置 ⌘,'} onclick={onOpenManagement}>
+    {#if onOpenSearch}<Button variant="ghost" size="icon" data-host-navigation="search" aria-label={$t('window.search')} title={$t('window.searchHint')} onclick={onOpenSearch}><Icon name="search" size={15} /></Button>{/if}
+    {#if onToggleTheme}<Button variant="ghost" size="icon" aria-label={$t('window.toggleTheme')} title={themeLabel} onclick={onToggleTheme}><Icon name="eye" size={15} /></Button>{/if}
+    <Button variant={managementNeedsAttention ? 'secondary' : 'ghost'} size="icon" type="button" data-host-navigation="management" aria-label={managementNeedsAttention ? $t('window.openSettingsAttention') : $t('window.openSettings')} title={managementNeedsAttention ? $t('window.settingsAttention') : $t('window.settingsHint')} onclick={onOpenManagement}>
       <Icon name="settings" size={15} />
     </Button>
     <Button
       variant={sidePanelOpen ? 'secondary' : 'ghost'}
       size="icon"
       type="button"
-      aria-label={sidePanelOpen ? '隐藏侧边栏' : '显示侧边栏'}
-      title="侧边栏"
+      aria-label={sidePanelOpen ? $t('window.hideSidebar') : $t('window.showSidebar')}
+      title={$t('window.sidebar')}
       aria-pressed={sidePanelOpen}
       onclick={onToggleSidePanel}
     >
       <Icon name="panel-right" size={15} />
     </Button>
     {#if !isMacOS}
-      <div class="window-system-actions" aria-label="窗口控制">
-        <Button variant="ghost" size="icon" type="button" aria-label="最小化窗口" title="最小化" onclick={onMinimize}>
+      <div class="window-system-actions" aria-label={$t('window.controls')}>
+        <Button variant="ghost" size="icon" type="button" aria-label={$t('window.minimize')} title={$t('window.minimizeHint')} onclick={onMinimize}>
           <Icon name="window-minimize" size={14} />
         </Button>
-        <Button variant="ghost" size="icon" type="button" aria-label="最大化或还原窗口" title="最大化或还原" onclick={onToggleMaximize}>
+        <Button variant="ghost" size="icon" type="button" aria-label={$t('window.maximize')} title={$t('window.maximizeHint')} onclick={onToggleMaximize}>
           <Icon name="window-maximize" size={14} />
         </Button>
-        <Button variant="ghost" size="icon" type="button" data-window-action="close" aria-label="关闭窗口" title="关闭" onclick={onClose}>
+        <Button variant="ghost" size="icon" type="button" data-window-action="close" aria-label={$t('window.close')} title={$t('common.close')} onclick={onClose}>
           <Icon name="close" size={14} />
         </Button>
       </div>

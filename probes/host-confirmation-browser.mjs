@@ -38,7 +38,8 @@ try {
       },
     };
   });
-  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
+  await page.addInitScript(() => { if (window === window.top && location.protocol === 'http:') localStorage.setItem('aibo.language.v1','zh-CN'); });
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
   const open = async () => {
     await page.getByRole('button', { name: '工作台设置', exact: true }).click();
     await page.getByRole('tab', { name: '工作区', exact: true }).click();

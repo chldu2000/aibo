@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon } from '$lib/ui-kit';
   import type { PiSessionTreeNode, PiSessionTreeSnapshot } from '$lib/types';
   import type { SessionPanelView } from './view-types';
@@ -88,15 +89,15 @@
     <Card class="pi-tree-dialog" role="dialog" aria-modal="true" aria-labelledby="pi-tree-title" onclick={(event) => event.stopPropagation()}>
       <CardHeader class="pi-tree-dialog-header">
         <div class="pi-tree-dialog-title">
-          <CardTitle id="pi-tree-title">会话树</CardTitle>
+          <CardTitle id="pi-tree-title">{$t('tree.title')}</CardTitle>
           <small>{session.label}</small>
         </div>
         <div class="pi-tree-dialog-actions">
-          <Badge variant="secondary">{graph.nodes.length} 个节点</Badge>
+          <Badge variant="secondary">{$t('tree.nodes', { count: graph.nodes.length })}</Badge>
           <Button variant="ghost" size="sm" type="button" onclick={() => onRefresh(session.id)} disabled={busy || selectedSessionArchiving}>
-            <Icon name="refresh" size={13} /> 刷新
+            <Icon name="refresh" size={13} /> {$t('tree.refresh')}
           </Button>
-          <Button variant="ghost" size="icon" type="button" aria-label="关闭会话树" title="关闭" onclick={requestClose} disabled={Boolean(navigationStatus)}>
+          <Button variant="ghost" size="icon" type="button" aria-label={$t('tree.close')} title={$t('common.close')} onclick={requestClose} disabled={Boolean(navigationStatus)}>
             <Icon name="close" size={14} />
           </Button>
         </div>
@@ -106,13 +107,13 @@
           <div class="pi-tree-navigation-status" role="status" aria-live="assertive">
             <span class="activity-dots" aria-hidden="true"><span></span><span></span><span></span></span>
             <strong>{navigationStatus}</strong>
-            <small>总结耗时取决于当前分支长度，请稍候。</small>
+            <small>{$t('tree.summarizing')}</small>
           </div>
         {/if}
         {#if !tree}
-          <div class="pi-tree-empty">正在读取会话树…</div>
+          <div class="pi-tree-empty">{$t('tree.loading')}</div>
         {:else if graph.nodes.length === 0}
-          <div class="pi-tree-empty">发送第一条消息后，这里会显示可切换的会话节点。</div>
+          <div class="pi-tree-empty">{$t('tree.empty')}</div>
         {:else}
           <div class="pi-tree-viewport">
             <div class="pi-tree-canvas" style={`width: ${graph.width}px; height: ${graph.height}px`}>
@@ -128,7 +129,7 @@
                   class={current ? 'pi-tree-node current' : 'pi-tree-node'}
                   type="button"
                   style={`left: ${entry.x}px; top: ${entry.y}px; width: ${nodeWidth}px; height: ${nodeHeight}px`}
-                  aria-label={`${entry.node.label ?? entry.node.summary ?? entry.node.type}${current ? '，当前节点' : '，切换到此节点'}`}
+                  aria-label={`${entry.node.label ?? entry.node.summary ?? entry.node.type}${current ? $t('tree.currentSuffix') : $t('tree.navigateSuffix')}`}
                   aria-current={current ? 'true' : undefined}
                   onclick={() => !current && onSelectNode(entry.node.id)}
                   disabled={current || busy || sessionRunning || selectedSessionArchiving || Boolean(navigationStatus)}
@@ -136,7 +137,7 @@
                   <span class="pi-tree-node-marker" aria-hidden="true"></span>
                   <span class="pi-tree-node-copy">
                     <strong>{entry.node.label ?? entry.node.summary ?? entry.node.type}</strong>
-                    <small>{current ? '当前节点' : entry.node.role ?? entry.node.type}</small>
+                    <small>{current ? $t('tree.current') : entry.node.role ?? entry.node.type}</small>
                   </span>
                 </Button>
               {/each}

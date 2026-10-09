@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPluginLifecycleController } from '../src/lib/app/plugin-lifecycle-controller.ts';
+import { createPluginLifecycleController, pluginRemovalImpactPresentation, pluginMigrationReportPresentation } from '../src/lib/app/plugin-lifecycle-controller.ts';
 
 function fixture() {
   let state, impact = { id:'old',token:'revision-1',sessions:[{id:'s',label:'Session'}],dependencies:[],bindings:[],active:0,targets:[{id:'new',label:'2.0.0'}] };
@@ -36,4 +36,19 @@ test('busy migration cannot be duplicated and failures keep the review available
   f.ports.migrate=()=>new Promise((_,fail)=>{reject=fail;});
   const pending=f.controller.migrate('new');await f.controller.remove(true);f.controller.cancel();assert.equal(f.state.busy,true);
   reject(Error('provider failed'));await pending;assert.equal(f.state.impact.id,'old');assert.equal(f.state.busy,false);assert.deepEqual(f.calls,[]);
+});
+
+test('removal display preserves raw references and confirmation while resolving only explicit host labels', () => {
+  const impact={id:'old',token:'fixed-token',sessions:[{id:'s',label:'候选绑定原文'}],dependencies:[],bindings:[{id:'c',label:'原诊断',localizedLabel:{schema:'aibo.host-message/v1',key:'native.plugin.candidateBinding',params:{contribution:'原文{contribution}'}}},{id:'unknown',label:'插件原文',localizedLabel:{schema:'aibo.host-message/v1',key:'native.plugin.unknown',params:{}}}],active:0,targets:[]};
+  const original=structuredClone(impact),display=pluginRemovalImpactPresentation(impact,'en');
+  assert.equal(display.bindings[0].label,'原文{contribution} · candidate binding');
+  assert.equal(display.bindings[1].label,'插件原文');assert.equal(display.sessions[0].label,'候选绑定原文');assert.equal(display.token,'fixed-token');
+  assert.equal(display.bindings[0].localizedLabel,undefined);assert.deepEqual(impact,original);
+});
+
+test('migration failure projection keeps the original report and provider diagnostics', () => {
+  const report={migrated:['success'],failed:[{id:'failed',label:'原诊断',localizedLabel:{schema:'aibo.host-message/v1',key:'native.plugin.migrationFailed',params:{label:'原始会话 {label}',reason:'原始提供者 {reason}'}}}]};
+  const original=structuredClone(report),display=pluginMigrationReportPresentation(report,'en');
+  assert.equal(display.failed[0].label,'原始会话 {label}: 原始提供者 {reason}');
+  assert.equal(display.failed[0].localizedLabel,undefined);assert.deepEqual(display.migrated,['success']);assert.deepEqual(report,original);
 });

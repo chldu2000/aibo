@@ -1,5 +1,6 @@
 //! Clipboard images are immutable host-owned attachments, never workspace files.
 use crate::{ContextAttachment, CoreError};
+use crate::ui_i18n::HostMessage;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -25,7 +26,7 @@ fn extension(mime: &str, bytes: &[u8]) -> Result<&'static str, CoreError> {
         "image/webp" if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") => {
             Ok("webp")
         }
-        _ => Err(invalid("图片格式无效；支持 PNG、JPEG、WebP 和 GIF。")),
+        _ => Err(crate::ui_i18n::invalid_path_error("native.image.format", serde_json::json!({}))),
     }
 }
 pub(crate) async fn register(
@@ -36,23 +37,23 @@ pub(crate) async fn register(
 ) -> Result<Vec<ContextAttachment>, CoreError> {
     let session = crate::session_by_id(db, session_id).await?;
     if session.archived {
-        return Err(invalid("已归档会话不能添加图片。"));
+        return Err(crate::ui_i18n::invalid_path_error("native.image.archived", serde_json::json!({})));
     }
     if images.is_empty() || images.len() > 8 {
-        return Err(invalid("一次最多粘贴 8 张图片。"));
+        return Err(crate::ui_i18n::invalid_path_error("native.image.count", serde_json::json!({})));
     }
     let mut total = 0;
     let mut decoded = Vec::new();
     for image in images {
         if image.data.len() > (MAX_IMAGE + 2) / 3 * 4 {
-            return Err(invalid("单张图片不能超过 10 MiB。"));
+            return Err(crate::ui_i18n::invalid_path_error("native.image.imageSize", serde_json::json!({})));
         }
         let bytes = STANDARD
             .decode(&image.data)
-            .map_err(|_| invalid("无效的图片编码。"))?;
+            .map_err(|_| crate::ui_i18n::invalid_path_error("native.image.encoding", serde_json::json!({})))?;
         total += bytes.len();
         if bytes.len() > MAX_IMAGE || total > MAX_TOTAL {
-            return Err(invalid("粘贴图片超过大小上限。"));
+            return Err(crate::ui_i18n::invalid_path_error("native.image.combinedSize", serde_json::json!({})));
         }
         let suffix = extension(&image.media_type, &bytes)?;
         decoded.push((image.media_type, bytes, suffix));
@@ -64,7 +65,7 @@ pub(crate) async fn register(
     let result: Result<Vec<ContextAttachment>, CoreError> = async {
         let mut tx = db.begin().await?;
         let archived: bool = sqlx::query_scalar("SELECT archived FROM sessions WHERE id=?").bind(session_id).fetch_one(&mut *tx).await?;
-        if archived { return Err(invalid("已归档会话不能添加图片。")); }
+        if archived { return Err(crate::ui_i18n::invalid_path_error("native.image.archived", serde_json::json!({}))); }
         let mut attachments = vec![];
         for (mime, bytes, suffix) in decoded {
             let id = ulid::Ulid::new().to_string();
@@ -94,60 +95,69 @@ pub(crate) async fn register(
 }
 /// Only persisted host records are expanded into native image inputs. Renderer
 /// payloads never get to supply paths to a provider.
-pub(crate) fn turn_attachment(
+#[cfg(test)]
+pub(crate) fn turn_attachment(row: &sqlx::sqlite::SqliteRow, capabilities: &[String]) -> Result<serde_json::Value, String> {
+    turn_attachment_display(row,capabilities).map_err(|error|error.diagnostic)
+}
+fn image_error_display(error: CoreError) -> HostMessage {
+    let payload = serde_json::to_value(&error).expect("native image errors serialize");
+    HostMessage {diagnostic:error.to_string(),localized:payload.get("localized").cloned()}
+}
+
+pub(crate) fn turn_attachment_display(
     row: &sqlx::sqlite::SqliteRow,
     capabilities: &[String],
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, HostMessage> {
     let id: String = row.get("id");
     let mime: String = row.get("media_type");
     if !mime.starts_with("image/") {
         return Ok(serde_json::json!({"attachmentId":id}));
     }
     if !capabilities.iter().any(|cap| cap == "image.input") {
-        return Err("当前 Agent 不支持图片输入。".into());
+        return Err(HostMessage::new("native.image.unsupportedInput", serde_json::json!({})));
     }
     let inline: Option<String> = row.get("inline_context");
     let stored: serde_json::Value = serde_json::from_str(
         inline
             .as_deref()
-            .ok_or("图片尚未导入，请从剪贴板重新粘贴。")?,
+            .ok_or_else(||HostMessage::new("native.image.notImported", serde_json::json!({})))?,
     )
-    .map_err(|_| "图片附件元数据无效。")?;
+    .map_err(|_| HostMessage::new("native.image.metadata", serde_json::json!({})))?;
     if stored["schema"] != "aibo.clipboard-image/v1" {
-        return Err("图片附件元数据无效。".into());
+        return Err(HostMessage::new("native.image.metadata", serde_json::json!({})));
     }
-    let path = stored["path"].as_str().ok_or("图片附件路径缺失。")?;
-    let metadata = std::fs::symlink_metadata(path).map_err(|_| "图片附件已丢失，请重新粘贴。")?;
+    let path = stored["path"].as_str().ok_or_else(||HostMessage::new("native.image.pathMissing", serde_json::json!({})))?;
+    let metadata = std::fs::symlink_metadata(path).map_err(|_| HostMessage::new("native.image.attachmentMissing", serde_json::json!({})))?;
     if !metadata.is_file() || metadata.len() > MAX_IMAGE as u64 {
-        return Err("图片附件无效或过大。".into());
+        return Err(HostMessage::new("native.image.attachmentSize", serde_json::json!({})));
     }
-    let bytes = std::fs::read(path).map_err(|_| "无法读取图片附件。")?;
+    let bytes = std::fs::read(path).map_err(|_| HostMessage::new("native.image.attachmentRead", serde_json::json!({})))?;
     let hash: Option<String> = row.get("content_hash");
     if hash.as_deref() != Some(format!("sha256:{:x}", Sha256::digest(&bytes)).as_str()) {
-        return Err("图片附件已变化，请重新粘贴。".into());
+        return Err(HostMessage::new("native.image.attachmentChanged", serde_json::json!({})));
     }
-    extension(&mime, &bytes).map_err(|e| e.to_string())?;
+    extension(&mime, &bytes).map_err(image_error_display)?;
     Ok(serde_json::json!({"attachmentId":id,"type":"image","path":path,"mimeType":mime}))
 }
 
 /// Resolve only an attachment owned by this session; callers never provide file paths.
-pub(crate) async fn preview(db: &SqlitePool, session_id: &str, id: &str) -> Result<String, String> {
+pub(crate) async fn preview(db: &SqlitePool, session_id: &str, id: &str) -> Result<String, HostMessage> {
     let row = sqlx::query("SELECT a.id,a.media_type,a.inline_context,a.content_hash,a.path,w.path AS workspace_path FROM attachments a JOIN workspaces w ON w.id=a.workspace_id WHERE a.id=? AND a.session_id=?")
-        .bind(id).bind(session_id).fetch_one(db).await.map_err(|_| "附件不存在。")?;
+        .bind(id).bind(session_id).fetch_one(db).await.map_err(|_| HostMessage::new("native.image.notFound", serde_json::json!({})))?;
     let mime: String = row.get("media_type");
-    if !matches!(mime.as_str(), "image/png" | "image/jpeg" | "image/gif" | "image/webp") { return Err("不支持预览此附件。".into()); }
+    if !matches!(mime.as_str(), "image/png" | "image/jpeg" | "image/gif" | "image/webp") { return Err(HostMessage::new("native.image.previewUnsupported", serde_json::json!({}))); }
     let context: Option<String> = row.get("inline_context");
     let path = if context.as_deref().and_then(|value|serde_json::from_str::<serde_json::Value>(value).ok()).is_some_and(|value|value["schema"] == "aibo.clipboard-image/v1") {
-        turn_attachment(&row, &["image.input".into()])?["path"].as_str().unwrap().to_owned()
+        turn_attachment_display(&row, &["image.input".into()])?["path"].as_str().unwrap().to_owned()
     } else {
-        crate::workspace_guard::canonicalize_target(Path::new(&row.get::<String,_>("workspace_path")), Path::new(&row.get::<String,_>("path")))?.to_string_lossy().into_owned()
+        crate::workspace_guard::canonicalize_target_message(Path::new(&row.get::<String,_>("workspace_path")), Path::new(&row.get::<String,_>("path")))?.to_string_lossy().into_owned()
     };
-    let metadata = std::fs::metadata(&path).map_err(|_|"图片已丢失。")?;
-    if !metadata.is_file() || metadata.len() > MAX_IMAGE as u64 { return Err("图片过大或不可读取。".into()); }
-    let bytes = std::fs::read(path).map_err(|_|"图片不可读取。")?;
+    let metadata = std::fs::metadata(&path).map_err(|_|HostMessage::new("native.image.previewMissing", serde_json::json!({})))?;
+    if !metadata.is_file() || metadata.len() > MAX_IMAGE as u64 { return Err(HostMessage::new("native.image.previewSize", serde_json::json!({}))); }
+    let bytes = std::fs::read(path).map_err(|_|HostMessage::new("native.image.previewRead", serde_json::json!({})))?;
     let hash: Option<String> = row.get("content_hash");
-    if hash.is_some_and(|hash|hash != format!("sha256:{:x}",Sha256::digest(&bytes))) { return Err("图片已发生变化。".into()); }
-    extension(&mime,&bytes).map_err(|error|error.to_string())?;
+    if hash.is_some_and(|hash|hash != format!("sha256:{:x}",Sha256::digest(&bytes))) { return Err(HostMessage::new("native.image.previewChanged", serde_json::json!({}))); }
+    extension(&mime,&bytes).map_err(image_error_display)?;
     Ok(format!("data:{mime};base64,{}",STANDARD.encode(bytes)))
 }
 
@@ -191,16 +201,38 @@ mod tests {
         let db = crate::open_database(&root.join("host.db")).await.unwrap();
         sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'test',0,'now','now')").bind(workspace.to_string_lossy().as_ref()).execute(&db).await.unwrap();
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,archived,created_at,updated_at) VALUES('s','w','plugin','test','idle',0,'now','now')").execute(&db).await.unwrap();
+        for (images,key,diagnostic) in [
+            (vec![],"count","一次最多粘贴 8 张图片。"),
+            ((0..9).map(|_|image()).collect(),"count","一次最多粘贴 8 张图片。"),
+            (vec![ImageInput {media_type:"image/png".into(),data:"invalid base64 {error}".into()}],"encoding","无效的图片编码。"),
+            (vec![ImageInput {media_type:"image/png".into(),data:STANDARD.encode(b"not an image")}],"format","图片格式无效；支持 PNG、JPEG、WebP 和 GIF。"),
+            (vec![ImageInput {media_type:"image/png".into(),data:"A".repeat((MAX_IMAGE+2)/3*4+1)}],"imageSize","单张图片不能超过 10 MiB。"),
+        ] {
+            let error=register(&db,&root.join("data"),"s",images).await.unwrap_err();
+            let payload=serde_json::to_value(&error).unwrap();
+            assert_eq!(payload["code"],"invalid_workspace_path");
+            assert_eq!(payload["message"],format!("invalid workspace path: {diagnostic}"));
+            assert_eq!(payload["localized"]["key"],format!("native.image.{key}"));
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]),diagnostic);
+            assert_ne!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&payload["localized"]),diagnostic);
+        }
+        let mut large=vec![0;7*1024*1024];large[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        let error=register(&db,&root.join("data"),"s",(0..3).map(|_|ImageInput {media_type:"image/png".into(),data:STANDARD.encode(&large)}).collect()).await.unwrap_err();
+        assert_eq!(serde_json::to_value(error).unwrap()["localized"]["key"],"native.image.combinedSize");
+        let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM attachments").fetch_one(&db).await.unwrap();assert_eq!(count,0);
         let attachments = register(&db, &root.join("data"), "s", vec![image(), image()])
             .await
             .unwrap();
         assert_eq!(attachments.len(), 2);
         assert_ne!(attachments[0].id, attachments[1].id);
         assert_eq!(preview(&db, "s", &attachments[0].id).await.unwrap(), format!("data:image/png;base64,{PNG}"));
-        assert!(preview(&db, "another-session", &attachments[0].id).await.is_err());
+        let missing=preview(&db, "another-session", &attachments[0].id).await.unwrap_err();
+        assert_eq!(missing.diagnostic,"附件不存在。");assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&missing.display()),"The attachment does not exist.");
         assert_eq!(std::fs::read_dir(&workspace).unwrap().count(), 0);
         let rows = sqlx::query("SELECT id,media_type,inline_context,content_hash FROM attachments WHERE session_id='s' ORDER BY id").fetch_all(&db).await.unwrap();
         assert!(turn_attachment(&rows[0], &[]).is_err());
+        let unsupported=turn_attachment_display(&rows[0],&[]).unwrap_err();
+        assert_eq!(unsupported.diagnostic,"当前 Agent 不支持图片输入。");assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&unsupported.display()),"The current Agent does not support image input.");
         let input = turn_attachment(&rows[0], &["image.input".into()]).unwrap();
         assert_eq!(input["type"], "image");
         assert_eq!(input["mimeType"], "image/png");
@@ -209,6 +241,8 @@ mod tests {
             STANDARD.decode(PNG).unwrap()
         );
         std::fs::write(input["path"].as_str().unwrap(), b"changed").unwrap();
+        let changed=preview(&db,"s",&rows[0].get::<String,_>("id")).await.unwrap_err();
+        assert_eq!(changed.diagnostic,"图片附件已变化，请重新粘贴。");assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&changed.display()),"The image attachment changed. Paste it again.");
         assert!(turn_attachment(&rows[0], &["image.input".into()]).is_err());
         assert!(preview(&db, "s", &rows[0].get::<String,_>("id")).await.is_err());
         let bad = ImageInput {

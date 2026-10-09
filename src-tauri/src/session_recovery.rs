@@ -1,7 +1,7 @@
 //! Restart recovery owns the ordering between turn evidence and durable state.
 use crate::{
     change_set::{
-        capture as capture_workspace, persist as persist_change_set, FileState, WorkspaceSnapshot,
+        capture_message as capture_workspace, persist_message as persist_change_set, FileState, WorkspaceSnapshot,
     },
     now_iso,
 };
@@ -35,7 +35,9 @@ async fn recover_interrupted_sessions(db: &SqlitePool) -> Result<u64, sqlx::Erro
     sqlx::query("UPDATE session_queues SET paused=1")
         .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE queued_messages SET status='uncertain',error='应用已重启，投递结果未知，请核对会话记录。' WHERE status='sending'").execute(&mut *tx).await?;
+    let display = crate::ui_i18n::HostMessage::new("native.queue.restarted", serde_json::json!({}));
+    sqlx::query("UPDATE queued_messages SET status='uncertain',error=?,localized_error_json=? WHERE status='sending'")
+        .bind(display.diagnostic).bind(display.localized.map(|value|value.to_string())).execute(&mut *tx).await?;
     let now = now_iso();
     sqlx::query(
         "UPDATE process_runs SET state = 'crashed', ended_at = ?
@@ -172,9 +174,9 @@ async fn recover_interrupted_turn_changes(db: &SqlitePool) -> Result<u64, String
             {
                 Ok(snapshot) => (
                     Some(snapshot),
-                    Some("应用重启后重建；turn 基线 checkpoint 未持久化".to_owned()),
+                    crate::ui_i18n::HostMessage::new("native.recovery.noBaseline", serde_json::json!({})),
                 ),
-                Err(error) => (None, Some(format!("应用重启后重建；无法采集结果：{error}"))),
+                Err(error) => (None, crate::ui_i18n::HostMessage::with_diagnostic("native.recovery.captureFailed", serde_json::json!({"error":error.display()}),format!("应用重启后重建；无法采集结果：{}",error.diagnostic))),
             };
             let change_set_id = persist_change_set(
                 db,
@@ -183,15 +185,16 @@ async fn recover_interrupted_turn_changes(db: &SqlitePool) -> Result<u64, String
                 &turn_id,
                 None,
                 result.as_ref(),
-                capture_error.as_deref(),
+                Some(&capture_error),
             )
             .await
             .map_err(|error| format!("persist interrupted change set: {error}"))?;
             sqlx::query(
                 "UPDATE turn_change_sets
-                 SET attribution = 'unknown', updated_at = ?
+                 SET attribution = 'unknown', localized_capture_error_json = ?, updated_at = ?
                  WHERE id = ?",
             )
+            .bind(capture_error.localized.map(|value|value.to_string()))
             .bind(now_iso())
             .bind(&change_set_id)
             .execute(db)
@@ -263,17 +266,20 @@ async fn recover_interrupted_turn_changes(db: &SqlitePool) -> Result<u64, String
             &turn_id,
             Some(&baseline),
             result.as_ref(),
-            capture_error.as_deref(),
+            capture_error.as_ref(),
         )
         .await
         .map_err(|error| format!("persist interrupted change set: {error}"))?;
+        let recovery = crate::ui_i18n::HostMessage::new("native.recovery.uncertainContent", serde_json::json!({}));
         sqlx::query(
             "UPDATE turn_change_sets
              SET attribution = 'unknown',
+                 localized_capture_error_json = CASE WHEN capture_error IS NULL THEN ? ELSE localized_capture_error_json END,
                  capture_error = COALESCE(capture_error, ?), updated_at = ?
              WHERE id = ?",
         )
-        .bind("应用重启后重建；结果可能包含崩溃后的用户修改")
+        .bind(recovery.localized.map(|value|value.to_string()))
+        .bind(recovery.diagnostic)
         .bind(now_iso())
         .bind(&change_set_id)
         .execute(db)
@@ -298,6 +304,53 @@ mod tests {
         fs::create_dir_all(&path).unwrap();
         path
     }
+    #[tokio::test]
+    async fn failed_restart_capture_retains_nested_display_in_both_checkpoint_paths() {
+        use crate::ui_i18n::{Locale, render};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("app.db");
+        let root = directory.path().join("workspace{path}");fs::create_dir(&root).unwrap();fs::write(root.join("file.txt"),"原始正文").unwrap();
+        let db = open_database(&path).await.unwrap();
+        sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'原文',1,'now','now')").bind(root.to_str().unwrap()).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('s','w','third.party','原文','running','now','now')").execute(&db).await.unwrap();
+        for turn in ["with-checkpoint","without-checkpoint"] {
+            sqlx::query("INSERT INTO turns(id,session_id,external_turn_id,status,input_text,started_at) VALUES(?,'s',?,'running','输入原文{input}','now')").bind(turn).bind(turn).execute(&db).await.unwrap();
+        }
+        let checkpoint_root = directory.path().join("checkpoints");
+        let baseline = capture_workspace(&root).await.unwrap();
+        persist_baseline_checkpoint(&checkpoint_root,"s","with-checkpoint",&root,&baseline).await.unwrap();
+        persist_checkpoint_metadata(&db,&checkpoint_root,"w","s","with-checkpoint",&baseline).await.unwrap();
+        let stored: String = sqlx::query_scalar("SELECT storage_path FROM checkpoints WHERE turn_id='with-checkpoint'").fetch_one(&db).await.unwrap();
+        let stored = directory.path().join(stored);
+        let checkpoint_before = fs::read(&stored).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+        let os = fs::canonicalize(&root).unwrap_err().to_string();
+        let diagnostic = format!("canonicalize workspace: {os}");
+        let result = recover(&db).await.unwrap();assert_eq!(result.change_sets,2);assert_eq!(result.sessions,1);
+        let mut persisted = Vec::new();
+        for turn in ["with-checkpoint","without-checkpoint"] {
+            let value = serde_json::to_value(crate::turn_changes::get_turn_change_set("s".into(),Some(turn.into()),&db).await.unwrap().unwrap()).unwrap();
+            assert_eq!(value["attribution"],"unknown");
+            assert_eq!(value["captureStatus"],if turn=="with-checkpoint" {"partial"} else {"failed"});
+            let display = &value["localizedCaptureError"];
+            if turn=="with-checkpoint" {
+                assert_eq!(value["captureError"],diagnostic);assert_eq!(display["key"],"native.changes.canonicalize");assert_eq!(display["params"]["error"],os);
+                assert_eq!(render(Locale::ZhCn,display),format!("无法解析工作区路径：{os}"));
+            } else {
+                assert_eq!(value["captureError"],format!("应用重启后重建；无法采集结果：{diagnostic}"));assert_eq!(display["key"],"native.recovery.captureFailed");
+                assert_eq!(display["params"]["error"]["key"],"native.changes.canonicalize");
+                assert_eq!(render(Locale::ZhCn,display),format!("应用重启后重建；无法采集结果：无法解析工作区路径：{os}"));
+            }
+            assert!(render(Locale::En,display).contains(&diagnostic));persisted.push((turn,value));
+        }
+        assert_eq!(fs::read(&stored).unwrap(),checkpoint_before);assert!(!root.exists());
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM turns WHERE status='interrupted' AND input_text='输入原文{input}'").fetch_one(&db).await.unwrap(),2);
+        db.close().await;
+        let db = open_database(&path).await.unwrap();let again = recover(&db).await.unwrap();assert_eq!(again.change_sets,0);assert_eq!(again.sessions,0);
+        for (turn,value) in persisted { assert_eq!(serde_json::to_value(crate::turn_changes::get_turn_change_set("s".into(),Some(turn.into()),&db).await.unwrap().unwrap()).unwrap(),value); }
+        assert_eq!(fs::read(stored).unwrap(),checkpoint_before);db.close().await;
+    }
+
     #[test]
     fn startup_recovery_marks_stale_runtime_state_interrupted() {
         tauri::async_runtime::block_on(async {
@@ -600,6 +653,9 @@ mod tests {
             .await
             .expect("capture error");
             assert!(capture_error.contains("重启后重建"));
+            let recovered_set = crate::turn_changes::get_turn_change_set("session".into(),Some("turn".into()),&pool).await.unwrap().unwrap();
+            assert_eq!(recovered_set.capture_error.as_deref(),Some(capture_error.as_str()));
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,recovered_set.localized_capture_error.as_ref().unwrap()), "Rebuilt after the app restarted; the result may include user changes made after the crash.");
             let changed_path: String = sqlx::query_scalar(
                 "SELECT path FROM file_changes WHERE change_set_id = (SELECT id FROM turn_change_sets WHERE turn_id = 'turn')",
             )
@@ -614,6 +670,9 @@ mod tests {
             .await
             .expect("missing checkpoint error");
             assert!(missing_checkpoint_error.contains("checkpoint 未持久化"));
+            let missing = crate::turn_changes::get_turn_change_set("session".into(),Some("turn-missing-checkpoint".into()),&pool).await.unwrap().unwrap();
+            assert_eq!(missing.capture_error.as_deref(),Some(missing_checkpoint_error.as_str()));
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,missing.localized_capture_error.as_ref().unwrap()), "Rebuilt after the app restarted; the turn baseline checkpoint was not persisted.");
 
             let repeated = recover(&pool).await.expect("repeat recovery");
             assert_eq!(repeated.sessions, 0);

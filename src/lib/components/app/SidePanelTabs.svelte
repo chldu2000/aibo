@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { tick } from 'svelte';
   import { Badge, Button, Icon } from '$lib/ui-kit';
   import type { SidePanelView } from './view-types';
@@ -35,7 +36,7 @@
 </script>
 
 <div class="side-panel-tabs-shell">
-  <div class="side-panel-tabs" aria-label="侧边栏视图" role="tablist">
+  <div class="side-panel-tabs" aria-label={$t('side.views')} role="tablist">
     <Button
       variant="ghost"
       size="sm"
@@ -65,7 +66,7 @@
       onclick={() => onSelect('context')}
     >
       <Icon name="file" size={13} data-icon="inline-start" />
-      上下文
+      {$t('side.context')}
     </Button>
   </div>
 </div>

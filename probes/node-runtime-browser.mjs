@@ -3,7 +3,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { buildPresentationSkins } from './lib/build-presentation-skins.mjs';
 const skins = await buildPresentationSkins();
-const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}}); await server.listen();
+const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}}); await server.listen();
 const browser = await chromium.launch({headless:true});
 try {
   const cases = ['material3','ak-ui'].flatMap(kit=>['light','dark'].map(theme=>({kit,theme,pkg:null})));
@@ -16,7 +16,7 @@ try {
       localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:kit,themeId:theme}));
       let callback=0;
       window.runtimeCalls=[]; window.failDownload=true; window.pickedNode='/custom location/node';
-      window.runtimeStatus={selected:null,manualPath:null,hostRequirement:'>=22',downloadVersion:'24.18.0',downloadSupported:true,issues:['本机 Node 18 不满足 >=22']};
+      window.runtimeStatus={selected:null,manualPath:null,hostRequirement:'>=22',downloadVersion:'24.18.0',downloadSupported:true,issues:['/custom location/node：Node 18.0.0 不满足 >=22'],localizedIssues:[{schema:'aibo.host-message/v1',key:'native.node.incompatibleCandidate',params:{path:'/custom location/node',version:'18.0.0',requirement:'>=22',pluginRequirement:''}}]};
       window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback(fn){const id=++callback;window['_'+id]=fn;return id},unregisterCallback(id){delete window['_'+id]},async invoke(command,args={}){
         window.runtimeCalls.push({command,args});
         if(command.startsWith('plugin:event|'))return 1;
@@ -30,19 +30,20 @@ try {
         if(command==='plugin:dialog|open')return window.pickedNode;
         if(command==='download_node_runtime'){
           await new Promise(done=>setTimeout(done,300));
-          if(window.failDownload)throw Error('Node 下载文件校验失败，请重试。');
-          window.runtimeStatus={...window.runtimeStatus,selected:{path:'/app data/node-runtime/node',version:'24.18.0',source:'managed'},issues:[]}; return structuredClone(window.runtimeStatus);
+          if(window.failDownload)throw {code:'node_runtime_error',message:'Node 下载文件校验失败，请重试。',localized:{schema:'aibo.host-message/v1',key:'native.node.archiveIntegrity',params:{}}};
+          window.runtimeStatus={...window.runtimeStatus,selected:{path:'/app data/node-runtime/node',version:'24.18.0',source:'managed'},issues:[],localizedIssues:[]}; return structuredClone(window.runtimeStatus);
         }
         if(command==='select_node_runtime'){
-          window.runtimeStatus={...window.runtimeStatus,manualPath:args.path,selected:{path:args.path??'/usr/local/bin/node',version:'24.18.0',source:args.path?'manual':'system'},issues:[]}; return structuredClone(window.runtimeStatus);
+          window.runtimeStatus={...window.runtimeStatus,manualPath:args.path,selected:{path:args.path??'/usr/local/bin/node',version:'24.18.0',source:args.path?'manual':'system'},issues:[],localizedIssues:[]}; return structuredClone(window.runtimeStatus);
         }
         if(command==='get_turn_change_set')return null;
         return [];
       }};
     },config);
+    await page.addInitScript(() => { if (window === window.top && location.protocol === 'http:') localStorage.setItem('aibo.language.v1','zh-CN'); });
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
     if(config.pkg) await page.locator('.presentation-external iframe').first().waitFor();
-    await page.getByRole('button',{name:/^打开工作台设置/}).click();
+    await page.locator('[data-host-navigation="management"]').click();
     const dialog=page.getByRole('dialog',{name:'工作台设置',exact:true});
     await dialog.getByRole('tab',{name:'运行与诊断',exact:true}).click();
     const panel=dialog.locator('section[aria-labelledby="node-runtime-title"]');
@@ -52,6 +53,14 @@ try {
     await panel.getByText('正在下载并校验 Node，请稍候…',{exact:true}).waitFor();
     assert.equal(await panel.getByRole('button',{name:'选择 Node 文件…',exact:true}).isDisabled(),true);
     await panel.getByRole('alert').filter({hasText:'校验失败'}).waitFor();
+    const nativeCallsBefore=await page.evaluate(()=>window.runtimeCalls.filter(call=>['get_node_runtime','select_node_runtime','download_node_runtime'].includes(call.command)).length);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'en',locale:'en'})});
+    await page.getByRole('alert').filter({hasText:'The downloaded Node archive failed verification. Try again.'}).waitFor();
+    await page.getByText('/custom location/node: Node 18.0.0 does not satisfy >=22',{exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>window.runtimeCalls.filter(call=>['get_node_runtime','select_node_runtime','download_node_runtime'].includes(call.command)).length),nativeCallsBefore);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'})});
+    await page.getByRole('alert').filter({hasText:'Node 下载文件校验失败，请重试。'}).waitFor();
+
     await page.evaluate(()=>window.failDownload=false); await download.click();
     await panel.getByText('Aibo 专用 Node · 24.18.0',{exact:true}).waitFor(); assert.equal(await panel.getByRole('alert').count(),0);
     await panel.getByRole('button',{name:'选择 Node 文件…',exact:true}).click();

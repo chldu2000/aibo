@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { translateMessage } from '../../../../packages/i18n/index.js';
+  import { locale, t } from '$lib/i18n/runtime';
   import { onMount, tick } from 'svelte';
   import { Select, Button, Icon, Input } from '$lib/ui-kit';
-  import { parseSearch, searchKinds, searchKindLabels, type SearchState, type SearchKind, type SearchResult } from '$lib/app/global-search';
+  import { parseSearch, searchKinds, localizedSearchKindLabels, type SearchState, type SearchKind, type SearchResult } from '$lib/app/global-search';
+  const searchKindLabels = $derived(localizedSearchKindLabels($locale));
   let { state: search, workspaces, onSearch, onActivate, onClose, preview, previewLoading, previewError, onBack, onOpenContext }: {
     state: SearchState; workspaces: { id: string; label: string }[];
     onSearch: (query: string, kind: SearchKind | null, workspaceId: string | null, limit?: number) => void;
@@ -72,47 +75,47 @@
   {fragments[0]}{#if fragments[1]}<mark>{fragments[1]}</mark>{/if}{fragments[2]}
 {/snippet}
 
-<dialog bind:this={dialog} class="global-search" aria-label="全局搜索" onkeydown={keydown}
+<dialog bind:this={dialog} class="global-search" aria-label={$t('window.search')} onkeydown={keydown}
   oncancel={(event) => { event.preventDefault(); onClose(); }}
   onclick={(event) => { if (event.target === dialog) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose(); } }}>
   <div class="global-search-heading">
     <Icon name="search" size={18} />
-    <Input id="global-search-input" value={search.query} placeholder="搜索工作区、会话、消息、文件或命令…" aria-label="全局搜索内容"
+    <Input id="global-search-input" value={search.query} placeholder={$t('search.placeholder')} aria-label={$t('search.query')}
       aria-describedby="global-search-keyboard" aria-keyshortcuts="Tab Shift+Tab"
       role="combobox" aria-autocomplete="list" aria-expanded={!inPreview} aria-controls="global-search-results" aria-activedescendant={inPreview ? undefined : activeId ? `search-result-${encodeURIComponent(activeId)}` : undefined}
       oninput={(event) => { selectedId = null; onBack(); onSearch(event.currentTarget.value, search.kind, search.workspaceId); }} />
-    <Button variant="ghost" size="icon" aria-label="关闭全局搜索" onclick={onClose}><Icon name="close" size={16} /></Button>
+    <Button variant="ghost" size="icon" aria-label={$t('search.close')} onclick={onClose}><Icon name="close" size={16} /></Button>
   </div>
   <div class="global-search-toolbar">
-    <div class="global-search-categories" aria-label="搜索类别">
-      <Button variant="ghost" aria-pressed={!parsed.kind} onclick={() => selectKind(null)}>全部</Button>
+    <div class="global-search-categories" aria-label={$t('search.categories')}>
+      <Button variant="ghost" aria-pressed={!parsed.kind} onclick={() => selectKind(null)}>{$t('sidebar.all')}</Button>
       {#each searchKinds as kind}
         <Button variant="ghost" aria-pressed={parsed.kind === kind} onclick={() => selectKind(kind)}>{searchKindLabels[kind]}</Button>
       {/each}
     </div>
-    <Select aria-label="搜索范围" value={search.workspaceId ?? ''}
-      options={[{value:'',label:'全部工作区'}, ...workspaces.map(workspace => ({value:workspace.id,label:workspace.label}))]}
+    <Select aria-label={$t('search.scope')} value={search.workspaceId ?? ''}
+      options={[{value:'',label:$t('search.allWorkspaces')}, ...workspaces.map(workspace => ({value:workspace.id,label:workspace.label}))]}
       onSelect={value => { onBack(); onSearch(search.query, search.kind, value || null); }} />
   </div>
   {#if inPreview}
-    <section class="global-search-preview" aria-label="搜索结果详情">
-      <div class="global-search-preview-heading"><Button variant="ghost" onclick={onBack}>← 搜索结果</Button>
-        {#if onOpenContext}<Button variant="outline" onclick={onOpenContext}>打开所属会话</Button>{/if}
+    <section class="global-search-preview" aria-label={$t('search.details')}>
+      <div class="global-search-preview-heading"><Button variant="ghost" onclick={onBack}>{$t('search.back')}</Button>
+        {#if onOpenContext}<Button variant="outline" onclick={onOpenContext}>{$t('search.openContext')}</Button>{/if}
       </div>
-      {#if previewLoading}<p role="status">正在读取内容…</p>{/if}
+      {#if previewLoading}<p role="status">{$t('search.loadingContent')}</p>{/if}
       {#if previewError}<p role="alert">{previewError}</p>{/if}
       {#if preview}
         <h2>{preview.title}</h2>
-        {#if preview.truncated}<p role="status">内容过长，仅显示部分预览。</p>{/if}
+        {#if preview.truncated}<p role="status">{$t('search.truncated')}</p>{/if}
         <pre>{@render highlighted(preview.content)}</pre>
       {/if}
     </section>
   {:else}
-    <div id="global-search-results" class="global-search-results" role="listbox" aria-label="搜索结果" aria-busy={search.pending.length > 0}>
+    <div id="global-search-results" class="global-search-results" role="listbox" aria-label={$t('search.results')} aria-busy={search.pending.length > 0}>
       {#each groups as group}
         <div class="global-search-group" role="group" aria-label={searchKindLabels[group.kind]}>
           <div class="global-search-group-heading"><span>{searchKindLabels[group.kind]}</span>
-            {#if !parsed.kind && group.items.length > 5}<Button variant="ghost" onclick={() => onSearch(parsed.query, group.kind, search.workspaceId)}>查看全部</Button>{/if}
+            {#if !parsed.kind && group.items.length > 5}<Button variant="ghost" onclick={() => onSearch(parsed.query, group.kind, search.workspaceId)}>{$t('search.showAll')}</Button>{/if}
           </div>
           {#each (parsed.kind ? group.items : group.items.slice(0, 5)) as item (item.id)}
             <button id={`search-result-${encodeURIComponent(item.id)}`} class="global-search-result" type="button" role="option" aria-selected={activeId === item.id}
@@ -128,13 +131,13 @@
           {/each}
         </div>
       {/each}
-      {#if !visible.length && !search.pending.length}<p class="global-search-empty">没有匹配的结果。试试其他关键词或搜索范围。</p>{/if}
+      {#if !visible.length && !search.pending.length}<p class="global-search-empty">{$t('search.empty')}</p>{/if}
     </div>
-    {#if search.hasMore}<Button variant="ghost" disabled={search.limit >= 500} onclick={() => onSearch(search.query, search.kind, search.workspaceId, Math.min(500, search.limit + 50))}>{search.limit >= 500 ? '请缩小搜索范围以查看其他结果' : '加载更多结果'}</Button>{/if}
+    {#if search.hasMore}<Button variant="ghost" disabled={search.limit >= 500} onclick={() => onSearch(search.query, search.kind, search.workspaceId, Math.min(500, search.limit + 50))}>{search.limit >= 500 ? $t('search.narrowScope') : $t('search.more')}</Button>{/if}
   {/if}
   <div class="global-search-status" role="status" aria-live="polite">
-    {#if search.pending.length}正在搜索…{/if}
-    {#each [...search.errors, ...search.warnings] as message}<p>{message}</p>{/each}
+    {#if search.pending.length}{$t('search.pending')}{/if}
+    {#each [...search.errors, ...search.warnings] as message}<p>{translateMessage($locale,message)}</p>{/each}
   </div>
-  <footer class="global-search-footer"><span id="global-search-keyboard">Tab / Shift+Tab 切换类型 · ↑↓ 选择 · Enter 打开 · Esc 返回</span><span>双击 Shift · ⌘/Ctrl K</span></footer>
+  <footer class="global-search-footer"><span id="global-search-keyboard">{$t('search.keyboard')}</span><span>{$t('search.shortcut')}</span></footer>
 </dialog>

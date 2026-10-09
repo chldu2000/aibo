@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { translateMessage } from '../../../../packages/i18n/index.js';
+  import { locale, t } from '$lib/i18n/runtime';
+  import { formatDateTime } from '../../../../packages/i18n/index.js';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from '$lib/ui-kit';
-  import { canStopExecution, executionActive, executionStatus, type ExecutionHistoryState } from '$lib/app/execution-history-controller';
+  import { canStopExecution, executionActive, executionStatus, executionOutput, type ExecutionHistoryState } from '$lib/app/execution-history-controller';
   let { workspaces, workspaceId, windowId, state, desktop, onSelectWorkspace, onStop, onOlder, onNewer, onLatest }: {
     workspaces: { id: string; label: string }[]; workspaceId: string | null; windowId: string;
     state: ExecutionHistoryState; desktop: boolean; onSelectWorkspace: (id: string) => void;
@@ -9,43 +12,43 @@
   } = $props();
 </script>
 
-<section aria-label="执行历史" data-ui-component="execution-history" class="execution-history">
-  <nav aria-label="执行历史工作区" class="history-workspaces">
+<section aria-label={$t('history.execution')} data-ui-component="execution-history" class="execution-history">
+  <nav aria-label={$t('history.executionWorkspaces')} class="history-workspaces">
     {#each workspaces as workspace (workspace.id)}
       <Button variant={workspace.id === workspaceId ? 'secondary' : 'ghost'} aria-pressed={workspace.id === workspaceId} onclick={() => onSelectWorkspace(workspace.id)}>{workspace.label}</Button>
     {/each}
   </nav>
-  <p>按时间浏览所选工作区的工程任务与工作区写入，每页最多 20 条。关闭此页不会停止执行。</p>
-  {#if !desktop}<p role="status">执行历史需要桌面宿主。</p>
-  {:else if !workspaceId}<p role="status">请先添加工作区。</p>
-  {:else if state.loading}<p role="status">正在读取执行记录…</p>
+  <p>{$t('history.executionDescription')}</p>
+  {#if !desktop}<p role="status">{$t('history.executionDesktop')}</p>
+  {:else if !workspaceId}<p role="status">{$t('history.addWorkspace')}</p>
+  {:else if state.loading}<p role="status">{$t('history.loadingExecutions')}</p>
   {/if}
-  {#each state.errors as error}<p role="alert">{error}</p>{/each}
-  {#if desktop && workspaceId && !state.loading && !state.entries.length && !state.errors.length}<p role="status">暂无执行记录。</p>{/if}
-  <nav aria-label="执行历史翻页" class="history-workspaces">
-    <Button variant="outline" onclick={onLatest} disabled={!desktop || !workspaceId}>最新记录</Button>
-    <Button variant="outline" onclick={onNewer} disabled={!desktop || !state.hasNewer}>较新一页</Button>
-    <span role="status">第 {state.page} 页</span>
-    <Button variant="outline" onclick={onOlder} disabled={!desktop || state.loading || !state.hasOlder}>更早一页</Button>
+  {#each state.errors as error}<p role="alert">{translateMessage($locale, error)}</p>{/each}
+  {#if desktop && workspaceId && !state.loading && !state.entries.length && !state.errors.length}<p role="status">{$t('history.noExecutions')}</p>{/if}
+  <nav aria-label={$t('history.executionPages')} class="history-workspaces">
+    <Button variant="outline" onclick={onLatest} disabled={!desktop || !workspaceId}>{$t('history.latestRecords')}</Button>
+    <Button variant="outline" onclick={onNewer} disabled={!desktop || !state.hasNewer}>{$t('history.newerPage')}</Button>
+    <span role="status">{$t('history.page', { page: state.page })}</span>
+    <Button variant="outline" onclick={onOlder} disabled={!desktop || state.loading || !state.hasOlder}>{$t('history.olderPage')}</Button>
   </nav>
   <div class="history-entries">
     {#each state.entries as entry (entry.key)}
-      <Card as="article" aria-label={`${entry.kind === 'git' ? '工作区写入' : '工程任务'} · ${entry.title}`}>
+      <Card as="article" aria-label={`${entry.kind === 'git' ? $t('history.workspaceWrite') : $t('history.projectTask')} · ${translateMessage($locale, entry.title)}`}>
         <CardHeader>
-          <CardTitle>{entry.kind === 'git' ? '工作区写入' : '工程任务'} · {entry.title}</CardTitle>
-          <Badge variant={entry.status === 'outcome_unknown' || entry.status === 'failed' ? 'warning' : 'outline'}>{executionStatus(entry)}</Badge>
+          <CardTitle>{entry.kind === 'git' ? $t('history.workspaceWrite') : $t('history.projectTask')} · {translateMessage($locale, entry.title)}</CardTitle>
+          <Badge variant={entry.status === 'outcome_unknown' || entry.status === 'failed' ? 'warning' : 'outline'}>{executionStatus(entry, $locale)}</Badge>
         </CardHeader>
         <CardContent>
-          <p>开始：<time datetime={entry.startedAt}>{new Date(entry.startedAt).toLocaleString()}</time>{#if entry.completedAt} · 结束：<time datetime={entry.completedAt}>{new Date(entry.completedAt).toLocaleString()}</time>{/if}</p>
-          <details><summary>查看输入与执行结果</summary>
-          {#if entry.caller}<p>发起窗口：{entry.caller}</p>{/if}
-          {#if entry.input}<Textarea aria-label={`${entry.title}操作输入`} value={entry.input} readonly rows={3} />{/if}
-          {#if entry.output}<Textarea aria-label={`${entry.title}执行结果`} value={entry.output} readonly rows={6} />{/if}
+          <p>{$t('history.started')}<time datetime={entry.startedAt}>{formatDateTime($locale, entry.startedAt, { dateStyle: 'medium', timeStyle: 'short' })}</time>{#if entry.completedAt}{$t('history.finished')}<time datetime={entry.completedAt}>{formatDateTime($locale, entry.completedAt, { dateStyle: 'medium', timeStyle: 'short' })}</time>{/if}</p>
+          <details><summary>{$t('history.executionDetails')}</summary>
+          {#if entry.caller}<p>{$t('history.caller', { window: entry.caller })}</p>{/if}
+          {#if entry.input}<Textarea aria-label={$t('history.inputLabel', { title: entry.title })} value={entry.input} readonly rows={3} />{/if}
+          {#if entry.output}<Textarea aria-label={$t('history.outputLabel', { title: entry.title })} value={executionOutput(entry,$locale)} readonly rows={6} />{/if}
           </details>
           {#if canStopExecution(entry, windowId)}
-            <Button variant="outline" disabled={!desktop || state.stopping.includes(entry.key)} onclick={() => onStop(entry.key)} aria-label={`停止 ${entry.title}`}>{state.stopping.includes(entry.key) ? '正在请求停止…' : '停止'}</Button>
+            <Button variant="outline" disabled={!desktop || state.stopping.includes(entry.key)} onclick={() => onStop(entry.key)} aria-label={$t('history.stopLabel', { title: entry.title })}>{state.stopping.includes(entry.key) ? $t('history.stopping') : $t('history.stop')}</Button>
           {:else if executionActive(entry) && entry.kind === 'git' && entry.caller !== windowId}
-            <p>请在发起窗口停止此工作区写入。</p>
+            <p>{$t('history.stopInOrigin')}</p>
           {/if}
         </CardContent>
       </Card>

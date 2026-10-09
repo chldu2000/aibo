@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createInstalledWorkbenchController} from '../src/lib/app/installed-workbench-controller.ts';
+import {createInstalledWorkbenchController, installedWorkbenchPresentation} from '../src/lib/app/installed-workbench-controller.ts';
 import {createCapabilityWorkbenchDirectory} from '../src/lib/presentation-runtime/capability-workbench.ts';
 import {createViewStateStore} from '../src/lib/app/view-state-storage.ts';
 const contribution={installationId:'installation',contributionId:'dev.example.tool',title:'Tool',available:true,issue:null};
@@ -29,4 +29,25 @@ test('external capability actions retain semantic context and reject replaced sn
  assert.equal(JSON.parse(directory.resolve(state,context,{id:selected.token,event:'click',context,value:'forged'}).args[0]).itemId,'item');
  assert.equal(directory.resolve({...state,view:{...state.view,snapshot:{...fixture,context:{...fixture.context,revision:2}}}},context,{id:selected.token,event:'click',context}),null);
  assert.equal(directory.resolve({...state,view:{...state.view,restoring:true}},context,{id:selected.token,event:'click',context}),null);
+});
+
+test('host loading and failure messages switch language without changing plugin text, context or write gates',async()=>{
+ let state, resolve;
+ const read = new Promise(done=>resolve=done);
+ const provider = {...structuredClone(fixture),schema:'aibo.semantic-view/v1.1',state:{status:'ready',message:'插件原文'},actions:[...fixture.actions,{id:'example.write',label:'写入原文',intent:'execute',enabled:true,input:{}}]};
+ const controller=createInstalledWorkbenchController({open:async()=>provider,cancelOpen:async()=>{},release:async()=>{},write:async()=>{throw Error('outcome_unknown')},act:async()=>read},createViewStateStore(),value=>state=value);
+ await controller.open('w',contribution);
+ assert.equal(installedWorkbenchPresentation(state,'en').snapshot.state.message,'插件原文');
+ const pending=controller.act({context:provider.context,actionId:'refresh',itemId:null});
+ const en=installedWorkbenchPresentation(state,'en'),zh=installedWorkbenchPresentation(state,'zh-CN');
+ assert.equal(en.snapshot.state.message,'Reading…');assert.equal(zh.snapshot.state.message,'正在读取…');
+ assert.deepEqual(en.snapshot.context,provider.context);assert.equal(en.snapshot.actions.at(-1).label,'写入原文');
+ assert.equal('hostMessage' in en,false);assert.equal(state.snapshot.state.message,'');
+ resolve({...provider,context:{...provider.context,revision:2}});await pending;
+ assert.equal(state.hostMessage,null);assert.equal(installedWorkbenchPresentation(state,'en').snapshot.state.message,'插件原文');
+ await controller.act({context:state.snapshot.context,actionId:'example.write',itemId:null});
+ assert.match(installedWorkbenchPresentation(state,'en').error,/outcome is unknown/);
+ assert.match(installedWorkbenchPresentation(state,'zh-CN').error,/结果未知/);
+ assert.equal(state.snapshot.actions.at(-1).enabled,false);assert.equal(installedWorkbenchPresentation(state,'en').snapshot.state.message,'插件原文');
+ controller.dispose();
 });

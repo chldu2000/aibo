@@ -43,7 +43,8 @@ try {
     }};
   });
   const url=`http://127.0.0.1:${server.httpServer.address().port}`;
-  await page.goto(url);await page.locator('.workspace-item').waitFor();
+  await page.addInitScript(() => { if (window === window.top && location.protocol === 'http:') localStorage.setItem('aibo.language.v1','zh-CN'); });
+    await page.goto(url);await page.locator('.workspace-item').waitFor();
   assert.equal(await page.locator('.workspace-trust-dot').count(),0);
   const add=async path=>{
     await page.evaluate(value=>window.nextDirectory=value,path);
@@ -82,7 +83,7 @@ try {
   await page.evaluate(()=>window.failPreferenceRead=false);await page.getByRole('button',{name:'重新读取设置',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('input[role="switch"]').disabled);assert.equal(await toggle.isChecked(),true);
   await page.getByRole('tab',{name:'外观',exact:true}).click();
-  await page.locator('.appearance-theme-option').filter({hasText:'深色'}).click();
+  await page.getByRole('radio',{name:'深色',exact:true}).check();
   await page.getByRole('tab',{name:'工作区',exact:true}).click();
   await toggle.scrollIntoViewIfNeeded();
   await page.screenshot({path:'/tmp/aibo-workspace-preferences/dark.png'});

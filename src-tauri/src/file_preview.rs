@@ -14,13 +14,12 @@ pub(crate) struct FilePreview {
 }
 
 pub(crate) fn read(root: &Path, path: &Path, line: Option<u32>) -> Result<FilePreview, CoreError> {
-    let fail = |message: String| CoreError::SessionOperation(message);
-    let canonical = crate::workspace_guard::canonicalize_target(root, path).map_err(fail)?;
+    let canonical = crate::workspace_guard::canonicalize_target_message(root, path).map_err(crate::ui_i18n::session_operation_message)?;
     let (content, truncated) = crate::text_preview::read_text(root, &canonical)?;
     let lines: Vec<_> = content.split('\n').collect();
     let target = line.unwrap_or(1) as usize;
     if target == 0 || target > lines.len() {
-        return Err(fail(if truncated { "目标行超出文本预览的 2 MiB 读取范围" } else { "目标行超出文件范围" }.to_owned()));
+        return Err(crate::ui_i18n::read_error(if truncated { "native.search.lineBeyondPreview" } else { "native.search.lineBeyondFile" }, serde_json::json!({})));
     }
     // Bound rendered rows, retaining the true line numbers around the requested location.
     let start = target.saturating_sub(101);
@@ -47,7 +46,9 @@ mod tests {
         assert_eq!(preview.content.lines().count(), 400);
         assert_eq!(preview.content.lines().nth(100), Some("line 800"));
         assert!(read(root.path(), &file, None).is_ok());
-        assert!(read(root.path(), &file, Some(1201)).is_err());
+        let error = serde_json::to_value(read(root.path(), &file, Some(1201)).unwrap_err()).unwrap();
+        assert_eq!(error["message"], "session operation failed: 目标行超出文件范围");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En, &error["localized"]), "The requested line is outside the file.");
         assert!(read(root.path(), &file, Some(0)).is_err());
     }
     #[test]
@@ -74,6 +75,9 @@ mod tests {
         let preview = read(root.path(), Path::new("large"), None).unwrap();
         assert!(preview.truncated);
         assert_eq!(preview.content.lines().count(), 400);
-        assert!(read(root.path(), Path::new("large"), Some(2_000_000)).is_err());
+        let error = serde_json::to_value(read(root.path(), Path::new("large"), Some(2_000_000)).unwrap_err()).unwrap();
+        assert_eq!(error["code"], "session_operation_error");
+        assert_eq!(error["message"], "session operation failed: 目标行超出文本预览的 2 MiB 读取范围");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En, &error["localized"]), "The requested line is beyond the 2 MiB text preview limit.");
     }
 }

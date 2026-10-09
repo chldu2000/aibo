@@ -14,17 +14,29 @@ try {
   const run = await invoke('run_project_action', { workspaceId: workspace.id, actionId: task.id, requestId: 'auto-task' });
   check(run.status === 'completed' && run.exitCode === 0, 'default project action must execute without dialog');
   await invoke('save_host_confirmation_preference', { category: 'git', policy: 'ask' });
-  for (const [marker, decision] of [['HOST_CANCEL_PROBE', '取消'], ['HOST_ACCEPT_PROBE', '允许本次执行']]) {
-    await fetch('/__dialog_ready', { method: 'POST', body: JSON.stringify({ marker, decision, title: '确认 Git 写入' }) });
-    let error, result;
-    try { result = await invoke('create_workspace_git_branch', { workspaceId: workspace.id, branch: marker, requestId: marker }); }
-    catch (caught) { error = JSON.stringify(caught); }
-    const branches = await invoke('list_workspace_git_branches', { workspaceId: workspace.id });
-    if (decision === '取消') {
-      check(error?.includes('approval_rejected'), 'cancel must reject');
-      check(!branches.some(branch => branch.name === marker), 'cancel must not create a branch');
-    } else check(!error && result.applied && branches.some(branch => branch.name === marker), 'accept must create a branch');
+  for (const locale of ['zh-CN','en']) {
+    check(await invoke('set_window_locale',{locale})===locale,'native language acknowledged');
+    for (const accepted of [false,true]) {
+      const marker='HOST_'+locale.replace('-','_')+'_'+(accepted?'ACCEPT':'CANCEL');
+      const decision=locale==='en'?(accepted?'Allow this execution':'Cancel'):(accepted?'允许本次执行':'取消');
+      await fetch('/__dialog_ready', { method: 'POST', body: JSON.stringify({ marker, decision, title:locale==='en'?'Confirm Git write':'确认 Git 写入',bodyMarker:locale==='en'?'Workspace:':'工作区：' }) });
+      let error,result;
+      try { result=await invoke('create_workspace_git_branch',{workspaceId:workspace.id,branch:marker,requestId:marker}); }catch(caught){error=JSON.stringify(caught)}
+      const branches=await invoke('list_workspace_git_branches',{workspaceId:workspace.id});
+      if(!accepted){check(error?.includes('approval_rejected'),'cancel must reject');check(!branches.some(branch=>branch.name===marker),'cancel must not create a branch');}
+      else check(!error&&result.applied&&branches.some(branch=>branch.name===marker),'accept must create a branch');
+    }
   }
+  await invoke('save_host_confirmation_preference',{category:'projectAction',policy:'ask'});
+  for(const locale of ['en','zh-CN']){
+    await invoke('set_window_locale',{locale});
+    const marker='PROJECT_'+locale.replace('-','_');
+    const action=await invoke('save_project_action',{workspaceId:workspace.id,name:marker+' 原始任务名',kind:'custom',program:'/usr/bin/true',args:[]});
+    await fetch('/__dialog_ready',{method:'POST',body:JSON.stringify({marker,decision:locale==='en'?'Cancel':'取消',title:locale==='en'?'Confirm project action':'确认工程动作',bodyMarker:locale==='en'?'Working directory:':'工作目录：'})});
+    const rejected=await invoke('run_project_action',{workspaceId:workspace.id,actionId:action.id,requestId:marker});
+    check(rejected.status==='rejected'&&rejected.exitCode===null&&rejected.output.includes('approval denied'),'localized project dialog cancellation blocks execution');
+  }
+  await invoke('save_host_confirmation_preference',{category:'projectAction',policy:'always-allow'});
   const persisted = await invoke('read_host_confirmation_preferences');
   check(persisted.git === 'ask' && persisted.projectAction === 'always-allow', 'category policies remain independent');
   await invoke('save_host_confirmation_preference', { category: 'git', policy: 'always-allow' });
@@ -33,5 +45,5 @@ try {
   try { await invoke('create_workspace_git_branch', { workspaceId: workspace.id, branch: 'must-not-exist', requestId: 'untrusted' }); }
   catch (error) { trustError = JSON.stringify(error); }
   check(trustError?.includes('workspace_trust_required'), 'always allow must preserve trust gate');
-  await report({ ok: true, defaultStage: true, defaultCommit: true, defaultTask: true, nativeCancel: true, nativeAccept: true, independentSettings: true, trustGate: true });
+  await report({ ok: true, defaultStage: true, defaultCommit: true, defaultTask: true, nativeCancel: true, nativeAccept: true, dialogLanguages:['zh-CN','en'], projectCancelBothLanguages:true, independentSettings: true, trustGate: true });
 } catch (error) { await report({ ok: false, error: String(error) }); }

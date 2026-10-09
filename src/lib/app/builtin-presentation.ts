@@ -1,3 +1,4 @@
+import { LocalizedError } from './error-utils.ts';
 import type { PresentationRelease, PresentationSelection } from '../presentation-runtime/types';
 
 type BuiltinKit = { id: string; packageId?: string; defaultThemeId: string; themes: readonly { id: string }[] };
@@ -18,8 +19,8 @@ export function builtinSelection(
 /** Resolve a committed built-in release to the trusted kit compiled into this build. */
 export function builtinAppearance(release: PresentationRelease, themeId: string | null, kits: readonly BuiltinKit[]) {
   const kit = release.source === 'builtin' ? kits.find(kit => kit.packageId === release.manifest.id) : undefined;
-  if (!kit) throw Error('presentation_unavailable');
+  if (!kit) throw new LocalizedError('native.presentation.unavailable', {}, 'presentation_unavailable');
   const theme = themeId ?? kit.defaultThemeId;
-  if (!kit.themes.some(candidate => candidate.id === theme)) throw Error('invalid_presentation_theme');
+  if (!kit.themes.some(candidate => candidate.id === theme)) throw new LocalizedError('presentation.invalidTheme', {}, 'invalid_presentation_theme');
   return { kitId: kit.id, themeId: theme };
 }

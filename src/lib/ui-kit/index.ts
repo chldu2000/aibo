@@ -42,6 +42,7 @@ export {
   activeUiKitName,
   appearanceSelection,
   availableUiKits,
+  localizedUiKits,
   defaultUiKitId,
   setUiAppearance,
   setUiKit,

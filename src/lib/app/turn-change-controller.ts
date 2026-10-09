@@ -1,8 +1,11 @@
+import type { LocalizedText } from '../../../packages/i18n/index.js';
+import { localizedMessage, localizedList } from '../../../packages/i18n/index.js';
 import type { TurnChangeSet, TurnFileDiff, GitFileAction, GitFileActionResult, GitHunkActionResult, RestoreTurnChangeSetResult } from '../types';
 import type { SetNotice } from './notifications';
-import { toErrorMessage } from './error-utils.ts';
+import { LocalizedError, toErrorText, readNativeMessage } from './error-utils.ts';
+import { nativeListMessages } from './turn-change-presentation.ts';
 
-export type TurnChangeState = { diff: TurnFileDiff | null; loading: boolean; error: string | null };
+export type TurnChangeState = { diff: TurnFileDiff | null; loading: boolean; error: LocalizedText | null };
 export const emptyTurnChange = (): TurnChangeState => ({ diff: null, loading: false, error: null });
 
 /** Session-scoped change inspection; read invalidation never discards a completed write. */
@@ -16,7 +19,7 @@ export function createTurnChangeController(options: {
   desktop(): boolean;
   context(): { sessionId: string | null; changeSet: TurnChangeSet | null };
   changed(state: TurnChangeState): void;
-  error(message: string): void;
+  error(message: LocalizedText): void;
   notice: SetNotice;
   workspaceChanged(session: string): Promise<void>;
   restored(session: string): Promise<void>;
@@ -32,42 +35,41 @@ export function createTurnChangeController(options: {
     try {
       const diff = await options.api.getTurnFileDiff(session, turn, path);
       if (!owns()) return;
-      if (diff.path !== path) throw Error('turn_diff_identity_mismatch');
+      if (diff.path !== path) throw new LocalizedError('error.turnDiffIdentity', {}, 'turn_diff_identity_mismatch');
       options.changed({ diff, error: null, loading: false });
     } catch (error) {
       if (owns()) {
-        const message = toErrorMessage(error);
+        const message = toErrorText(error);
         options.changed({ diff: null, loading: false, error: message }); options.error(message);
       }
     }
   }
-  async function apply(session: string, action: GitFileAction, label: string, execute: () => Promise<GitFileActionResult | GitHunkActionResult>) {
+  async function apply(session: string, action: GitFileAction, target: 'file' | 'hunk', execute: () => Promise<GitFileActionResult | GitHunkActionResult>) {
     try {
       const result = await execute();
-      if (!result.applied) { options.error(result.message); return; }
-      const message = action === 'stage' ? `${label}已暂存。`
-        : action === 'unstage' ? (label === '文件' ? '已取消暂存。' : 'hunk 已取消暂存。')
-        : `${label}变更已撤销。`;
+      if (!result.applied) { options.error(readNativeMessage(result.localizedMessage) ?? result.message); return; }
+      const operation = action === 'stage' ? 'Staged' : action === 'unstage' ? 'Unstaged' : 'Reverted';
+      const message = localizedMessage(`turn.${target}${operation}`);
       options.notice(message, 'success');
       await options.workspaceChanged(session);
-    } catch (error) { options.error(toErrorMessage(error)); }
+    } catch (error) { options.error(toErrorText(error)); }
   }
   async function restore(session: string, turn: string) {
     if (!options.desktop()) return;
     try {
       const result = await options.api.restoreTurnChangeSet(session, turn);
       if (result.applied) {
-        options.notice(result.restored.length ? `已恢复 ${result.restored.length} 个文件。` : '本轮没有可恢复的文件。', result.restored.length ? 'success' : 'info');
+        options.notice(result.restored.length ? localizedMessage('turn.restored', {count: result.restored.length}) : localizedMessage('turn.noRestores'), result.restored.length ? 'success' : 'info');
         await options.restored(session);
-      } else if (result.conflicts.length) options.notice(`恢复已阻止：${result.conflicts.length} 个文件在本轮后发生了变化。`, 'warning');
-      else options.notice(`恢复已阻止：${result.unsupported.join('、') || '当前变更无法安全恢复'}。`, 'warning');
-    } catch (error) { options.error(toErrorMessage(error)); }
+      } else if (result.conflicts.length) options.notice(localizedMessage('turn.restoreConflicts', {count: result.conflicts.length}), 'warning');
+      else options.notice(result.unsupported.length ? localizedMessage('turn.restoreUnsupported', {reason: localizedList(nativeListMessages(result.unsupported, result.localizedUnsupported))}) : localizedMessage('turn.restoreUnsafe'), 'warning');
+    } catch (error) { options.error(toErrorText(error)); }
   }
   return {
     reset, showDiff, restore,
     applyFile: (session: string, turn: string, path: string, action: GitFileAction) =>
-      apply(session, action, '文件', () => options.api.applyGitFileAction(session, path, action, turn)),
+      apply(session, action, 'file', () => options.api.applyGitFileAction(session, path, action, turn)),
     applyHunk: (session: string, turn: string, path: string, hunk: number, action: GitFileAction) =>
-      apply(session, action, 'hunk ', () => options.api.applyGitHunkAction(session, turn, path, hunk, action)),
+      apply(session, action, 'hunk', () => options.api.applyGitHunkAction(session, turn, path, hunk, action)),
   };
 }

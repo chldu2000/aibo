@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { locale, t } from '$lib/i18n/runtime';
   import { tick, type Snippet } from 'svelte';
   import { Select, AgentStatusMark, Button, Card, CardHeader, CardTitle, Icon, Input, Separator } from '$lib/ui-kit';
   import type { SessionFilter } from '$lib/types';
@@ -88,11 +89,11 @@
     onSaveSessionRename,
     onCancelRenameSession,
   }: WorkspaceSidebarProps = $props();
-  const workspaceLocationLabel = navigator.platform.startsWith('Mac')
+  const workspaceLocationLabel = $derived(navigator.platform.startsWith('Mac')
     ? 'Finder'
     : navigator.platform.startsWith('Win')
-      ? '文件资源管理器'
-      : '文件管理器';
+      ? $t('sidebar.fileExplorer')
+      : $t('sidebar.fileManager'));
   const agentLaunchers = new Map<string, HTMLElement>();
   let primaryLauncher: HTMLElement | null = null;
   const menuPrefix = $props.id();
@@ -110,7 +111,7 @@
 
   let agentWheelPosition = $state<{ left: number; top: number } | null>(null);
   let agentMenu: HTMLDivElement | null = $state(null);
-  const sessionCreatorWorkspaceLabel = $derived(workspaces.find(workspace => workspace.id === createSessionWorkspaceId)?.label ?? '工作区');
+  const sessionCreatorWorkspaceLabel = $derived(workspaces.find(workspace => workspace.id === createSessionWorkspaceId)?.label ?? $t('settings.workspace'));
 
   function registerAgentLauncher(node: HTMLElement, workspaceId: string) {
     agentLaunchers.set(workspaceId, node);
@@ -200,10 +201,10 @@
 
 </script>
 
-<Card as="aside" class={collapsed ? 'sidebar sidebar-collapsed' : 'sidebar'} data-ui-component="workspace-sidebar" aria-label="工作区">
+<Card as="aside" class={collapsed ? 'sidebar sidebar-collapsed' : 'sidebar'} data-ui-component="workspace-sidebar" aria-label={$t('settings.workspace')}>
   <div class="sidebar-primary-actions">
-    <Button class="sidebar-toggle" variant="ghost" size="icon" aria-label={collapsed ? '展开侧栏' : '收起侧栏'} title={collapsed ? '展开侧栏' : '收起侧栏'} aria-expanded={!collapsed} onclick={onToggleCollapsed}><Icon name="panel-left" size={20} /></Button>
-    <Button aria-label="新建会话" title={'新建会话 · ' + (workspaces.find(workspace => workspace.id === selectedWorkspaceId)?.label ?? workspaces[0]?.label ?? '添加工作区')} class="sidebar-new-session" type="button" disabled={busy}
+    <Button class="sidebar-toggle" variant="ghost" size="icon" aria-label={collapsed ? $t('sidebar.expand') : $t('sidebar.collapse')} title={collapsed ? $t('sidebar.expand') : $t('sidebar.collapse')} aria-expanded={!collapsed} onclick={onToggleCollapsed}><Icon name="panel-left" size={20} /></Button>
+    <Button aria-label={$t('commands.new')} title={$t('commands.new') + ' · ' + (workspaces.find(workspace => workspace.id === selectedWorkspaceId)?.label ?? workspaces[0]?.label ?? $t('sidebar.addWorkspace'))} class="sidebar-new-session" type="button" disabled={busy}
       aria-expanded={Boolean(createSessionWorkspaceId)}
       aria-controls={createSessionWorkspaceId ? `session-agent-wheel-${createSessionWorkspaceId}` : undefined}
       onclick={(event) => {
@@ -211,23 +212,23 @@
         if (!workspaceId) { onChooseWorkspaceDirectory(); return; }
         primaryLauncher = event.currentTarget;
         onToggleSessionCreator(workspaceId);
-      }}><Icon name="add" size={16} /><span>新建会话</span></Button>
+      }}><Icon name="add" size={16} /><span>{$t('commands.new')}</span></Button>
   </div>
   {#if collapsed}
     {@const waiting = Object.values(sessionsByWorkspace).flat().filter(session => !session.archived && ['waiting_approval', 'waiting_user'].includes(session.state)).length}
-    <Button class="sidebar-browse" variant="ghost" size="icon" aria-label={waiting ? `工作区与会话，${waiting} 个会话等待处理` : '工作区与会话'} title={waiting ? `工作区与会话 · ${waiting} 个等待处理` : '工作区与会话'} onclick={onToggleCollapsed}><Icon name="folder" size={20} />{#if waiting}<span class="sidebar-attention" aria-hidden="true"></span>{/if}</Button>
+    <Button class="sidebar-browse" variant="ghost" size="icon" aria-label={waiting ? $t('sidebar.waiting', { count: waiting }) : $t('sidebar.browse')} title={waiting ? $t('sidebar.waitingHint', { count: waiting }) : $t('sidebar.browse')} onclick={onToggleCollapsed}><Icon name="folder" size={20} />{#if waiting}<span class="sidebar-attention" aria-hidden="true"></span>{/if}</Button>
   {/if}
   <CardHeader class="panel-heading">
-    <CardTitle>工作区</CardTitle>
-    <div class="workspace-toolbar" aria-label="工作区工具">
+    <CardTitle>{$t('settings.workspace')}</CardTitle>
+    <div class="workspace-toolbar" aria-label={$t('sidebar.workspaceTools')}>
           {@render presentationActions?.()}
       <Button
         variant="ghost"
         size="icon"
         type="button"
         class={sessionFilterOpen || sessionFilter !== 'active' ? 'active' : undefined}
-        aria-label="筛选会话"
-        title="筛选会话"
+        aria-label={$t('sidebar.filter')}
+        title={$t('sidebar.filter')}
         aria-pressed={sessionFilterOpen}
         onclick={onToggleFilter}
       >
@@ -237,8 +238,8 @@
         variant="ghost"
         size="icon"
         type="button"
-        aria-label="添加工作区"
-        title="添加工作区"
+        aria-label={$t('sidebar.addWorkspace')}
+        title={$t('sidebar.addWorkspace')}
         onclick={onChooseWorkspaceDirectory}
         disabled={busy}
       >
@@ -250,26 +251,26 @@
   {#if sessionFilterOpen}
     <form
       class="workspace-tool-panel session-filter-form"
-      aria-label="会话搜索与筛选"
+      aria-label={$t('sidebar.searchFilter')}
       onsubmit={(event) => {
         event.preventDefault();
         onApplyFilters();
       }}
     >
       {#if sessionFilterOpen}
-        <Select class="session-filter-select" aria-label="会话状态筛选" value={sessionFilter}
-          options={[{value:'active',label:'活动'},{value:'all',label:'全部'},{value:'archived',label:'已归档'},{value:'running',label:'运行中'},{value:'waiting_approval',label:'待审批'},{value:'idle',label:'空闲'},{value:'interrupted',label:'已中断'},{value:'failed',label:'失败'},{value:'closed',label:'已关闭'}]}
+        <Select class="session-filter-select" aria-label={$t('sidebar.statusFilter')} value={sessionFilter}
+          options={[{value:'active',label:$t('sidebar.active')},{value:'all',label:$t('sidebar.all')},{value:'archived',label:$t('session.status.archived')},{value:'running',label:$t('session.status.running')},{value:'waiting_approval',label:$t('session.status.waiting_approval')},{value:'idle',label:$t('session.status.idle')},{value:'interrupted',label:$t('session.status.interrupted')},{value:'failed',label:$t('session.status.failed')},{value:'closed',label:$t('session.status.closed')}]}
           onSelect={value => { sessionFilter = value as typeof sessionFilter; onApplyFilters(); }} />
       {/if}
-      <Button variant="ghost" size="icon" type="submit" aria-label="应用会话筛选" disabled={!selectedWorkspaceId}>
+      <Button variant="ghost" size="icon" type="submit" aria-label={$t('sidebar.applyFilter')} disabled={!selectedWorkspaceId}>
         <Icon name="filter" size={14} />
       </Button>
     </form>
   {/if}
 
-  <div class="workspace-list" aria-label="工作区列表">
+  <div class="workspace-list" aria-label={$t('sidebar.workspaces')}>
     {#if workspaces.length === 0}
-      <div class="empty-list">暂无工作区</div>
+      <div class="empty-list">{$t('sidebar.emptyWorkspaces')}</div>
     {:else}
       {#each workspaces as workspace (workspace.id)}
         {@const workspaceExpanded = expandedWorkspaceIds.includes(workspace.id)}
@@ -286,7 +287,7 @@
               type="button"
               aria-expanded={workspaceExpanded}
               aria-controls={workspaceExpanded ? `workspace-sessions-${workspace.id}` : undefined}
-              aria-label={`${workspace.label}，${workspace.trust === 'trusted' ? '可信' : '待确认'}`}
+              aria-label={$t('sidebar.workspaceStatus', { name: workspace.label, status: workspace.trust === 'trusted' ? $t('sidebar.trusted') : $t('sidebar.untrusted') })}
               title={`${workspace.label}\n${workspace.path}`}
               onclick={() => onSelectWorkspace(workspace.id)}
             >
@@ -299,31 +300,31 @@
                 <strong>{workspace.label}</strong>
               </span>
             </Button>
-            <div class="workspace-item-actions" use:registerAgentLauncher={workspace.id} aria-label={`${workspace.label} 管理操作`}>
-              <Button variant="ghost" size="icon" type="button" aria-label={`${workspace.label} 更多操作`} title="更多工作区操作" popovertarget={`${menuPrefix}-workspace-${workspace.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
-              <div id={`${menuPrefix}-workspace-${workspace.id}`} class="row-action-menu" popover="auto" role="group" aria-label={`${workspace.label} 管理菜单`} ontoggle={focusRowMenu} style={`--row-menu-left: ${rowMenuPosition.left}px; --row-menu-top: ${rowMenuPosition.top}px`}>
-              <Button variant="ghost" size="sm" disabled={busy} onclick={(event) => { event.stopPropagation(); closeRowMenu(event); primaryLauncher = agentLaunchers.get(workspace.id)?.querySelector<HTMLButtonElement>('button') ?? null; onToggleSessionCreator(workspace.id); }}><Icon name="add" size={18} />在此新建会话</Button>
+            <div class="workspace-item-actions" use:registerAgentLauncher={workspace.id} aria-label={$t('sidebar.workspaceActions', { name: workspace.label })}>
+              <Button variant="ghost" size="icon" type="button" aria-label={$t('sidebar.moreActions', { name: workspace.label })} title={$t('sidebar.moreWorkspaceActions')} popovertarget={`${menuPrefix}-workspace-${workspace.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
+              <div id={`${menuPrefix}-workspace-${workspace.id}`} class="row-action-menu" popover="auto" role="group" aria-label={$t('sidebar.workspaceMenu', { name: workspace.label })} ontoggle={focusRowMenu} style={`--row-menu-left: ${rowMenuPosition.left}px; --row-menu-top: ${rowMenuPosition.top}px`}>
+              <Button variant="ghost" size="sm" disabled={busy} onclick={(event) => { event.stopPropagation(); closeRowMenu(event); primaryLauncher = agentLaunchers.get(workspace.id)?.querySelector<HTMLButtonElement>('button') ?? null; onToggleSessionCreator(workspace.id); }}><Icon name="add" size={18} />{$t('sidebar.createHere')}</Button>
               <Button
                 variant="ghost"
                 size="sm"
                 type="button"
-                aria-label={`在 ${workspaceLocationLabel} 中打开工作区`}
-                title={`在 ${workspaceLocationLabel} 中打开`}
+                aria-label={$t('sidebar.openWorkspaceLocation', { location: workspaceLocationLabel })}
+                title={$t('sidebar.openLocation', { location: workspaceLocationLabel })}
                 onclick={(event) => { event.stopPropagation(); closeRowMenu(event); onOpenWorkspaceLocation(workspace.id); }}
                 disabled={busy}
               >
-                <Icon name="folder" size={18} />在 {workspaceLocationLabel} 中打开
+                <Icon name="folder" size={18} />{$t('sidebar.openLocation', { location: workspaceLocationLabel })}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 type="button"
-                aria-label={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
-                title={workspace.trust === 'trusted' ? '撤销信任' : '标记为可信'}
+                aria-label={workspace.trust === 'trusted' ? $t('sidebar.revokeTrust') : $t('sidebar.markTrusted')}
+                title={workspace.trust === 'trusted' ? $t('sidebar.revokeTrust') : $t('sidebar.markTrusted')}
                 onclick={(event) => { event.stopPropagation(); closeRowMenu(event); onToggleTrust(workspace.id); }}
                 disabled={busy}
               >
-                {#if workspace.trust === 'trusted'}<Icon name="untrust" size={18} />撤销信任{:else}<Icon name="trust" size={18} />标记为可信{/if}
+                {#if workspace.trust === 'trusted'}<Icon name="untrust" size={18} />{$t('sidebar.revokeTrust')}{:else}<Icon name="trust" size={18} />{$t('sidebar.markTrusted')}{/if}
               </Button>
               <Separator />
               <Button
@@ -331,12 +332,12 @@
                 class="row-action-danger"
                 size="sm"
                 type="button"
-                aria-label="移除工作区"
-                title="移除工作区"
+                aria-label={$t('sidebar.removeWorkspace')}
+                title={$t('sidebar.removeWorkspace')}
                 onclick={(event) => { event.stopPropagation(); closeRowMenu(event); onDeleteWorkspace(workspace.id); }}
                 disabled={busy || archivingWorkspaceId === workspace.id}
               >
-                <Icon name="delete" size={18} />移除工作区
+                <Icon name="delete" size={18} />{$t('sidebar.removeWorkspace')}
               </Button>
               </div>
             </div>
@@ -346,11 +347,11 @@
             <section
               id={`workspace-sessions-${workspace.id}`}
               class="workspace-session-group"
-              aria-label={`${workspace.label} 的会话`}
+              aria-label={$t('sidebar.workspaceSessions', { name: workspace.label })}
               aria-busy={sessionsLoadingWorkspaceIds.includes(workspace.id)}
             >
               {#if workspaceSessions.length > 0}
-                <div class="session-list" aria-label="Agent 会话列表">
+                <div class="session-list" aria-label={$t('sidebar.agentSessions')}>
                   {#each workspaceSessions.slice(0, visibleCount) as session (session.id)}
                     {@const agentLabel = session.providerLabel ?? 'Agent'}
                     <div class:selected={session.id === selectedSessionId} class:is-renaming={renamingSessionId === session.id} class="session-item-row">
@@ -358,7 +359,7 @@
                         <div class="session-rename-inline">
                           <Input
                             bind:value={sessionLabelDraft}
-                            aria-label="会话名称"
+                            aria-label={$t('sidebar.sessionName')}
                             maxlength="120"
                             onkeydown={(event) => {
                               if (event.key === 'Enter') {
@@ -369,10 +370,10 @@
                               }
                             }}
                           />
-                          <Button variant="outline" size="icon" type="button" aria-label="保存会话名称" title="保存" onclick={onSaveSessionRename} disabled={busy || !sessionLabelDraft.trim()}>
+                          <Button variant="outline" size="icon" type="button" aria-label={$t('sidebar.saveName')} title={$t('common.save')} onclick={onSaveSessionRename} disabled={busy || !sessionLabelDraft.trim()}>
                             <Icon name="check" size={14} />
                           </Button>
-                          <Button variant="ghost" size="icon" type="button" aria-label="取消改名" title="取消" onclick={onCancelRenameSession} disabled={busy}>
+                          <Button variant="ghost" size="icon" type="button" aria-label={$t('sidebar.cancelRename')} title={$t('common.cancel')} onclick={onCancelRenameSession} disabled={busy}>
                             <Icon name="close" size={14} />
                           </Button>
                         </div>
@@ -381,8 +382,8 @@
                           variant={session.id === selectedSessionId ? 'secondary' : 'ghost'}
                           type="button"
                           class="session-item"
-                          aria-label={`${session.label}，${agentLabel}，${sessionStateLabel(session)}`}
-                          title={`${agentLabel} · ${sessionStateLabel(session)}`}
+                          aria-label={`${session.label}，${agentLabel}，${sessionStateLabel(session, $locale)}`}
+                          title={`${agentLabel} · ${sessionStateLabel(session, $locale)}`}
                           onclick={() => onSelectSession(session.id)}
                           disabled={archivingSessionId === session.id}
                         >
@@ -390,36 +391,36 @@
                             icon={session.icon}
                             agent={session.agent}
                             tone={sessionStatusTone(session)}
-                            label={`${agentLabel}，${sessionStateLabel(session)}`}
+                            label={`${agentLabel}，${sessionStateLabel(session, $locale)}`}
                           />
                           <span class="session-item-label">{session.label}</span>
                           {#if !session.archived && ['waiting_approval', 'waiting_user', 'failed', 'interrupted'].includes(session.state)}
-                            <span class="session-state-label" data-tone={sessionStatusTone(session)}>{sessionStateLabel(session)}</span>
+                            <span class="session-state-label" data-tone={sessionStatusTone(session)}>{sessionStateLabel(session, $locale)}</span>
                           {:else}
                           <time class="session-updated" datetime={session.updatedAt}>
-                            {archivingSessionId === session.id ? '归档中' : relativeTimeLabel(session.updatedAt)}
+                            {archivingSessionId === session.id ? $t('sidebar.archiving') : relativeTimeLabel(session.updatedAt, $locale)}
                           </time>
                           {/if}
                         </Button>
-                        <div class="session-item-actions" aria-label={`${session.label} 操作`}>
-                          <Button variant="ghost" size="icon" type="button" aria-label={`${session.label} 更多操作`} title="更多会话操作" popovertarget={`${menuPrefix}-session-${session.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
-                          <div id={`${menuPrefix}-session-${session.id}`} class="row-action-menu" popover="auto" role="group" aria-label={`${session.label} 操作菜单`} ontoggle={focusRowMenu} style={`--row-menu-left: ${rowMenuPosition.left}px; --row-menu-top: ${rowMenuPosition.top}px`}>
-                          <Button variant="ghost" size="sm" type="button" aria-label="改名" title="改名" onclick={(event) => { closeRowMenu(event); onBeginRenameSession(session.id); }} disabled={busy || archivingSessionId === session.id}>
-                            <Icon name="edit" size={18} />改名
+                        <div class="session-item-actions" aria-label={$t('sidebar.sessionActions', { name: session.label })}>
+                          <Button variant="ghost" size="icon" type="button" aria-label={$t('sidebar.moreActions', { name: session.label })} title={$t('sidebar.moreSessionActions')} popovertarget={`${menuPrefix}-session-${session.id}`} onclick={event => positionRowMenu(event.currentTarget)}><span aria-hidden="true" class="row-more-mark">···</span></Button>
+                          <div id={`${menuPrefix}-session-${session.id}`} class="row-action-menu" popover="auto" role="group" aria-label={$t('sidebar.sessionMenu', { name: session.label })} ontoggle={focusRowMenu} style={`--row-menu-left: ${rowMenuPosition.left}px; --row-menu-top: ${rowMenuPosition.top}px`}>
+                          <Button variant="ghost" size="sm" type="button" aria-label={$t('sidebar.rename')} title={$t('sidebar.rename')} onclick={(event) => { closeRowMenu(event); onBeginRenameSession(session.id); }} disabled={busy || archivingSessionId === session.id}>
+                            <Icon name="edit" size={18} />{$t('sidebar.rename')}
                           </Button>
                           {#if !session.archived && session.canSyncSnapshot}
-                            <Button variant="ghost" size="sm" type="button" aria-label="读取线程" title="读取线程" onclick={(event) => { closeRowMenu(event); onSyncCodexThread(session.id); }} disabled={threadBusy || busy || archivingSessionId === session.id}>
-                              <Icon name="refresh" size={18} />读取线程
+                            <Button variant="ghost" size="sm" type="button" aria-label={$t('sidebar.readThread')} title={$t('sidebar.readThread')} onclick={(event) => { closeRowMenu(event); onSyncCodexThread(session.id); }} disabled={threadBusy || busy || archivingSessionId === session.id}>
+                              <Icon name="refresh" size={18} />{$t('sidebar.readThread')}
                             </Button>
                           {/if}
                           <Separator />
                           {#if session.archived}
-                            <Button variant="ghost" size="sm" type="button" aria-label="取消归档" title="取消归档" onclick={(event) => { closeRowMenu(event); onUnarchiveSession(session.id); }} disabled={busy}>
-                              <Icon name="archive-restore" size={18} />取消归档
+                            <Button variant="ghost" size="sm" type="button" aria-label={$t('sidebar.unarchive')} title={$t('sidebar.unarchive')} onclick={(event) => { closeRowMenu(event); onUnarchiveSession(session.id); }} disabled={busy}>
+                              <Icon name="archive-restore" size={18} />{$t('sidebar.unarchive')}
                             </Button>
                           {:else}
-                            <Button variant="ghost" size="sm" type="button" aria-label="归档会话" title="归档" onclick={(event) => { closeRowMenu(event); onRequestArchiveSession(session.id); }} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
-                              <Icon name="archive" size={18} />归档会话
+                            <Button variant="ghost" size="sm" type="button" aria-label={$t('commands.archive')} title={$t('sidebar.archiveHint')} onclick={(event) => { closeRowMenu(event); onRequestArchiveSession(session.id); }} disabled={busy || isSessionRunning(session) || archivingSessionId !== null}>
+                              <Icon name="archive" size={18} />{$t('sidebar.archive')}
                             </Button>
                           {/if}
                           </div>
@@ -429,14 +430,14 @@
                   {/each}
                   {#if workspaceSessions.length > visibleCount}
                     <Button variant="ghost" type="button" onclick={() => onLoadMoreSessions(workspace.id)}>
-                      加载更多会话
+                      {$t('sidebar.loadMore')}
                     </Button>
                   {/if}
                 </div>
               {:else if sessionsLoadingWorkspaceIds.includes(workspace.id)}
-                <span class="session-filter-empty">加载会话…</span>
+                <span class="session-filter-empty">{$t('sidebar.loading')}</span>
               {:else}
-                <span class="session-filter-empty">{sessionFilter !== 'active' ? '没有匹配的会话' : '暂无会话'}</span>
+                <span class="session-filter-empty">{sessionFilter !== 'active' ? $t('sidebar.noMatches') : $t('sidebar.noSessions')}</span>
               {/if}
             </section>
           {/if}
@@ -451,20 +452,20 @@
       id={`session-agent-wheel-${createSessionWorkspaceId}`}
       class="session-agent-wheel"
       role="group"
-      aria-label="选择 Agent 创建会话"
+      aria-label={$t('sidebar.selectAgent')}
       tabindex="-1"
       style={`--agent-wheel-left: ${agentWheelPosition.left}px; --agent-wheel-top: ${agentWheelPosition.top}px`}
     >
-      <span class="session-agent-wheel-title" title={`在 ${sessionCreatorWorkspaceLabel} 中新建会话`}>在 {sessionCreatorWorkspaceLabel} 中新建会话</span>
+      <span class="session-agent-wheel-title" title={$t('sidebar.createInWorkspace', { name: sessionCreatorWorkspaceLabel })}>{$t('sidebar.createInWorkspace', { name: sessionCreatorWorkspaceLabel })}</span>
       {#each agentChoices as agent, index (agent.id)}
         <Button
           class="session-agent-option"
           variant="ghost"
           size="sm"
           type="button"
-          aria-label={`使用 ${agent.label} 创建会话`}
+          aria-label={$t('sidebar.createWithAgent', { name: agent.label })}
           aria-keyshortcuts={!busy && !agent.unavailableReason && index < 9 ? String(index + 1) : undefined}
-          title={`${agent.label} · ${agent.unavailableReason ?? '本地 · 已就绪'}`}
+          title={`${agent.label} · ${agent.unavailableReason ?? $t('sidebar.ready')}`}
           onclick={() => onCreateAgent(createSessionWorkspaceId!, agent.id)}
           onkeydown={(event) => {
             if (event.key === 'Escape') {
@@ -474,12 +475,12 @@
           }}
           disabled={busy || Boolean(agent.unavailableReason)}
         >
-          <AgentStatusMark agent="plugin" icon={agent.icon} tone="idle" label={agent.label} /><span class="session-agent-label">{agent.label}<small>{agent.unavailableReason ?? '本地 · 已就绪'}</small></span>
+          <AgentStatusMark agent="plugin" icon={agent.icon} tone="idle" label={agent.label} /><span class="session-agent-label">{agent.label}<small>{agent.unavailableReason ?? $t('sidebar.ready')}</small></span>
           {#if !agent.unavailableReason && index < 9}<kbd class="session-agent-shortcut">{index + 1}</kbd>{/if}
         </Button>
       {/each}
       {#if agentChoices.length === 0}
-        <span class="session-agent-empty" role="status">暂无就绪的 Agent，请在扩展中安装并启用。</span>
+        <span class="session-agent-empty" role="status">{$t('sidebar.noAgents')}</span>
       {/if}
     </div>
   {/if}

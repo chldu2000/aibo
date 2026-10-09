@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { activeUiKit } from '../registry';
   import type { PresentationProps } from '../presentation-props';
   import { externalPresentation } from '../external-presentation';
@@ -11,6 +12,6 @@
 {#if $externalPresentation?.package.release.manifest.surfaces?.includes('semantic') && !failure}
   <ExternalSemanticView presentation={$externalPresentation} {props} failed={error => { failure = error.message; }} />
 {:else}
-  {#if failure}<p role="status">外部语义视图不可用，已恢复默认视图：{failure}</p>{/if}
+  {#if failure}<p role="status">{$t('workbench.externalSemanticFallback', {error: failure})}</p>{/if}
   <Component {...props} />
 {/if}

@@ -1,7 +1,8 @@
 //! Package dependency graph and immutable release pins; not an execution permission grant.
 use crate::{plugin_manifest, plugin_registry};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
+use crate::ui_i18n::HostMessage;
 use sqlx::{Row, SqlitePool};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::Mutex;
@@ -21,7 +22,14 @@ pub(crate) struct Diagnostic {
     pub version: Option<String>,
     pub available: bool,
     pub issue: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub localized_issue: Option<Value>,
     pub contribution_ids: Vec<String>,
+}
+impl Diagnostic {
+    pub(crate) fn message(&self) -> Option<HostMessage> {
+        self.issue.as_ref().map(|diagnostic|HostMessage {diagnostic:diagnostic.clone(), localized:self.localized_issue.clone()})
+    }
 }
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,12 +74,12 @@ impl Graph {
         self.health.insert(release.id.clone(), healthy);
         healthy
     }
-    async fn walk(&mut self, id: &str, stack: &mut Vec<String>) -> Result<Report,String> {
-        if stack.iter().any(|ancestor|ancestor == id) { return Err("dependency_cycle: package dependency cycle".into()); }
+    async fn walk(&mut self, id: &str, stack: &mut Vec<String>) -> Result<Report,HostMessage> {
+        if stack.iter().any(|ancestor|ancestor == id) { return Err(HostMessage::with_diagnostic("native.packageDependency.cycle", json!({}), "dependency_cycle: package dependency cycle")); }
         self.visited.insert(id.into());
-        if stack.len() >= MAX_DEPTH || self.visited.len() > MAX_VISITED { return Err("dependency_limit: dependency graph exceeds host limits".into()); }
-        let release = self.releases.get(id).cloned().ok_or("dependency_missing: release no longer exists")?;
-        plugin_manifest::normalize(&release.manifest)?;
+        if stack.len() >= MAX_DEPTH || self.visited.len() > MAX_VISITED { return Err(HostMessage::with_diagnostic("native.packageDependency.graphLimit", json!({}), "dependency_limit: dependency graph exceeds host limits")); }
+        let release = self.releases.get(id).cloned().ok_or_else(||HostMessage::with_diagnostic("native.packageDependency.releaseMissing", json!({}), "dependency_missing: release no longer exists"))?;
+        plugin_manifest::normalize_display(&release.manifest)?;
         stack.push(id.into());
         let mut report = Report::default();
         for dependency in release.manifest["packageDependencies"].as_array().into_iter().flatten() {
@@ -79,14 +87,14 @@ impl Graph {
             let candidate = self.candidate(id,dependency);
             let checkpoint = self.planned.len();
             let issue = match &candidate {
-                None => Some("dependency_missing: no compatible installed release".into()),
-                Some(candidate) if candidate.plugin != plugin || !Self::compatible(candidate,dependency) => Some("dependency_incompatible: pinned release no longer matches the declared range".into()),
-                Some(candidate) if !candidate.installed => Some("dependency_unavailable: pinned release was uninstalled".into()),
+                None => Some(HostMessage::with_diagnostic("native.packageDependency.missing", json!({}), "dependency_missing: no compatible installed release")),
+                Some(candidate) if candidate.plugin != plugin || !Self::compatible(candidate,dependency) => Some(HostMessage::with_diagnostic("native.packageDependency.incompatible", json!({}), "dependency_incompatible: pinned release no longer matches the declared range")),
+                Some(candidate) if !candidate.installed => Some(HostMessage::with_diagnostic("native.packageDependency.uninstalled", json!({}), "dependency_unavailable: pinned release was uninstalled")),
                 Some(candidate) => match Box::pin(self.walk(&candidate.id,stack)).await {
                     Err(issue) => Some(issue),
-                    Ok(child) if !child.ready() => child.dependencies.iter().find(|item|item.required && !item.available).and_then(|item|item.issue.clone()),
-                    Ok(_) if !candidate.enabled => Some("dependency_unavailable: selected release is disabled".into()),
-                    Ok(_) if !self.executable(candidate).await => Some("dependency_unavailable: selected release cannot activate".into()),
+                    Ok(child) if !child.ready() => child.dependencies.iter().find(|item|item.required && !item.available).and_then(Diagnostic::message),
+                    Ok(_) if !candidate.enabled => Some(HostMessage::with_diagnostic("native.packageDependency.disabled", json!({}), "dependency_unavailable: selected release is disabled")),
+                    Ok(_) if !self.executable(candidate).await => Some(HostMessage::with_diagnostic("native.packageDependency.cannotActivate", json!({}), "dependency_unavailable: selected release cannot activate")),
                     Ok(_) => None,
                 },
             };
@@ -97,7 +105,10 @@ impl Graph {
             } else if let Some(candidate) = &candidate {
                 if !self.pins.contains_key(&(id.into(),plugin.into())) { self.planned.push((id.into(),plugin.into(),candidate.id.clone())); }
             }
-            report.dependencies.push(Diagnostic { plugin_id: plugin.into(), required: dependency["required"].as_bool().unwrap(), version: candidate.as_ref().map(|candidate|candidate.version.to_string()), installation_id: candidate.map(|candidate|candidate.id), available: issue.is_none(), issue, contribution_ids });
+            let localized_issue = issue.as_ref().and_then(|issue|issue.localized.clone());
+            let available = issue.is_none();
+            let issue = issue.map(|issue|issue.diagnostic);
+            report.dependencies.push(Diagnostic { plugin_id: plugin.into(), required: dependency["required"].as_bool().unwrap(), version: candidate.as_ref().map(|candidate|candidate.version.to_string()), installation_id: candidate.map(|candidate|candidate.id), available, issue, localized_issue, contribution_ids });
         }
         stack.pop();
         report.unavailable_contributions.sort();report.unavailable_contributions.dedup();
@@ -108,29 +119,34 @@ impl Graph {
 /// Dry-run for UI; `persist` is used for activation and before Broker dispatch.
 /// A failed required graph cannot leave a partially committed set of pins.
 pub(crate) async fn resolve(db: &SqlitePool, root: &str, persist: bool) -> Result<Report,String> {
+    resolve_display(db, root, persist).await.map_err(|error|error.diagnostic)
+}
+
+/// Display-aware callers retain host metadata; internal legacy callers retain exact diagnostics.
+pub(crate) async fn resolve_display(db: &SqlitePool, root: &str, persist: bool) -> Result<Report,HostMessage> {
     resolve_policy(db, root, persist, true).await
 }
 
 /// Approval and discovery may inspect declarations, never execute dependency programs.
 pub(crate) async fn resolve_metadata(db: &SqlitePool, root: &str) -> Result<Report,String> {
-    resolve_policy(db, root, false, false).await
+    resolve_policy(db, root, false, false).await.map_err(|error|error.diagnostic)
 }
 
 pub(crate) async fn resolve_metadata_pinned(db: &SqlitePool, root: &str) -> Result<Report,String> {
-    resolve_policy(db, root, true, false).await
+    resolve_policy(db, root, true, false).await.map_err(|error|error.diagnostic)
 }
 
-async fn resolve_policy(db: &SqlitePool, root: &str, persist: bool, probe_executables: bool) -> Result<Report,String> {
+async fn resolve_policy(db: &SqlitePool, root: &str, persist: bool, probe_executables: bool) -> Result<Report,HostMessage> {
     let _guard = RESOLUTION_LOCK.lock().await;
     let mut tx = db.begin().await.map_err(|e|e.to_string())?;
     let root_manifest: String = sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=?")
-        .bind(root).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?.ok_or("dependency_missing: root installation does not exist")?;
-    let root_manifest: Value = serde_json::from_str(&root_manifest).map_err(|_|"dependency_incompatible: invalid root manifest")?;
-    plugin_manifest::normalize(&root_manifest)?;
+        .bind(root).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?.ok_or_else(||HostMessage::with_diagnostic("native.packageDependency.rootMissing", json!({}), "dependency_missing: root installation does not exist"))?;
+    let root_manifest: Value = serde_json::from_str(&root_manifest).map_err(|_|HostMessage::with_diagnostic("native.packageDependency.rootManifestInvalid", json!({}), "dependency_incompatible: invalid root manifest"))?;
+    plugin_manifest::normalize_display(&root_manifest)?;
     if !root_manifest["packageDependencies"].as_array().is_some_and(|items|!items.is_empty()) { return Ok(Report::default()); }
     let rows = sqlx::query("SELECT id,plugin_id,plugin_version,installed,enabled FROM plugin_installations LIMIT ?")
         .bind(MAX_RELEASES+1).fetch_all(&mut *tx).await.map_err(|e|e.to_string())?;
-    if rows.len() as i64 > MAX_RELEASES { return Err("dependency_limit: release inventory exceeds host limit".into()); }
+    if rows.len() as i64 > MAX_RELEASES { return Err(HostMessage::with_diagnostic("native.packageDependency.inventoryLimit", json!({}), "dependency_limit: release inventory exceeds host limit")); }
     let mut releases = HashMap::new();
     for row in rows {
         // Malformed unrelated historical rows cannot disable every healthy package.
@@ -148,14 +164,14 @@ async fn resolve_policy(db: &SqlitePool, root: &str, persist: bool, probe_execut
     let mut bytes = 0usize;
     while let Some(id) = pending.pop() {
         if !loaded.insert(id.clone()) { continue; }
-        if loaded.len() > MAX_VISITED { return Err("dependency_limit: reachable release limit".into()); }
+        if loaded.len() > MAX_VISITED { return Err(HostMessage::with_diagnostic("native.packageDependency.reachableLimit", json!({}), "dependency_limit: reachable release limit")); }
         let raw: String = sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=?")
             .bind(&id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
         bytes = bytes.saturating_add(raw.len());
-        if bytes > MAX_GRAPH_BYTES { return Err("dependency_limit: graph manifest byte limit".into()); }
+        if bytes > MAX_GRAPH_BYTES { return Err(HostMessage::with_diagnostic("native.packageDependency.byteLimit", json!({}), "dependency_limit: graph manifest byte limit")); }
         let manifest = serde_json::from_str::<Value>(&raw).unwrap_or(Value::Null);
         let valid = plugin_manifest::normalize(&manifest).is_ok();
-        let Some(release) = graph.releases.get_mut(&id) else { return Err("dependency_incompatible: invalid reachable release version".into()); };
+        let Some(release) = graph.releases.get_mut(&id) else { return Err(HostMessage::with_diagnostic("native.packageDependency.releaseVersionInvalid", json!({}), "dependency_incompatible: invalid reachable release version")); };
         release.manifest = manifest.clone();
         if !valid { continue; } // walk assigns failure to the affected optional/required edge.
         for dependency in manifest["packageDependencies"].as_array().into_iter().flatten() {
@@ -179,7 +195,7 @@ async fn resolve_policy(db: &SqlitePool, root: &str, persist: bool, probe_execut
 
 /// Required edges make the dependent package unavailable; optional edges only
 /// invalidate their declared local contributions and do not poison unrelated parents.
-pub(crate) async fn invalidations(db: &SqlitePool, installation: &str) -> Result<Vec<(String,Option<Vec<String>>)>,String> {
+pub(crate) async fn invalidations(db: &SqlitePool, installation: &str) -> Result<Vec<(String,Option<Vec<String>>)>,HostMessage> {
     let rows: Vec<(String,String,String,String)> = sqlx::query_as("SELECT b.installation_id,b.dependency_plugin_id,b.dependency_installation_id,p.manifest_json FROM plugin_dependency_bindings b JOIN plugin_installations p ON p.id=b.installation_id")
         .fetch_all(db).await.map_err(|e|e.to_string())?;
     let mut affected: HashMap<String,Option<Vec<String>>> = HashMap::from([(installation.into(),None)]);
@@ -189,7 +205,7 @@ pub(crate) async fn invalidations(db: &SqlitePool, installation: &str) -> Result
         if !visited.insert(id.clone()) { continue; }
         for (owner,plugin,dependency,raw) in rows.iter().filter(|row|row.2 == id) {
             let _ = dependency;
-            let manifest: Value = serde_json::from_str(raw).map_err(|_|"dependency_incompatible: stored manifest")?;
+            let manifest: Value = serde_json::from_str(raw).map_err(|_|HostMessage::with_diagnostic("native.packageDependency.storedManifest",json!({}),"dependency_incompatible: stored manifest"))?;
             let Some(declaration) = manifest["packageDependencies"].as_array().and_then(|entries|entries.iter().find(|entry|entry["pluginId"] == plugin.as_str())) else { continue; };
             if declaration["required"] == true {
                 affected.insert(owner.clone(),None);queue.push(owner.clone());
@@ -331,11 +347,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn transitive_dependency_errors_retain_display_without_changing_legacy_diagnostics() {
+        let f=Fixture::new().await;
+        let middle=f.install("dev.test.middle","1.0.0",dependency("dev.test.missing","dev.test.middle",true,false),false).await;
+        let parent=f.install("dev.test.parent","1.0.0",dependency("dev.test.middle","dev.test.parent",true,false),false).await;
+        let report=resolve(&f.db,&parent,false).await.unwrap();
+        assert!(!report.ready());
+        assert_eq!(report.dependencies[0].installation_id.as_deref(), Some(middle.as_str()));
+        assert_eq!(report.dependencies[0].issue.as_deref(), Some("dependency_missing: no compatible installed release"));
+        assert_eq!(report.dependencies[0].localized_issue.as_ref().unwrap()["key"], "native.packageDependency.missing");
+        let error=plugin_registry::enable(&f.db,&parent,true).await.unwrap_err();
+        assert_eq!(error.diagnostic, "dev.test.middle: dependency_missing: no compatible installed release");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En, &error.display()), "Cannot enable this plugin. Dependency dev.test.middle: No compatible installed release was found.");
+        let pins:i64=sqlx::query_scalar("SELECT COUNT(*) FROM plugin_dependency_bindings").fetch_one(&f.db).await.unwrap();
+        assert_eq!(pins, 0);
+        let legacy=resolve(&f.db,"missing",false).await.unwrap_err();
+        let display=resolve_display(&f.db,"missing",false).await.unwrap_err();
+        assert_eq!(legacy, "dependency_missing: root installation does not exist");
+        assert_eq!(display.diagnostic, legacy);
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn, &display.display()), "根插件安装不存在。");
+        f.finish().await;
+    }
+
+    #[tokio::test]
     async fn required_missing_blocks_activation_optional_missing_only_disables_target_contribution() {
         let f=Fixture::new().await;
         let required=f.install("dev.test.required","1.0.0",dependency("dev.test.missing","dev.test.required",true,false),false).await;
-        assert!(!resolve(&f.db,&required,false).await.unwrap().ready());
-        assert!(plugin_registry::enable(&f.db,&required,true).await.is_err());
+        let missing = resolve(&f.db,&required,false).await.unwrap();
+        assert!(!missing.ready());
+        assert_eq!(missing.dependencies[0].issue.as_deref(), Some("dependency_missing: no compatible installed release"));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn, missing.dependencies[0].localized_issue.as_ref().unwrap()), "未找到兼容的已安装版本。");
+        let error = plugin_registry::enable(&f.db,&required,true).await.unwrap_err();
+        assert_eq!(error.diagnostic, "dev.test.missing: dependency_missing: no compatible installed release");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En, &error.display()), "Cannot enable this plugin. Dependency dev.test.missing: No compatible installed release was found.");
         let optional=f.install("dev.test.optional","1.0.0",dependency("dev.test.missing","dev.test.optional",false,true),true).await;
         plugin_registry::enable(&f.db,&optional,true).await.unwrap();
         let report=resolve(&f.db,&optional,true).await.unwrap();
@@ -363,7 +407,9 @@ mod tests {
         assert_eq!(resolve(&f.db,&parent,true).await.unwrap().dependencies[0].installation_id.as_deref(),Some(chosen.as_str()));
         plugin_registry::enable(&f.db,&chosen,false).await.unwrap();
         let report=resolve(&f.db,&parent,true).await.unwrap();assert!(!report.ready());assert_eq!(report.dependencies[0].installation_id.as_deref(),Some(chosen.as_str()));
-        assert!(plugin_registry::uninstall(&f.db,&f.root.join("data"),&chosen).await.unwrap_err().contains("plugin_references"));
+        assert_eq!(report.dependencies[0].issue.as_deref(), Some("dependency_unavailable: selected release is disabled"));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En, report.dependencies[0].localized_issue.as_ref().unwrap()), "The selected release is disabled.");
+        assert!(plugin_registry::uninstall(&f.db,&f.root.join("data"),&chosen).await.unwrap_err().diagnostic.contains("plugin_references"));
         let impact=crate::plugin_lifecycle::impact(&f.db,&chosen).await.unwrap();
         assert_eq!(impact.dependencies[0].id,parent);
         plugin_registry::enable(&f.db,&chosen,true).await.unwrap();assert!(resolve(&f.db,&parent,true).await.unwrap().ready());
@@ -377,7 +423,9 @@ mod tests {
         dependencies.as_array_mut().unwrap().push(dependency("dev.test.b","dev.test.a",true,false)[0].clone());
         let a=f.install("dev.test.a","1.0.0",dependencies,false).await;
         f.install("dev.test.b","1.0.0",dependency("dev.test.a","dev.test.b",true,false),false).await;
-        let error=plugin_registry::enable(&f.db,&a,true).await.unwrap_err();assert!(error.contains("dependency_cycle"),"{error}");
+        let error=plugin_registry::enable(&f.db,&a,true).await.unwrap_err();assert!(error.diagnostic.contains("dependency_cycle"),"{error}");
+        assert_eq!(error.display()["params"]["reason"]["key"], "native.packageDependency.cycle");
+        assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn, &error.display()).contains("插件包依赖形成循环。"));
         let pins:i64=sqlx::query_scalar("SELECT COUNT(*) FROM plugin_dependency_bindings").fetch_one(&f.db).await.unwrap();assert_eq!(pins,0);
         f.finish().await;
     }
@@ -402,6 +450,26 @@ mod tests {
         let affected:HashMap<_,_>=invalidations(&f.db,&leaf).await.unwrap().into_iter().collect();
         assert_eq!(affected.get(&leaf),Some(&None));assert_eq!(affected.get(&required),Some(&None));assert_eq!(affected.get(&parent),Some(&None));
         assert_eq!(affected.get(&optional),Some(&Some(vec!["dev.test.optional.optional".into()])));assert!(!affected.contains_key(&unrelated));
+        let manifest:String=sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=?").bind(&required).fetch_one(&f.db).await.unwrap();
+        let pins:Vec<(String,String,String,String)>=sqlx::query_as("SELECT installation_id,dependency_plugin_id,dependency_installation_id,created_at FROM plugin_dependency_bindings ORDER BY installation_id,dependency_plugin_id").fetch_all(&f.db).await.unwrap();
+        // Inject damaged persisted data, then restore the exact production trigger before reading it.
+        // Ordinary updates are already rejected by the search index's JSON extraction.
+        let trigger:String=sqlx::query_scalar("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='search_plugin_installations_update'").fetch_one(&f.db).await.unwrap();
+        let mut damage=f.db.begin().await.unwrap();
+        sqlx::query("DROP TRIGGER search_plugin_installations_update").execute(&mut *damage).await.unwrap();
+        sqlx::query("UPDATE plugin_installations SET manifest_json='corrupt 原文 {manifest}' WHERE id=?").bind(&required).execute(&mut *damage).await.unwrap();
+        sqlx::query(&trigger).execute(&mut *damage).await.unwrap();
+        damage.commit().await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,String>("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='search_plugin_installations_update'").fetch_one(&f.db).await.unwrap(),trigger);
+        let error=invalidations(&f.db,&leaf).await.unwrap_err();
+        assert_eq!(error.diagnostic,"dependency_incompatible: stored manifest");
+        assert_eq!(error.display()["key"],"native.packageDependency.storedManifest");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&error.display()),"A stored dependency manifest is invalid.");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&error.display()),"已保存的依赖清单无效。");
+        assert_eq!(sqlx::query_as::<_,(String,String,String,String)>("SELECT installation_id,dependency_plugin_id,dependency_installation_id,created_at FROM plugin_dependency_bindings ORDER BY installation_id,dependency_plugin_id").fetch_all(&f.db).await.unwrap(),pins);
+        assert_eq!(sqlx::query_scalar::<_,String>("SELECT manifest_json FROM plugin_installations WHERE id=?").bind(&required).fetch_one(&f.db).await.unwrap(),"corrupt 原文 {manifest}");
+        sqlx::query("UPDATE plugin_installations SET manifest_json=? WHERE id=?").bind(manifest).bind(&required).execute(&f.db).await.unwrap();
+        assert_eq!(invalidations(&f.db,&leaf).await.unwrap().into_iter().collect::<HashMap<_,_>>(),affected,"restoring the same manifest recovers the same dependency edges");
         f.finish().await;
     }
     #[tokio::test]

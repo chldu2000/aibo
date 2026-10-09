@@ -4,6 +4,8 @@ import { akUiKitRegistration } from './kits/ak-ui';
 import { material3UiKitRegistration } from './kits/material3';
 import { normalizeDefaultAppearance } from './appearance-selection';
 import { themeForColorScheme } from './theme-options';
+import { locale } from '../i18n/runtime';
+import { localizeTheme, localizeUiKit } from './theme-i18n';
 import { defaultPresentation } from '../workbench/plugins/default-presentation';
 import { resolvePresentationPlugin } from './presentation-plugin';
 
@@ -53,6 +55,7 @@ const selection = writable<AppearanceSelection>(readInitialSelection());
 
 export const appearanceSelection = { subscribe: selection.subscribe };
 export const availableUiKits: readonly UiKitOption[] = registrations.map(({ adapter: _adapter, renderer: _renderer, ...registration }) => registration);
+export const localizedUiKits = derived(locale, value => availableUiKits.map(kit => localizeUiKit(kit, value)));
 export const activeUiKitName = derived(selection, ($selection) => $selection.kitId as UiKitName);
 export const activeUiKitRegistration = derived(selection, ($selection) => registrationMap.get($selection.kitId) ?? builtInDefault);
 export const activeUiKit = derived(activeUiKitRegistration, ($registration) => $registration.adapter);
@@ -60,9 +63,9 @@ export const activePresentationPlugin = derived(selection, ($selection) =>
   presentationRegistrations.find(plugin => plugin.id === $selection.kitId) ?? builtInDefault,
 );
 export const activeTheme = derived(
-  [selection, activeUiKitRegistration],
-  ([$selection, $registration]) =>
-    $registration.themes.find((theme) => theme.id === $selection.themeId) ?? $registration.themes[0],
+  [selection, activeUiKitRegistration, locale],
+  ([$selection, $registration, $locale]) => localizeTheme(
+    $registration.themes.find((theme) => theme.id === $selection.themeId) ?? $registration.themes[0], $registration.id, $locale),
 );
 export const activeThemeStyle = derived(activeTheme, ($theme) =>
   Object.entries($theme.tokens)

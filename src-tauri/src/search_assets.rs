@@ -89,7 +89,7 @@ fn read(asset: &Asset) -> Result<(String, bool), CoreError> {
             .as_ref()
             .is_some_and(|hash| hash != &format!("sha256:{:x}", Sha256::digest(content.as_bytes())))
     {
-        return Err(error("内容已变化，与保存的附件不一致"));
+        return Err(crate::ui_i18n::read_error("native.search.assetChanged",serde_json::json!({})));
     }
     Ok((content, truncated))
 }
@@ -105,6 +105,7 @@ pub(crate) async fn search(
             items: vec![],
             has_more: false,
             warnings: vec![],
+            localized_warnings: None,
         });
     }
     let entries = assets(db, data_dir, request.workspace_id.as_deref(), None).await?;
@@ -113,7 +114,7 @@ pub(crate) async fn search(
     let started = std::time::Instant::now();
     for asset in entries {
         if started.elapsed().as_secs() >= 15 {
-            warnings.push("附件索引仍在更新，请再次搜索以继续".into());
+            warnings.push(crate::ui_i18n::HostMessage::new("native.search.assetsUpdating",serde_json::json!({})));
             break;
         }
         if !asset.text {
@@ -145,12 +146,12 @@ pub(crate) async fn search(
         let body = match read {
             Ok((body, truncated)) => {
                 if truncated {
-                    warnings.push(format!("{title}：仅索引前 2 MiB"));
+                    warnings.push(crate::ui_i18n::HostMessage::new("native.search.assetTruncated",serde_json::json!({"name":title})));
                 }
                 body
             }
             Err(reason) => {
-                warnings.push(format!("{title}：{reason}"));
+                warnings.push(crate::ui_i18n::named_read_warning(&title, &reason));
                 String::new()
             }
         };
@@ -168,7 +169,8 @@ pub(crate) async fn search(
     let mut result = Page {
         items: vec![],
         has_more: false,
-        warnings,
+        localized_warnings: Some(warnings.iter().map(|warning|warning.localized.clone().unwrap_or(serde_json::Value::Null)).collect()),
+        warnings: warnings.into_iter().map(|warning|warning.diagnostic).collect(),
     };
     for kind in ["attachment", "artifact"] {
         if request.kind.as_deref().is_some_and(|value| value != kind) {
@@ -191,14 +193,17 @@ pub(crate) async fn detail(
         .await?
         .into_iter()
         .next()
-        .ok_or_else(|| error("附件已移除或不属于此会话"))?;
+        .ok_or_else(|| crate::ui_i18n::read_error("native.search.assetRemoved",serde_json::json!({})))?;
     let title = asset.title.clone();
+    let non_text = !asset.text;
     let (content, truncated) = tauri::async_runtime::spawn_blocking(move || read(&asset))
         .await
         .map_err(error)??;
     Ok(Detail {
+        localized_suffix: None,
         title,
         content,
+        localized_content: non_text.then(||crate::ui_i18n::display_descriptor("native.search.nonText",serde_json::json!({}))),
         target,
         truncated,
     })

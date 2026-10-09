@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTurnChangeController, emptyTurnChange } from '../src/lib/app/turn-change-controller.ts';
@@ -16,7 +17,7 @@ test('turn diff validates membership and identity and ignores late responses aft
   await f.controller.showDiff('s','t','missing'); assert.equal(f.calls.length,0);
   const reading=f.controller.showDiff('s','t','one'); f.select('other');first.resolve({path:'one'});await reading;
   assert.deepEqual(f.state,emptyTurnChange());
-  f.select('s');await f.controller.showDiff('s','t','two');assert.match(f.state.error,/identity_mismatch/);assert.equal(f.state.loading,false);
+  f.select('s');await f.controller.showDiff('s','t','two');assert.equal(f.state.error.key,'error.turnDiffIdentity');assert.equal(translateMessage('en',f.state.error),'The returned diff belongs to a different file. Reload the diff.');assert.equal(f.state.diff,null);assert.equal(f.state.loading,false);
 });
 test('turn diff requests cannot replace a newer file or report a closed read error',async()=>{
   const first=deferred(), second=deferred();
@@ -30,14 +31,24 @@ test('file and hunk writes keep session and turn identities and finish after nav
   const writing=f.controller.applyFile('s','t','one','stage');f.select('other');pending.resolve({applied:true});await writing;
   assert.deepEqual(f.changed,['s']);assert.deepEqual(f.calls[0],['applyGitFileAction','s','one','stage','t']);
   await f.controller.applyHunk('s','t','two',3,'unstage');assert.deepEqual(f.calls[1],['applyGitHunkAction','s','t','two',3,'unstage']);
-  assert.deepEqual(f.notices.at(-1),['hunk 已取消暂存。','success']);
+  assert.deepEqual([translateMessage('zh-CN',f.notices.at(-1)[0]),f.notices.at(-1)[1]],['hunk 已取消暂存。','success']);
   const denied=fixture({applyGitFileAction:async()=>({applied:false,message:'denied'})});await denied.controller.applyFile('s','t','one','revert');
   assert.deepEqual(denied.changed,[]);assert.deepEqual(denied.errors,['denied']);
 });
 test('restoration refreshes host history only on success and preserves conflict/unsupported feedback',async()=>{
-  const f=fixture();await f.controller.restore('s','t');assert.deepEqual(f.restored,['s']);assert.deepEqual(f.notices,[['已恢复 1 个文件。','success']]);
+  const f=fixture();await f.controller.restore('s','t');assert.deepEqual(f.restored,['s']);assert.deepEqual(f.notices.map(([message,type])=>[translateMessage('zh-CN',message),type]),[['已恢复 1 个文件。','success']]);
   for(const result of [{applied:false,restored:[],conflicts:['one'],unsupported:[]},{applied:false,restored:[],conflicts:[],unsupported:['binary']}]){
     const denied=fixture({restoreTurnChangeSet:async()=>result});await denied.controller.restore('s','t');
     assert.equal(denied.notices[0][1],'warning');assert.deepEqual(denied.restored,[]);
   }
+});
+
+
+test('blocked writes and restore reasons keep explicit native messages until language is chosen',async()=>{
+ const display={schema:'aibo.host-message/v1',key:'native.turn.laterChanges',params:{}};
+ const f=fixture({applyGitFileAction:async()=>({applied:false,message:'原始诊断',localizedMessage:display}),applyGitHunkAction:async()=>({applied:false,message:'原始诊断',localizedMessage:display}),restoreTurnChangeSet:async()=>({applied:false,restored:[],conflicts:[],unsupported:['原始诊断','插件原文'],localizedUnsupported:[{schema:'aibo.host-message/v1',key:'native.restore.unsafeBaseline',params:{path:'原文{path}'}},null]})});
+ await f.controller.applyFile('s','t','one','revert');await f.controller.applyHunk('s','t','one',0,'stage');
+ for(const error of f.errors){assert.equal(translateMessage('en',error),'The file changed after this turn. Applying a hunk is blocked.');assert.equal(translateMessage('zh-CN',error),'当前文件已在本轮后发生变化，拒绝应用 hunk');}
+ assert.deepEqual(f.changed,[]);await f.controller.restore('s','t');
+ assert.ok(translateMessage('en',f.notices[0][0]).includes('原文{path} (the baseline cannot be safely restored)'));assert.ok(translateMessage('en',f.notices[0][0]).includes('插件原文'));assert.deepEqual(f.restored,[]);
 });

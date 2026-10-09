@@ -1,7 +1,10 @@
+import { readNativeMessage } from '../app/error-utils.ts';
+import { localizedMessage } from '../../../packages/i18n/index.js';
+import type { LocalizedText, MessageKey } from '../../../packages/i18n/index.js';
 import { assertSnapshot } from './validation.ts';
 import type { ActionMessage, Snapshot } from './contract.ts';
 export type InstalledScope = { kind: 'application' } | { kind: 'workspace' | 'session'; id: string };
-export type InstalledContribution = { scope?: 'application' | 'workspace' | 'session'; extensionPoint?: string; visibility?: 'always' | 'workspaceSelected' | 'sessionSelected'; installationId: string; contributionId: string; title: string; available: boolean; issue: string | null };
+export type InstalledContribution = { scope?: 'application' | 'workspace' | 'session'; extensionPoint?: string; visibility?: 'always' | 'workspaceSelected' | 'sessionSelected'; installationId: string; contributionId: string; title: string; available: boolean; issue: string | null; localizedIssue?: unknown };
 export type InstalledPort = {
   open(workspaceId: string, installationId: string, contributionId: string, requestId: string, scope?: InstalledScope): Promise<Snapshot>;
   cancelOpen(requestId: string): Promise<void>;
@@ -9,22 +12,32 @@ export type InstalledPort = {
   write?(action: ActionMessage, requestId: string): Promise<unknown>;
   release(generation: string): Promise<void>;
 };
-function failureMessage(error: unknown): string {
-  const message = String(error);
-  const reasons: [string, string][] = [
-    ['permission_denied', '请确认工作区可信，且所选文件位于该工作区内。'],
-    ['provider_unavailable', '插件或其依赖当前不可用，请检查是否已启用。'],
-    ['provider_selection_required', '多个提供者符合此页面声明，请检查插件配置。'],
-    ['stale_context', '页面已过期，请重新加载。'],
-    ['busy', '工具正在执行其他操作，请稍后重试。'],
-    ['timeout', '读取超时，请重新加载。'],
-    ['cancelled', '读取已取消。'],
-    ['invalid_output', '插件返回了无法显示的数据，请重新加载。'],
-    ['invalid_snapshot', '插件返回了无法显示的数据，请重新加载。'],
-  ];
-  return reasons.find(([code]) => message.includes(code))?.[1] ?? '读取失败，请重新加载。';
+function protocolCode(error: unknown): string | null {
+  if (error && typeof error === 'object' && 'code' in error) return typeof error.code === 'string' ? error.code : null;
+  const message = typeof error === 'string' ? error : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : null;
+  return message?.match(/^([a-z_]+)(?::|$)/)?.[1] ?? null;
 }
-export function createInstalledController(port: InstalledPort, publish: (snapshot: Snapshot | null, error: string) => void) {
+function nativeDisplay(error: unknown): LocalizedText | null {
+  return error && typeof error === 'object' && 'localized' in error ? readNativeMessage(error.localized) : null;
+}
+function failureMessage(error: unknown): LocalizedText {
+  const display = nativeDisplay(error);
+  if (display) return display;
+  const code = protocolCode(error);
+  const reasons: [string, MessageKey][] = [
+    ['permission_denied', 'installed.permissionDenied'],
+    ['provider_unavailable', 'installed.providerUnavailable'],
+    ['provider_selection_required', 'installed.providerSelectionRequired'],
+    ['stale_context', 'installed.staleContext'],
+    ['busy', 'installed.busy'],
+    ['timeout', 'installed.timeout'],
+    ['cancelled', 'installed.cancelled'],
+    ['invalid_output', 'installed.invalidOutput'],
+    ['invalid_snapshot', 'installed.invalidOutput'],
+  ];
+  return localizedMessage(reasons.find(([reason]) => code === reason)?.[1] ?? 'installed.readFailed');
+}
+export function createInstalledController(port: InstalledPort, publish: (snapshot: Snapshot | null, error: LocalizedText, hostMessage?: LocalizedText) => void) {
   let current: Snapshot | null = null;
   let sequence = 0;
   let disposed = false;
@@ -60,7 +73,7 @@ export function createInstalledController(port: InstalledPort, publish: (snapsho
     if (!action) return;
     const writing = action.intent === 'execute';
     let completed = false;
-    publish({ ...previous, state: { status: 'loading', message: writing ? '等待批准或正在执行…' : '正在读取…' } }, '');
+    publish({ ...previous, state: { status: 'loading', message: '' } }, '', localizedMessage(writing ? 'installed.writing' : 'installed.reading'));
     try {
       if (writing) {
         if (!port.write) throw Error('write_unavailable');
@@ -68,7 +81,7 @@ export function createInstalledController(port: InstalledPort, publish: (snapsho
         completed = true;
         if (disposed || ticket !== sequence) return;
         if (!previous.actions.some(action => action.id === 'refresh' && action.enabled)) {
-          keepWriteResult('写入已完成。重新打开页面可获取最新数据。');
+          keepWriteResult(localizedMessage('installed.writeCompleted'));
           return;
         }
       }
@@ -80,15 +93,16 @@ export function createInstalledController(port: InstalledPort, publish: (snapsho
     } catch (error) {
       if (!disposed && ticket === sequence) {
         if (writing) {
-          const reason = String(error);
-          keepWriteResult(completed ? '写入已完成，但刷新失败。请刷新页面查看结果。'
-            : reason.includes('outcome_unknown') ? '写入结果未知。请查看执行历史并核实实际结果，勿直接重试。'
-            : reason.includes('approval_rejected') ? '本次写入未获批准。刷新后可重新操作。'
-            : '写入未完成。请查看执行历史，刷新页面后再操作。');
+          const code = protocolCode(error);
+          const display = nativeDisplay(error);
+          keepWriteResult(completed ? localizedMessage('installed.writeRefreshFailed')
+            : code === 'outcome_unknown' ? display ? localizedMessage('installed.writeUnknownDetail', {error:display}) : localizedMessage('installed.writeUnknown')
+            : code === 'approval_rejected' ? localizedMessage('installed.writeRejected')
+            : display ?? localizedMessage('installed.writeFailed'));
         } else { current = null; release(previous.context.generation); publish(null, failureMessage(error)); }
       }
     }
-    function keepWriteResult(message: string) {
+    function keepWriteResult(message: LocalizedText) {
       current = { ...previous, actions: previous.actions.map(action => action.intent === 'execute' ? { ...action, enabled: false } : action) };
       publish(current, message);
     }

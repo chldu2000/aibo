@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -20,7 +21,7 @@ test('installed controller rejects a provider changing host context and releases
   const controller = createInstalledController({ cancelOpen: async () => {}, open: async () => snapshot, act: async () => ({ ...snapshot, context: { ...snapshot.context, generation: 'forged', revision: snapshot.context.revision + 1 } }), release: async id => { released.push(id); } }, (_, error) => errors.push(error));
   await controller.open(snapshot.context.workspaceId, contribution);
   await controller.act({ context: snapshot.context, actionId: 'refresh', itemId: null });
-  assert.match(errors.at(-1), /无法显示/); assert.ok(released.includes(snapshot.context.generation));
+  assert.match(translateMessage('zh-CN', errors.at(-1)), /无法显示/); assert.ok(released.includes(snapshot.context.generation));
 });
 
 test('closing a pending initial open cancels by request ID before a generation is returned', async () => {
@@ -58,7 +59,7 @@ test('completed write with failed refresh remains visible and cannot blindly rep
   await controller.open(view.context.workspaceId, contribution);
   const action = { context: view.context, actionId: 'example.write', itemId: null };
   await controller.act(action);
-  assert.match(last.error, /写入已完成，但刷新失败/);
+  assert.match(translateMessage('zh-CN', last.error), /写入已完成，但刷新失败/);
   assert.equal(last.value.actions.find(action => action.id === 'example.write').enabled, false);
   await controller.act(action); assert.equal(writes, 1);
 });
@@ -82,9 +83,53 @@ test('unknown write outcome preserves read access and blocks automatic retry', a
   }, (value, error) => { last = { value, error }; });
   await controller.open(view.context.workspaceId, contribution);
   const action = { context: view.context, actionId: 'example.write', itemId: null };
-  await controller.act(action); assert.match(last.error, /结果未知/);
+  await controller.act(action); assert.match(translateMessage('zh-CN', last.error), /结果未知/);
   await controller.act(action); assert.equal(writes, 1);
   assert.equal(last.value.actions.find(action => action.id === 'refresh').enabled, true);
   await controller.act({ ...action, actionId: 'refresh' });
   assert.equal(last.value.context.revision, view.context.revision + 1);
+});
+
+
+test('installed read errors retain explicit host metadata and recognize only protocol codes',async()=>{
+ for(const [error,key] of [
+  [{code:'busy',message:'原始诊断'},'installed.busy'],
+  ['busy: diagnostic','installed.busy'],
+  [Error('timeout: diagnostic'),'installed.timeout'],
+  [{code:'other',message:'busy: provider text'},'installed.readFailed'],
+  ['provider details mention permission_denied and timeout','installed.readFailed'],
+  [Error('provider mentions invalid_output'),'installed.readFailed'],
+  [{code:'session_operation_error',message:'原文',localized:{schema:'aibo.host-message/v1',key:'native.search.binaryPreview',params:{}}},'native.search.binaryPreview'],
+ ]) {
+  let last;const controller=createInstalledController({cancelOpen:async()=>{},open:async()=>{throw error},act:async()=>snapshot,release:async()=>{}},(_,failure)=>last=failure);
+  await controller.open(snapshot.context.workspaceId,contribution);assert.equal(last.key,key);
+  assert.equal(typeof translateMessage('en',last),'string');assert.equal(typeof translateMessage('zh-CN',last),'string');controller.dispose();
+ }
+});
+
+test('structured write failures keep their localized outcome and never repeat a write',async()=>{
+ for(const [error,key] of [
+  [{code:'outcome_unknown',message:'原始诊断'},'installed.writeUnknown'],
+  [{code:'outcome_unknown',message:'原始诊断',localized:{schema:'aibo.host-message/v1',key:'native.broker.writeUnconfirmed',params:{code:'provider_raw {code}'}}},'installed.writeUnknownDetail'],
+  [{code:'approval_rejected',message:'原始诊断'},'installed.writeRejected'],
+  [{message:'outcome_unknown: 原始诊断'},'installed.writeUnknown'],
+  [{message:'outcome_unknown: 原始诊断',localized:{schema:'aibo.host-message/v1',key:'native.broker.writeUnconfirmed',params:{code:'provider_raw {code}'}}},'installed.writeUnknownDetail'],
+  [{message:'approval_rejected: 原始诊断',localized:{schema:'aibo.host-message/v1',key:'native.semanticWrite.disabled',params:{}}},'installed.writeRejected'],
+  [{message:'outcome_unknown: 原始诊断',localized:{schema:'invalid',key:'native.semanticWrite.taskStopped',params:{}}},'installed.writeUnknown'],
+  [{message:'provider mentions outcome_unknown and approval_rejected'},'installed.writeFailed'],
+  [{code:'other',message:'diagnostic mentions outcome_unknown'},'installed.writeFailed'],
+  ['provider text mentions approval_rejected','installed.writeFailed'],
+  [{code:'workspace_trust_required',message:'原文',localized:{schema:'aibo.host-message/v1',key:'native.error.workspaceTrust',params:{}}},'native.error.workspaceTrust'],
+ ]) {
+  const view=writable();let writes=0,last;const controller=createInstalledController({cancelOpen:async()=>{},open:async()=>view,release:async()=>{},write:async()=>{writes++;throw error},act:async()=>({...view,context:{...view.context,revision:view.context.revision+1}})},(value,failure)=>last={value,failure});
+  await controller.open(view.context.workspaceId,contribution);const action={context:view.context,actionId:'example.write',itemId:null};await controller.act(action);
+  assert.equal(last.failure.key,key);assert.notEqual(translateMessage('en',last.failure),translateMessage('zh-CN',last.failure));
+  if(key==='installed.writeUnknownDetail'){
+   assert.ok(translateMessage('en',last.failure).startsWith('The write outcome is unknown. Check execution history and verify the result before retrying.'));
+   assert.ok(translateMessage('en',last.failure).includes('provider_raw {code}'));
+   assert.ok(translateMessage('zh-CN',last.failure).includes('已批准的能力执行未产生确认结果'));
+  }
+  assert.equal(last.value.actions.find(item=>item.id==='example.write').enabled,false);assert.equal(last.value.actions.find(item=>item.id==='refresh').enabled,true);
+  await controller.act(action);assert.equal(writes,1);controller.dispose();
+ }
 });

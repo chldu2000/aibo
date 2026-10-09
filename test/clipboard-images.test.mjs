@@ -10,7 +10,7 @@ test('clipboard extraction leaves text alone and does not duplicate files expose
  assert.deepEqual(await encodeClipboardImages([file]),[{mediaType:'image/png',data:Buffer.from('image').toString('base64')}]);
 });
 test('unsupported formats and limits reject before reading file bytes',async()=>{
- await assert.rejects(encodeClipboardImages([new File(['<svg/>'],'a.svg',{type:'image/svg+xml'})]),/支持粘贴/);
+ await assert.rejects(encodeClipboardImages([new File(['<svg/>'],'a.svg',{type:'image/svg+xml'})]),error=>error.localized?.key==='error.clipboardFormat');
  await assert.rejects(encodeClipboardImages(Array.from({length:9},()=>new File(['a'],'a.png',{type:'image/png'}))),/8/);
  await assert.rejects(encodeClipboardImages([{size:MAX_CLIPBOARD_IMAGE_BYTES+1,type:'image/png',arrayBuffer(){assert.fail('must not read oversized data');}}]),/10 MiB/);
 });

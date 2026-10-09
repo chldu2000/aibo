@@ -11,6 +11,7 @@ const page = await browser.newPage({viewport:{width:1280,height:900}});
 const errors = [];
 page.on('pageerror',error => errors.push(error.message));
 await page.addInitScript(() => {
+  if (window === window.top && location.protocol === 'http:') localStorage.setItem('aibo.language.v1','zh-CN');
   window.markdownCopies = [];
   Object.defineProperty(navigator,'clipboard',{value:{writeText:async value => window.markdownCopies.push(value)},configurable:true});
 });

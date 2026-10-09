@@ -14,6 +14,7 @@ try {
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(theme => {
       if (window !== window.top) return;
+      localStorage.setItem('aibo.language.v1', 'zh-CN');
       localStorage.setItem('aibo.appearance.v1', JSON.stringify({kitId:'ak-ui',themeId:theme}));
       const descriptor = {schema:'aibo.agent-settings/v1',version:1,title:'Third-party settings',scopes:['application','workspace'],fields:[{key:'instructions',label:'附加指令',type:'multiline',default:'Default instructions'}]};
       const contribution = {id:'third.party.agent',kind:'capabilityProvider',scope:'session',metadata:{displayName:'Third Party',settings:descriptor,operations:[]}};
@@ -33,6 +34,8 @@ try {
         if(command==='save_workspace_preferences'){trusted=args.trustNewWorkspaces;return {trustNewWorkspaces:trusted};}
         if(command==='get_presentation_selection'||command==='get_turn_change_set')return null;
         if(command==='read_agent_settings'||command==='save_agent_settings'){
+          if(command==='read_agent_settings'&&window.settingsReadErrorKey)throw {message:'settings_unavailable: 配置存储不可用',localized:{schema:'aibo.host-message/v1',key:window.settingsReadErrorKey,params:{}}};
+          if(command==='save_agent_settings'&&window.settingsErrorKey)throw {message:'settings_conflict: 原始诊断',localized:{schema:'aibo.host-message/v1',key:window.settingsErrorKey,params:{}}};
           const target=args.target??args.request;
           const key=JSON.stringify(target.scope);
           if(command==='save_agent_settings')saved[key]={...target.values};
@@ -49,13 +52,15 @@ try {
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
     const trigger = page.getByRole('button',{name:'工作台设置',exact:true});
     await trigger.click();
-    const dialog = page.getByRole('dialog',{name:'工作台设置',exact:true});
+    await page.getByRole('dialog',{name:'工作台设置',exact:true}).waitFor();
+    const dialog = page.getByRole('dialog');
     const tab = name => dialog.getByRole('tab',{name,exact:true});
     const selected = async name => assert.equal(await tab(name).getAttribute('aria-selected'),'true');
     assert.equal(await page.getByRole('dialog').count(),1);
     assert.deepEqual(await dialog.getByRole('tab').allInnerTexts(),['外观','布局','工作区','插件与能力','运行与诊断']);
     await selected('外观');
-    assert.equal(await dialog.getByRole('radio').count(),2);
+    assert.equal(await dialog.getByRole('radiogroup',{name:'主题',exact:true}).getByRole('radio').count(),2);
+    assert.equal(await dialog.getByRole('radiogroup',{name:'界面语言'}).getByRole('radio').count(),3);
     assert.equal(await dialog.getByRole('switch').count(),0,'trust is not an appearance preference');
     assert.equal(await dialog.getByRole('button',{name:'安装皮肤插件',exact:true}).count(),0,'appearance selects skins without managing packages');
     await page.screenshot({path:`/tmp/aibo-settings-${theme}-appearance.png`});
@@ -77,7 +82,15 @@ try {
     await dialog.getByRole('button',{name:'管理皮肤插件…',exact:true}).click();
     await selected('插件与能力');
     assert.equal(await dialog.locator('#presentation-packages').evaluate(el=>el===document.activeElement),true);
+    await page.evaluate(()=>window.settingsReadErrorKey='native.settings.storageUnavailable');
     await dialog.getByRole('button',{name:'设置 · Third Party',exact:true}).click();
+    await dialog.getByRole('alert').filter({hasText:'配置存储不可用'}).waitFor();
+    const failedReads=await page.evaluate(()=>window.settingsCalls.filter(call=>call.command==='read_agent_settings').length);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'en',locale:'en'});});
+    await dialog.getByRole('alert').filter({hasText:'Configuration storage is unavailable.'}).waitFor();
+    assert.equal(await page.evaluate(()=>window.settingsCalls.filter(call=>call.command==='read_agent_settings').length),failedReads);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'});delete window.settingsReadErrorKey;});
+    await dialog.getByRole('button',{name:'重试',exact:true}).click();
     const instructions = dialog.getByRole('textbox',{name:'附加指令',exact:true});
     await instructions.fill('Unsaved instructions');
     await dialog.getByRole('status').filter({hasText:'有未保存的修改'}).waitFor();
@@ -97,6 +110,22 @@ try {
     assert.equal(await dialog.getByRole('status').filter({hasText:'有未保存的修改'}).count(),0);
     await dialog.getByRole('button',{name:'当前项目',exact:true}).click();
     assert.equal(await instructions.inputValue(),'Unsaved instructions','workspace inherits the saved global value');
+    for(const [key,zh,en] of [
+      ['native.settings.concurrentChanged','配置已被其他窗口修改，请重新加载后再保存','Another window changed these settings. Reload them before saving.'],
+      ['native.settings.versionChanged','设置版本已改变，请重新加载','The settings version changed. Reload settings.'],
+      ['native.settings.storageUnavailable','配置存储不可用','Configuration storage is unavailable.'],
+    ]) {
+      await page.evaluate(key=>window.settingsErrorKey=key,key);await instructions.fill('原始配置 {error}');
+      await dialog.getByRole('button',{name:'保存设置',exact:true}).click();await dialog.getByRole('alert').filter({hasText:zh}).waitFor();
+      const writes=await page.evaluate(()=>window.settingsCalls.filter(call=>call.command==='save_agent_settings').length);
+      const request=await page.evaluate(()=>window.settingsCalls.filter(call=>call.command==='save_agent_settings').at(-1).args.request);
+      assert.equal(request.installationId,'third-party-release');assert.equal(request.contributionId,'third.party.agent');assert.deepEqual(request.scope,{kind:'workspace',id:'w1'});assert.equal(request.values.instructions,'原始配置 {error}');
+      await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'en',locale:'en'});});
+      await dialog.getByRole('alert').filter({hasText:en}).waitFor();assert.equal(await instructions.inputValue(),'原始配置 {error}');
+      assert.equal(await page.evaluate(()=>window.settingsCalls.filter(call=>call.command==='save_agent_settings').length),writes);
+      await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'});});await dialog.getByRole('alert').filter({hasText:zh}).waitFor();
+    }
+    await page.evaluate(()=>delete window.settingsErrorKey);
     await tab('运行与诊断').click();
     await dialog.getByRole('heading',{name:'运行环境',exact:true}).waitFor();
     await dialog.getByRole('button',{name:'执行历史',exact:true}).waitFor();

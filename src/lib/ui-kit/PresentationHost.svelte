@@ -41,7 +41,7 @@
     const surfaces = value.release.manifest.surfaces ?? [];
     if (surfaces.includes('controls')) {
       const { controlPreflights } = await import('../presentation-runtime/controls');
-      for (const snapshot of controlPreflights(value.release.manifest.hostApi)) {
+      for (const snapshot of controlPreflights(value.release.manifest.hostApi, input.locale)) {
         const candidate = await preparePresentationSandbox(target, value, { ...snapshot, theme }, () => {}, failure, signal, { allowInheritance: true });
         candidate.dispose();
       }
@@ -49,7 +49,7 @@
     if (surfaces.includes('semantic')) {
       const { semanticInput, semanticPreflightSnapshots } = await import('../presentation-runtime/semantic');
       for (const snapshot of semanticPreflightSnapshots()) {
-        const preflight = await preparePresentationSandbox(target, value, semanticInput(snapshot, 1, theme), () => {}, failure, signal);
+        const preflight = await preparePresentationSandbox(target, value, semanticInput(snapshot, 1, theme, input.locale), () => {}, failure, signal);
         preflight.dispose();
       }
     }

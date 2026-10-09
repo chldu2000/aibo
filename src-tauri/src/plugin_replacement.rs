@@ -23,6 +23,7 @@ pub(crate) struct Preview {
     pub rebuild_sessions: Vec<String>,
     pub impacts: Vec<Impact>,
     pub blockers: Vec<String>,
+    pub localized_blockers: Vec<Value>,
 }
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Release {
@@ -49,7 +50,7 @@ pub(crate) struct Snapshot {
     pub bindings: Vec<Value>,
 }
 
-pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, String> {
+pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, crate::ui_i18n::HostMessage> {
     let source = source.canonicalize().map_err(error)?;
     let (manifest, _, digest) = plugin_registry::inspect(&source)?;
     let plugin = manifest["pluginId"].as_str().ok_or("invalid pluginId")?;
@@ -61,6 +62,7 @@ pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, S
     let mut impacts = vec![];
     let mut previous = vec![];
     let mut blockers = vec![];
+    let mut localized_blockers = vec![];
     for row in &rows {
         let old = semver::Version::parse(row.get("plugin_version")).map_err(error)?;
         if old > next {
@@ -71,9 +73,11 @@ pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, S
         let impact = plugin_lifecycle::impact(db, row.get("id")).await?;
         if impact.active > 0 {
             blockers.push("请先停止插件正在运行的任务，再替换版本".into());
+            localized_blockers.push(crate::ui_i18n::display_descriptor("native.plugin.running",json!({})));
         }
         if !impact.dependencies.is_empty() {
             blockers.push("仍有其他插件固定依赖此版本，请先处理依赖引用".into());
+            localized_blockers.push(crate::ui_i18n::display_descriptor("native.plugin.dependencies",json!({})));
         }
         let candidates: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM capability_binding_candidates WHERE installation_id=?",
@@ -84,6 +88,7 @@ pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, S
         .map_err(error)?;
         if candidates > 0 {
             blockers.push("存在尚未完成的能力选择，请完成或取消后重试".into());
+            localized_blockers.push(crate::ui_i18n::display_descriptor("native.plugin.candidates",json!({})));
         }
         previous.push(row.get::<String, _>("plugin_version"));
         impacts.push(impact);
@@ -91,6 +96,7 @@ pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, S
     if rows.len() == 1 && rows[0].get::<String, _>("package_digest") == digest {
         kind = "installed";
         blockers.clear();
+        localized_blockers.clear();
     }
     if rows.len() > 1
         && rows
@@ -98,12 +104,13 @@ pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, S
             .any(|row| row.get::<String, _>("package_digest") == digest)
     {
         blockers.push("已有多个历史安装版本，请先卸载其余版本再安装此包".into());
+            localized_blockers.push(crate::ui_i18n::display_descriptor("native.plugin.historicalInstalls",json!({})));
     }
     // Snapshot references and the package bytes both participate in confirmation.
     let snapshot = snapshot(db, plugin).await?;
     let token = format!(
         "{:x}",
-        Sha256::digest(json!([digest, snapshot, impacts]).to_string().as_bytes())
+        Sha256::digest(json!([digest, snapshot, impacts.iter().map(Impact::confirmation_value).collect::<Vec<_>>()]).to_string().as_bytes())
     );
     Ok(Preview {
         digest,
@@ -116,6 +123,7 @@ pub(crate) async fn preview(db: &SqlitePool, source: &Path) -> Result<Preview, S
         rebuild_sessions: snapshot.sessions.iter().filter(|s| s.rebuild.is_some()).map(|s| s.id.clone()).collect(),
         impacts,
         blockers,
+        localized_blockers,
     })
 }
 
@@ -215,7 +223,7 @@ pub(crate) async fn restore(db: &SqlitePool, plugin: &str) -> Result<(), String>
     tx.commit().await.map_err(error)
 }
 
-pub(crate) async fn recover(db: &SqlitePool, data: &Path) -> Result<(), String> {
+pub(crate) async fn recover(db: &SqlitePool, data: &Path) -> Result<(), crate::ui_i18n::HostMessage> {
     let pending: Vec<String> =
         sqlx::query_scalar("SELECT plugin_id FROM plugin_replacements WHERE phase='preparing'")
             .fetch_all(db)
@@ -235,14 +243,14 @@ pub(crate) async fn recover(db: &SqlitePool, data: &Path) -> Result<(), String> 
                 .await
                 .map_err(error)?;
         if !exists {
-            plugin_lifecycle::remove_owned(data, &["plugins", &target])?;
-            plugin_lifecycle::remove_owned(data, &["plugins", &format!(".staging-{target}")])?;
+            plugin_lifecycle::remove_owned_display(data, &["plugins", &target])?;
+            plugin_lifecycle::remove_owned_display(data, &["plugins", &format!(".staging-{target}")])?;
         }
         restore(db, &plugin).await?;
     }
     collect(db, data).await
 }
-pub(crate) async fn collect(db: &SqlitePool, data: &Path) -> Result<(), String> {
+pub(crate) async fn collect(db: &SqlitePool, data: &Path) -> Result<(), crate::ui_i18n::HostMessage> {
     plugin_registry::collect_retired(db, data).await?;
     sqlx::query("DELETE FROM plugin_replacements WHERE phase='expired'")
         .execute(db)
@@ -250,7 +258,7 @@ pub(crate) async fn collect(db: &SqlitePool, data: &Path) -> Result<(), String> 
         .map_err(error)?;
     Ok(())
 }
-pub(crate) async fn expire(db: &SqlitePool, plugin: &str, data: &Path) -> Result<(), String> {
+pub(crate) async fn expire(db: &SqlitePool, plugin: &str, data: &Path) -> Result<(), crate::ui_i18n::HostMessage> {
     sqlx::query(
         "UPDATE plugin_replacements SET phase='expired' WHERE plugin_id=? AND phase='ready'",
     )
@@ -265,4 +273,50 @@ pub(crate) async fn undo_targets(db: &SqlitePool) -> Result<Vec<String>, String>
         .fetch_all(db)
         .await
         .map_err(error)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn replacement_cleanup_keeps_display_metadata_and_retries_durable_records() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let data = root.path();
+        let path = data.join("aibo.sqlite3");
+        let db = crate::open_database(&path).await.unwrap();
+        let release = plugin_registry::install(&db,data,&Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/plugins/capability-echo")).await.unwrap();
+        std::fs::write(outside.path().join("keep"),"outside").unwrap();
+        std::fs::create_dir(data.join("artifacts")).unwrap();
+        std::fs::write(data.join("artifacts/history"),"business").unwrap();
+        sqlx::query("UPDATE plugin_installations SET installed=0,enabled=0 WHERE id=?").bind(&release.id).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO plugin_removals VALUES(?,'now')").bind(&release.id).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO plugin_replacements VALUES(?,?,'{\"releases\":[],\"sessions\":[],\"bindings\":[]}','ready','now')")
+            .bind(&release.plugin_id).bind(&release.id).execute(&db).await.unwrap();
+        std::fs::rename(data.join("plugins"),data.join("plugins-original")).unwrap();
+        std::os::unix::fs::symlink(outside.path(),data.join("plugins")).unwrap();
+        let collected = collect(&db,data).await.unwrap_err();
+        let expired = expire(&db,&release.plugin_id,data).await.unwrap_err();
+        assert_eq!(sqlx::query_scalar::<_,String>("SELECT phase FROM plugin_replacements WHERE plugin_id=?").bind(&release.plugin_id).fetch_one(&db).await.unwrap(),"expired");
+        sqlx::query("INSERT INTO plugin_replacements VALUES('recover','missing-target','{\"releases\":[],\"sessions\":[],\"bindings\":[]}','preparing','now')").execute(&db).await.unwrap();
+        let recovered = recover(&db,data).await.unwrap_err();
+        for failure in [collected,expired,recovered] {
+            assert_eq!(failure.diagnostic,"插件存储路径不是安全目录");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&failure.display()),"The plugin storage path is not a safe directory.");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&failure.display()),failure.diagnostic);
+        }
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM plugin_removals").fetch_one(&db).await.unwrap(),1);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM plugin_replacements").fetch_one(&db).await.unwrap(),2);
+        db.close().await;
+        std::fs::remove_file(data.join("plugins")).unwrap();
+        std::fs::rename(data.join("plugins-original"),data.join("plugins")).unwrap();
+        let db = crate::open_database(&path).await.unwrap();
+        recover(&db,data).await.unwrap(); collect(&db,data).await.unwrap();
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM plugin_removals").fetch_one(&db).await.unwrap(),0);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM plugin_replacements").fetch_one(&db).await.unwrap(),0);
+        assert!(!data.join("plugins").join(&release.id).exists());
+        assert_eq!(std::fs::read_to_string(outside.path().join("keep")).unwrap(),"outside");
+        assert_eq!(std::fs::read_to_string(data.join("artifacts/history")).unwrap(),"business");
+        db.close().await;
+    }
 }

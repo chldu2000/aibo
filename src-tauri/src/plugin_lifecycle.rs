@@ -13,6 +13,8 @@ pub(crate) fn error(value: impl std::fmt::Display) -> String {
 pub(crate) struct Reference {
     pub id: String,
     pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub localized_label: Option<serde_json::Value>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,7 +28,17 @@ pub(crate) struct Impact {
     pub targets: Vec<Reference>,
 }
 
-pub(crate) async fn impact(db: &SqlitePool, id: &str) -> Result<Impact, String> {
+fn confirmation_references(items: &[Reference]) -> Vec<serde_json::Value> {
+    items.iter().map(|item|serde_json::json!({"id":item.id,"label":item.label})).collect()
+}
+impl Impact {
+    /// Display metadata never participates in package or reference confirmation identity.
+    pub(crate) fn confirmation_value(&self) -> serde_json::Value {
+        serde_json::json!({"id":self.id,"token":self.token,"sessions":confirmation_references(&self.sessions),"dependencies":confirmation_references(&self.dependencies),"bindings":confirmation_references(&self.bindings),"active":self.active,"targets":confirmation_references(&self.targets)})
+    }
+}
+
+pub(crate) async fn impact(db: &SqlitePool, id: &str) -> Result<Impact, crate::ui_i18n::HostMessage> {
     let row = sqlx::query(
         "SELECT plugin_id,plugin_version FROM plugin_installations WHERE id=? AND installed=1",
     )
@@ -34,13 +46,13 @@ pub(crate) async fn impact(db: &SqlitePool, id: &str) -> Result<Impact, String> 
     .fetch_optional(db)
     .await
     .map_err(error)?
-    .ok_or("插件已卸载，请刷新列表")?;
+    .ok_or_else(||crate::ui_i18n::HostMessage::new("native.plugin.uninstalled",serde_json::json!({})))?;
     let sessions = sqlx::query("SELECT id,label FROM sessions WHERE plugin_installation_id=? AND id NOT IN (SELECT session_id FROM plugin_session_retirements) ORDER BY id")
-        .bind(id).fetch_all(db).await.map_err(error)?.into_iter().map(|row|Reference{id:row.get("id"),label:row.get("label")}).collect();
+        .bind(id).fetch_all(db).await.map_err(error)?.into_iter().map(|row|Reference{id:row.get("id"),label:row.get("label"),localized_label:None}).collect();
     let dependencies = sqlx::query("SELECT DISTINCT p.id,COALESCE(json_extract(p.manifest_json,'$.displayName'),p.plugin_id)||' · '||p.plugin_version AS label FROM plugin_dependency_bindings d JOIN plugin_installations p ON p.id=d.installation_id WHERE d.dependency_installation_id=? AND p.installed=1 AND p.id<>? ORDER BY p.id")
-        .bind(id).bind(id).fetch_all(db).await.map_err(error)?.into_iter().map(|row|Reference{id:row.get("id"),label:row.get("label")}).collect();
-    let bindings = sqlx::query("SELECT scope_kind||':'||scope_id||':'||capability_id||':'||contract_version AS id,contribution_id||' · '||scope_kind||'/'||scope_id||' · '||capability_id AS label FROM capability_provider_bindings WHERE installation_id=? UNION SELECT 'candidate:'||candidate_id AS id,contribution_id||' · 候选绑定' AS label FROM capability_binding_candidates WHERE installation_id=? ORDER BY id")
-        .bind(id).bind(id).fetch_all(db).await.map_err(error)?.into_iter().map(|row|Reference{id:row.get("id"),label:row.get("label")}).collect();
+        .bind(id).bind(id).fetch_all(db).await.map_err(error)?.into_iter().map(|row|Reference{id:row.get("id"),label:row.get("label"),localized_label:None}).collect();
+    let bindings = sqlx::query("SELECT scope_kind||':'||scope_id||':'||capability_id||':'||contract_version AS id,contribution_id||' · '||scope_kind||'/'||scope_id||' · '||capability_id AS label,NULL AS candidate_contribution FROM capability_provider_bindings WHERE installation_id=? UNION SELECT 'candidate:'||candidate_id AS id,contribution_id||' · 候选绑定' AS label,contribution_id AS candidate_contribution FROM capability_binding_candidates WHERE installation_id=? ORDER BY id")
+        .bind(id).bind(id).fetch_all(db).await.map_err(error)?.into_iter().map(|row|Reference{id:row.get("id"),label:row.get("label"),localized_label:row.get::<Option<String>,_>("candidate_contribution").map(|contribution|crate::ui_i18n::display_descriptor("native.plugin.candidateBinding",serde_json::json!({"contribution":contribution})))}).collect();
     let active = sqlx::query_scalar(
         "SELECT COUNT(*) FROM capability_invocations WHERE installation_id=? AND status='running'",
     )
@@ -52,7 +64,7 @@ pub(crate) async fn impact(db: &SqlitePool, id: &str) -> Result<Impact, String> 
     let targets = sqlx::query("SELECT id,plugin_version FROM plugin_installations WHERE plugin_id=? AND installed=1 AND enabled=1 ORDER BY plugin_version,id")
         .bind(row.get::<String,_>("plugin_id")).fetch_all(db).await.map_err(error)?.into_iter()
         .filter(|row|semver::Version::parse(row.get("plugin_version")).is_ok_and(|other|other>version))
-        .map(|row|Reference{id:row.get("id"),label:row.get("plugin_version")}).collect();
+        .map(|row|Reference{id:row.get("id"),label:row.get("plugin_version"),localized_label:None}).collect();
     let mut result = Impact {
         id: id.into(),
         token: String::new(),
@@ -68,9 +80,9 @@ pub(crate) async fn impact(db: &SqlitePool, id: &str) -> Result<Impact, String> 
         Sha256::digest(
             serde_json::to_vec(&(
                 &result.id,
-                &result.sessions,
-                &result.dependencies,
-                &result.bindings
+                confirmation_references(&result.sessions),
+                confirmation_references(&result.dependencies),
+                confirmation_references(&result.bindings)
             ))
             .map_err(error)?
         )
@@ -80,6 +92,10 @@ pub(crate) async fn impact(db: &SqlitePool, id: &str) -> Result<Impact, String> 
 
 /// Only accept host-owned descendants. Never follow a substituted directory symlink.
 pub(crate) fn owned_path(root: &Path, parts: &[&str]) -> Result<PathBuf, String> {
+    owned_path_display(root, parts).map_err(|error|error.diagnostic)
+}
+
+pub(crate) fn owned_path_display(root: &Path, parts: &[&str]) -> Result<PathBuf, crate::ui_i18n::HostMessage> {
     let mut path = root.canonicalize().map_err(error)?;
     for part in parts {
         if part.is_empty()
@@ -89,22 +105,26 @@ pub(crate) fn owned_path(root: &Path, parts: &[&str]) -> Result<PathBuf, String>
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
         {
-            return Err("无效的插件存储路径".into());
+            return Err(crate::ui_i18n::HostMessage::new("native.registry.storagePath",serde_json::json!({})));
         }
         path.push(part);
         match std::fs::symlink_metadata(&path) {
             Ok(meta) if meta.file_type().is_symlink() || !meta.is_dir() => {
-                return Err("插件存储路径不是安全目录".into())
+                return Err(crate::ui_i18n::HostMessage::new("native.registry.storageDirectory",serde_json::json!({})))
             }
             Ok(_) => (),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
-            Err(e) => return Err(error(e)),
+            Err(e) => return Err(error(e).into()),
         }
     }
     Ok(path)
 }
 pub(crate) fn remove_owned(root: &Path, parts: &[&str]) -> Result<(), String> {
-    let path = owned_path(root, parts)?;
+    remove_owned_display(root, parts).map_err(|error|error.diagnostic)
+}
+
+pub(crate) fn remove_owned_display(root: &Path, parts: &[&str]) -> Result<(), crate::ui_i18n::HostMessage> {
+    let path = owned_path_display(root, parts)?;
     if path.exists() {
         std::fs::remove_dir_all(path).map_err(error)?;
     }
@@ -214,6 +234,33 @@ mod tests {
         db.close().await;
     }
 
+    #[tokio::test]
+    async fn candidate_display_metadata_preserves_legacy_confirmation_identity() {
+        let db=sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        sqlx::raw_sql("CREATE TABLE plugin_installations(id TEXT,plugin_id TEXT,plugin_version TEXT,installed INTEGER,enabled INTEGER,manifest_json TEXT);
+          CREATE TABLE sessions(id TEXT,label TEXT,plugin_installation_id TEXT);
+          CREATE TABLE plugin_session_retirements(session_id TEXT);
+          CREATE TABLE plugin_dependency_bindings(installation_id TEXT,dependency_installation_id TEXT);
+          CREATE TABLE capability_provider_bindings(installation_id TEXT,scope_kind TEXT,scope_id TEXT,capability_id TEXT,contract_version TEXT,contribution_id TEXT);
+          CREATE TABLE capability_binding_candidates(installation_id TEXT,candidate_id TEXT,contribution_id TEXT);
+          CREATE TABLE capability_invocations(installation_id TEXT,status TEXT);
+          INSERT INTO plugin_installations VALUES('old','plugin','1.0.0',1,1,'{}');
+          INSERT INTO capability_binding_candidates VALUES('old','candidate','原文{contribution}');").execute(&db).await.unwrap();
+        let value=impact(&db,"old").await.unwrap();
+        let legacy=serde_json::json!(["old",[],[],[{"id":"candidate:candidate","label":"原文{contribution} · 候选绑定"}]]);
+        assert_eq!(value.token,format!("{:x}",Sha256::digest(legacy.to_string().as_bytes())));
+        let display=value.bindings[0].localized_label.as_ref().unwrap();
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,display),"原文{contribution} · candidate binding");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,display),value.bindings[0].label);
+        let confirmation=value.confirmation_value();
+        assert!(confirmation["bindings"][0].get("localizedLabel").is_none());
+        assert!(serde_json::to_value(&value).unwrap()["bindings"][0].get("localizedLabel").is_some());
+        assert_eq!(impact(&db,"old").await.unwrap().token,value.token);
+        sqlx::query("UPDATE capability_binding_candidates SET contribution_id='real change'").execute(&db).await.unwrap();
+        assert_ne!(impact(&db,"old").await.unwrap().token,value.token);
+        db.close().await;
+    }
+
     #[cfg(unix)]
     #[test]
     fn cleanup_rejects_symlinked_private_directories_and_path_escape() {
@@ -221,8 +268,13 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         std::fs::write(outside.path().join("keep"), "history").unwrap();
         std::os::unix::fs::symlink(outside.path(), root.path().join("plugin-data")).unwrap();
-        assert!(remove_owned(root.path(), &["plugin-data", "plugin", "release"]).is_err());
-        assert!(remove_owned(root.path(), &["../outside"]).is_err());
+        let symlink = remove_owned_display(root.path(), &["plugin-data", "plugin", "release"]).unwrap_err();
+        assert_eq!(symlink.diagnostic, "插件存储路径不是安全目录");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En, &symlink.display()), "The plugin storage path is not a safe directory.");
+        let escape = remove_owned_display(root.path(), &["../outside"]).unwrap_err();
+        assert_eq!(escape.diagnostic, "无效的插件存储路径");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En, &escape.display()), "The plugin storage path is invalid.");
+        assert_eq!(remove_owned(root.path(), &["../outside"]).unwrap_err(), escape.diagnostic);
         assert!(outside.path().join("keep").exists());
     }
 }

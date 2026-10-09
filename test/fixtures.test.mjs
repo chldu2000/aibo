@@ -114,7 +114,7 @@ test("rendered Markdown stays in the safe component path", async () => {
   assert.equal(markdownTargets('[file](src/main.ts:42)')[0].value, 'src/main.ts:42');
   assert.match(renderer, /rel="noreferrer"/);
   assert.match(renderer, /navigator\.clipboard/);
-  assert.match(renderer, /复制/);
+  assert.match(renderer, /markdown\.copy/);
 });
 
 test("global search is wired through the UI kit seam", async () => {
@@ -134,9 +134,9 @@ test("workspace capability checker exposes resource inventory without config con
   );
   const api = await readFile(path.join(root, "src", "lib", "api.ts"), "utf8");
   assert.match(inspector, /workspaceCapabilities/);
-  assert.match(inspector, /工作区能力/);
+  assert.match(inspector, /inspector\.workspaceCapabilities/);
   assert.match(inspector, /mcpServers/);
-  assert.match(inspector, /恢复记录/);
+  assert.match(inspector, /inspector\.restoreHistory/);
   assert.match(api, /inspect_workspace_capabilities/);
   assert.doesNotMatch(inspector, /apiKey|accessToken|clientSecret/);
 });

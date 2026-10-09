@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { AttachmentList } from '$lib/ui-kit';
   import { clipboardImageFiles } from '$lib/app/clipboard-images';
   import { tick } from 'svelte';
@@ -157,18 +158,18 @@
         return haystack.includes(query);
       });
   });
-  const slashCategories: Array<{ id: SlashCategory; label: string }> = [
-    { id: 'all', label: 'All' },
-    { id: 'agent', label: 'Agent' },
-    { id: 'skill', label: 'Skills' },
-    { id: 'extension', label: 'Extension' },
-  ];
-  const mentionCategories: Array<{ id: MentionCategory; label: string }> = [
-    { id: 'all', label: 'All' },
-    { id: 'files', label: 'Files' },
-    { id: 'folders', label: 'Folders' },
-    { id: 'sessions', label: 'Sessions' },
-  ];
+  const slashCategories: Array<{ id: SlashCategory; label: string }> = $derived([
+    { id: 'all', label: $t('composer.category.all') },
+    { id: 'agent', label: $t('composer.category.agent') },
+    { id: 'skill', label: $t('composer.category.skill') },
+    { id: 'extension', label: $t('composer.category.extension') },
+  ]);
+  const mentionCategories: Array<{ id: MentionCategory; label: string }> = $derived([
+    { id: 'all', label: $t('composer.category.all') },
+    { id: 'files', label: $t('composer.category.files') },
+    { id: 'folders', label: $t('composer.category.folders') },
+    { id: 'sessions', label: $t('composer.category.sessions') },
+  ]);
   const mentionSuggestions = $derived(filterMentionSuggestions(sessionSuggestions, workspacePathSuggestions, mentionCategory));
   function selectMention(index: number): void {
     const item = mentionSuggestions[index];
@@ -187,13 +188,13 @@
   const activeProfile = $derived(executionProfile?.enforced ?? executionProfile?.requested ?? null);
   const accessOptions = $derived(sessionControlOptions(executionProfile, selectedSession ? selectedSessionId : null));
   const selectedControls = $derived(selectedSessionControls(accessOptions, activeProfile));
-  const accessLabel = $derived(selectedControls.map(option => option.label).join(' · ') || '会话设置');
+  const accessLabel = $derived(selectedControls.map(option => option.label).join(' · ') || $t('composer.sessionSettings'));
   const accessDetail = $derived(selectedControls.map(option => option.description).join(' · '));
   const accessGroups = $derived(['permission', 'mode'].map(kind => ({
-    kind, label: kind === 'permission' ? '权限' : '会话模式', options: accessOptions.filter(option => option.kind === kind),
+    kind, label: kind === 'permission' ? $t('composer.permission') : $t('composer.mode'), options: accessOptions.filter(option => option.kind === kind),
   })).filter(group => group.options.length));
   const modelLabel = $derived(
-    modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? '正在读取模型…' : '默认模型'),
+    modelOverride || modelCatalog?.current?.label || activeProfile?.model || (modelCatalogLoading ? $t('composer.loadingModel') : $t('composer.defaultModel')),
   );
   const currentReasoningEffort = $derived(modelConfiguration.currentReasoningEffort);
   const currentEffortLabel = $derived(reasoningEffortLabel(modelCatalog, currentReasoningEffort));
@@ -211,7 +212,7 @@
     ];
     return [...new Map(options.map((option) => [option.id, option])).values()];
   });
-  const matrixDefaultLabel = $derived(modelConfiguration.defaultAction === 'reset' ? '默认' : '保留');
+  const matrixDefaultLabel = $derived(modelConfiguration.defaultAction === 'reset' ? $t('composer.default') : $t('composer.keep'));
   const matrixRows = $derived.by((): UiModelMatrixRow[] =>
     (modelCatalog?.models ?? []).map((option) => ({
       reference: option.reference,
@@ -341,7 +342,7 @@
       data-composer-input="true"
       bind:value={text}
       rows="2"
-      placeholder={historyOnly ? '插件数据已清除，此会话仅保留历史。' : sessionStarting ? '会话正在初始化，可以先编写消息…' : sessionArchived ? '该会话已归档，请取消归档或创建分支继续…' : selectedSession ? '输入消息，Enter 发送，Shift/Ctrl + Enter 换行…' : '先新建或选择一个 Agent 会话…'}
+      placeholder={historyOnly ? $t('composer.historyOnly') : sessionStarting ? $t('composer.starting') : sessionArchived ? $t('composer.archived') : selectedSession ? $t('composer.placeholder') : $t('composer.noSession')}
       disabled={!selectedSession || sessionArchived || historyOnly || selectedSessionArchiving || (sessionRunning && !sessionCapabilities.includes('queue.manage')) || busy}
       onpaste={(event) => {
         const files = clipboardImageFiles(event.clipboardData);
@@ -444,8 +445,8 @@
     ></Textarea>
     </div>
     {#if showMentionSuggestions && mentionActiveIndex >= 0}
-      <div class="composer-suggestions" role="group" aria-label="引用会话或工作区路径">
-        <div class="composer-command-categories" role="tablist" aria-label="引用分类">
+      <div class="composer-suggestions" role="group" aria-label={$t('composer.references')}>
+        <div class="composer-command-categories" role="tablist" aria-label={$t('composer.referenceCategories')}>
           {#each mentionCategories as category (`mention-category-${category.id}`)}
             <button
               type="button"
@@ -457,9 +458,9 @@
             >{category.label}</button>
           {/each}
         </div>
-        <div bind:this={suggestionList} class="composer-suggestion-options" role="listbox" aria-label="引用建议">
+        <div bind:this={suggestionList} class="composer-suggestion-options" role="listbox" aria-label={$t('composer.referenceSuggestions')}>
           {#if mentionSuggestions.length === 0}
-            <div class="composer-suggestions-empty">没有匹配的引用</div>
+            <div class="composer-suggestions-empty">{$t('composer.noReferences')}</div>
           {/if}
           {#each mentionSuggestions as suggestion, index (suggestion.kind === 'session' ? `session-${suggestion.session.id}` : `path-${suggestion.path.path}`)}
             <button
@@ -471,19 +472,19 @@
               onmousedown={(event) => event.preventDefault()}
             >
               {#if suggestion.kind === 'session'}
-                <AgentStatusMark agent={sessionAgentKind(suggestion.session)} icon={sessionIcons[suggestion.session.id]} tone="idle" label={`${suggestion.session.agent} 会话`} />
+                <AgentStatusMark agent={sessionAgentKind(suggestion.session)} icon={sessionIcons[suggestion.session.id]} tone="idle" label={$t('composer.agentSession', { agent: suggestion.session.agent })} />
               {:else}
                 <Icon name={suggestion.kind === 'folder' ? 'folder' : 'file'} size={13} />
               {/if}
               <span>{suggestion.kind === 'session' ? suggestion.session.label : suggestion.path.path}</span>
-              <small>{suggestion.kind === 'session' ? `会话 · ${suggestion.session.agent}${suggestion.session.archived ? ' · 已归档' : ''}` : suggestion.kind === 'folder' ? '目录' : '文件'}</small>
+              <small>{suggestion.kind === 'session' ? $t('composer.sessionReference', { agent: suggestion.session.agent, archived: suggestion.session.archived ? $t('composer.archivedSuffix') : '' }) : suggestion.kind === 'folder' ? $t('composer.folder') : $t('composer.file')}</small>
             </button>
           {/each}
         </div>
       </div>
     {:else if showSlashMenu}
-      <div class="composer-suggestions" role="group" aria-label="Agent 命令">
-        <div class="composer-command-categories" role="tablist" aria-label="命令分类">
+      <div class="composer-suggestions" role="group" aria-label={$t('composer.commands')}>
+        <div class="composer-command-categories" role="tablist" aria-label={$t('composer.commandCategories')}>
           {#each slashCategories as category (`slash-category-${category.id}`)}
             <button
               type="button"
@@ -495,12 +496,12 @@
             >{category.label}</button>
           {/each}
         </div>
-        <div bind:this={suggestionList} class="composer-suggestion-options" role="listbox" aria-label="命令建议">
+        <div bind:this={suggestionList} class="composer-suggestion-options" role="listbox" aria-label={$t('composer.commandSuggestions')}>
           {#if agentCommandsLoading && filteredAgentCommands.length === 0}
-            <div class="composer-suggestions-empty">正在加载 Agent 命令…</div>
+            <div class="composer-suggestions-empty">{$t('composer.loadingCommands')}</div>
           {:else if filteredAgentCommands.length === 0}
             <div class="composer-suggestions-empty">
-              {agentCommands.length === 0 ? '当前会话暂无可用 Agent 命令' : '没有匹配的 Agent 命令'}
+              {agentCommands.length === 0 ? $t('composer.noCommands') : $t('composer.noMatchingCommands')}
             </div>
           {:else}
             {#each filteredAgentCommands as command, index (`slash-${command.source}-${command.name}`)}
@@ -532,22 +533,22 @@
           class="composer-toolbar-icon"
           onclick={() => { attachmentMenuOpen = !attachmentMenuOpen; sessionMenuOpen = false; modelMenuOpen = false; }}
           disabled={!selectedSession || sessionArchived || historyOnly || selectedSessionArchiving || busy}
-          aria-label="添加上下文"
+          aria-label={$t('composer.addContext')}
           aria-haspopup="menu"
           aria-expanded={attachmentMenuOpen}
-          title="添加上下文"
+          title={$t('composer.addContext')}
         >
           <Icon name="add" size={20} />
         </Button>
         {#if attachmentMenuOpen}
-          <div class="composer-menu composer-attachment-menu" role="menu" aria-label="添加上下文">
+          <div class="composer-menu composer-attachment-menu" role="menu" aria-label={$t('composer.addContext')}>
             <button type="button" role="menuitem" onclick={() => { attachmentMenuOpen = false; onAddAttachments(); }}>
               <Icon name="folder-add" size={15} />
-              <span>添加文件</span>
+              <span>{$t('composer.addFile')}</span>
             </button>
             <button type="button" role="menuitem" onclick={() => { attachmentMenuOpen = false; onAddDirectory(); }}>
               <Icon name="folder" size={15} />
-              <span>添加目录</span>
+              <span>{$t('composer.addFolder')}</span>
             </button>
           </div>
         {/if}
@@ -573,8 +574,8 @@
             {/each}
           </Button>
           {#if sessionMenuOpen}
-            <div use:showSessionMenu popover="auto" class="composer-menu composer-profile-menu" role="menu" aria-label="会话设置">
-              <div class="composer-menu-heading">会话设置</div>
+            <div use:showSessionMenu popover="auto" class="composer-menu composer-profile-menu" role="menu" aria-label={$t('composer.sessionSettings')}>
+              <div class="composer-menu-heading">{$t('composer.sessionSettings')}</div>
               <div class="composer-menu-detail">{accessDetail}</div>
               {#each accessGroups as group (group.kind)}
               <div class="composer-menu-heading">{group.label}</div>
@@ -603,7 +604,7 @@
               </div>
               {/each}
               {#if executionProfile?.unsupported && executionProfile.unsupported.length > 0}
-                <div class="composer-menu-warning">未启用：{executionProfile.unsupported.join('、')}</div>
+                <div class="composer-menu-warning">{$t('composer.unsupported', { features: executionProfile.unsupported.join(', ') })}</div>
               {/if}
             </div>
           {/if}
@@ -621,8 +622,8 @@
             onclick={(event) => { event.stopPropagation(); openModelMenu(); }}
             aria-haspopup="menu"
             aria-expanded={modelMenuOpen}
-            title={`${modelLabel}${reasoningLabel}${matrixFastTier?.active ? ' · Fast 已开启' : ''}`}
-            aria-label={`${modelLabel}${reasoningLabel}${matrixFastTier?.active ? '，Fast 已开启' : ''}`}
+            title={`${modelLabel}${reasoningLabel}${matrixFastTier?.active ? $t('composer.fastEnabled') : ''}`}
+            aria-label={`${modelLabel}${reasoningLabel}${matrixFastTier?.active ? $t('composer.fastEnabledAria') : ''}`}
           >
             {#if matrixFastTier?.active}
               <Icon name="bolt" size={15} />
@@ -631,11 +632,11 @@
             <Icon name="chevron-down" size={15} />
           </Button>
           {#if modelMenuOpen}
-            <div class="composer-menu composer-model-menu" role="menu" aria-label="模型设置">
+            <div class="composer-menu composer-model-menu" role="menu" aria-label={$t('composer.modelSettings')}>
               <div class="composer-model-header">
                 <div class="composer-model-header-labels">
-                  <div class="composer-menu-heading">模型与推理</div>
-                  <div class="composer-menu-detail">当前：{modelLabel}{reasoningLabel}</div>
+                  <div class="composer-menu-heading">{$t('composer.modelReasoning')}</div>
+                  <div class="composer-menu-detail">{$t('composer.currentModel', { model: modelLabel, reasoning: reasoningLabel })}</div>
                 </div>
                 <div class="composer-model-options">
                 {#if matrixFastTier && !modelCatalogLoading}
@@ -661,27 +662,27 @@
                 </div>
               </div>
               {#if sessionRunning}
-                <div class="composer-menu-detail">会话运行中，模型与推理强度暂不可修改。</div>
+                <div class="composer-menu-detail">{$t('composer.modelBusy')}</div>
               {/if}
               {#if modelCatalogLoading}
-                <div class="composer-suggestions-empty">{modelCatalog ? '正在更新模型配置，以下为上次确认的信息…' : '正在读取可用模型…'}</div>
+                <div class="composer-suggestions-empty">{modelCatalog ? $t('composer.updatingModel') : $t('composer.loadingModels')}</div>
               {/if}
               {#if modelCatalog && modelCatalog.models.length > 0}
                 {#if modelCatalog.parameterScope === 'current-model'}
                   <div class="composer-model-selectors">
                     <Select
-                      aria-label="模型"
+                      aria-label={$t('composer.model')}
                       options={modelCatalog.models.map(model => ({ value: model.reference, label: model.label }))}
                       value={modelCatalog.current?.reference ?? ''}
-                      placeholder="选择模型"
+                      placeholder={$t('composer.selectModel')}
                       disabled={matrixDisabled || modelCatalogLoading || !sessionCapabilities.includes('model.select')}
                       onSelect={(model) => void onSelectModelConfiguration(model, null)}
                     />
                     <Select
-                      aria-label="推理强度"
+                      aria-label={$t('composer.reasoning')}
                       options={reasoningOptions.map(option => ({ value: option.id, label: option.label }))}
                       value={selectedReasoningEffort ?? ''}
-                      placeholder={modelCatalogLoading || busy ? '正在更新…' : reasoningOptions.length ? '选择推理强度' : '此模型无可选推理强度'}
+                      placeholder={modelCatalogLoading || busy ? $t('composer.updating') : reasoningOptions.length ? $t('composer.selectReasoning') : $t('composer.noReasoning')}
                       disabled={matrixDisabled || modelCatalogLoading || !modelCatalog.current || !reasoningOptions.length || !sessionCapabilities.includes('model.reasoning')}
                       onSelect={(effort) => { if (modelCatalog?.current) void onSelectModelConfiguration(modelCatalog.current.reference, effort); }}
                     />
@@ -691,7 +692,7 @@
                   columns={matrixReasoningOptions}
                   rows={matrixRows}
                   defaultLabel={matrixDefaultLabel}
-                  defaultTitle={modelConfiguration.defaultAction === 'reset' ? '使用该模型的默认推理强度' : '切换模型，保留当前推理强度'}
+                  defaultTitle={modelConfiguration.defaultAction === 'reset' ? $t('composer.defaultReasoning') : $t('composer.keepReasoning')}
                   fastTier={null}
                   disabled={matrixDisabled || modelCatalogLoading}
                   onSelect={(model, reasoningEffort) => {
@@ -702,9 +703,9 @@
                 />
                 {/if}
               {:else if sessionRunning}
-                <div class="composer-suggestions-empty">尚无已确认的模型配置，回合结束后将自动读取。</div>
+                <div class="composer-suggestions-empty">{$t('composer.noConfirmedModel')}</div>
               {:else if !modelCatalogLoading}
-                <div class="composer-suggestions-empty">未获取到可用模型，请稍后重试。</div>
+                <div class="composer-suggestions-empty">{$t('composer.noModels')}</div>
               {/if}
             </div>
           {/if}
@@ -714,15 +715,15 @@
       {#if sessionRunning}
         {#if sessionCapabilities.includes('queue.manage')}
           {#if sessionCapabilities.includes('queue.steer')}
-            <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || (!text.trim() && !hasImage)}>立即发送</Button>
+            <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('steer')} disabled={busy || (!text.trim() && !hasImage)}>{$t('composer.sendNow')}</Button>
           {/if}
-          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || (!text.trim() && !hasImage)}>排队发送</Button>
+          <Button variant="queue" class="composer-action composer-action-queue" size="sm" type="button" onclick={() => onQueue('followUp')} disabled={busy || (!text.trim() && !hasImage)}>{$t('composer.queue')}</Button>
         {/if}
-        <Button variant="abort" class="composer-action composer-action-abort" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label="中止">
+        <Button variant="abort" class="composer-action composer-action-abort" size="icon" type="button" onclick={onAbort} disabled={busy} aria-label={$t('composer.abort')}>
           <Icon name="stop" size={13} />
         </Button>
       {:else}
-        <Button variant="send" class="composer-action composer-action-send" size="icon" type="submit" disabled={!selectedSession || sessionStarting || sessionArchived || historyOnly || selectedSessionArchiving || (!text.trim() && !hasImage) || busy} aria-label="发送">
+        <Button variant="send" class="composer-action composer-action-send" size="icon" type="submit" disabled={!selectedSession || sessionStarting || sessionArchived || historyOnly || selectedSessionArchiving || (!text.trim() && !hasImage) || busy} aria-label={$t('composer.send')}>
           <Icon name="send" size={16} />
         </Button>
       {/if}

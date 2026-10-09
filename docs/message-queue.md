@@ -35,6 +35,16 @@ Snapshots and host `queue.updated` events contain `sessionId`, `revision`,
 older presentation consumers. Revisions prevent late reads from overwriting
 newer events. Provider queue events cannot overwrite the host snapshot.
 
+Host-owned queue errors may include optional `localizedError` display metadata;
+`error` retains its original diagnostic. The App resolves this metadata into plain
+strings for built-in and external presentations. When resume or send-now admission
+rejects an uncertain item, IPC returns `{message, localized}` with the same original
+diagnostic and an explicit `aibo.host-message/v1` descriptor. Fixed host validation,
+queue capacity, missing/sending message and stopping/finishing diagnostics also
+carry descriptors; unsupported steering preserves its raw capability ID as a parameter.
+Provider diagnostics remain literal. Changing language does not repeat
+an operation, clear uncertainty, or resume delivery.
+
 The database stores queue membership and attachment ownership. Attachment
 references are captured from the submitted message, removed from the composer,
 and checked again before delivery. A changed or missing file retains its queue

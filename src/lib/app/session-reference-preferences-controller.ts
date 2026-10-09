@@ -1,9 +1,11 @@
+import { LocalizedError, toErrorText } from './error-utils.ts';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 export type SessionReferencePreferences = { messageLimit: number | null };
 export type SessionReferencePreferencesState = {
   value: SessionReferencePreferences | null;
   loading: boolean;
   saving: boolean;
-  error: string | null;
+  error: LocalizedText | null;
 };
 export const emptySessionReferencePreferences = (): SessionReferencePreferencesState => ({ value: null, loading: false, saving: false, error: null });
 
@@ -16,10 +18,10 @@ export function createSessionReferencePreferencesController(ports: {
   let generation = 0;
   const publish = () => ports.changed({ ...state, value: state.value ? { ...state.value } : null });
   function validated(value: SessionReferencePreferences): SessionReferencePreferences {
-    if (!value || !(value.messageLimit === null || (Number.isInteger(value.messageLimit) && value.messageLimit >= 1 && value.messageLimit <= 10000))) throw new Error('会话引用设置返回了无效数据，请重试。');
+    if (!value || !(value.messageLimit === null || (Number.isInteger(value.messageLimit) && value.messageLimit >= 1 && value.messageLimit <= 10000))) throw new LocalizedError('error.referencePreferences');
     return { messageLimit: value.messageLimit };
   }
-  const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+  const message = toErrorText;
   return {
     async load() {
       if (state.saving) return;

@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {createBuiltinWorkbenchServer} from './lib/builtin-workbench-fixture.mjs';
-const server = await createBuiltinWorkbenchServer({markdown:'[代码](src/main.ts:42) · [邮件](mailto:dev@example.com) · [网页](https://example.com)\n\n[空格路径](<file:///workspace/a%20b.ts#L8>)\n\n[不存在](missing.ts)'});
+const server = await createBuiltinWorkbenchServer({markdown:'[代码](src/main.ts:42) · [邮件](mailto:dev@example.com) · [网页](https://example.com)\n\n[空格路径](<file:///workspace/a%20b.ts#L8>)\n\n[不存在](missing.ts) · [二进制](binary.dat)'});
 await server.listen();
 const browser = await chromium.launch({headless:true});
 const page = await browser.newPage({viewport:{width:1280,height:900}});
 const errors = []; page.on('pageerror',error => errors.push(error.message));
 try {
-  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
+  await page.addInitScript(() => { if (window === window.top && location.protocol === 'http:') localStorage.setItem('aibo.language.v1','zh-CN'); });
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
   for (const kit of ['ak-ui','material3']) for (const theme of ['light','dark']) {
     await page.evaluate(({kit,theme}) => localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:kit,themeId:theme})),{kit,theme});
     await page.reload(); await page.getByRole('link',{name:'代码',exact:true}).waitFor();
@@ -19,6 +20,7 @@ try {
         if (command !== 'read_linked_file') throw Error('unexpected command '+command);
         window.fileReads.push(args);
         if (args.path === 'missing.ts') throw Error('文件不存在');
+        if (args.path === 'binary.dat') throw {code:'session_operation_error',message:'session operation failed: 二进制文件不提供文本预览',localized:{schema:'aibo.host-message/v1',key:'native.search.binaryPreview',params:{}}};
         if (window.holdFileRead) await new Promise(resolve => {window.resolveFileRead = resolve;});
         return {path:'/workspace/'+args.path.replace('/workspace/',''),content:Array.from({length:100},(_,i)=>'const value'+(i+1)+' = '+(i+1)+';').join('\n'),startLine:1,totalLines:100,truncated:false,targetLine:args.line ?? 1};
       }};
@@ -43,6 +45,16 @@ try {
     await panel.getByRole('button',{name:'关闭文件预览'}).click();
     await page.getByRole('link',{name:'不存在',exact:true}).click();
     await panel.getByRole('alert').filter({hasText:'文件不存在'}).waitFor();
+    await panel.getByRole('button',{name:'关闭文件预览'}).click();
+    await page.getByRole('link',{name:'二进制',exact:true}).click();
+    await panel.getByRole('alert').filter({hasText:'二进制文件不提供文本预览'}).waitFor();
+    const readsBeforeLanguage = await page.evaluate(()=>window.fileReads.length);
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'en',locale:'en'});});
+    const englishPanel = page.getByRole('complementary',{name:'File preview',exact:true});
+    await englishPanel.getByRole('alert').filter({hasText:'Text previews are unavailable for binary files.'}).waitFor();
+    await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'});});
+    await panel.getByRole('alert').filter({hasText:'二进制文件不提供文本预览'}).waitFor();
+    assert.equal(await page.evaluate(()=>window.fileReads.length),readsBeforeLanguage,'language changes do not read the file again');
     await panel.getByRole('button',{name:'关闭文件预览'}).click();
     await page.evaluate(()=>{window.holdFileRead=true;}); await link.click();
     await panel.getByRole('status').filter({hasText:'正在读取'}).waitFor();

@@ -30,6 +30,10 @@ pub(crate) struct Item {
     pub kind: String,
     pub title: String,
     pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub localized_title: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub localized_description: Option<serde_json::Value>,
     pub excerpt: String,
     pub target: Target,
     pub score: u32,
@@ -40,12 +44,18 @@ pub(crate) struct Page {
     pub items: Vec<Item>,
     pub has_more: bool,
     pub warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub localized_warnings: Option<Vec<serde_json::Value>>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Detail {
     pub title: String,
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub localized_content: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub localized_suffix: Option<serde_json::Value>,
     pub target: Target,
     pub truncated: bool,
 }
@@ -70,7 +80,7 @@ pub(crate) fn validate(request: &Request) -> Result<(), CoreError> {
             .contains(&kind)
         })
     {
-        return Err(CoreError::SessionOperation("搜索条件无效".into()));
+        return Err(crate::ui_i18n::read_error("native.search.invalidRequest",serde_json::json!({})));
     }
     Ok(())
 }
@@ -125,6 +135,7 @@ pub(crate) async fn search(
         items: vec![],
         has_more: false,
         warnings: vec![],
+        localized_warnings: None,
     };
     for kind in kinds {
         let mut scoped = request.clone();
@@ -182,19 +193,10 @@ async fn search_kind(db: &SqlitePool, caller: &str, request: Request) -> Result<
             let label = title.to_lowercase();
             let body: String = row.get("body");
             let source: String = row.get("source");
-            let mut description = [
-                row.get::<Option<String>, _>("workspace_label"),
-                row.get::<Option<String>, _>("session_label"),
-                if row.get::<i64, _>("archived") != 0 {
-                    Some("已归档".into())
-                } else {
-                    None
-                },
-            ]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join(" · ");
+            let base = [row.get::<Option<String>, _>("workspace_label"),row.get::<Option<String>, _>("session_label")].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+            let archived = row.get::<i64, _>("archived") != 0;
+            let mut description = base.clone();
+            if archived { if !description.is_empty() { description.push_str(" · "); } description.push_str("已归档"); }
             let line = if source == "file" && !query.is_empty() {
                 body.to_lowercase().find(&query).map(|offset| {
                     body.to_lowercase()[..offset]
@@ -224,6 +226,15 @@ async fn search_kind(db: &SqlitePool, caller: &str, request: Request) -> Result<
                 id: row.get("id"),
                 kind: row.get("kind"),
                 title: display_title,
+                localized_title: (source == "message").then(|| match title.as_str() {
+                    "assistant" | "user" | "system" | "tool" => Some(crate::ui_i18n::display_descriptor(&format!("native.search.{title}"),serde_json::json!({}))),
+                    _ => None,
+                }).flatten(),
+                localized_description: (archived || line.is_some()).then(|| crate::ui_i18n::display_descriptor("native.search.description",serde_json::json!({
+                    "base":base,
+                    "archived":if archived {crate::ui_i18n::descriptor("native.search.archived",serde_json::json!({"prefix":if base.is_empty(){""}else{" · "}}))} else {serde_json::json!("")},
+                    "line":line.map(|line| crate::ui_i18n::descriptor("native.search.line",serde_json::json!({"line":line}))).unwrap_or(serde_json::json!("")),
+                }))),
                 description,
                 excerpt: excerpt(&body, &query),
                 score: if query.is_empty() {
@@ -256,6 +267,7 @@ async fn search_kind(db: &SqlitePool, caller: &str, request: Request) -> Result<
         items,
         has_more,
         warnings: vec![],
+        localized_warnings: None,
     })
 }
 pub(crate) async fn detail(
@@ -272,10 +284,12 @@ pub(crate) async fn detail(
         .bind(&target.session_id)
         .fetch_optional(db)
         .await?
-        .ok_or_else(|| CoreError::SessionOperation("搜索结果已失效，请重新搜索".into()))?;
+        .ok_or_else(|| crate::ui_i18n::read_error("native.search.resultExpired",serde_json::json!({})))?;
     let body: String = row.get("body");
     Ok(Detail {
         title: row.get("title"),
+        localized_content: None,
+        localized_suffix: (body.len() > 256 * 1024).then(||crate::ui_i18n::display_descriptor("native.search.truncatedSuffix",serde_json::json!({}))),
         content: crate::artifact::truncate_utf8(&body, 256 * 1024, "\n…内容过长，预览已截断"),
         truncated: body.len() > 256 * 1024,
         target,
@@ -305,6 +319,9 @@ mod tests {
             let page = search(&db, "main", request(query, None)).await.unwrap();
             assert_eq!(page.items.len(), 1, "{query}");
             assert!(page.items[0].description.contains("已归档"));
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,page.items[0].localized_title.as_ref().unwrap()),"Assistant message");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,page.items[0].localized_description.as_ref().unwrap()),"工作区w2 · 历史会话 · Archived");
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,page.items[0].localized_description.as_ref().unwrap()),page.items[0].description);
             assert_eq!(page.items[0].target.workspace_id.as_deref(), Some("w2"));
             let detail = detail(&db, "main", page.items[0].target.clone())
                 .await
@@ -321,6 +338,15 @@ mod tests {
             .unwrap()
             .items
             .is_empty());
+        let raw_body = "用户正文 {suffix}\n…内容过长，预览已截断\n".repeat(10_000);
+        sqlx::query("UPDATE messages SET content=? WHERE id='m'").bind(&raw_body).execute(&db).await.unwrap();
+        let target = Target {source:"message".into(),id:"m".into(),workspace_id:Some("w2".into()),session_id:Some("s".into()),path:None,line:None};
+        let preview = detail(&db,"main",target).await.unwrap();
+        assert!(preview.truncated);assert!(preview.content.len() <= 256 * 1024);
+        assert!(preview.content.ends_with("\n…内容过长，预览已截断"));
+        assert!(preview.content.contains("用户正文 {suffix}"));
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,preview.localized_suffix.as_ref().unwrap()),"\n…Content is too long; the preview was truncated.");
+        let saved:String=sqlx::query_scalar("SELECT content FROM messages WHERE id='m'").fetch_one(&db).await.unwrap();assert_eq!(saved,raw_body);
         sqlx::query("UPDATE messages SET content='更新后的唯一正文' WHERE id='m'")
             .execute(&db)
             .await

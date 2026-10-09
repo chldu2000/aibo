@@ -1,26 +1,28 @@
 import type { AgentCommand, Session, SessionControl } from '$lib/types';
+import { translate } from '../../../packages/i18n/index.js';
+import type { Locale } from '../../../packages/i18n/index.js';
 
 // Host commands are selected from negotiated session capabilities. Plugin commands
 // already belong to the bound provider; their insertion syntax is provider data.
-const COMMANDS: Array<[string, string, string[]]> = [
-  ['settings', '打开 Aibo 设置', []], ['new', '新建会话', []],
-  ['name', '查看或修改会话名称', []], ['trust', '切换工作区信任状态', []],
-  ['session', '查看会话信息', []], ['resume', '刷新会话', []],
-  ['archive', '归档会话', []],
-  ['tree', '查看会话树或刷新远端会话', ['session.tree', 'session.snapshot']],
-  ['fork', '从当前会话创建分支', ['session.fork']],
-  ['compact', '压缩上下文', ['compaction.run']],
-  ['model', '查看或切换模型', ['model.select']],
-  ['thinking', '查看或设置推理强度', ['model.reasoning']],
-  ['reload', '重新加载会话资源', ['session.reload']],
-  ['goal', '查看、设置或清除目标', ['goal.manage']],
-  ['skills', '刷新 Skills', ['skill.list', 'command.list']],
-];
+const COMMANDS = [
+  ['settings', []], ['new', []],
+  ['name', []], ['trust', []],
+  ['session', []], ['resume', []],
+  ['archive', []],
+  ['tree', ['session.tree', 'session.snapshot']],
+  ['fork', ['session.fork']],
+  ['compact', ['compaction.run']],
+  ['model', ['model.select']],
+  ['thinking', ['model.reasoning']],
+  ['reload', ['session.reload']],
+  ['goal', ['goal.manage']],
+  ['skills', ['skill.list', 'command.list']],
+] as const;
 
-export function sessionBuiltinCommands(session: Pick<Session, 'capabilities' | 'pluginInstallationId'> | null, controls: readonly SessionControl[] = []): AgentCommand[] {
+export function sessionBuiltinCommands(session: Pick<Session, 'capabilities' | 'pluginInstallationId'> | null, controls: readonly SessionControl[] = [], locale: Locale = 'zh-CN'): AgentCommand[] {
   if (!session?.pluginInstallationId) return [];
-  const commands: AgentCommand[] = COMMANDS.filter(([, , required]) => !required.length || required.some(capability => session.capabilities.includes(capability)))
-    .map(([name, description]) => ({ name, description, source: 'builtin', category: 'agent', execution: 'aibo' as const }));
+  const commands: AgentCommand[] = COMMANDS.filter(([, required]) => !required.length || required.some(capability => session.capabilities.includes(capability)))
+    .map(([name]) => ({ name, description: translate(locale, `commands.${name}`), source: 'builtin', category: 'agent', execution: 'aibo' as const }));
   for (const control of controls) if (control.command) commands.push({name: control.command, description: control.description || control.label, source: 'builtin', category: 'agent', execution: 'aibo'});
   return commands;
 }

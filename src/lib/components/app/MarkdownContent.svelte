@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { onDestroy } from 'svelte';
   import { Badge, Button, Icon } from '$lib/ui-kit';
-  import {linkTarget,linkIcons,linkLabels} from '../../../../packages/presentation-workbench/links.js';
+  import {linkTarget,linkIcons} from '../../../../packages/presentation-workbench/links.js';
   import {parseMarkdown,displayMarkdown, type InlineSegment, type MarkdownBlock} from '../../../../packages/presentation-workbench/markdown.js';
   import {highlightCode, type CodeSegment} from '../../../../packages/presentation-workbench/code-highlight.js';
   let { content = '', onOpenLink }: { content?: string; onOpenLink?: (url: string) => void } = $props();
@@ -29,7 +30,7 @@
     {:else if segment.kind === 'del'}<del>{@render inline(segment.children ?? [])}</del>
     {:else if segment.kind === 'link'}
     {@const kind = linkTarget(segment.href!)!.kind}
-    <a href={segment.href} target={kind === 'file' ? undefined : '_blank'} rel="noreferrer" title={`${linkLabels[kind]}：${segment.href}`} onclick={(event) => {
+    <a href={segment.href} target={kind === 'file' ? undefined : '_blank'} rel="noreferrer" title={$t(`markdown.link.${kind}`, {href: segment.href!})} onclick={(event) => {
       if (kind === 'file') event.preventDefault();
       if (onOpenLink) { event.preventDefault(); onOpenLink(segment.href!); }
     }}><span class="markdown-link-icon"><Icon name={linkIcons[kind]} size={13}/></span>{@render inline(segment.children ?? [])}</a>
@@ -44,7 +45,7 @@
 {#snippet listItems(block: Extract<MarkdownBlock, {kind: 'list'}>)}
   {#each block.items as item}
     <li class:markdown-task={item.checked !== null}>
-      {#if item.checked !== null}<span class="markdown-task-check" role="img" aria-label={item.checked ? '已完成' : '未完成'}>{item.checked ? '☑' : '☐'}</span>{/if}
+      {#if item.checked !== null}<span class="markdown-task-check" role="img" aria-label={item.checked ? $t('markdown.completed') : $t('markdown.pending')}>{item.checked ? '☑' : '☐'}</span>{/if}
       <div class="markdown-list-content">{@render renderBlocks(item.blocks)}</div>
     </li>
   {/each}
@@ -57,11 +58,11 @@
         <div class="markdown-code-toolbar">
           {#if block.language}<Badge variant="outline">{block.language}</Badge>{:else}<span></span>{/if}
           <Button variant="ghost" size="sm" type="button" onclick={() => void copyCode(block.lines.join('\n'), block.index)}>
-            {copiedBlockIndex === block.index ? '已复制' : '复制'}
+            {copiedBlockIndex === block.index ? $t('markdown.copied') : $t('markdown.copy')}
           </Button>
         </div>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users must be able to scroll long code.) -->
-        <pre class="markdown-code" tabindex="0" aria-label="代码块"><code>{@render highlighted(highlightCode(block.lines.join('\n'), block.language))}</code></pre>
+        <pre class="markdown-code" tabindex="0" aria-label={$t('markdown.code')}><code>{@render highlighted(highlightCode(block.lines.join('\n'), block.language))}</code></pre>
       </div>
     {:else if block.kind === 'heading'}
       <svelte:element this={`h${block.level}`} class={`markdown-heading markdown-heading-${block.level}`}>{@render inline(block.segments)}</svelte:element>
@@ -74,7 +75,7 @@
       <hr class="markdown-rule" />
     {:else if block.kind === 'table'}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users must be able to scroll wide tables.) -->
-      <div class="markdown-table-scroll" role="region" tabindex="0" aria-label="表格，可横向滚动">
+      <div class="markdown-table-scroll" role="region" tabindex="0" aria-label={$t('markdown.table')}>
         <table class="markdown-table">
           <thead><tr>{#each block.header as cell, column}<th scope="col" class={`markdown-align-${block.align[column] ?? 'left'}`}>{@render inline(cell)}</th>{/each}</tr></thead>
           <tbody>{#each block.rows as row}<tr>{#each row as cell, column}<td class={`markdown-align-${block.align[column] ?? 'left'}`}>{@render inline(cell)}</td>{/each}</tr>{/each}</tbody>

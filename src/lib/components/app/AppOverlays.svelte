@@ -1,11 +1,14 @@
 <script lang="ts">
+  import { locale, t } from '$lib/i18n/runtime';
+  import { translateMessage } from '../../../../packages/i18n/index.js';
+  import type { LocalizedText } from '../../../../packages/i18n/index.js';
   import { AlertDialog, Button, Card, CardContent, CardHeader, CardTitle, Icon, Textarea } from '$lib/ui-kit';
   import type { AppNotification, NotificationType } from '$lib/app/notifications';
   import type { UiIconName } from '$lib/ui-kit';
   import type { PiTreeNavigationMode, PiTreeNavigationOptions } from '$lib/types';
 
   type AppOverlaysProps = {
-    errorMessage: string | null;
+    errorMessage: LocalizedText | null;
     notice: AppNotification | null;
     archiveConfirmationOpen: boolean;
     piNavigationOpen: boolean;
@@ -34,9 +37,9 @@
     onCancelPiNavigation,
   }: AppOverlaysProps = $props();
 
-  const notificationLabels: Record<NotificationType, string> = {
-    success: '成功', info: '信息', warning: '警告', error: '错误',
-  };
+  const notificationLabels: Record<NotificationType, string> = $derived({
+    success: $t('notification.success'), info: $t('notification.info'), warning: $t('notification.warning'), error: $t('notification.error'),
+  });
   const notificationIcons: Record<NotificationType, UiIconName> = {
     success: 'check', info: 'info', warning: 'warning', error: 'error',
   };
@@ -47,7 +50,7 @@
 </script>
 
 {#if notifications.length}
-  <div class="toast-region" aria-label="应用通知">
+  <div class="toast-region" aria-label={$t('notification.region')}>
     {#each notifications as notification}
       <Card class={`toast ${notification.type}-toast`} data-notification-type={notification.type}
         role={notification.type === 'error' ? 'alert' : 'status'}
@@ -55,7 +58,7 @@
         <span class="toast-symbol"><Icon name={notificationIcons[notification.type]} /></span>
         <div class="toast-copy">
           <strong class="toast-label">{notificationLabels[notification.type]}</strong>
-          <span>{notification.message}</span>
+          <span>{translateMessage($locale, notification.message)}</span>
         </div>
       </Card>
     {/each}
@@ -64,10 +67,10 @@
 
 <AlertDialog
   open={archiveConfirmationOpen}
-  title="归档会话？"
-  description="归档会隐藏会话，但不会删除 Aibo 中已保存的本地时间线。"
-  confirmText="归档"
-  cancelText="取消"
+  title={$t('archive.confirmTitle')}
+  description={$t('archive.confirmDescription')}
+  confirmText={$t('sidebar.archiveHint')}
+  cancelText={$t('common.cancel')}
   onConfirm={onConfirmArchive}
   onCancel={onCancelArchive}
 />
@@ -75,33 +78,33 @@
   <div class="alert-dialog-overlay" role="presentation" onclick={onCancelPiNavigation}>
     <Card class="pi-navigation-dialog" role="dialog" aria-modal="true" aria-labelledby="pi-navigation-title" onclick={(event) => event.stopPropagation()}>
       <CardHeader class="pi-navigation-dialog-header">
-        <CardTitle id="pi-navigation-title">切换 会话树节点</CardTitle>
-        <p>选择如何处理即将离开的分支。原分支会保留，可以随时切回。</p>
+        <CardTitle id="pi-navigation-title">{$t('navigation.title')}</CardTitle>
+        <p>{$t('navigation.description')}</p>
       </CardHeader>
       <CardContent class="pi-navigation-dialog-content">
-        <div class="pi-navigation-mode-list" role="radiogroup" aria-label="分支总结方式">
+        <div class="pi-navigation-mode-list" role="radiogroup" aria-label={$t('navigation.summaryMode')}>
           <Button variant={piNavigationMode === 'none' ? 'secondary' : 'outline'} type="button" role="radio" aria-checked={piNavigationMode === 'none'} onclick={() => onSetPiNavigationMode('none')}>
-            <span><strong>No Summary</strong><small>直接切换，不为离开的分支生成总结</small></span>
+            <span><strong>{$t('navigation.mode.none')}</strong><small>{$t('navigation.noSummary')}</small></span>
           </Button>
           <Button variant={piNavigationMode === 'summary' ? 'secondary' : 'outline'} type="button" role="radio" aria-checked={piNavigationMode === 'summary'} onclick={() => onSetPiNavigationMode('summary')}>
-            <span><strong>Summarize</strong><small>使用 插件默认提示总结离开的分支</small></span>
+            <span><strong>{$t('navigation.mode.default')}</strong><small>{$t('navigation.defaultSummary')}</small></span>
           </Button>
           <Button variant={piNavigationMode === 'custom' ? 'secondary' : 'outline'} type="button" role="radio" aria-checked={piNavigationMode === 'custom'} onclick={() => onSetPiNavigationMode('custom')}>
-            <span><strong>Summarize with custom prompt</strong><small>在默认总结提示后追加你的要求</small></span>
+            <span><strong>{$t('navigation.mode.custom')}</strong><small>{$t('navigation.customSummary')}</small></span>
           </Button>
         </div>
         {#if piNavigationMode === 'custom'}
           <Textarea
             value={piNavigationCustomInstructions}
-            aria-label="自定义总结提示"
-            placeholder="例如：重点保留尚未完成的任务、关键决策和文件变更…"
+            aria-label={$t('navigation.customPrompt')}
+            placeholder={$t('navigation.placeholder')}
             oninput={(event) => onSetPiNavigationCustomInstructions((event.currentTarget as HTMLTextAreaElement).value)}
           />
         {/if}
       </CardContent>
       <div class="alert-dialog-actions">
-        <Button variant="ghost" type="button" onclick={onCancelPiNavigation}>取消</Button>
-        <Button type="button" onclick={() => onConfirmPiNavigation({ mode: piNavigationMode, customInstructions: piNavigationCustomInstructions })} disabled={piNavigationMode === 'custom' && !piNavigationCustomInstructions.trim()}>切换</Button>
+        <Button variant="ghost" type="button" onclick={onCancelPiNavigation}>{$t('common.cancel')}</Button>
+        <Button type="button" onclick={() => onConfirmPiNavigation({ mode: piNavigationMode, customInstructions: piNavigationCustomInstructions })} disabled={piNavigationMode === 'custom' && !piNavigationCustomInstructions.trim()}>{$t('navigation.switch')}</Button>
       </div>
     </Card>
   </div>

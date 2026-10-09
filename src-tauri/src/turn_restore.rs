@@ -35,7 +35,7 @@ struct Prepared { root: PathBuf, actions: Vec<Action>, report: RestoreReport, me
 
 async fn read_file(root: &Path, path: &str) -> Result<(Option<Vec<u8>>, Value), CoreError> {
     if path.is_empty() || Path::new(path).components().any(|part| !matches!(part, std::path::Component::Normal(_))) { return Err(invalid("restore path must be workspace-relative")); }
-    let target = crate::workspace_guard::canonicalize_target(root, Path::new(path)).map_err(invalid)?;
+    let target = crate::workspace_guard::canonicalize_target_message(root, Path::new(path)).map_err(crate::ui_i18n::invalid_path_message)?;
     if target != root.join(path) { return Err(invalid(format!("symbolic restore path is unsupported: {path}"))); }
     match tokio::fs::symlink_metadata(&target).await {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok((None, Value::Null)),
@@ -67,26 +67,26 @@ async fn prepare(db: &SqlitePool, checkpoints: &Path, root: &Path, session: &str
         let metadata_digest = metadata_digest(&set, &files);
         let mut report = RestoreReport::default(); let mut actions = Vec::new(); let mut proofs = Vec::new();
         let mut affected = std::collections::HashSet::new(); let mut retained = 0;
-        let mut description = "恢复本轮工作区文件；不更新 Git 暂存区。取消或失败可能留下部分恢复结果。\n文件清单：".to_string();
-        if !matches!(set["attribution"].as_str(), Some("agent" | "mixed")) { report.unsupported.push("本轮变更归属未知，禁止恢复".into()); }
+        let mut description = String::new();
+        if !matches!(set["attribution"].as_str(), Some("agent" | "mixed")) { report.unsupported(crate::ui_i18n::HostMessage::new("native.restore.unknownAttribution",json!({}))); }
         for file in files {
             let label = file.previous_path.as_ref().map(|source| format!("{source} → {}", file.path)).unwrap_or_else(|| file.path.clone());
             description.push_str(&format!("\n{}", json!({"kind":file.change_kind,"path":file.path,"previousPath":file.previous_path})));
-            if description.len() > 12 * 1024 { return Err(invalid("restore file list exceeds the 12 KiB review limit")); }
+            if [crate::ui_i18n::Locale::ZhCn, crate::ui_i18n::Locale::En].into_iter().any(|locale| crate::ui_i18n::message(locale,"native.restoreDescription",&json!({"files":description})).len() > 12 * 1024) { return Err(invalid("restore file list exceeds the 12 KiB review limit")); }
             if !affected.insert(file.path.clone()) { return Err(invalid("restore paths overlap")); }
             let (current, current_proof) = read_file(&root, &file.path).await?;
             proofs.push(json!({"path":file.path,"current":current_proof}));
             let matches = current.is_some() == (file.result_exists != 0) && current.as_ref().map(|bytes| digest(bytes)) == file.result_hash;
-            if !matches { report.conflicts.push(file.path.clone()); continue; }
+            if !matches { report.conflict(file.path.clone().into()); continue; }
             if file.baseline_dirty != 0 || (file.baseline_exists != 0 && file.baseline_hash.is_none()) || (file.result_exists != 0 && file.result_hash.is_none()) {
-                report.unsupported.push(format!("{}（baseline 不可安全恢复）", file.path)); continue;
+                report.unsupported(crate::ui_i18n::HostMessage::new("native.restore.unsafeBaseline",json!({"path":file.path}))); continue;
             }
             let destination = if file.change_kind == "renamed" {
                 let source = file.previous_path.as_ref().ok_or_else(|| invalid("renamed file has no original path"))?;
                 if !affected.insert(source.clone()) { return Err(invalid("restore rename paths overlap")); }
                 let (source_bytes, source_proof) = read_file(&root, source).await?;
                 proofs.push(json!({"path":source,"current":source_proof}));
-                if source_bytes.is_some() { report.conflicts.push(format!("{source}（重命名源路径已存在）")); continue; }
+                if source_bytes.is_some() { report.conflict(crate::ui_i18n::HostMessage::new("native.restore.renameSourceExists",json!({"path":source}))); continue; }
                 source.as_str()
             } else { &file.path };
             let mut mode = None;
@@ -98,13 +98,13 @@ async fn prepare(db: &SqlitePool, checkpoints: &Path, root: &Path, session: &str
                     git_read(&root, &["show", &format!("{head}:{destination}")], deadline).await?
                 } else { return Err(invalid(format!("checkpoint unavailable for {destination}"))); };
                 if file.baseline_hash.as_deref() != Some(digest(&bytes).as_str()) {
-                    report.unsupported.push(format!("{destination}（baseline checkpoint 校验失败）")); continue;
+                    report.unsupported(crate::ui_i18n::HostMessage::new("native.restore.checkpointInvalid",json!({"path":destination}))); continue;
                 }
                 if let Some(head) = set["baselineHead"].as_str() {
                     let value = git_read(&root, &["ls-tree", "--format=%(objectmode)", head, "--", destination], deadline).await?;
                     mode = match String::from_utf8_lossy(&value).trim() {
                         "100644" => Some(0o644), "100755" => Some(0o755),
-                        _ => { report.unsupported.push(format!("{destination}（Git 基线不是普通文件）")); continue; }
+                        _ => { report.unsupported(crate::ui_i18n::HostMessage::new("native.restore.gitNotRegular",json!({"path":destination}))); continue; }
                     };
                 }
                 Some(bytes)
@@ -136,10 +136,10 @@ where F: Fn() -> G, G: Future<Output = Result<(), CoreError>> {
                 crate::core_turn_git::restore_worktree(plan.root.to_str().ok_or_else(|| invalid("restore root is not UTF-8"))?, &step.path, &sources, step.mode, cancel).await
             }.await;
             if let Err(error) = attempt {
-                let error = if started || matches!(error, CoreError::WriteOutcomeUnknown(_)) {
-                    CoreError::WriteOutcomeUnknown(format!("整轮恢复在 {} 停止，已完成 {:?}；部分文件或目录可能已改变，未自动回滚：{error}", step.path, plan.report.restored))
+                let error = if started || error.is_write_outcome_unknown() {
+                    crate::ui_i18n::unknown_message(crate::ui_i18n::HostMessage::with_diagnostic("native.restore.partialFailure", json!({"path":step.path,"restored":format!("{:?}",plan.report.restored),"error":crate::ui_i18n::error_reason_display(&error)}),format!("整轮恢复在 {} 停止，已完成 {:?}；部分文件或目录可能已改变，未自动回滚：{error}",step.path,plan.report.restored)))
                 } else { error };
-                plan.report.unsupported.push(error.to_string());
+                plan.report.unsupported(crate::ui_i18n::HostMessage {diagnostic:error.to_string(),localized:serde_json::to_value(&error).ok().and_then(|value|value.get("localized").cloned())});
                 return Outcome { report: plan.report, error: Some(error) };
             }
             started = true;
@@ -171,7 +171,7 @@ pub(crate) async fn restore_requested(db: &SqlitePool, data_dir: &Path, session_
             let plan = prepare(db, &data_dir.join("checkpoints"), Path::new(&workspace.path), session_id, turn_id).await?;
             let after = scope(db, &workspace, session_id, turn_id).await?;
             if before != after { return Err(invalid("restore scope changed during preflight")); }
-            let context = json!({"scope":after,"root":plan.root,"proof":plan.proof,"approvalDescription":plan.description});
+            let context = json!({"scope":after,"root":plan.root,"proof":plan.proof,"approvalDescription":crate::ui_i18n::descriptor("native.restoreDescription",json!({"files":plan.description}))});
             *selected.lock().await = Some((plan, after)); Ok(context)
         }, |cancel| async move {
             let (plan, expected_scope) = selected.lock().await.take().ok_or_else(|| invalid("restore was not prepared by host approval"))?;
@@ -182,10 +182,16 @@ pub(crate) async fn restore_requested(db: &SqlitePool, data_dir: &Path, session_
                 if metadata_digest(&set, &files) != expected_metadata { return Err(invalid("restore change set changed after approval")); }
                 Ok(())
             }).await;
-            persist_audit(db, &workspace.id, session_id, turn_id, &outcome).await.map_err(|error| CoreError::WriteOutcomeUnknown(format!("恢复审计无法保存，请核对实际文件：{error}")))?;
+            persist_audit(db, &workspace.id, session_id, turn_id, &outcome).await.map_err(|error| crate::ui_i18n::unknown_message(crate::ui_i18n::HostMessage::with_diagnostic("native.restore.auditSaveFailed", json!({"error":crate::ui_i18n::error_display(&error)}),format!("恢复审计无法保存，请核对实际文件：{error}"))))?;
             if let Some(error) = outcome.error { return Err(error); }
-            Ok(RestoreTurnChangeSetResult { applied: outcome.report.applied, restored: outcome.report.restored, conflicts: outcome.report.conflicts, unsupported: outcome.report.unsupported })
+            Ok(RestoreTurnChangeSetResult { applied: outcome.report.applied, restored: outcome.report.restored, conflicts: outcome.report.conflicts, unsupported: outcome.report.unsupported, localized_conflicts: Some(outcome.report.localized_conflicts), localized_unsupported: Some(outcome.report.localized_unsupported) })
         }).await
+}
+
+fn display_list(raw: &[String], localized: &[Value]) -> Value {
+    if raw.is_empty() { return crate::ui_i18n::descriptor("native.restore.noItems",json!({})); }
+    let items = raw.iter().enumerate().map(|(index, text)| localized.get(index).filter(|value| !value.is_null()).cloned().unwrap_or_else(|| json!(text))).collect::<Vec<_>>();
+    json!({"kind":"list","items":items})
 }
 
 async fn persist_audit(db: &SqlitePool, workspace: &str, session: &str, turn: &str, outcome: &Outcome) -> Result<(), CoreError> {
@@ -194,12 +200,20 @@ async fn persist_audit(db: &SqlitePool, workspace: &str, session: &str, turn: &s
     let message = if let Some(error) = &outcome.error { format!("本轮恢复未完成：{error}") }
         else if report.applied { format!("已恢复本轮 Agent 变更（{} 个文件）；恢复动作已记录。", report.restored.len()) }
         else { format!("恢复已阻止；冲突：{}；不支持：{}。", report.conflicts.join("、"), report.unsupported.join("、")) };
+    let display = if let Some(error) = &outcome.error {
+        crate::ui_i18n::display_descriptor("native.restore.auditIncomplete", json!({"error":crate::ui_i18n::error_display(error)}))
+    } else if report.applied {
+        crate::ui_i18n::display_descriptor("native.restore.auditCompleted", json!({"count":report.restored.len()}))
+    } else {
+        // Lists retain whole host descriptors and literal paths; formatting happens in the UI.
+        crate::ui_i18n::display_descriptor("native.restore.auditBlocked", json!({"conflicts":display_list(&report.conflicts,&report.localized_conflicts),"unsupported":display_list(&report.unsupported,&report.localized_unsupported)}))
+    };
     let id = ulid::Ulid::new().to_string(); let now = crate::now_iso();
     let mut tx = db.begin().await?;
-    sqlx::query("INSERT INTO restore_operations (id,schema_version,workspace_id,session_id,turn_id,status,restored_json,conflicts_json,unsupported_json,created_at) VALUES (?,'aibo.restore-operation/v1',?,?,?,?,?,?,?,?)")
-        .bind(&id).bind(workspace).bind(session).bind(turn).bind(status).bind(json!(report.restored).to_string()).bind(json!(report.conflicts).to_string()).bind(json!(report.unsupported).to_string()).bind(&now).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO messages (id,session_id,turn_id,external_message_id,role,content,status,sequence,created_at,updated_at) VALUES (?,?,?,?,'system',?,'completed',0,?,?)")
-        .bind(ulid::Ulid::new().to_string()).bind(session).bind(turn).bind(format!("restore:{id}")).bind(message).bind(&now).bind(&now).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO restore_operations (id,schema_version,workspace_id,session_id,turn_id,status,restored_json,conflicts_json,unsupported_json,localized_conflicts_json,localized_unsupported_json,created_at) VALUES (?,'aibo.restore-operation/v1',?,?,?,?,?,?,?,?,?,?)")
+        .bind(&id).bind(workspace).bind(session).bind(turn).bind(status).bind(json!(report.restored).to_string()).bind(json!(report.conflicts).to_string()).bind(json!(report.unsupported).to_string()).bind(json!(report.localized_conflicts).to_string()).bind(json!(report.localized_unsupported).to_string()).bind(&now).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO messages (id,session_id,turn_id,external_message_id,role,content,localized_content_json,status,sequence,created_at,updated_at) VALUES (?,?,?,?,'system',?,?,'completed',0,?,?)")
+        .bind(ulid::Ulid::new().to_string()).bind(session).bind(turn).bind(format!("restore:{id}")).bind(message).bind(display.to_string()).bind(&now).bind(&now).execute(&mut *tx).await?;
     tx.commit().await?; Ok(())
 }
 
@@ -325,7 +339,18 @@ mod tests {
             }
             let result = f.restore(&approve(condition)).await.unwrap(); assert!(!result.applied); assert!(result.restored.is_empty());
             assert!(f.root.join("added.txt").exists()); assert_eq!(std::fs::read_to_string(f.root.join("edit.txt")).unwrap(), "after");
-            let status: String = sqlx::query_scalar("SELECT status FROM restore_operations").fetch_one(&f.db).await.unwrap(); assert_eq!(status, "blocked"); f.close().await;
+            let status: String = sqlx::query_scalar("SELECT status FROM restore_operations").fetch_one(&f.db).await.unwrap(); assert_eq!(status, "blocked");
+            let operations = crate::turn_changes::list_restore_operations("session".into(),Some("turn".into()),&f.db).await.unwrap();
+            assert_eq!(operations[0].localized_conflicts,result.localized_conflicts);assert_eq!(operations[0].localized_unsupported,result.localized_unsupported);
+            let row = sqlx::query("SELECT id,session_id,turn_id,external_message_id,role,tool_name,content,localized_content_json,status,created_at,updated_at FROM messages WHERE external_message_id LIKE 'restore:%'").fetch_one(&f.db).await.unwrap();
+            let item = crate::row_to_timeline_item(&row).unwrap();
+            let display = item.localized_content.as_ref().unwrap();
+            assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,display).starts_with("Restoration was blocked."));
+            let conflicts = if result.conflicts.is_empty() { "无".to_owned() } else { result.conflicts.join("、") };
+            let unsupported = if result.unsupported.is_empty() { "无".to_owned() } else { result.unsupported.join("、") };
+            assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,display),format!("恢复已阻止；冲突：{conflicts}；不支持：{unsupported}。"));
+            assert!(item.content.starts_with("恢复已阻止；"));
+            f.close().await;
         }
     }
 
@@ -351,7 +376,12 @@ mod tests {
                 persist_audit(db, "workspace", "session", "turn", &outcome).await?;
                 Err(outcome.error.expect("second file must stop"))
             }).await;
-            assert!(matches!(result, Err(CoreError::WriteOutcomeUnknown(_))));
+            assert!(result.as_ref().unwrap_err().is_write_outcome_unknown());
+            let error = result.as_ref().unwrap_err();
+            let display = crate::ui_i18n::error_display(error);
+            assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&display).contains("部分文件或目录可能已改变，未自动回滚"));
+            if !cancel_operation { assert!(error.to_string().contains("workspace trust is required for the requested execution profile")); }
+            assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&display).contains("Turn restoration stopped at"));
             assert!(!f.root.join("added.txt").exists()); assert!(!f.root.join("delete.txt").exists());
             assert_eq!(std::fs::read_to_string(f.root.join("edit.txt")).unwrap(), "after");
             let row = sqlx::query("SELECT status,restored_json,unsupported_json FROM restore_operations").fetch_one(&f.db).await.unwrap();
@@ -364,7 +394,11 @@ mod tests {
     async fn restore_audit_projection_is_atomic_and_failure_does_not_reexecute_files() {
         let f = Fixture::new(false).await;
         sqlx::query("CREATE TRIGGER reject_restore_message BEFORE INSERT ON messages WHEN NEW.external_message_id LIKE 'restore:%' BEGIN SELECT RAISE(ABORT,'fixture message failure'); END").execute(&f.db).await.unwrap();
-        let error = f.restore(&approve("audit-failure")).await.unwrap_err(); assert!(matches!(error, CoreError::WriteOutcomeUnknown(_))); f.restored();
+        let error = f.restore(&approve("audit-failure")).await.unwrap_err(); assert!(error.is_write_outcome_unknown()); f.restored();
+        let display = crate::ui_i18n::error_display(&error);
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&display),error.to_string());
+        assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&display).contains("The restoration audit could not be saved."));
+        assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&display).contains("fixture message failure"));
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM restore_operations").fetch_one(&f.db).await.unwrap(); assert_eq!(count, 0);
         sqlx::query("DROP TRIGGER reject_restore_message").execute(&f.db).await.unwrap();
         std::fs::write(f.root.join("edit.txt"), "later edit").unwrap();

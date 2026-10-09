@@ -55,3 +55,13 @@ test('preview controller discards reads after replacement, close, and session ch
   pending[4].reject(Error('old error')); await old; assert.equal(state.sessionId,'s2'); assert.equal(state.error,null);
   pending[5].resolve({path:'a.ts'}); await current;
 });
+
+test('file preview keeps unknown failure descriptors for display in either language',async()=>{
+ const {translateMessage}=await import('../packages/i18n/index.js');let state;
+ const controller=createFilePreviewController(async()=>{throw null;},value=>{state=value;});
+ await controller.open('s','用户原始路径.ts');
+ assert.equal(state.path,'用户原始路径.ts');assert.equal(state.sessionId,'s');
+ assert.equal(translateMessage('en',state.error),'The operation failed. Check the diagnostic log.');
+ assert.equal(translateMessage('zh-CN',state.error),'操作失败，请查看诊断日志。');
+ controller.close();assert.equal(state.error,null);
+});

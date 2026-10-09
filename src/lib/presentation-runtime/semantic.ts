@@ -15,10 +15,10 @@ export function semanticActions(snapshot: Snapshot) {
   return actions;
 }
 
-export function semanticInput(snapshot: Snapshot, revision: number, theme: Readonly<Record<string, string>> = {}): PresentationInput {
+export function semanticInput(snapshot: Snapshot, revision: number, theme: Readonly<Record<string, string>> = {}, locale?: PresentationInput['locale']): PresentationInput {
   const actions = semanticActions(snapshot);
   return {
-    surface: 'semantic', context: { workspaceId: snapshot.context.workspaceId, sessionId: snapshot.context.sessionId ?? null, revision },
+    ...(locale ? {locale} : {}), surface: 'semantic', context: { workspaceId: snapshot.context.workspaceId, sessionId: snapshot.context.sessionId ?? null, revision },
     data: JSON.parse(JSON.stringify({ snapshot, actions })), theme,
   };
 }

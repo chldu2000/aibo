@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n/runtime';
   import { onMount, untrack } from 'svelte';
   import { Button, Card } from '$lib/ui-kit';
   import PresentationSurface from './PresentationSurface.svelte';
@@ -70,8 +71,8 @@
 </script>
 <div class="semantic-workbench">
   <div class="controls">
-    <Button variant="outline" onclick={toggleLayout}>{layout === 'central' ? '切换侧栏布局' : '切换中央布局'}</Button>
-    <Button variant="ghost" onclick={onClose}>关闭工作区工具</Button>
+    <Button variant="outline" onclick={toggleLayout}>{layout === 'central' ? $t('workbench.sidebarLayout') : $t('workbench.centralLayout')}</Button>
+    <Button variant="ghost" onclick={onClose}>{$t('workbench.closeTool')}</Button>
   </div>
   <div class="content" class:sidebar={layout === 'sidebar'}>
     {#if snapshot}
@@ -80,9 +81,9 @@
         <PresentationSurface {snapshot} layout="central" {focusTarget} onAction={action} />
       {:else}
         <PresentationSurface {snapshot} {layout} {focusTarget} onAction={action} />
-        {#if layout === 'sidebar'}<Card><p>选择变更文件，查看工作区或暂存区的差异。</p></Card>{/if}
+        {#if layout === 'sidebar'}<Card><p>{$t('workbench.selectChange')}</p></Card>{/if}
       {/if}
-    {:else}<Card><p role="status">正在读取工作区变更…</p></Card>{/if}
+    {:else}<Card><p role="status">{$t('workbench.loadingChanges')}</p></Card>{/if}
   </div>
 </div>
 <style>

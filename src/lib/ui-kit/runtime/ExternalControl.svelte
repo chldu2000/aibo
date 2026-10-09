@@ -4,6 +4,7 @@
   import type { PresentationControlScope } from '../control-context';
   import { controlFrame, controlInput, decorativeLabel, isDecorativeControl, resolveControlIntent, type ControlEffect, type ControlProps, type PresentationControl } from '../../presentation-runtime/controls';
   import { preparePresentationSandbox, type MountedSandbox } from '../../presentation-runtime/sandbox';
+  import { locale } from '$lib/i18n/runtime';
   import SelectMenu from './SelectMenu.svelte';
   let { control, props, presentation, scope, children }: {
     control: Name;
@@ -23,11 +24,11 @@
   let menu = $state<{ effect: MenuEffect; anchor: DOMRect } | null>(null);
   let mounted: MountedSandbox | null = null;
   let revision = 0;
-  const input = $derived(controlInput(control, props, scope.context(), presentation.theme));
-  const label = $derived(decorativeLabel(control, props));
+  const input = $derived(controlInput(control, props, scope.context(), presentation.theme, $locale));
+  const label = $derived(decorativeLabel(control, props, $locale));
   const frame = $derived(controlFrame(control));
   // Options follow the current props; a menu whose control became unavailable disappears.
-  const menuSpec = $derived(menu && !inherited && !failed ? menu.effect.menu(props) : null);
+  const menuSpec = $derived(menu && !inherited && !failed ? menu.effect.menu(props, $locale) : null);
   function fail() { mounted?.dispose(); mounted = null; menu = null; inherited = true; failed = true; }
   /** The replacement occupies the default control's box, so the surrounding layout does not move. */
   function measure() {

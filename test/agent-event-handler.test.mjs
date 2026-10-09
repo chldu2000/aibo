@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { translateMessage } from '../packages/i18n/index.js';
 import { createServer } from 'vite';
 
 test('a terminal plugin turn immediately makes the conversation composer editable', async () => {
@@ -112,7 +113,7 @@ test('a host-committed control change refreshes the selected session profile and
       selectedSessionId: 'session', selectedAgent: 'Claude Code', timeline: [], pendingApprovals: [], pendingUserInputs: [], lastSubmittedPrompt: null,
       setAgentActivity() {}, updateWorkspaceSessions() {}, setPendingApprovals() {}, setPendingUserInputs() {}, setUsageSnapshot() {}, setQueueSnapshot() {},
       setTimeline() {}, setRetry() {}, refreshSessions() {},
-      refreshTimeline: id => calls.push(['timeline', id]), refreshExecutionProfile: id => calls.push(['profile', id]), setNotice: (text, type) => calls.push(['notice', text, type]),
+      refreshTimeline: id => calls.push(['timeline', id]), refreshExecutionProfile: id => calls.push(['profile', id]), setNotice: (text, type) => calls.push(['notice', translateMessage('zh-CN',text), type]),
     };
     const event = { eventId: 'e', workspaceId: 'workspace', sessionId: 'session', turnId: 'turn', type: 'session.control_changed', occurredAt: '2026-09-27T10:00:00.000Z',
       source: {}, correlation: { requestId: 'r' }, payload: { controlId: 'auto', previousControlId: 'plan', label: 'Auto', cause: 'approval', requestId: 'r' } };
@@ -132,4 +133,77 @@ test('a host-committed control change refreshes the selected session profile and
   } finally {
     await server.close();
   }
+});
+
+test('compaction state follows session events independently of activity labels', async () => {
+  const server = await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+  try {
+    const {handleAgentEvent} = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
+    const compacting = new Set();
+    const context = {
+      selectedSessionId:'selected', selectedAgent:'Provider', timeline:[], pendingApprovals:[], pendingUserInputs:[], lastSubmittedPrompt:null,
+      setAgentActivity(){}, updateWorkspaceSessions(){}, setPendingApprovals(){}, setPendingUserInputs(){}, setUsageSnapshot(){},
+      setQueueSnapshot(){}, setTimeline(){}, setRetry(){}, setNotice(){}, refreshSessions(){},
+      setContextCompacting(id,active){if(active)compacting.add(id);else compacting.delete(id);},
+    };
+    const emit = (sessionId,type,payload={}) => handleAgentEvent({eventId:'event',workspaceId:'w',sessionId,turnId:'turn',type,
+      occurredAt:'2026-10-09T00:00:00Z',source:{agentId:'provider'},correlation:null,payload},context);
+    emit('selected','compaction.started');
+    emit('other','compaction.started');
+    assert.deepEqual([...compacting],['selected','other']);
+    emit('selected','compaction.completed');
+    assert.deepEqual([...compacting],['other']);
+    emit('other','turn.failed');
+    assert.equal(compacting.size,0);
+    emit('selected','session.state_changed',{state:'compacting'});
+    assert.ok(compacting.has('selected'));
+    emit('selected','session.state_changed',{state:'idle'});
+    assert.equal(compacting.size,0);
+  } finally { await server.close(); }
+});
+
+
+test('running activity keeps a locale-neutral descriptor through language changes', async () => {
+  const server = await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+  try {
+    const {handleAgentEvent} = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
+    let activity;
+    const context = {selectedSessionId:'s',selectedAgent:'Provider',timeline:[],pendingApprovals:[],pendingUserInputs:[],lastSubmittedPrompt:null,
+      setAgentActivity(id,active,label){activity=label;},updateWorkspaceSessions(){},setPendingApprovals(){},setPendingUserInputs(){},
+      setUsageSnapshot(){},setQueueSnapshot(){},setTimeline(){},setRetry(){},setNotice(){},refreshSessions(){}};
+    const event = {eventId:'e',workspaceId:'w',sessionId:'s',turnId:'t',type:'tool.started',occurredAt:'2026-10-09',source:{},correlation:null,payload:{toolName:'用户工具'}};
+    handleAgentEvent(event,context);
+    assert.equal(translateMessage('en',activity),'Agent is running 用户工具…');
+    assert.equal(translateMessage('zh-CN',activity),'Agent 正在执行 用户工具…');
+    handleAgentEvent({...event,type:'retry.started',payload:{attempt:2}},context);
+    assert.equal(translateMessage('en',activity),"Agent's request did not succeed yet; waiting for retry 2…");
+    handleAgentEvent({...event,payload:{}},context);
+    assert.equal(translateMessage('en',activity),'Agent is running a tool…');
+  } finally {await server.close();}
+});
+
+test('retry defaults remain translatable while prompts, provider reasons and tool payloads retain original text',async()=>{
+ const server=await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+ try {
+  const {handleAgentEvent}=await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');let retry;let timeline=[];
+  const context={selectedSessionId:'s',selectedAgent:'Provider',timeline:[],pendingApprovals:[],pendingUserInputs:[],lastSubmittedPrompt:'用户原始问题',
+   setAgentActivity(){},updateWorkspaceSessions(){},setPendingApprovals(){},setPendingUserInputs(){},setUsageSnapshot(){},setQueueSnapshot(){},
+   setTimeline(value){timeline=value;context.timeline=value;},setRetry(prompt,reason){retry={prompt,reason};},setNotice(){},refreshSessions(){}};
+  const emit=(type,payload={},sessionId='s')=>handleAgentEvent({eventId:type,workspaceId:'w',sessionId,turnId:'t',type,occurredAt:'2026-10-09',source:{},correlation:null,payload},context);
+  emit('adapter.crashed');assert.equal(retry.prompt,'用户原始问题');assert.equal(translateMessage('en',retry.reason),'The Agent process exited unexpectedly');assert.equal(translateMessage('zh-CN',retry.reason),'Agent 进程异常退出');
+  const localizedReason={schema:'aibo.host-message/v1',key:'native.session.invocationFailure',params:{code:'cancelled',error:{key:'native.broker.cancelled',params:{}}}};
+  const rawReason='cancelled: Invocation was cancelled';
+  const failure={reason:rawReason,localizedReason};const before=structuredClone(failure);
+  emit('adapter.crashed',failure);
+  assert.equal(retry.prompt,'用户原始问题');assert.equal(translateMessage('en',retry.reason),rawReason);
+  assert.equal(translateMessage('zh-CN',retry.reason),'cancelled：调用已取消。');assert.deepEqual(failure,before);
+  for(const metadata of [undefined,{...localizedReason,key:'native.unknown'},{...localizedReason,schema:'bad'}]){
+   emit('adapter.crashed',{reason:'提供者错误 {error}',localizedReason:metadata});assert.equal(retry.reason,'提供者错误 {error}');
+  }
+  emit('turn.failed');assert.equal(translateMessage('en',retry.reason),'This turn failed');assert.equal(translateMessage('zh-CN',retry.reason),'本回合执行失败');
+  emit('turn.failed',{error:'提供者原始原因'});assert.equal(retry.reason,'提供者原始原因');
+  emit('turn.failed',{},'other');assert.equal(retry.reason,'提供者原始原因');
+  emit('tool.started',{itemId:'empty',itemType:'commandExecution'});assert.equal(timeline.at(-1).content,'');
+  emit('tool.started',{itemId:'raw',itemType:'commandExecution',summary:'工具操作'});assert.equal(timeline.at(-1).content,'工具操作');
+ }finally{await server.close();}
 });

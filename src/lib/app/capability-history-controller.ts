@@ -1,8 +1,13 @@
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 import type { CapabilityHistorySource, CapabilityHistoryEvents, CapabilityHistoryScope, CapabilityHistoryScopeItem, CapabilityHistoryScopes } from '../types';
-import { toErrorMessage } from './error-utils';
+import { toErrorText, LocalizedError } from './error-utils.ts';
+import { translate } from '../../../packages/i18n/index.js';
+import type { Locale } from '../../../packages/i18n/index.js';
 export const capabilityScopeKey = (scope:CapabilityHistoryScope) => JSON.stringify([scope.kind,scope.kind==='application'?'application':scope.id]);
-export const capabilityScopeLabel = (item:CapabilityHistoryScopeItem) => item.scope.kind==='application'?'应用':`${item.scope.kind==='workspace'?'工作区':'会话'} · ${item.label??item.scope.id}`;
-export type CapabilityHistoryState = { source:CapabilityHistorySource; scopes:CapabilityHistoryScopeItem[]; nextScopes:string|null; selected:CapabilityHistoryScope|null; page:CapabilityHistoryEvents|null; pageNumber:number; loadingScopes:boolean; loadingEvents:boolean; error:string|null };
+export const capabilityScopeLabel = (item:CapabilityHistoryScopeItem, locale:Locale = 'zh-CN') => item.scope.kind==='application'
+  ? translate(locale, 'scope.application')
+  : `${translate(locale, item.scope.kind==='workspace'?'scope.workspace':'scope.session')} · ${item.label??item.scope.id}`;
+export type CapabilityHistoryState = { source:CapabilityHistorySource; scopes:CapabilityHistoryScopeItem[]; nextScopes:string|null; selected:CapabilityHistoryScope|null; page:CapabilityHistoryEvents|null; pageNumber:number; loadingScopes:boolean; loadingEvents:boolean; error:LocalizedText|null };
 export const emptyCapabilityHistory = ():CapabilityHistoryState => ({source:'events',scopes:[],nextScopes:null,selected:null,page:null,pageNumber:1,loadingScopes:false,loadingEvents:false,error:null});
 export function createCapabilityHistoryController(ports:{
   list(before:string|null,source:CapabilityHistorySource):Promise<CapabilityHistoryScopes>;
@@ -18,9 +23,9 @@ export function createCapabilityHistoryController(ports:{
     try {
       const page=await ports.read(scope,view.before,view.state.source);
       if(current!==view||view.revision!==revision)return;
-      if((page.source??'events')!==view.state.source||page.schema!=='aibo.capability-history-events/v1'||capabilityScopeKey(page.scope)!==capabilityScopeKey(scope))throw Error('调用记录与当前作用域不匹配');
+      if((page.source??'events')!==view.state.source||page.schema!=='aibo.capability-history-events/v1'||capabilityScopeKey(page.scope)!==capabilityScopeKey(scope))throw new LocalizedError('error.capabilityHistoryIdentity');
       view.state.page=page;
-    }catch(error){if(current===view&&view.revision===revision)view.state.error=toErrorMessage(error);}
+    }catch(error){if(current===view&&view.revision===revision)view.state.error=toErrorText(error);}
     finally{if(current===view&&view.revision===revision){view.state.loadingEvents=false;publish(view);}}
   }
   async function list(view:View,before:string|null):Promise<void>{
@@ -28,12 +33,12 @@ export function createCapabilityHistoryController(ports:{
     view.state.loadingScopes=true;view.state.error=null;publish(view);
     try{
       const page=await ports.list(before,view.state.source);if(current!==view)return;
-      if((page.source??'events')!==view.state.source||page.schema!=='aibo.capability-history-scopes/v1')throw Error('不支持的调用目录版本');
+      if((page.source??'events')!==view.state.source||page.schema!=='aibo.capability-history-scopes/v1')throw new LocalizedError('error.capabilityHistoryVersion');
       const scopes=new Map(view.state.scopes.map(item=>[capabilityScopeKey(item.scope),item]));
       for(const item of page.items)scopes.set(capabilityScopeKey(item.scope),item);
       view.state.scopes=[...scopes.values()];view.state.nextScopes=page.nextBefore;
       if(!view.state.selected&&view.state.scopes.length){view.state.selected=view.state.scopes[0].scope;await read(view);}
-    }catch(error){if(current===view)view.state.error=toErrorMessage(error);}
+    }catch(error){if(current===view)view.state.error=toErrorText(error);}
     finally{if(current===view){view.state.loadingScopes=false;publish(view);}}
   }
   function open(source:CapabilityHistorySource='events'):Promise<void>{const view:View={state:{...emptyCapabilityHistory(),source},revision:0,before:null,back:[]};current=view;publish(view);return list(view,null);}

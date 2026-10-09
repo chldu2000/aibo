@@ -1,7 +1,9 @@
+import type { LocalizedText } from '../../../packages/i18n/index.js';
+import { toErrorText } from './error-utils.ts';
 export type PluginAuthenticationResult = 'loginOpened' | 'authenticated' | 'unauthenticated';
 export type PluginAuthenticationState = {
   busyId: string | null;
-  entries: Record<string, { result?: PluginAuthenticationResult; error: string }>;
+  entries: Record<string, { result?: PluginAuthenticationResult; error: LocalizedText }>;
 };
 export const emptyPluginAuthentication = (): PluginAuthenticationState => ({ busyId: null, entries: {} });
 
@@ -21,7 +23,7 @@ export function createPluginAuthenticationController(ports: {
         const result = await ports.execute(id, action);
         state.entries[id] = { result, error: '' };
       } catch (error) {
-        state.entries[id] = { error: String(error instanceof Error ? error.message : error) };
+        state.entries[id] = { error: toErrorText(error) };
       } finally { state.busyId = null; emit(); }
     },
   };

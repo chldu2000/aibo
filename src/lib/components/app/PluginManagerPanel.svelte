@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { translateMessage } from '../../../../packages/i18n/index.js';
+  import { locale, t } from '$lib/i18n/runtime';
   import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '$lib/ui-kit';
   import type { PluginAuthenticationState } from '$lib/app/plugin-authentication-controller';
   import type { PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
@@ -50,27 +52,27 @@
 
 </script>
 
-<Card aria-label="插件" aria-busy={busy}>
-  <CardHeader><CardTitle>插件</CardTitle></CardHeader>
+<Card aria-label={$t('plugins.title')} aria-busy={busy}>
+  <CardHeader><CardTitle>{$t('plugins.title')}</CardTitle></CardHeader>
   <CardContent>
     <div class="plugin-manager">
-      <p>同一插件只保留一个当前版本。首次安装默认禁用；替换已启用的插件会恢复其会话并继续启用。安装前请确认来源可信。</p>
-      {#if installation?.error}<p role="alert">{installation.error}</p>{/if}
-      {#if installation?.notice}<p role="status">{installation.notice}</p>{/if}
+      <p>{$t('plugins.description')}</p>
+      {#if installation?.error}<p role="alert">{translateMessage($locale, installation.error)}</p>{/if}
+      {#if installation?.notice}<p role="status">{translateMessage($locale, installation.notice)}</p>{/if}
       {#if installation?.preview}
         {@const preview=installation.preview}
-        <section aria-label="安装影响" class="plugin-details">
-          <h3>{preview.kind === 'downgrade' ? '降级重装' : preview.kind === 'replace' ? '替换安装' : preview.kind === 'upgrade' ? '升级插件' : '安装插件'} · {preview.pluginId}</h3>
+        <section aria-label={$t('plugins.installImpact')} class="plugin-details">
+          <h3>{preview.kind === 'downgrade' ? $t('plugins.downgrade') : preview.kind === 'replace' ? $t('plugins.replace') : preview.kind === 'upgrade' ? $t('plugins.upgrade') : $t('plugins.install')} · {preview.pluginId}</h3>
           <p>{preview.previous.length ? `${preview.previous.join('、')} → ` : ''}{preview.version}</p>
           {#each preview.impacts as impact}
-            <p>引用会话 {impact.sessions.length} 个 · 能力绑定 {impact.bindings.length} 个 · 依赖插件 {impact.dependencies.length} 个</p>
-            {#each impact.sessions as session}<p>会话：{session.label}{preview.archivedSessions?.includes(session.id) ? '（已归档）' : ''}{preview.rebuildSessions?.includes(session.id) ? '（可重建）' : ''}</p>{/each}
-            {#each impact.bindings as binding}<p>能力绑定：{binding.label}</p>{/each}
-            {#each impact.dependencies as dependency}<p>依赖插件：{dependency.label}</p>{/each}
+            <p>{$t('plugins.references', { sessions: impact.sessions.length, bindings: impact.bindings.length, dependencies: impact.dependencies.length })}</p>
+            {#each impact.sessions as session}<p>{$t('plugins.sessionPrefix')}{session.label}{preview.archivedSessions?.includes(session.id) ? $t('history.archivedSuffix') : ''}{preview.rebuildSessions?.includes(session.id) ? $t('plugins.rebuildSuffix') : ''}</p>{/each}
+            {#each impact.bindings as binding}<p>{$t('plugins.bindingPrefix')}{binding.label}</p>{/each}
+            {#each impact.dependencies as dependency}<p>{$t('plugins.dependencyPrefix')}{dependency.label}</p>{/each}
           {/each}
           {#each preview.blockers as blocker}<p role="alert">{blocker}</p>{/each}
           {#if preview.kind === 'downgrade'}
-            <p role="alert">旧版不能安全读取新版数据。重装会清除插件私有数据、缓存和全局及项目配置；原会话仅保留历史，不能继续。安装后默认禁用，需要新建会话。</p>
+            <p role="alert">{$t('plugins.downgradeWarning')}</p>
           {:else if preview.previous.length}
             {#if preview.archivedSessions?.length}
               <label>
@@ -81,63 +83,63 @@
                     event.currentTarget.checked = installation.skipArchived;
                     onSkipArchivedChange?.(checked);
                   }} />
-                跳过已归档会话（{preview.archivedSessions.length}）
+                {$t('plugins.skipArchived', { count: preview.archivedSessions.length })}
               </label>
-              <p id="skip-archived-description">默认跳过。跳过的归档会话仅保留历史，不能继续对话；取消勾选则尝试迁移，任一失败会回滚安装。</p>
+              <p id="skip-archived-description">{$t('plugins.skipArchivedDescription')}</p>
             {/if}
             {#if preview.rebuildSessions?.length}
-              <p>未发送或确定未投递的首次失败会话将清除原生绑定，保留草稿和附件；升级后由你手动发送，届时创建新版会话。失败记录保留，已有草稿不会被覆盖。</p>
+              <p>{$t('plugins.rebuildDescription')}</p>
             {/if}
-            <p>参与迁移的会话恢复和引用检查成功后才替换，失败保留旧版。旧版暂作撤销备份；新版开始调用或产生新数据后，备份会清理，不能再撤销。</p>
+            <p>{$t('plugins.upgradeDescription')}</p>
           {/if}
           <div class="plugin-actions">
-            <Button disabled={busy || !!preview.blockers.length} onclick={()=>onInstallConfirm?.(preview.kind === 'downgrade')}>{preview.kind === 'downgrade' ? '清除插件数据并安装旧版' : '确认安装'}</Button>
-            <Button variant="outline" disabled={busy} onclick={onInstallCancel}>取消</Button>
+            <Button disabled={busy || !!preview.blockers.length} onclick={()=>onInstallConfirm?.(preview.kind === 'downgrade')}>{preview.kind === 'downgrade' ? $t('plugins.clearAndDowngrade') : $t('plugins.confirmInstall')}</Button>
+            <Button variant="outline" disabled={busy} onclick={onInstallCancel}>{$t('common.cancel')}</Button>
           </div>
         </section>
       {/if}
       {#if lifecycle}
-        {#if lifecycle.error}<p role="alert">{lifecycle.error}</p>{/if}
+        {#if lifecycle.error}<p role="alert">{translateMessage($locale, lifecycle.error)}</p>{/if}
         {#if lifecycle.report}
-          <p role="status">已迁移 {lifecycle.report.migrated.length} 个会话；{lifecycle.report.failed.length} 个会话保留原版本。</p>
+          <p role="status">{$t('plugins.migrationReport', { migrated: lifecycle.report.migrated.length, failed: lifecycle.report.failed.length })}</p>
           {#each lifecycle.report.failed as item}<p>{item.label}</p>{/each}
         {/if}
         {#if lifecycle.impact}
           {@const impact = lifecycle.impact}
-          <section aria-label="卸载影响" class="plugin-details">
-            <h3>卸载 {installations.find(item => item.id === impact.id)?.manifest.displayName} · {installations.find(item => item.id === impact.id)?.pluginVersion}</h3>
-            <p>将删除此版本的程序文件、私有数据和缓存。消息、附件、执行记录和历史配置快照会保留。</p>
-            <p>会话 {impact.sessions.length} 个 · 能力绑定 {impact.bindings.length} 个 · 依赖插件 {impact.dependencies.length} 个 · 正在运行 {impact.active} 项</p>
-            {#each impact.sessions as item}<p>会话：{item.label}（{item.id}）</p>{/each}
-            {#each impact.bindings as item}<p>能力绑定：{item.label}</p>{/each}
-            {#each impact.dependencies as item}<p>依赖插件：{item.label}</p>{/each}
-            {#if impact.dependencies.length}<p role="alert">请先卸载或重新绑定依赖插件，再卸载此版本。</p>{/if}
-            {#if impact.sessions.length && !impact.targets.length}<p>如需继续这些会话，请先安装并启用更高版本，再尝试迁移。</p>{/if}
-            {#if impact.active}<p>确认卸载后会先停止任务，等待进程退出，再清理数据。</p>{/if}
+          <section aria-label={$t('plugins.uninstallImpact')} class="plugin-details">
+            <h3>{$t('plugins.uninstallHeading', { name: installations.find(item => item.id === impact.id)?.manifest.displayName ?? impact.id, version: installations.find(item => item.id === impact.id)?.pluginVersion ?? '' })}</h3>
+            <p>{$t('plugins.uninstallDescription')}</p>
+            <p>{$t('plugins.uninstallReferences', { sessions: impact.sessions.length, bindings: impact.bindings.length, dependencies: impact.dependencies.length, active: impact.active })}</p>
+            {#each impact.sessions as item}<p>{$t('plugins.sessionPrefix')}{item.label}（{item.id}）</p>{/each}
+            {#each impact.bindings as item}<p>{$t('plugins.bindingPrefix')}{item.label}</p>{/each}
+            {#each impact.dependencies as item}<p>{$t('plugins.dependencyPrefix')}{item.label}</p>{/each}
+            {#if impact.dependencies.length}<p role="alert">{$t('plugins.dependencyBlocker')}</p>{/if}
+            {#if impact.sessions.length && !impact.targets.length}<p>{$t('plugins.migrationTargetNeeded')}</p>{/if}
+            {#if impact.active}<p>{$t('plugins.stopBeforeUninstall')}</p>{/if}
             <div class="plugin-actions">
               {#each impact.targets as target}
-                <Button disabled={busy || !impact.sessions.length} onclick={() => onMigrate?.(target.id)}>迁移到 {target.label}</Button>
+                <Button disabled={busy || !impact.sessions.length} onclick={() => onMigrate?.(target.id)}>{$t('plugins.migrateTo', { name: target.label })}</Button>
               {/each}
               {#if impact.sessions.length || impact.bindings.length}
-                <Button disabled={busy || impact.dependencies.length > 0} onclick={() => onRemovalConfirm?.(true)}>保留历史并停用，清除插件数据</Button>
+                <Button disabled={busy || impact.dependencies.length > 0} onclick={() => onRemovalConfirm?.(true)}>{$t('plugins.keepHistoryAndRemove')}</Button>
               {:else}
-                <Button disabled={busy || impact.dependencies.length > 0} onclick={() => onRemovalConfirm?.(false)}>卸载并清除数据</Button>
+                <Button disabled={busy || impact.dependencies.length > 0} onclick={() => onRemovalConfirm?.(false)}>{$t('plugins.removeData')}</Button>
               {/if}
-              <Button variant="outline" disabled={busy} onclick={onRemovalCancel}>取消</Button>
+              <Button variant="outline" disabled={busy} onclick={onRemovalCancel}>{$t('common.cancel')}</Button>
             </div>
-            {#if impact.sessions.length}<p>选择保留历史并停用后，这些会话将不能继续，即使重新安装此版本。</p>{/if}
+            {#if impact.sessions.length}<p>{$t('plugins.historyOnlyWarning')}</p>{/if}
           </section>
         {/if}
       {/if}
       <div class="plugin-actions">
-        <Button type="button" variant="outline" disabled={busy} onclick={onInstall}>选择目录安装</Button>
+        <Button type="button" variant="outline" disabled={busy} onclick={onInstall}>{$t('plugins.installDirectory')}</Button>
       </div>
 
       {#if installedPlugins.length === 0}
-        <p role="status">尚未安装外部插件。</p>
+        <p role="status">{$t('plugins.empty')}</p>
       {:else}
         <div class="plugin-browser" class:showing-detail={showingDetail}>
-          <nav class="plugin-navigation" aria-label="已安装插件">
+          <nav class="plugin-navigation" aria-label={$t('plugins.installedList')}>
             {#each installedPlugins as installation (installation.id)}
               <Button variant={selected?.id === installation.id ? 'secondary' : 'ghost'} aria-pressed={selected?.id === installation.id}
                 onclick={() => { selectedId = installation.id; showingDetail = true; }}>
@@ -146,14 +148,14 @@
             {/each}
           </nav>
           <div class="plugin-detail">
-            <div class="plugin-list-back"><Button variant="ghost" onclick={() => (showingDetail = false)}>← 插件列表</Button></div>
+            <div class="plugin-list-back"><Button variant="ghost" onclick={() => (showingDetail = false)}>{$t('plugins.back')}</Button></div>
           {#each installedPlugins as installation (installation.id)}
             {#if selected?.id === installation.id}
             <Card aria-label={installation.manifest.displayName}>
               <CardHeader>
                 <div class="plugin-heading">
                   <CardTitle>{installation.manifest.displayName}</CardTitle>
-                  <Badge>{!installation.installed ? '已卸载' : installation.enabled ? '已启用' : '已禁用'}</Badge>
+                  <Badge>{!installation.installed ? $t('plugins.uninstalled') : installation.enabled ? $t('plugins.enabled') : $t('plugins.disabled')}</Badge>
                 </div>
               </CardHeader>
               <CardContent>
@@ -161,42 +163,42 @@
                   <p>{installation.pluginId} · {installation.pluginVersion}</p>
                   {#each installation.dependencies as dependency (`${dependency.kind}:${dependency.name}`)}
                     <p role={dependency.required && !dependency.available ? 'alert' : undefined}>
-                      {dependency.kind} · {dependency.name}{dependency.versionRange ? ` ${dependency.versionRange}` : ''}{dependency.detectedVersion ? `（检测到 ${dependency.detectedVersion}）` : ''} · {dependency.available ? '可用' : dependency.required ? `不可用（必需${dependency.issue ? `：${dependency.issue}` : ''}）` : `不可用（可选${dependency.issue ? `：${dependency.issue}` : ''}）`}
+                      {dependency.kind} · {dependency.name}{dependency.versionRange ? ` ${dependency.versionRange}` : ''}{dependency.detectedVersion ? $t('plugins.detectedVersion', { version: dependency.detectedVersion }) : ''} · {dependency.available ? $t('plugins.available') : dependency.required ? $t('plugins.requiredUnavailable', { issue: dependency.issue ? $t('plugins.issueSuffix', { issue: dependency.issue }) : '' }) : $t('plugins.optionalUnavailable', { issue: dependency.issue ? $t('plugins.issueSuffix', { issue: dependency.issue }) : '' })}
                     </p>
                   {/each}
                   {#each installation.packageDependencies?.dependencies ?? [] as dependency (dependency.pluginId)}
                     <p role={dependency.required && !dependency.available ? 'alert' : 'status'}>
-                      插件依赖 {dependency.pluginId}{dependency.version ? ` · ${dependency.version}` : ''}：{dependency.available ? '可用' : dependency.required ? '必需依赖不可用' : '可选依赖不可用，相关功能已停用'}{dependency.issue ? `（${dependency.issue}）` : ''}
+                      {$t('plugins.packageDependency', { id: dependency.pluginId, version: dependency.version ? ` · ${dependency.version}` : '', status: dependency.available ? $t('plugins.available') : dependency.required ? $t('plugins.requiredMissing') : $t('plugins.optionalMissing'), issue: dependency.issue ? ` (${dependency.issue})` : '' })}
                     </p>
                   {/each}
                   {#each installation.activationIssues ?? [] as issue}<p role="status">{issue}</p>{/each}
                   {#if installation.manifest.authentication}
                     {@const auth = authentication?.entries[installation.id]}
-                    <section aria-label="登录与授权">
-                      <p>使用官方 CLI 登录，凭据由 Agent 保存。授权完成后返回这里检查状态。</p>
+                    <section aria-label={$t('plugins.authTitle')}>
+                      <p>{$t('plugins.authDescription')}</p>
                       <div class="plugin-actions">
-                        <Button variant="outline" disabled={busy || !installation.enabled || !installation.runnable} onclick={() => onAuthenticate?.(installation.id, 'login')}>登录 / 授权</Button>
-                        <Button variant="outline" disabled={busy || !installation.enabled || !installation.runnable} onclick={() => onAuthenticate?.(installation.id, 'status')}>检查登录状态</Button>
+                        <Button variant="outline" disabled={busy || !installation.enabled || !installation.runnable} onclick={() => onAuthenticate?.(installation.id, 'login')}>{$t('plugins.login')}</Button>
+                        <Button variant="outline" disabled={busy || !installation.enabled || !installation.runnable} onclick={() => onAuthenticate?.(installation.id, 'status')}>{$t('plugins.checkLogin')}</Button>
                       </div>
-                      {#if !installation.enabled}<p>启用插件后可登录或检查状态。</p>{/if}
-                      {#if authentication?.busyId === installation.id}<p role="status">正在处理认证请求…</p>{/if}
-                      {#if auth?.error}<p role="alert">{auth.error}</p>
-                      {:else if auth?.result === 'loginOpened'}<p role="status">已打开登录终端，请完成浏览器授权，再点击“检查登录状态”。</p>
-                      {:else if auth?.result === 'authenticated'}<p role="status">CLI 报告已登录。可以返回原会话重试；若仍提示过期，请重新授权。此检查不验证远端请求。</p>
-                      {:else if auth?.result === 'unauthenticated'}<p role="status">尚未登录或授权未完成，请点击“登录 / 授权”。</p>{/if}
+                      {#if !installation.enabled}<p>{$t('plugins.enableToLogin')}</p>{/if}
+                      {#if authentication?.busyId === installation.id}<p role="status">{$t('plugins.authPending')}</p>{/if}
+                      {#if auth?.error}<p role="alert">{translateMessage($locale, auth.error)}</p>
+                      {:else if auth?.result === 'loginOpened'}<p role="status">{$t('plugins.loginOpened')}</p>
+                      {:else if auth?.result === 'authenticated'}<p role="status">{$t('plugins.authenticated')}</p>
+                      {:else if auth?.result === 'unauthenticated'}<p role="status">{$t('plugins.unauthenticated')}</p>{/if}
                     </section>
                   {/if}
                   <div class="plugin-actions">
                     {#if installation.installed}
-                      <Button type="button" variant="outline" disabled={busy || (!installation.enabled && !installation.runnable)} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? '禁用插件' : '启用插件'}</Button>
-                      <Button type="button" variant="outline" disabled={busy} onclick={() => onUninstall(installation.id)}>卸载插件</Button>
-                      {#if undoTargets.includes(installation.id)}<Button variant="outline" disabled={busy} onclick={()=>onUndo?.(installation.id)}>撤销本次升级</Button>{/if}
+                      <Button type="button" variant="outline" disabled={busy || (!installation.enabled && !installation.runnable)} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? $t('plugins.disable') : $t('plugins.enable')}</Button>
+                      <Button type="button" variant="outline" disabled={busy} onclick={() => onUninstall(installation.id)}>{$t('plugins.uninstall')}</Button>
+                      {#if undoTargets.includes(installation.id)}<Button variant="outline" disabled={busy} onclick={()=>onUndo?.(installation.id)}>{$t('plugins.undoUpgrade')}</Button>{/if}
                     {/if}
                     {#each installation.contributions?.filter(entry => entry.metadata.settings) ?? [] as entry (entry.id)}
-                      <Button type="button" variant="outline" disabled={busy || !installation.installed} onclick={() => onConfigure(installation.id, entry.id)}>设置 · {String(entry.metadata.displayName ?? entry.id)}</Button>
+                      <Button type="button" variant="outline" disabled={busy || !installation.installed} onclick={() => onConfigure(installation.id, entry.id)}>{$t('plugins.settingsFor', { name: String(entry.metadata.displayName ?? entry.id) })}</Button>
                     {/each}
                     {#each installation.sessionProviders as provider (provider.id)}
-                      <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, provider.id)}>新建 {provider.displayName} 会话</Button>
+                      <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, provider.id)}>{$t('plugins.createSession', { name: provider.displayName })}</Button>
                     {/each}
                   </div>
                 </div>

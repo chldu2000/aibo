@@ -1,5 +1,5 @@
 //! Durable host-owned write intent and settlement, independent of pages and windows.
-use crate::{CoreError, Workspace};
+use crate::{CoreError, Workspace, ui_i18n::{self, HostMessage}};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sqlx::{Row, SqlitePool};
@@ -7,20 +7,39 @@ use std::{future::Future, path::{Path, PathBuf}, sync::Arc};
 
 static ADMISSION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+fn invalid_intent(key: &str, diagnostic: &str) -> CoreError {
+    ui_i18n::invalid_path_message(HostMessage::with_diagnostic(key, serde_json::json!({}), diagnostic))
+}
+fn stored_error(key: &str, params: Value, diagnostic: String) -> CoreError {
+    ui_i18n::initialization_message(HostMessage::with_diagnostic(key, params, diagnostic))
+}
+fn unknown_result(key: &str, params: Value, diagnostic: String) -> CoreError {
+    ui_i18n::unknown_message(HostMessage::with_diagnostic(key, params, diagnostic))
+}
+fn rejected_write(code: &str, display: HostMessage) -> CoreError {
+    let error = CoreError::WriteReplay { code:code.into(), message:display.diagnostic };
+    match display.localized {
+        Some(localized) => CoreError::Localized { error:Box::new(error), localized },
+        None => error,
+    }
+}
+
+
 /// Constructed by the host composition root; never deserialized from UI input.
 #[derive(Clone)]
 pub(crate) struct Request {
     id: String,
     caller: String,
     session_policy: Option<String>,
+    locale: crate::ui_i18n::Locale,
     confirmation: Option<Arc<dyn Fn(String) -> std::pin::Pin<Box<dyn Future<Output = Result<bool, String>> + Send>> + Send + Sync>>,
 }
 impl Request {
     #[cfg(test)]
-    pub(crate) fn new(id: String, caller: String) -> Self { Self { id, caller, session_policy: None, confirmation: None } }
+    pub(crate) fn new(id: String, caller: String) -> Self { Self { id, caller, session_policy: None, locale: crate::ui_i18n::Locale::ZhCn, confirmation: None } }
     pub(crate) fn with_confirmation<F, Fut>(id: String, caller: String, confirm: F) -> Self
     where F: Fn(String) -> Fut + Send + Sync + 'static, Fut: Future<Output = Result<bool, String>> + Send + 'static {
-        Self { id, caller, session_policy: None, confirmation: Some(Arc::new(move |message| Box::pin(confirm(message)))) }
+        Self { id, caller, session_policy: None, locale: crate::ui_i18n::Locale::ZhCn, confirmation: Some(Arc::new(move |message| Box::pin(confirm(message)))) }
     }
     pub(crate) fn with_session_policy<F, Fut>(id: String, caller: String, session: String, confirm: F) -> Self
     where F: Fn(String) -> Fut + Send + Sync + 'static, Fut: Future<Output = Result<bool, String>> + Send + 'static {
@@ -28,12 +47,13 @@ impl Request {
         request.session_policy = Some(session);
         request
     }
+    pub(crate) fn with_locale(mut self, locale: crate::ui_i18n::Locale) -> Self { self.locale = locale; self }
     fn permits(&self, operation: &str, input: &Value, nested: bool) -> bool {
         self.session_policy.as_ref().is_none_or(|session| !nested && operation == "capability.invoke"
             && matches!(input["capability"].as_str(), Some("aibo.session.turn.write" | "aibo.session.goal.resume.write"))
             && input["scope"]["kind"] == "session" && input["scope"]["id"] == *session)
     }
-    pub(crate) fn child(&self, id: String) -> Self { Self { id, caller:self.caller.clone(), session_policy:self.session_policy.clone(), confirmation:self.confirmation.clone() } }
+    pub(crate) fn child(&self, id: String) -> Self { Self { id, caller:self.caller.clone(), session_policy:self.session_policy.clone(), locale:self.locale, confirmation:self.confirmation.clone() } }
     pub(crate) fn matches(&self, id: &str, caller: &str) -> bool { self.id == id && self.caller == caller && self.confirmation.is_some() }
     #[cfg(test)]
     pub(crate) fn test() -> Self { Self::new(ulid::Ulid::new().to_string(), "test".into()) }
@@ -70,19 +90,24 @@ async fn replay<T: DeserializeOwned>(db: &SqlitePool, workspace_id: &str, reques
         .bind(workspace_id).bind(&request.id).fetch_optional(db).await?;
     let Some(row) = row else { return Ok(None); };
     if row.get::<String, _>("request_json") != identity {
-        return Err(CoreError::InvalidWorkspacePath("write request ID belongs to different input or caller".into()));
+        return Err(invalid_intent("native.writeRun.requestConflict", "write request ID belongs to different input or caller"));
     }
     if matches!(row.get::<String, _>("status").as_str(), "awaiting_approval" | "running") { return Ok(Some(Err(CoreError::WorkspaceWriteBusy))); }
     let result: Option<String> = row.try_get("result_json")?;
-    let document: Value = serde_json::from_str(result.as_deref().ok_or_else(|| CoreError::WriteOutcomeUnknown("stored write has no result".into()))?)
+    let document: Value = serde_json::from_str(result.as_deref().ok_or_else(|| unknown_result("native.writeRun.noStoredResult", serde_json::json!({}), "stored write has no result".into()))?)
         .map_err(|error| CoreError::Initialization(error.to_string()))?;
     if document["ok"] == true {
-        let value = serde_json::from_value(document["output"].clone()).map_err(|error| CoreError::Initialization(format!("stored write result incompatible: {error}")))?;
+        let value = serde_json::from_value(document["output"].clone()).map_err(|error| stored_error("native.writeRun.storedResultIncompatible", serde_json::json!({"error":error.to_string()}), format!("stored write result incompatible: {error}")))?;
         Ok(Some(Ok(value)))
     } else {
-        let code = document["error"]["code"].as_str().ok_or_else(|| CoreError::Initialization("stored write error has no code".into()))?;
-        let message = document["error"]["message"].as_str().ok_or_else(|| CoreError::Initialization("stored write error has no message".into()))?;
-        Ok(Some(Err(CoreError::WriteReplay { code: code.into(), message: message.into() })))
+        let code = document["error"]["code"].as_str().ok_or_else(|| stored_error("native.writeRun.storedErrorCode", serde_json::json!({}), "stored write error has no code".into()))?;
+        let message = document["error"]["message"].as_str().ok_or_else(|| stored_error("native.writeRun.storedErrorMessage", serde_json::json!({}), "stored write error has no message".into()))?;
+        let error = CoreError::WriteReplay { code: code.into(), message: message.into() };
+        let error = match document["error"].get("localized").filter(|value| !value.is_null()) {
+            Some(localized) => CoreError::Localized {error:Box::new(error),localized:localized.clone()},
+            None => error,
+        };
+        Ok(Some(Err(error)))
     }
 }
 
@@ -156,11 +181,11 @@ async fn execute_in_lease<T, F, Fut, P, Prepared, Stop>(
 where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Future<Output = Result<T, CoreError>>,
     P: Fn() -> Prepared, Prepared: Future<Output = Result<Value, CoreError>>, Stop: Future<Output = ()> {
     if !request.permits(operation, &input, parent.is_some()) {
-        return Err(CoreError::InvalidWorkspacePath("Session permission cannot authorize this operation".into()));
+        return Err(invalid_intent("native.writeRun.permissionScope", "Session permission cannot authorize this operation"));
     }
     if workspace.trust != "trusted" { return Err(CoreError::WorkspaceTrustRequired); }
     if request.id.is_empty() || request.id.len() > 128 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')) {
-        return Err(CoreError::InvalidWorkspacePath("invalid workspace write request ID".into()));
+        return Err(invalid_intent("native.writeRun.invalidRequestId", "invalid workspace write request ID"));
     }
     let identity = serde_json::json!({"operation":operation,"input":&input,"caller":&request.caller}).to_string();
     let admission = ADMISSION.lock().await;
@@ -168,7 +193,7 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
     let lease = if let Some(parent) = parent {
         let root = tokio::fs::canonicalize(&workspace.path).await.map_err(|error|CoreError::InvalidWorkspacePath(error.to_string()))?;
         if parent.lease.workspace_id != workspace.id || parent.lease.root != root || parent.lease.caller != request.caller || parent.is_requested().await {
-            return Err(CoreError::InvalidWorkspacePath("Nested write has no live lease for this workspace and caller".into()));
+            return Err(invalid_intent("native.writeRun.liveLease", "Nested write has no live lease for this workspace and caller"));
         }
         parent.lease.clone()
     } else {
@@ -183,17 +208,17 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
     let root_id = ancestors.first().cloned().unwrap_or_else(||id.clone());
     let cancellation = Cancellation { db:db.clone(), run_id:id.clone(), ancestors, lease:lease.clone() };
     let approval_context = if request.confirmation.is_some() { Some(prepare().await?) } else { None };
-    let mut message = format!("宿主写入：{operation}\n工作区：{}\n调用窗口：{}\n输入：{}\n\n批准仅适用于本次请求；取消不保证撤销已发生的更改。", workspace.path, request.caller, input);
-    if let Some(description) = approval_context.as_ref().and_then(|context| context["approvalDescription"].as_str()) { message.push_str("\n\n"); message.push_str(description); }
-    if request.confirmation.is_some() && message.len() > 16 * 1024 { return Err(CoreError::InvalidWorkspacePath("Host write approval summary exceeds 16 KiB".into())); }
+    let mut message = crate::ui_i18n::message(request.locale, "native.writeSummary", &serde_json::json!({"operation":operation,"workspace":workspace.path,"caller":request.caller,"input":input.to_string()}));
+    if let Some(description) = approval_context.as_ref().and_then(|context| context.get("approvalDescription")) { message.push_str("\n\n"); message.push_str(&crate::ui_i18n::render(request.locale, description)); }
+    if request.confirmation.is_some() && message.len() > 16 * 1024 { return Err(invalid_intent("native.writeRun.approvalSummaryLimit", "Host write approval summary exceeds 16 KiB")); }
     let snapshot = serde_json::json!({"schema":"aibo.workspace-write-intent/v1","origin":"host","workspaceId":workspace.id,"workspacePath":workspace.path,"operation":operation,"input":input,"approvalContext":approval_context});
     let snapshot_json = snapshot.to_string();
-    if snapshot_json.len() > 64 * 1024 { return Err(CoreError::InvalidWorkspacePath("workspace write intent exceeds 64 KiB".into())); }
+    if snapshot_json.len() > 64 * 1024 { return Err(invalid_intent("native.writeRun.intentLimit", "workspace write intent exceeds 64 KiB")); }
     let admitted = sqlx::query("INSERT INTO workspace_write_runs (id,schema_version,workspace_id,operation,status,snapshot_json,started_at,request_id,caller_window,request_json,parent_write_run_id,root_write_run_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,request_id) DO NOTHING")
         .bind(&id).bind(if request.confirmation.is_some() { "aibo.workspace-write-run/v2" } else { "aibo.workspace-write-run/v1" }).bind(&workspace.id).bind(operation).bind(if request.confirmation.is_some() { "awaiting_approval" } else { "running" }).bind(snapshot_json).bind(crate::now_iso()).bind(&request.id).bind(&request.caller).bind(&identity).bind(parent.map(|parent|parent.run_id.as_str())).bind(&root_id).execute(db).await?.rows_affected();
     if admitted == 0 {
         return replay(db, &workspace.id, request, &identity).await?
-            .ok_or_else(|| CoreError::Initialization("write request disappeared during admission".into()))?;
+            .ok_or_else(|| stored_error("native.writeRun.admissionMissing", serde_json::json!({}), "write request disappeared during admission".into()))?;
     }
     if let Some(confirm) = &request.confirmation {
         let cancelled = async { tokio::select! { _ = cancellation.requested() => {}, _ = stop => {} } };
@@ -212,7 +237,16 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
             if started != 1 { decision = "cancelled"; }
         }
         if decision != "approved" {
-            let error = CoreError::WriteReplay { code: "approval_rejected".into(), message: format!("Host write was not started: approval {decision}. Check the current context before submitting a new request.") };
+            let decision_key = match decision {
+                "denied" => Some("native.writeRun.denied"), "stale" => Some("native.writeRun.stale"),
+                "cancelled" => Some("native.writeRun.cancelled"), "unavailable" => Some("native.writeRun.unavailable"),
+                "expired" => Some("native.writeRun.expired"), _ => None,
+            };
+            let reason = decision_key.map(|key| ui_i18n::display_descriptor(key, serde_json::json!({})))
+                .unwrap_or_else(|| serde_json::json!(decision));
+            let error = rejected_write("approval_rejected", HostMessage::with_diagnostic(
+                "native.writeRun.approvalRejected", serde_json::json!({"decision":reason}),
+                format!("Host write was not started: approval {decision}. Check the current context before submitting a new request.")));
             let result = serde_json::json!({"ok":false,"error":&error});
             sqlx::query("UPDATE workspace_write_runs SET status='rejected',approval_outcome=?,approval_decided_at=?,completed_at=?,result_json=? WHERE id=? AND status='awaiting_approval'")
                 .bind(decision).bind(&decided_at).bind(&decided_at).bind(result.to_string()).bind(&id).execute(db).await?;
@@ -225,15 +259,15 @@ where T: Serialize + DeserializeOwned, F: FnOnce(Cancellation) -> Fut, Fut: Futu
         // Completed is lifecycle settlement, not a claim that Git applied changes.
         // The original typed output retains applied/committed and its explanation.
         Ok(value) => {
-            let output = serde_json::to_value(value).map_err(|error| CoreError::WriteOutcomeUnknown(format!("write {id} result serialization failed: {error}")))?;
+            let output = serde_json::to_value(value).map_err(|error| unknown_result("native.writeRun.serializationFailed", serde_json::json!({"id":id,"error":error.to_string()}), format!("write {id} result serialization failed: {error}")))?;
             ("completed", serde_json::json!({"ok":true,"output":output}))
         },
-        Err(error) => (if matches!(error, CoreError::WriteOutcomeUnknown(_)) { "outcome_unknown" } else { "failed" }, serde_json::json!({"ok":false,"error":error})),
+        Err(error) => (if error.is_write_outcome_unknown() { "outcome_unknown" } else { "failed" }, serde_json::json!({"ok":false,"error":error})),
     };
     let changed = sqlx::query("UPDATE workspace_write_runs SET status=?,result_json=?,completed_at=? WHERE id=? AND status='running'")
         .bind(status).bind(document.to_string()).bind(crate::now_iso()).bind(&id).execute(db).await
-        .map_err(|error| CoreError::WriteOutcomeUnknown(format!("write {id} could not persist its result: {error}")))?.rows_affected();
-    if changed != 1 { return Err(CoreError::WriteOutcomeUnknown(format!("write {id} record changed before settlement"))); }
+        .map_err(|error| unknown_result("native.writeRun.persistenceFailed", serde_json::json!({"id":id,"error":error.to_string()}), format!("write {id} could not persist its result: {error}")))?.rows_affected();
+    if changed != 1 { return Err(unknown_result("native.writeRun.settlementChanged", serde_json::json!({"id":id}), format!("write {id} record changed before settlement"))); }
     result
 }
 
@@ -261,12 +295,12 @@ pub(crate) async fn list_page(db: &SqlitePool, workspace_id: String, limit: Opti
 async fn prepare_approval(db: &SqlitePool, workspace: &Workspace, input: &Value) -> Result<Value, CoreError> {
     let current = crate::workspace_by_id(db, &workspace.id).await?;
     if current.trust != "trusted" { return Err(CoreError::WorkspaceTrustRequired); }
-    if current.path != workspace.path { return Err(CoreError::InvalidWorkspacePath("workspace changed before Git approval".into())); }
+    if current.path != workspace.path { return Err(invalid_intent("native.writeRun.gitWorkspaceChanged", "workspace changed before Git approval")); }
     let root = tokio::fs::canonicalize(&current.path).await.map_err(|error| CoreError::InvalidWorkspacePath(error.to_string()))?;
     let session = if let Some(id) = input["sessionId"].as_str() {
         let context: Option<String> = sqlx::query_scalar("SELECT json_object('id',id,'workspaceId',workspace_id,'state',state,'archived',archived,'updatedAt',updated_at) FROM sessions WHERE id=? AND workspace_id=?")
             .bind(id).bind(&workspace.id).fetch_optional(db).await?;
-        Some(context.ok_or_else(|| CoreError::InvalidWorkspacePath("Git caller session is no longer in this workspace".into()))?)
+        Some(context.ok_or_else(|| invalid_intent("native.writeRun.gitSessionUnavailable", "Git caller session is no longer in this workspace"))?)
     } else { None };
     let turn = if let Some(turn_id) = input["turnId"].as_str() {
         let context: Option<String> = sqlx::query_scalar(
@@ -281,11 +315,11 @@ async fn prepare_approval(db: &SqlitePool, workspace: &Workspace, input: &Value)
              WHERE t.id=? AND t.session_id=? AND c.workspace_id=? AND f.path=?"
         ).bind(turn_id).bind(input["sessionId"].as_str()).bind(&workspace.id).bind(input["path"].as_str())
             .fetch_optional(db).await?;
-        Some(context.ok_or_else(|| CoreError::InvalidWorkspacePath("Git turn file context is no longer available".into()))?)
+        Some(context.ok_or_else(|| invalid_intent("native.writeRun.gitTurnUnavailable", "Git turn file context is no longer available"))?)
     } else { None };
     let repository_path = crate::git_repositories::resolve(&current.path, input["repositoryId"].as_str())?;
     let fingerprint = crate::workspace_git_approval::fingerprint(&repository_path).await?;
-    Ok(serde_json::json!({"root":root,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,"repositoryPath":repository_path,"repositoryFingerprint":fingerprint,"repositoryFingerprintSchema":"aibo.git-approval-fingerprint/v2","approvalDescription":"Git 操作可能执行仓库钩子、过滤器或修改远程引用。"}))
+    Ok(serde_json::json!({"root":root,"workspacePath":current.path,"workspaceTrust":current.trust,"workspaceUpdatedAt":current.updated_at,"session":session,"turn":turn,"repositoryPath":repository_path,"repositoryFingerprint":fingerprint,"repositoryFingerprintSchema":"aibo.git-approval-fingerprint/v2","approvalDescription":crate::ui_i18n::descriptor("native.gitDescription",serde_json::json!({}))}))
 }
 
 async fn await_approval(confirmation: impl Future<Output = Result<bool, String>>, cancellation: impl Future<Output = ()>, timeout: std::time::Duration) -> &'static str {
@@ -299,10 +333,10 @@ async fn await_approval(confirmation: impl Future<Output = Result<bool, String>>
 
 /// Startup-only. Unsettled writes are observable, never replayed.
 pub(crate) async fn recover(db: &SqlitePool) -> Result<u64, sqlx::Error> {
-    let rejected_result = serde_json::json!({"ok":false,"error":{"code":"approval_rejected","message":"Host restarted during approval; write was not started."}});
+    let rejected_result = serde_json::json!({"ok":false,"error":rejected_write("approval_rejected", HostMessage::with_diagnostic("native.writeRun.restartApproval", serde_json::json!({}), "Host restarted during approval; write was not started."))});
     let rejected = sqlx::query("UPDATE workspace_write_runs SET status='rejected',approval_outcome='recovered',approval_decided_at=?,completed_at=?,result_json=? WHERE status='awaiting_approval'")
         .bind(crate::now_iso()).bind(crate::now_iso()).bind(rejected_result.to_string()).execute(db).await?.rows_affected();
-    let result = serde_json::json!({"ok":false,"error":{"code":"outcome_unknown","message":"Host restarted before write settlement; inspect local and remote effects before another operation."}});
+    let result = serde_json::json!({"ok":false,"error":rejected_write("outcome_unknown", HostMessage::with_diagnostic("native.writeRun.restartSettlement", serde_json::json!({}), "Host restarted before write settlement; inspect local and remote effects before another operation."))});
     Ok(sqlx::query("UPDATE workspace_write_runs SET status='outcome_unknown',result_json=?,completed_at=? WHERE status='running'")
         .bind(result.to_string()).bind(crate::now_iso()).execute(db).await?.rows_affected() + rejected)
 }
@@ -327,12 +361,15 @@ mod tests {
         assert!(std::process::Command::new("git").args(["init", "-q"]).arg(&root).status().unwrap().success());
         std::fs::write(root.join(".gitignore"), "host.db*\n").unwrap();
         std::fs::write(root.join("source.txt"), "before").unwrap();
-        for decision in ["denied", "stale", "trust", "cancelled", "unavailable", "approved"] {
+        for (index, decision) in ["denied", "stale", "trust", "cancelled", "unavailable", "approved"].into_iter().enumerate() {
+            let locale = if index % 2 == 0 { crate::ui_i18n::Locale::En } else { crate::ui_i18n::Locale::ZhCn };
             let task_db = db.clone(); let task_root = root.clone();
             let request = Request::with_confirmation(decision.into(), "main".into(), move |message| {
                 let db = task_db.clone(); let root = task_root.clone();
                 async move {
                     assert!(message.contains("git.index-all") && message.contains("stage_all"));
+                    assert!(message.starts_with(if locale == crate::ui_i18n::Locale::En { "Host write:" } else { "宿主写入：" }));
+                    assert!(message.contains(if locale == crate::ui_i18n::Locale::En { "Git operations may run" } else { "Git 操作可能" }));
                     let pending = list(&db, "workspace".into(), None).await.unwrap().into_iter().find(|run| run.status == "awaiting_approval").unwrap();
                     assert!(pending.result.is_none() && pending.approval_outcome.is_none());
                     assert!(matches!(crate::workspace_writes::acquire(&db, "workspace", &root).await, Err(CoreError::WorkspaceWriteBusy)));
@@ -345,7 +382,7 @@ mod tests {
                         _ => Ok(true),
                     }
                 }
-            });
+            }).with_locale(locale);
             let result = crate::workspace_git::apply_workspace_git_action_requested(&db, "workspace".into(), "stage_all".into(), &request).await;
             let expected = if decision == "trust" { "stale" } else { decision };
             sqlx::query("UPDATE workspaces SET trusted=1 WHERE id='workspace'").execute(&db).await.unwrap();
@@ -359,7 +396,12 @@ mod tests {
             else {
                 let error = serde_json::to_value(result.unwrap_err()).unwrap();
                 assert_eq!(error["code"], "approval_rejected"); assert_eq!(run.status, "rejected"); assert!(index.stdout.is_empty());
-                let replay_request = Request::with_confirmation(decision.into(), "main".into(), |_| async { panic!("replay prompted again") });
+                assert_eq!(error["message"], format!("Host write was not started: approval {expected}. Check the current context before submitting a new request."));
+                assert_eq!(error["localized"]["key"], "native.writeRun.approvalRejected");
+                assert_eq!(error["localized"]["params"]["decision"]["key"], format!("native.writeRun.{expected}"));
+                assert_eq!(run.result.as_ref().unwrap()["error"], error);
+                assert!(ui_i18n::render(ui_i18n::Locale::ZhCn, &error["localized"]).starts_with("写入未启动"));
+                let replay_request = Request::with_confirmation(decision.into(), "main".into(), |_| async { panic!("replay prompted again") }).with_locale(crate::ui_i18n::Locale::En);
                 let replay = crate::workspace_git::apply_workspace_git_action_requested(&db, "workspace".into(), "stage_all".into(), &replay_request).await.unwrap_err();
                 assert_eq!(serde_json::to_value(replay).unwrap(), error);
             }
@@ -392,7 +434,13 @@ mod tests {
         assert_eq!(recover(&reopened).await.unwrap(), 1); assert_eq!(recover(&reopened).await.unwrap(), 0);
         let history = list(&reopened, "workspace".into(), None).await.unwrap();
         assert_eq!(history[0].status, "rejected"); assert_eq!(history[0].approval_outcome.as_deref(), Some("recovered"));
-        assert!(crate::workspace_git::apply_workspace_git_action_requested(&reopened, "workspace".into(), "stage_all".into(), &duplicate).await.is_err());
+        let error = crate::workspace_git::apply_workspace_git_action_requested(&reopened, "workspace".into(), "stage_all".into(), &duplicate).await.unwrap_err();
+        let error = serde_json::to_value(error).unwrap();
+        assert_eq!(error["code"], "approval_rejected");
+        assert_eq!(error["message"], "Host restarted during approval; write was not started.");
+        assert_eq!(error["localized"]["key"], "native.writeRun.restartApproval");
+        assert_eq!(history[0].result.as_ref().unwrap()["error"], error);
+        assert_eq!(ui_i18n::render(ui_i18n::Locale::ZhCn, &error["localized"]), "宿主在审批期间重启，写入未启动。");
         let index = std::process::Command::new("git").arg("-C").arg(&root).arg("ls-files").output().unwrap();
         assert!(index.stdout.is_empty());
         reopened.close().await; std::fs::remove_dir_all(root).unwrap();
@@ -432,9 +480,96 @@ mod tests {
         }).await.unwrap_err();
         // This directory is not a Git repository: a spawned command would instead
         // return a known nonzero result. Cancellation rejects before any spawn.
-        assert!(matches!(result, CoreError::WriteOutcomeUnknown(_)));
+        assert!(result.is_write_outcome_unknown());
         assert!(result.to_string().contains("before launching"));
         assert_eq!(std::fs::read_to_string(root.join("file.txt")).unwrap(), "keep");
+        db.close().await; std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn git_preflight_display_preserves_rejections_before_approval_and_admission() {
+        let (root, db, workspace) = fixture().await;
+        for (index, input, key, diagnostic) in [
+            (0, serde_json::json!({}), "gitWorkspaceChanged", "workspace changed before Git approval"),
+            (1, serde_json::json!({"sessionId":"missing /{id}"}), "gitSessionUnavailable", "Git caller session is no longer in this workspace"),
+            (2, serde_json::json!({"turnId":"missing /{id}","path":"raw /{path}"}), "gitTurnUnavailable", "Git turn file context is no longer available"),
+        ] {
+            if index == 0 {
+                sqlx::query("UPDATE workspaces SET path=? WHERE id='workspace'").bind(root.join("changed").to_string_lossy().as_ref()).execute(&db).await.unwrap();
+            }
+            let original = input.clone();
+            let request = Request::with_confirmation(format!("preflight-{index}"), "main".into(), |_| async { panic!("rejected preflight requested approval") });
+            let error = execute_requested::<Value, _, _>(&db, &workspace, "git.index", input.clone(), &request, |_| async { panic!("rejected preflight executed") }).await.unwrap_err();
+            let payload = serde_json::to_value(error).unwrap();
+            assert_eq!(payload["code"], "invalid_workspace_path");
+            assert_eq!(payload["message"], format!("invalid workspace path: {diagnostic}"));
+            assert_eq!(payload["localized"]["key"], format!("native.writeRun.{key}"));
+            assert_ne!(ui_i18n::render(ui_i18n::Locale::ZhCn, &payload["localized"]), diagnostic);
+            assert_eq!(input, original);
+            assert!(list(&db, "workspace".into(), None).await.unwrap().is_empty());
+            assert!(crate::workspace_writes::acquire(&db, "workspace", &root).await.is_ok());
+            sqlx::query("UPDATE workspaces SET path=? WHERE id='workspace'").bind(root.to_string_lossy().as_ref()).execute(&db).await.unwrap();
+        }
+        db.close().await; std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_serialization_and_changed_settlement_preserve_unknown_outcomes_and_replay() {
+        struct Unserializable;
+        impl Serialize for Unserializable {
+            fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom("结果原文 /{error}"))
+            }
+        }
+        impl<'de> serde::Deserialize<'de> for Unserializable {
+            fn deserialize<D: serde::Deserializer<'de>>(_: D) -> Result<Self, D::Error> {
+                Err(serde::de::Error::custom("not a stored result"))
+            }
+        }
+        let (root, db, workspace) = fixture().await;
+        let request = Request::new("serialize-result".into(), "main".into());
+        let error = execute_requested(&db, &workspace, "fixture.write", serde_json::json!({}), &request, |_| async {
+            std::fs::write(root.join("effect"), "once").unwrap();
+            Ok(Unserializable)
+        }).await.err().unwrap();
+        assert!(error.is_write_outcome_unknown());
+        let payload = serde_json::to_value(error).unwrap();
+        let runs = list(&db, "workspace".into(), None).await.unwrap();
+        assert_eq!(runs[0].status, "running"); assert!(runs[0].result.is_none());
+        assert_eq!(payload["code"], "outcome_unknown");
+        assert_eq!(payload["message"], format!("写入结果未知，请核对实际更改后再操作：write {} result serialization failed: 结果原文 /{{error}}", runs[0].id));
+        assert_eq!(payload["localized"]["params"]["error"]["key"], "native.writeRun.serializationFailed");
+        assert_eq!(payload["localized"]["params"]["error"]["params"]["id"], runs[0].id);
+        assert!(ui_i18n::render(ui_i18n::Locale::ZhCn, &payload["localized"]).contains("结果序列化失败：结果原文 /{error}"));
+        assert!(matches!(execute_requested::<Value, _, _>(&db, &workspace, "fixture.write", serde_json::json!({}), &request, |_| async { panic!("unsettled write repeated") }).await, Err(CoreError::WorkspaceWriteBusy)));
+        db.close().await;
+        let db = crate::open_database(&root.join("host.db")).await.unwrap();
+        assert_eq!(recover(&db).await.unwrap(), 1); assert_eq!(recover(&db).await.unwrap(), 0);
+        let replay = execute_requested::<Value, _, _>(&db, &workspace, "fixture.write", serde_json::json!({}), &request, |_| async { panic!("recovered write repeated") }).await.unwrap_err();
+        let replay = serde_json::to_value(replay).unwrap();
+        assert_eq!(replay["code"], "outcome_unknown");
+        assert_eq!(replay["message"], "Host restarted before write settlement; inspect local and remote effects before another operation.");
+        assert_eq!(replay["localized"]["key"], "native.writeRun.restartSettlement");
+        assert_eq!(list(&db, "workspace".into(), None).await.unwrap()[0].result.as_ref().unwrap()["error"], replay);
+        assert!(ui_i18n::render(ui_i18n::Locale::ZhCn, &replay["localized"]).contains("请检查本地和远端"));
+        let request = Request::new("changed-record".into(), "main".into());
+        let task_db = db.clone();
+        let error = execute_requested(&db, &workspace, "fixture.changed", serde_json::json!({}), &request, |context| async move {
+            sqlx::query("UPDATE workspace_write_runs SET status='completed' WHERE id=?").bind(context.run_id()).execute(&task_db).await.unwrap();
+            Ok(serde_json::json!({"done":true}))
+        }).await.unwrap_err();
+        assert!(error.is_write_outcome_unknown());
+        let payload = serde_json::to_value(error).unwrap();
+        assert_eq!(payload["localized"]["params"]["error"]["key"], "native.writeRun.settlementChanged");
+        let id = payload["localized"]["params"]["error"]["params"]["id"].as_str().unwrap();
+        assert_eq!(payload["message"], format!("写入结果未知，请核对实际更改后再操作：write {id} record changed before settlement"));
+        let replay = execute_requested::<Value, _, _>(&db, &workspace, "fixture.changed", serde_json::json!({}), &request, |_| async { panic!("missing-result write repeated") }).await.unwrap_err();
+        assert!(replay.is_write_outcome_unknown());
+        let replay = serde_json::to_value(replay).unwrap();
+        assert_eq!(replay["message"], "写入结果未知，请核对实际更改后再操作：stored write has no result");
+        assert_eq!(replay["localized"]["params"]["error"]["key"], "native.writeRun.noStoredResult");
+        assert_eq!(std::fs::read_to_string(root.join("effect")).unwrap(), "once");
+        assert_eq!(list(&db, "workspace".into(), None).await.unwrap().len(), 2);
         db.close().await; std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -443,7 +578,12 @@ mod tests {
         let (root, db, workspace) = fixture().await;
         let request = Request::new("same-request".into(), "main".into());
         for id in ["".to_owned(), "x".repeat(129), "bad id".to_owned()] {
-            assert!(execute_requested::<Value, _, _>(&db, &workspace, "fixture.write", serde_json::json!({}), &Request::new(id, "main".into()), |_| async { panic!("invalid ID executed") }).await.is_err());
+            let error = execute_requested::<Value, _, _>(&db, &workspace, "fixture.write", serde_json::json!({}), &Request::new(id, "main".into()), |_| async { panic!("invalid ID executed") }).await.unwrap_err();
+            let error = serde_json::to_value(error).unwrap();
+            assert_eq!(error["code"], "invalid_workspace_path");
+            assert_eq!(error["message"], "invalid workspace path: invalid workspace write request ID");
+            assert_eq!(error["localized"]["key"], "native.writeRun.invalidRequestId");
+            assert_eq!(ui_i18n::render(ui_i18n::Locale::ZhCn, &error["localized"]), "工作区写入请求 ID 无效。");
         }
         let calls = std::sync::atomic::AtomicUsize::new(0);
         let input = serde_json::json!({"name":"effect"});
@@ -471,7 +611,11 @@ mod tests {
             ("fixture.write", serde_json::json!({"name":"other"}), Request::new("same-request".into(), "main".into())),
             ("fixture.write", input.clone(), Request::new("same-request".into(), "other-window".into())),
         ] {
-            assert!(execute_requested::<Value, _, _>(&db, &workspace, operation, input, &request, |_| async { panic!("conflicting request executed") }).await.is_err());
+            let error = execute_requested::<Value, _, _>(&db, &workspace, operation, input, &request, |_| async { panic!("conflicting request executed") }).await.unwrap_err();
+            let error = serde_json::to_value(error).unwrap();
+            assert_eq!(error["code"], "invalid_workspace_path");
+            assert_eq!(error["message"], "invalid workspace path: write request ID belongs to different input or caller");
+            assert_eq!(error["localized"]["key"], "native.writeRun.requestConflict");
         }
         let denied = Request::new("failed-request".into(), "main".into());
         let original = execute_requested::<Value, _, _>(&db, &workspace, "fixture.error", serde_json::json!({}), &denied, |_| async { Err(CoreError::InvalidWorkspacePath("fixture rejection".into())) }).await.unwrap_err();
@@ -502,7 +646,15 @@ mod tests {
             assert!(pending[0].result.is_none());
             std::fs::write(root.join("effect"), "already happened").unwrap(); Ok(serde_json::json!({"applied":true}))
         }).await;
-        assert!(matches!(unknown, Err(CoreError::WriteOutcomeUnknown(_))));
+        let unknown = unknown.unwrap_err();
+        assert!(unknown.is_write_outcome_unknown());
+        let error = serde_json::to_value(&unknown).unwrap();
+        assert_eq!(error["code"], "outcome_unknown");
+        let reason = &error["localized"]["params"]["error"]["params"];
+        assert_eq!(error["message"], format!("写入结果未知，请核对实际更改后再操作：write {} could not persist its result: {}", reason["id"].as_str().unwrap(), reason["error"].as_str().unwrap()));
+        assert_eq!(error["localized"]["params"]["error"]["key"], "native.writeRun.persistenceFailed");
+        assert!(error["localized"]["params"]["error"]["params"]["error"].as_str().unwrap().contains("fixture settlement failure"));
+        assert!(ui_i18n::render(ui_i18n::Locale::ZhCn, &error["localized"]).contains("无法保存写入"));
         assert_eq!(std::fs::read_to_string(root.join("effect")).unwrap(), "already happened");
         assert!(matches!(crate::workspace_writes::acquire(&db, "workspace", &root).await, Err(CoreError::WorkspaceWriteBusy)));
         sqlx::raw_sql("DROP TRIGGER reject_settlement;").execute(&db).await.unwrap();
@@ -584,11 +736,14 @@ mod tests {
         sqlx::query("UPDATE workspaces SET trusted=0 WHERE id='workspace'").execute(&db).await.unwrap();
         assert!(cancel(&db, "workspace", run_id, "test").await.unwrap());
         let result = tokio::time::timeout(std::time::Duration::from_secs(3), owner).await.unwrap().unwrap().unwrap_err();
-        assert!(matches!(result, CoreError::WriteOutcomeUnknown(_)));
+        assert!(result.is_write_outcome_unknown());
         assert!(result.to_string().contains("BEFORE_CANCEL"));
         assert!(!cancel(&db, "workspace", run_id, "test").await.unwrap());
         let settled = list(&db, "workspace".into(), None).await.unwrap();
         assert!(settled[0].cancel_requested_at.is_some());
+        assert_eq!(settled[0].status,"outcome_unknown");
+        let payload=serde_json::to_value(&result).unwrap();assert_eq!(payload["code"],"outcome_unknown");
+        assert!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&payload["localized"]).contains("BEFORE_CANCEL"));
         sqlx::query("UPDATE workspaces SET trusted=1 WHERE id='workspace'").execute(&db).await.unwrap();
         assert_eq!(git(&["show", "HEAD:source.txt"]), "committed");
         db.close().await;
@@ -598,7 +753,7 @@ mod tests {
         assert_eq!(history.len(), 1); assert_eq!(history[0].id, pending[0].id); assert_eq!(history[0].status, "outcome_unknown");
         assert!(history[0].completed_at.is_some());
         let replay = crate::workspace_git::commit_workspace_changes_requested(&reopened, "workspace".into(), "Ledger fixture\n\nCo-authored-by: Codex <codex@openai.com>".into(), &Request::new("restart-commit".into(), "test".into())).await.unwrap_err();
-        assert_eq!(serde_json::to_value(replay).unwrap()["code"], "outcome_unknown");
+        assert_eq!(serde_json::to_value(replay).unwrap(),payload);
         assert_eq!(list(&reopened, "workspace".into(), None).await.unwrap().len(), 1);
         tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
         assert!(!root.join("late-hook").exists()); assert_eq!(git(&["rev-list", "--count", "HEAD"]), "1");
@@ -623,5 +778,48 @@ mod session_policy_tests {
         assert!(!request.child("child".into()).permits("capability.invoke", &other, false));
         other = input.clone(); other["capability"] = serde_json::json!("plugin.arbitrary.write");
         assert!(!request.child("child".into()).permits("capability.invoke", &other, false));
+    }
+}
+
+#[cfg(test)]
+mod localized_replay_tests {
+    use super::*;
+    #[tokio::test]
+    async fn typed_core_failure_replays_after_reopen_without_repeating_execution() {
+        let root=std::env::temp_dir().join(format!("aibo-core-replay-{}",ulid::Ulid::new()));std::fs::create_dir_all(&root).unwrap();
+        let db=crate::open_database(&root.join("host.db")).await.unwrap();
+        sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'原始名称',1,'now','now')").bind(root.to_string_lossy().as_ref()).execute(&db).await.unwrap();
+        let workspace=crate::workspace_by_id(&db,"w").await.unwrap();
+        let request=Request::with_confirmation("typed-core-failure".into(),"main".into(),|_|async{Ok(true)});
+        let input=serde_json::json!({"raw":"原文 /{error}"});
+        let error=execute_with_context::<Value,_,_,_,_>(&db,&workspace,"git.commit",input.clone(),&request,||async{Ok(serde_json::json!({"fixture":"original"}))},|_|async{
+            Err(CoreError::SessionNotFound("底层原文 /{error}".into()))
+        }).await.unwrap_err();
+        let payload=serde_json::to_value(error).unwrap();
+        assert_eq!(payload["code"],"session_not_found");assert_eq!(payload["message"],"session not found: 底层原文 /{error}");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]),"会话不存在：底层原文 /{error}");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&payload["localized"]),"Session not found: 底层原文 /{error}");
+        db.close().await;let db=crate::open_database(&root.join("host.db")).await.unwrap();
+        let error=execute_with_context::<Value,_,_,_,_>(&db,&workspace,"git.commit",input,&request,||async{Ok(serde_json::json!({"fixture":"original"}))},|_|async{panic!("replay repeated execution")}).await.unwrap_err();
+        assert_eq!(serde_json::to_value(error).unwrap(),payload);
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM workspace_write_runs").fetch_one(&db).await.unwrap(),1);
+        assert!(!root.join(".git").exists());db.close().await;std::fs::remove_dir_all(root).unwrap();
+    }
+    #[tokio::test]
+    async fn failed_git_validation_replays_display_metadata_across_reopen_without_execution() {
+        let root=std::env::temp_dir().join(format!("aibo-localized-replay-{}",ulid::Ulid::new()));std::fs::create_dir_all(&root).unwrap();
+        let db=crate::open_database(&root.join("host.db")).await.unwrap();
+        sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES ('w',?,'raw',1,'now','now')").bind(root.to_string_lossy().as_ref()).execute(&db).await.unwrap();
+        let workspace=crate::workspace_by_id(&db,"w").await.unwrap();let request=Request::new("localized-error".into(),"main".into());
+        let original=crate::workspace_git::commit_workspace_changes_requested(&db,"w".into()," ".into(),&request).await.unwrap_err();
+        let payload=serde_json::to_value(&original).unwrap();assert_eq!(payload["code"],"database_error");assert_eq!(payload["message"],"database error: 提交信息不能为空");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&payload["localized"]),"The commit message cannot be empty.");
+        let input=serde_json::json!({"repositoryId":null,"message":" "});
+        let replay=execute_requested::<Value,_,_>(&db,&workspace,"git.commit",input.clone(),&request,|_|async{panic!("replay executed")}).await.unwrap_err();
+        assert_eq!(serde_json::to_value(replay).unwrap(),payload);
+        db.close().await;let db=crate::open_database(&root.join("host.db")).await.unwrap();
+        let replay=execute_requested::<Value,_,_>(&db,&workspace,"git.commit",input,&request,|_|async{panic!("reopened replay executed")}).await.unwrap_err();assert_eq!(serde_json::to_value(replay).unwrap(),payload);
+        let status:String=sqlx::query_scalar("SELECT status FROM workspace_write_runs WHERE request_id='localized-error'").fetch_one(&db).await.unwrap();assert_eq!(status,"failed");
+        assert!(!root.join(".git").exists());db.close().await;std::fs::remove_dir_all(root).unwrap();
     }
 }

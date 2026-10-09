@@ -1,6 +1,6 @@
 # Presentation 包合同 v1
 
-本合同已接入 App 安装、隔离执行与故障恢复。独立 shadcn / Material 3 呈现包当前为 0.4.2（hostApi 1.1.0），共享工作台为 0.2.3；
+本合同已接入 App 安装、隔离执行与故障恢复。独立 shadcn / Material 3 呈现包当前为 0.4.3（hostApi 1.1.0），共享工作台为 0.2.4；
 首次交付基线见[0.3.0 交付说明](presentation-release-0.3.0.md)，实现与验收边界见
 [退出审计](presentation-plugin-exit-audit.md)。阶段过程另见[重构记录](presentation-plugin-refactor.md)。
 
@@ -110,7 +110,15 @@ self.aiboPresentation = {
 ```
 
 input 包含 surface、宿主 context（workspaceId/sessionId/revision）、data 和主题
-token。渲染函数不能直接调用业务操作：宿主绘制桥仅从真实用户事件构造 intent，
+token，以及可选的 `locale: "zh-CN" | "en"`。新宿主始终提供当前界面语言，切换时
+在同一呈现实例上递增 revision 并更新输入；旧宿主省略 locale，兼容包按简体中文处理。
+locale 只用于显示，不属于 intent.context，不改变动作、身份、权限或用户草稿。
+附件的可选 `displayName` 是宿主按当前语言生成的普通显示名称；缺失时沿用 `path`。
+会话引用的名称来自已识别的固定快照，原始路径、哈希、快照、附件 ID 和动作目标保持原值。
+旧包可忽略显示名，新的包不把显示名用于读取、下载路径或动作身份。
+包自行翻译其界面文案；宿主已提供的 label、用户及能力插件正文保留原文。
+旧呈现包可忽略此字段，继续使用原有文案。输入不会传递翻译函数。
+渲染函数不能直接调用业务操作：宿主绘制桥仅从真实用户事件构造 intent，
 主宿主再次匹配上下文并按业务权限执行。插件伪造 Worker intent 消息不会被转发。
 
 节点 key 在一棵树内唯一，稳定 key 用于恢复焦点、光标与滚动位置。节点只能使用
@@ -495,3 +503,7 @@ semantic 后，原有内置专业协商恢复；未覆盖 semantic 的包仍继�
 ## 订阅额度观测
 
 会话 `usage.limits` 保持数值 `usedPercent` 合同，新增可选 `observedAt`（Unix 秒）表示最近观测。宿主对有观测时间的窗口按 `resetsAt` 判定过期，过期窗口从 `limits` 移到新增可选 `usage.unknownLimits`，不提供虚构百分比。旧呈现忽略新字段，更新后的工作台显示“额度未知”。窗口缺少重置时间时仍显示最近观测，并标注“重置时间未知”。呈现不主动查询账号或推算重置后余额。
+
+工程任务原生输出可携带内部 `localizedOutput` 的 UTF-8 宿主片段信息。
+该字段不属于公开 inspector 快照；宿主在展示边界投影 output 后移除它，
+外部包继续读取普通字符串。命令正文、任务身份、状态及执行动作不因语言变化而改变。

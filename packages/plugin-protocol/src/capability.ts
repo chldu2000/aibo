@@ -6,7 +6,8 @@ export const CAPABILITY_INTERACTIVE_PROTOCOL = '2.1';
 export type CapabilityScope = {kind:'application'} | {kind:'workspace'|'session';id:string};
 export type CapabilityRequest = {scope:CapabilityScope;capability:string;version:string;requestId:string;turnId?:string;input:JsonValue};
 export type CapabilityResult = {instanceId:string;invocationId:string;installationId:string;generationId:string;output:JsonValue};
-export type CapabilityFailure = {code:string;message:string;invocationId:string|null};
+/** Native host display metadata is optional; runtime dependency replies retain their protocol shape. */
+export type CapabilityFailure = {code:string;message:string;invocationId:string|null;localized?:JsonValue};
 export type CapabilityOperation = {capability:string;version:string;operationId:string};
 export type CapabilityInitialization = {protocol:'2.0'|'2.1';instanceId:string;generationId:string;installationId:string;pluginId:string;pluginVersion:string;contributionId:string;privateData:{path:string;formatVersion:1}};
 export type CapabilityInvocation = {

@@ -6,6 +6,14 @@ use crate::{
     plugin_dependencies, plugin_manifest,
 };
 use serde::{Serialize,Deserialize};
+use crate::ui_i18n::HostMessage;
+fn owned(key: &str, diagnostic: &str) -> HostMessage {
+    HostMessage::with_diagnostic(key, json!({}), diagnostic)
+}
+// Preserve the historical code-only diagnostic and explicit broker display ownership.
+fn broker_message(error: crate::capability_broker::Failure) -> HostMessage {
+    HostMessage {diagnostic:error.code, localized:error.localized}
+}
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 use std::{
@@ -29,10 +37,12 @@ pub(crate) struct Contribution {
     pub visibility: String,
     pub available: bool,
     pub issue: Option<String>,
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub localized_issue: Option<Value>,
     #[serde(skip)]
     metadata: Value,
 }
-pub(crate) async fn catalog(db: &SqlitePool) -> Result<Vec<Contribution>, String> {
+pub(crate) async fn catalog(db: &SqlitePool) -> Result<Vec<Contribution>, HostMessage> {
     let rows=sqlx::query("SELECT id,manifest_json FROM plugin_installations WHERE installed=1 AND enabled=1 ORDER BY plugin_id,created_at,id").fetch_all(db).await.map_err(|e|e.to_string())?;
     let mut result = vec![];
     for row in rows {
@@ -56,6 +66,7 @@ pub(crate) async fn catalog(db: &SqlitePool) -> Result<Vec<Contribution>, String
                 title: contribution.metadata["title"].as_str().unwrap().into(),
                 available,
                 issue: (!available).then(|| "依赖或语义版本不可用".into()),
+                localized_issue: (!available).then(|| crate::ui_i18n::display_descriptor("native.semantic.unavailableIssue",json!({}))),
                 metadata: contribution.metadata,
             });
         }
@@ -86,7 +97,7 @@ struct Lease {
 pub(crate) struct SemanticPlugins {
     leases: Arc<Mutex<HashMap<String, Arc<Lease>>>>,
 }
-fn validate(snapshot: &Value) -> Result<(), String> {
+fn validate(snapshot: &Value) -> Result<(), HostMessage> {
     static SCHEMA: OnceLock<jsonschema::Validator> = OnceLock::new();
     static WRITE_SCHEMA: OnceLock<jsonschema::Validator> = OnceLock::new();
     let validator = if snapshot["schema"] == "aibo.semantic-view/v1.1" {
@@ -101,7 +112,7 @@ fn validate(snapshot: &Value) -> Result<(), String> {
         .unwrap()
     })};
     if snapshot.to_string().len() > 262_144 || !validator.is_valid(snapshot) {
-        return Err("invalid_output: semantic snapshot".into());
+        return Err(owned("native.semantic.snapshot", "invalid_output: semantic snapshot"));
     }
     let actions = snapshot["actions"].as_array().unwrap();
     if actions
@@ -111,7 +122,7 @@ fn validate(snapshot: &Value) -> Result<(), String> {
         .len()
         != actions.len()
     {
-        return Err("invalid_output: duplicate action".into());
+        return Err(owned("native.semantic.duplicateAction", "invalid_output: duplicate action"));
     }
     if snapshot["view"]["kind"] == "collection" {
         let view = &snapshot["view"];
@@ -131,7 +142,7 @@ fn validate(snapshot: &Value) -> Result<(), String> {
             || view["page"]["offset"].as_u64().unwrap() + items.len() as u64
                 > view["page"]["total"].as_u64().unwrap()
         {
-            return Err("invalid_output: collection identity or pagination".into());
+            return Err(owned("native.semantic.collectionIdentity", "invalid_output: collection identity or pagination"));
         }
         for item in items {
             if item["values"].as_object().unwrap().len() != keys.len()
@@ -144,11 +155,11 @@ fn validate(snapshot: &Value) -> Result<(), String> {
                                 .contains(&item["values"][p["key"].as_str().unwrap()]))
                 })
             {
-                return Err("invalid_output: collection values".into());
+                return Err(owned("native.semantic.collectionValues", "invalid_output: collection values"));
             }
         }
         if !view["selection"].is_null() && !items.iter().any(|i| i["id"] == view["selection"]) {
-            return Err("invalid_output: selection".into());
+            return Err(owned("native.semantic.outputSelection", "invalid_output: selection"));
         }
     }
     Ok(())
@@ -162,7 +173,7 @@ impl SemanticPlugins {
         workspace: &str,
         installation: &str,
         contribution: &str,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, HostMessage> {
         self.open_requested(
             db,
             broker,
@@ -183,15 +194,15 @@ impl SemanticPlugins {
         installation: &str,
         contribution: &str,
         request_id: Option<String>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, HostMessage> {
         self.open_scoped(db,broker,owner,Scope::Workspace(workspace.into()),installation,contribution,request_id).await
     }
-    async fn open_scoped(&self, db:&SqlitePool, broker:&Broker, owner:&str, scope:Scope, installation:&str, contribution:&str, request_id:Option<String>) -> Result<Value,String> {
+    async fn open_scoped(&self, db:&SqlitePool, broker:&Broker, owner:&str, scope:Scope, installation:&str, contribution:&str, request_id:Option<String>) -> Result<Value, HostMessage> {
         if request_id
             .as_ref()
             .is_some_and(|id| id.is_empty() || id.len() > 160)
         {
-            return Err("invalid_input: open request ID".into());
+            return Err(owned("native.semantic.requestId", "invalid_input: open request ID"));
         }
         let selected = catalog(db)
             .await?
@@ -201,7 +212,7 @@ impl SemanticPlugins {
                     && item.contribution_id == contribution
                     && item.available
             })
-            .ok_or("provider_unavailable: semantic contribution")?;
+            .ok_or_else(|| owned("native.semantic.unavailable", "provider_unavailable: semantic contribution"))?;
         let dependencies = plugin_dependencies::resolve_metadata_pinned(db, installation).await?;
         let mut allowed = vec![installation.to_owned()];
         allowed.extend(
@@ -212,8 +223,8 @@ impl SemanticPlugins {
                 .filter_map(|d| d.installation_id.clone()),
         );
         let kind = match &scope {Scope::Application=>"application",Scope::Workspace(_)=>"workspace",Scope::Session(_)=>"session"};
-        if selected.scope != kind {return Err("permission_denied: contribution scope mismatch".into());}
-        if selected.visibility == "sessionSelected" && kind != "session" || selected.visibility == "workspaceSelected" && kind == "application" {return Err("permission_denied: contribution visibility".into());}
+        if selected.scope != kind {return Err(owned("native.semantic.scope", "permission_denied: contribution scope mismatch"));}
+        if selected.visibility == "sessionSelected" && kind != "session" || selected.visibility == "workspaceSelected" && kind == "application" {return Err(owned("native.semantic.visibility", "permission_denied: contribution visibility"));}
 
         let capability = selected.metadata["provider"]["capability"]
             .as_str()
@@ -226,7 +237,7 @@ impl SemanticPlugins {
         let offers = broker
             .providers(&scope, &capability, &version)
             .await
-            .map_err(|e| e.code)?
+            .map_err(broker_message)?
             .into_iter()
             .filter(|offer| {
                 allowed.contains(&offer.installation_id)
@@ -235,11 +246,10 @@ impl SemanticPlugins {
             .collect::<Vec<_>>();
         if offers.len() != 1 {
             return Err(if offers.is_empty() {
-                "provider_unavailable"
+                owned("native.semantic.providerUnavailable", "provider_unavailable")
             } else {
-                "provider_selection_required"
-            }
-            .into());
+                owned("native.semantic.providerSelection", "provider_selection_required")
+            });
         }
         let provider = &offers[0];
         let generation = ulid::Ulid::new().to_string();
@@ -276,10 +286,10 @@ impl SemanticPlugins {
                     .values()
                     .any(|old| old.owner == owner && old.open_request == lease.open_request)
             {
-                return Err("busy: duplicate open request".into());
+                return Err(owned("native.semantic.duplicateOpen", "busy: duplicate open request"));
             }
             if leases.len() >= 128 {
-                return Err("busy: semantic instance limit".into());
+                return Err(owned("native.semantic.instanceLimit", "busy: semantic instance limit"));
             }
             leases.insert(generation.clone(), lease.clone());
         }
@@ -300,26 +310,26 @@ impl SemanticPlugins {
         item: Option<&str>,
         offset: u64,
         expected: Option<Value>,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, HostMessage> {
         let mut state = lease
             .state
             .try_lock()
-            .map_err(|_| "busy: semantic action")?;
+            .map_err(|_| owned("native.semantic.busy", "busy: semantic action"))?;
         if expected
             .as_ref()
             .is_some_and(|context| &state.snapshot["context"] != context)
         {
-            return Err("stale_context: action revision".into());
+            return Err(owned("native.semantic.revision", "stale_context: action revision"));
         }
         if lease.released.load(Ordering::Acquire) || state.touched.elapsed() > TTL {
-            return Err("stale_context: released view".into());
+            return Err(owned("native.semantic.released", "stale_context: released view"));
         }
         if !catalog(db).await?.iter().any(|entry| {
             entry.installation_id == lease.contribution.installation_id
                 && entry.contribution_id == lease.contribution.contribution_id
                 && entry.available
         }) {
-            return Err("provider_unavailable: semantic contribution".into());
+            return Err(owned("native.semantic.unavailable", "provider_unavailable: semantic contribution"));
         }
         let request = Request {
             turn_id: None,
@@ -333,29 +343,29 @@ impl SemanticPlugins {
         tokio::pin!(invocation);
         let output = loop {
             tokio::select! {
-                result=&mut invocation=>break result.map_err(|e|e.code)?.output,
+                result=&mut invocation=>break result.map_err(broker_message)?.output,
                 _=tokio::time::sleep(Duration::from_millis(20))=>{
                     if lease.released.load(Ordering::Acquire) {broker.cancel(&lease.owner,&format!("semantic:{}",lease.generation)).await;}
                 }
             }
         };
         if lease.released.load(Ordering::Acquire) {
-            return Err("cancelled: released view".into());
+            return Err(owned("native.semantic.cancelled", "cancelled: released view"));
         }
         let (workspace,session): (Option<String>,Option<String>) = match &lease.binding.scope {
             Scope::Application=>(None,None),
             Scope::Workspace(id)=>(Some(id.clone()),None),
-            Scope::Session(id)=>(Some(sqlx::query_scalar("SELECT workspace_id FROM sessions WHERE id=?").bind(id).fetch_one(db).await.map_err(|_|"provider_unavailable: session")?),Some(id.clone())),
+            Scope::Session(id)=>(Some(sqlx::query_scalar("SELECT workspace_id FROM sessions WHERE id=?").bind(id).fetch_one(db).await.map_err(|_|owned("native.semantic.sessionUnavailable", "provider_unavailable: session"))?),Some(id.clone())),
         };
         let mut context=json!({"workspaceId":workspace,"contributionId":lease.contribution.contribution_id,"generation":lease.generation,"revision":state.snapshot["context"]["revision"].as_u64().unwrap_or(0)+1});
         if let Some(session)=session {context["sessionId"]=json!(session);}
         let snapshot = json!({"schema":if lease.contribution.metadata["contractVersion"] == "1.1.0" {"aibo.semantic-view/v1.1"} else {"aibo.semantic-view/v1"},"context":context,"contribution":{"id":lease.contribution.contribution_id,"title":lease.contribution.title,"extensionPoint":lease.contribution.extension_point},"state":output["state"],"view":output["view"],"actions":output["actions"]});
         let declared=lease.contribution.metadata["semanticType"].as_str().unwrap();
         let actual=snapshot["view"]["kind"].as_str().unwrap_or("");
-        if actual != declared && !(declared=="collection" && actual=="detail") {return Err("invalid_output: undeclared semantic kind".into());}
+        if actual != declared && !(declared=="collection" && actual=="detail") {return Err(owned("native.semantic.undeclaredKind", "invalid_output: undeclared semantic kind"));}
         validate(&snapshot)?;
         for action in snapshot["actions"].as_array().unwrap().iter().filter(|action|action["intent"] == "execute") {
-            if !lease.contribution.metadata["writeActions"].as_array().is_some_and(|actions|actions.iter().any(|declared|declared["id"] == action["id"])) || action["input"].to_string().len() > 65536 {return Err("invalid_output: undeclared or oversized write action".into());}
+            if !lease.contribution.metadata["writeActions"].as_array().is_some_and(|actions|actions.iter().any(|declared|declared["id"] == action["id"])) || action["input"].to_string().len() > 65536 {return Err(owned("native.semantic.outputWrite", "invalid_output: undeclared or oversized write action"));}
         }
         state.snapshot = snapshot.clone();
         state.touched = Instant::now();
@@ -367,24 +377,24 @@ impl SemanticPlugins {
         broker: &Broker,
         owner: &str,
         action: SemanticAction,
-    ) -> Result<Value, String> {
+    ) -> Result<Value, HostMessage> {
         let lease = self
             .leases
             .lock()
             .await
-            .get(action.context["generation"].as_str().ok_or("invalid_input: generation")?)
+            .get(action.context["generation"].as_str().ok_or_else(|| owned("native.semantic.generation", "invalid_input: generation"))?)
             .cloned()
-            .ok_or("stale_context: unknown view")?;
+            .ok_or_else(|| owned("native.semantic.unknown", "stale_context: unknown view"))?;
         if lease.owner != owner {
-            return Err("permission_denied: view owner".into());
+            return Err(owned("native.semantic.owner", "permission_denied: view owner"));
         }
         let offset = {
             let state = lease
                 .state
                 .try_lock()
-                .map_err(|_| "busy: semantic action")?;
+                .map_err(|_| owned("native.semantic.busy", "busy: semantic action"))?;
             if state.snapshot["context"] != action.context {
-                return Err("stale_context: action revision".into());
+                return Err(owned("native.semantic.revision", "stale_context: action revision"));
             }
             if !state.snapshot["actions"]
                 .as_array()
@@ -392,7 +402,7 @@ impl SemanticPlugins {
                 .iter()
                 .any(|a| a["id"] == action.action_id && a["enabled"] == true)
             {
-                return Err("unsupported: disabled action".into());
+                return Err(owned("native.semantic.disabledAction", "unsupported: disabled action"));
             }
             if matches!(action.action_id.as_str(),"open-diff" | "inspect") {
                 if !state.snapshot["view"]["items"]
@@ -403,12 +413,12 @@ impl SemanticPlugins {
                             .any(|item| item["id"].as_str() == action.item_id.as_deref())
                     })
                 {
-                    return Err("invalid_input: selection".into());
+                    return Err(owned("native.semantic.inputSelection", "invalid_input: selection"));
                 }
             } else if action.item_id.is_some() {
-                return Err("invalid_input: unexpected item".into());
+                return Err(owned("native.semantic.unexpectedItem", "invalid_input: unexpected item"));
             }
-            if state.snapshot["actions"].as_array().unwrap().iter().any(|a|a["id"] == action.action_id && a["intent"] == "execute") {return Err("permission_denied: write action requires host approval".into());}
+            if state.snapshot["actions"].as_array().unwrap().iter().any(|a|a["id"] == action.action_id && a["intent"] == "execute") {return Err(owned("native.semantic.approval", "permission_denied: write action requires host approval"));}
             let offset = state.snapshot["view"]["page"]["offset"]
                 .as_u64()
                 .unwrap_or(0);
@@ -435,11 +445,11 @@ impl SemanticPlugins {
         broker: &Broker,
         owner: &str,
         generation: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), HostMessage> {
         let mut leases = self.leases.lock().await;
         if let Some(lease) = leases.get(generation) {
             if lease.owner != owner {
-                return Err("permission_denied: view owner".into());
+                return Err(owned("native.semantic.owner", "permission_denied: view owner"));
             }
             lease.released.store(true, Ordering::Release);
             broker
@@ -454,7 +464,7 @@ impl SemanticPlugins {
         broker: &Broker,
         owner: &str,
         request_id: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), HostMessage> {
         let generation = self
             .leases
             .lock()
@@ -494,7 +504,7 @@ impl SemanticPlugins {
 #[tauri::command]
 pub(crate) async fn list_semantic_contributions(
     state: tauri::State<'_, crate::AppState>,
-) -> Result<Vec<Contribution>, String> {
+) -> Result<Vec<Contribution>, HostMessage> {
     catalog(&state.db).await
 }
 #[tauri::command]
@@ -506,7 +516,7 @@ pub(crate) async fn open_semantic_contribution(
     request_id: Option<String>,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, crate::AppState>,
-) -> Result<Value, String> {
+) -> Result<Value, HostMessage> {
     state
         .semantic_plugins
         .open_scoped(
@@ -525,7 +535,7 @@ pub(crate) async fn act_semantic_contribution(
     action: SemanticAction,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, crate::AppState>,
-) -> Result<Value, String> {
+) -> Result<Value, HostMessage> {
     state
         .semantic_plugins
         .act(&state.db, &state.capability_broker, window.label(), action)
@@ -536,7 +546,7 @@ pub(crate) async fn release_semantic_contribution(
     generation: String,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, crate::AppState>,
-) -> Result<(), String> {
+) -> Result<(), HostMessage> {
     state
         .semantic_plugins
         .release(&state.capability_broker, window.label(), &generation)
@@ -548,7 +558,7 @@ pub(crate) async fn cancel_semantic_open(
     request_id: String,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, crate::AppState>,
-) -> Result<(), String> {
+) -> Result<(), HostMessage> {
     state
         .semantic_plugins
         .cancel_open(&state.capability_broker, window.label(), &request_id)
@@ -702,6 +712,43 @@ mod tests {
             .unwrap()
     }
     #[tokio::test]
+    async fn display_guards_preserve_lease_revision_and_prevent_provider_calls() {
+        let f = Fixture::new().await;
+        let snapshot = f.open().await;
+        let generation = snapshot["context"]["generation"].as_str().unwrap();
+        let calls: i64 = sqlx::query_scalar("SELECT count(*) FROM capability_invocations").fetch_one(&f.db).await.unwrap();
+        let mut stale = action(&snapshot, "refresh", None);
+        stale.context["revision"] = json!(99);
+        let guards = [
+            f.host.act(&f.db, &f.broker, "other", action(&snapshot,"refresh",None)).await.unwrap_err(),
+            f.host.act(&f.db, &f.broker, "main", stale).await.unwrap_err(),
+            f.host.act(&f.db, &f.broker, "main", action(&snapshot,"not-declared",None)).await.unwrap_err(),
+            f.host.act(&f.db, &f.broker, "main", action(&snapshot,"open-diff",Some("missing"))).await.unwrap_err(),
+            f.host.act(&f.db, &f.broker, "main", action(&snapshot,"refresh",Some("unexpected"))).await.unwrap_err(),
+            f.host.release(&f.broker,"other",generation).await.unwrap_err(),
+        ];
+        for (error,(key,diagnostic)) in guards.into_iter().zip([
+            ("owner","permission_denied: view owner"),("revision","stale_context: action revision"),
+            ("disabledAction","unsupported: disabled action"),("inputSelection","invalid_input: selection"),
+            ("unexpectedItem","invalid_input: unexpected item"),("owner","permission_denied: view owner"),
+        ]) {
+            assert_eq!(error.diagnostic,diagnostic);
+            assert_eq!(error.localized.as_ref().unwrap()["key"],format!("native.semantic.{key}"));
+            assert_ne!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,&error.display()),diagnostic);
+        }
+        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM capability_invocations").fetch_one(&f.db).await.unwrap(),calls);
+        let lease = f.host.leases.lock().await.get(generation).unwrap().clone();
+        assert!(!lease.released.load(Ordering::Acquire));
+        assert_eq!(lease.state.lock().await.snapshot,snapshot);
+        let next = f.host.act(&f.db,&f.broker,"main",action(&snapshot,"refresh",None)).await.unwrap();
+        assert_eq!(next["context"]["generation"],snapshot["context"]["generation"]);
+        assert_eq!(next["context"]["revision"],2);
+        assert_eq!(next["view"],snapshot["view"]);
+        assert_eq!(fs::read(f.root.join("workspace/one.txt")).unwrap(),b"hello from installed Git\n");
+        f.finish().await;
+    }
+
+    #[tokio::test]
     async fn installed_git_runs_without_agent_or_view_and_rejects_path_escape() {
         let fixture = Fixture::new().await;
         let result = fixture.call("changes", json!({})).await.unwrap();
@@ -754,7 +801,7 @@ mod tests {
             .host
             .act(&fixture.db, &fixture.broker, "other", inspect.clone())
             .await
-            .unwrap_err()
+            .unwrap_err().diagnostic
             .contains("permission_denied"));
         assert!(fixture
             .host
@@ -776,7 +823,7 @@ mod tests {
             .host
             .act(&fixture.db, &fixture.broker, "main", inspect)
             .await
-            .unwrap_err()
+            .unwrap_err().diagnostic
             .contains("stale_context"));
         fixture
             .host
@@ -864,7 +911,7 @@ mod tests {
             .await
             .unwrap();
         assert!(crate::plugin_registry::uninstall(&fixture.db, &fixture.root.join("data"), &fixture.git)
-            .await.unwrap_err().contains("plugin_references"), "referenced providers cannot be silently removed");
+            .await.unwrap_err().diagnostic.contains("plugin_references"), "referenced providers cannot be silently removed");
         let catalog = catalog(&fixture.db).await.unwrap();
         assert_eq!(catalog.len(), 1);
         assert!(!catalog[0].available);
@@ -945,7 +992,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap()
-            .unwrap_err()
+            .unwrap_err().diagnostic
             .contains("cancelled"));
         let pid = fs::read_to_string(pid_file).unwrap();
         tokio::time::timeout(Duration::from_secs(3), async {
@@ -1044,7 +1091,7 @@ mod tests {
                     action(&next, "open-diff", Some("worktree:one.txt"))
                 )
                 .await
-                .unwrap_err()
+                .unwrap_err().diagnostic
                 .contains("permission_denied"));
         }
         fixture.finish().await;

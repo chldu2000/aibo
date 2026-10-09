@@ -1,3 +1,8 @@
+import { LocalizedError, toErrorText } from './error-utils.ts';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
+import { translate } from '../../../packages/i18n/index.js';
+import type { Locale } from '../../../packages/i18n/index.js';
+
 export const hostConfirmationCategories = [
   { id: 'git', label: 'Git 操作', description: '提交、暂存、回退、分支、远程同步与 Stash。' },
   { id: 'projectAction', label: '工程动作', description: '运行 Test、Lint、Build 和自定义命令。' },
@@ -5,6 +10,13 @@ export const hostConfirmationCategories = [
   { id: 'capabilityWrite', label: '插件能力写入', description: '通过宿主调用插件提供的写入能力。' },
   { id: 'viewWrite', label: '插件视图写入', description: '执行插件视图中的写入操作。' },
 ] as const;
+export function localizedHostConfirmationCategories(locale: Locale) {
+  return hostConfirmationCategories.map(category => ({
+    id: category.id,
+    label: translate(locale, `confirmation.${category.id}.label`),
+    description: translate(locale, `confirmation.${category.id}.description`),
+  }));
+}
 export type HostConfirmationCategory = typeof hostConfirmationCategories[number]['id'];
 export type HostConfirmationPolicy = 'always-allow' | 'ask';
 export type HostConfirmationPreferences = Record<HostConfirmationCategory, HostConfirmationPolicy>;
@@ -12,7 +24,7 @@ export type HostConfirmationState = {
   value: HostConfirmationPreferences | null;
   loading: boolean;
   saving: boolean;
-  error: string | null;
+  error: LocalizedText | null;
 };
 export const emptyHostConfirmation = (): HostConfirmationState => ({ value: null, loading: false, saving: false, error: null });
 
@@ -26,11 +38,11 @@ export function createHostConfirmationController(ports: {
   const publish = () => ports.changed({ ...state, value: state.value ? { ...state.value } : null });
   function validated(value: HostConfirmationPreferences): HostConfirmationPreferences {
     if (!value || !hostConfirmationCategories.every(({ id }) => value[id] === 'always-allow' || value[id] === 'ask')) {
-      throw new Error('宿主操作确认设置返回了无效数据，请重试。');
+      throw new LocalizedError('error.confirmationPreferences');
     }
     return { ...value };
   }
-  const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+  const message = toErrorText;
   return {
     async load() {
       if (state.saving) return;

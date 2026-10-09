@@ -1,3 +1,6 @@
+import { readNativeMessage } from './error-utils.ts';
+import { localizedMessage } from '../../../packages/i18n/index.js';
+import type { LocalizedText, MessageKey, MessageParams } from '../../../packages/i18n/index.js';
 import type { SetNotice } from './notifications';
 import { normalizeMessageQueue } from './message-queue.ts';
 import { parseBackgroundTask } from '../../../packages/presentation-workbench/background-tasks.js';
@@ -20,7 +23,8 @@ export type AgentEventHandlerContext = {
   pendingApprovals: ApprovalRequest[];
   pendingUserInputs: UserInputRequest[];
   lastSubmittedPrompt: string | null;
-  setAgentActivity: (sessionId: string, active: boolean, label?: string) => void;
+  setAgentActivity: (sessionId: string, active: boolean, label?: LocalizedText) => void;
+  setContextCompacting?: (sessionId: string, compacting: boolean) => void;
   updateWorkspaceSessions: (
     workspaceId: string,
     updater: (items: Session[]) => Session[],
@@ -31,7 +35,7 @@ export type AgentEventHandlerContext = {
   setQueueSnapshot: (queue: AgentQueueSnapshot | null) => void;
   setTimeline: (timeline: TimelineItem[]) => void;
   refreshTimeline?: (sessionId: string) => void | Promise<void>;
-  setRetry: (prompt: string | null, reason: string | null) => void;
+  setRetry: (prompt: string | null, reason: LocalizedText | null) => void;
   setNotice: SetNotice;
   refreshSessions: (workspaceId: string) => void | Promise<void>;
   refreshTurnChangeSet?: (sessionId: string) => void | Promise<void>;
@@ -47,6 +51,13 @@ export function eventTimelineItemId(event: Pick<AgentEvent, 'turnId'>, itemId: s
 
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
   const selectedSessionId = context.selectedSessionId;
+  if (event.type === 'compaction.started') context.setContextCompacting?.(event.sessionId, true);
+  if (['compaction.completed', 'turn.completed', 'turn.failed', 'adapter.crashed'].includes(event.type)) {
+    context.setContextCompacting?.(event.sessionId, false);
+  }
+  if (event.type === 'session.state_changed') {
+    context.setContextCompacting?.(event.sessionId, event.payload.state === 'compacting');
+  }
   if (event.type === 'background-task.updated') {
     if (event.sessionId !== selectedSessionId) return;
     const content = JSON.stringify(event.payload);
@@ -93,41 +104,37 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   // tool completes and before Pi starts its next response). Keep that phase
   // observable instead of deriving activity only from the last timeline row.
   if (event.type === 'turn.started') {
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, '正在准备响应…'));
+    context.setAgentActivity(event.sessionId, true, agentMessage(event, 'activity.preparing'));
     if (event.sessionId === selectedSessionId) void context.refreshTimeline?.(event.sessionId);
   }
   if (event.type === 'message.delta') {
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, '正在生成回复…'));
+    context.setAgentActivity(event.sessionId, true, agentMessage(event, 'activity.generating'));
   }
   if (event.type === 'reasoning.updated') {
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, '正在思考…'));
+    context.setAgentActivity(event.sessionId, true, agentMessage(event, 'activity.thinking'));
   }
   if (event.type === 'tool.started' || event.type === 'tool.updated') {
-    const tool = payloadString(event.payload.itemType) ?? payloadString(event.payload.toolName) ?? '工具';
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, `正在执行 ${tool}…`));
+    const tool = payloadString(event.payload.itemType) ?? payloadString(event.payload.toolName);
+    context.setAgentActivity(event.sessionId, true, agentMessage(event, tool ? 'activity.executing' : 'activity.executingTool', tool ? {tool} : {}));
   }
   if (event.type === 'tool.completed') {
-    const tool = payloadString(event.payload.itemType) ?? payloadString(event.payload.toolName) ?? '工具';
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, `${tool} 已完成，等待模型继续响应…`));
+    const tool = payloadString(event.payload.itemType) ?? payloadString(event.payload.toolName);
+    context.setAgentActivity(event.sessionId, true, agentMessage(event, tool ? 'activity.namedToolDone' : 'activity.toolDone', tool ? {tool} : {}));
   }
   if (event.type === 'approval.requested') {
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, '等待你的确认…'));
+    context.setAgentActivity(event.sessionId, true, agentMessage(event, 'activity.waitingApproval'));
   }
   if (event.type === 'approval.resolved') {
     const decision = payloadString(event.payload.decision);
     const tool = payloadString(event.payload.tool);
-    const label = decision === 'accept'
-      ? tool
-        ? `已允许，正在执行 ${tool}…`
-        : '已允许，正在执行工具…'
-      : '已拒绝，等待模型继续响应…';
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, label));
+    const key = decision === 'accept' ? (tool ? 'activity.allowedTool' : 'activity.allowed') : 'activity.denied';
+    context.setAgentActivity(event.sessionId, true, agentMessage(event, key, tool ? {tool} : {}));
   }
   if (event.type === 'user_input.requested') {
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, '等待你的输入…'));
+    context.setAgentActivity(event.sessionId, true, agentMessage(event, 'activity.waitingInput'));
   }
   if (event.type === 'user_input.resolved') {
-    context.setAgentActivity(event.sessionId, true, agentLabel(event, '回答已收到，继续执行…'));
+    context.setAgentActivity(event.sessionId, true, agentMessage(event, 'activity.answerReceived'));
   }
 
   if (event.type === 'user_input.requested') {
@@ -153,9 +160,9 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     }
   }
   if (event.type === 'retry.started' || event.type === 'compaction.started') {
-    context.setAgentActivity(event.sessionId, true, agentLabel(
+    context.setAgentActivity(event.sessionId, true, agentMessage(
       event,
-      event.type === 'compaction.started' ? '正在压缩上下文…' : '正在重试请求…',
+      event.type === 'compaction.started' ? 'activity.compactingAgent' : 'activity.retrying',
     ));
   }
   if (event.type === 'compaction.completed') {
@@ -163,7 +170,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     context.setAgentActivity(
       event.sessionId,
       event.turnId !== null,
-      agentLabel(event, failed ? '上下文压缩未完成，等待模型继续响应…' : '上下文压缩完成，等待模型继续响应…'),
+      agentMessage(event, failed ? 'activity.compactionIncomplete' : 'activity.compactionComplete'),
     );
   }
   if (
@@ -196,7 +203,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     const agent = eventAgentLabel(event);
     const attempt = event.payload.attempt;
     context.setAgentActivity(event.sessionId, true,
-      `${agent} 请求暂未成功，等待重试${typeof attempt === 'number' ? `（第 ${attempt} 次）` : ''}…`);
+      localizedMessage(typeof attempt === 'number' ? 'activity.retryAttempt' : 'activity.retryPending', {agent, ...(typeof attempt === 'number' ? {count: attempt} : {})}));
   }
   if (event.type === 'retry.completed') {
     context.setAgentActivity(event.sessionId, event.payload.success !== false);
@@ -220,7 +227,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
       ),
     );
     if (event.sessionId === selectedSessionId) {
-      context.setNotice('Codex 原线程不可恢复，已创建新的远端线程；本地时间线已保留。', 'warning');
+      context.setNotice(localizedMessage('event.bindingRecovered'), 'warning');
     }
   }
 
@@ -229,7 +236,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     void context.refreshExecutionProfile?.(event.sessionId);
     void context.refreshTimeline?.(event.sessionId);
     const label = stringPayload(event.payload.label);
-    if (label) context.setNotice(event.payload.contextReset === true ? `已清空上下文并切换到 ${label}。` : `已切换到 ${label}。`, 'success');
+    if (label) context.setNotice(localizedMessage(event.payload.contextReset === true ? 'event.contextReset' : 'event.controlChanged', {label}), 'success');
   }
 
   if (event.type === 'approval.requested') {
@@ -283,12 +290,12 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     const agentLabel = context.selectedAgent ?? 'Agent';
     context.setNotice(
       discarded > 0
-        ? `${agentLabel} 进程已退出，${discarded} 个待审批请求已清除；请重新发送。`
-        : `${agentLabel} 进程已退出，会话已中断；可重新发送以恢复。`, 'error',
+        ? localizedMessage('event.crashedApprovals', {agent: agentLabel, count: discarded})
+        : localizedMessage('event.crashed', {agent: agentLabel}), 'error',
     );
     context.setRetry(
       latestUserPrompt(context.timeline, context.lastSubmittedPrompt, event.turnId),
-      stringPayload(event.payload.reason) ?? 'Agent 进程异常退出',
+      readNativeMessage(event.payload.localizedReason) ?? stringPayload(event.payload.reason) ?? localizedMessage('event.retryCrashed'),
     );
   }
 
@@ -350,7 +357,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
     const externalMessageId = eventTimelineItemId(event, stringPayload(event.payload.itemId) ?? `tool:${event.eventId}`)!;
     const toolName = stringPayload(event.payload.itemType);
     const delta = event.type === 'tool.updated' ? stringPayload(event.payload.delta) : null;
-    const summary = stringPayload(event.payload.summary) ?? delta ?? '工具操作';
+    const summary = stringPayload(event.payload.summary) ?? delta ?? '';
     const output = stringPayload(event.payload.output);
     const statusValue = stringPayload(event.payload.status);
     const status: TimelineItem['status'] =
@@ -423,7 +430,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   if (event.sessionId === selectedSessionId && event.type === 'turn.failed') {
     context.setRetry(
       latestUserPrompt(context.timeline, context.lastSubmittedPrompt, event.turnId),
-      errorPayload(event.payload.error) ?? '本回合执行失败',
+      errorPayload(event.payload.error) ?? localizedMessage('event.retryFailed'),
     );
   }
 
@@ -448,8 +455,8 @@ function queueFromEvent(event: AgentEvent): AgentQueueSnapshot {
   return normalizeMessageQueue(event.payload, event.sessionId, event.occurredAt);
 }
 
-function agentLabel(event: AgentEvent, label: string): string {
-  return `${eventAgentLabel(event)} ${label}`;
+function agentMessage(event: AgentEvent, key: MessageKey, params: MessageParams = {}): LocalizedText {
+  return localizedMessage(key, {agent: eventAgentLabel(event), ...params});
 }
 
 function eventAgentLabel(event: AgentEvent): string {

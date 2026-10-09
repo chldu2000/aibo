@@ -10,6 +10,7 @@ let pid = pid_t(CommandLine.arguments[1])!
 let marker = CommandLine.arguments[2]
 let decision = CommandLine.arguments[3]
 let titleMarker = CommandLine.arguments.count > 4 ? CommandLine.arguments[4] : "确认插件操作"
+let bodyMarker = CommandLine.arguments.count > 5 ? CommandLine.arguments[5] : ""
 guard AXIsProcessTrusted() else { fail("Accessibility automation is unavailable") }
 let app = AXUIElementCreateApplication(pid)
 NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateIgnoringOtherApps])
@@ -35,7 +36,7 @@ while Date() < deadline {
         let elements = descendants(window)
         let texts = elements.flatMap { element in [kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute, kAXRoleAttribute, kAXSubroleAttribute].compactMap { value(element, $0) as? String } }
         lastTexts += texts
-        guard texts.contains(where: { $0.contains(marker) }), texts.contains(where: { $0.contains(titleMarker) }) else { continue }
+        guard texts.contains(where: { $0.contains(marker) }), texts.contains(where: { $0.contains(titleMarker) }), bodyMarker.isEmpty || texts.contains(where: { $0.contains(bodyMarker) }) else { continue }
         if let button = elements.first(where: { (value($0, kAXRoleAttribute) as? String) == kAXButtonRole && (value($0, kAXTitleAttribute) as? String) == decision }) {
             guard AXUIElementPerformAction(button, kAXPressAction as CFString) == .success else { fail("Native dialog click failed") }
             print("clicked isolated dialog: \(decision)")

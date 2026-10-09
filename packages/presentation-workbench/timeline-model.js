@@ -1,3 +1,4 @@
+import {presentationTranslator} from './i18n.js';
 export function groupTimelineItems(items, groupSystemItems = false) {
   const grouped = [];
   let toolItems = [];
@@ -50,20 +51,21 @@ function isGroupableSystemItem(item) {
     && item.entryType !== 'compaction';
 }
 
-export function toolLabel(item) {
+export function toolLabel(item, locale='zh-CN') {
+  const t=presentationTranslator(locale);
   const explicitName = item.toolName?.trim();
   const firstLine = item.content
     .split('\n')
     .map((line) => line.trim())
     .find((line) => line.length > 0);
-  if (!explicitName) return truncateToolLabel(firstLine ?? '工具操作');
+  if (!explicitName) return truncateToolLabel(firstLine ?? t('external.toolOperation'));
 
   const friendlyName = {
-    commandExecution: '命令执行',
-    fileRead: '读取文件',
-    fileChange: '修改文件',
-    mcpToolCall: 'MCP 工具',
-    webSearch: '网页搜索',
+    commandExecution: t('external.toolCommand'),
+    fileRead: t('external.toolRead'),
+    fileChange: t('external.toolChange'),
+    mcpToolCall: t('external.toolMcp'),
+    webSearch: t('external.toolWeb'),
   };
   const label = friendlyName[explicitName] ?? explicitName.replace(/([a-z])([A-Z])/g, '$1 $2');
   if (firstLine && firstLine !== explicitName && !firstLine.startsWith('{') && firstLine.length <= 64) {

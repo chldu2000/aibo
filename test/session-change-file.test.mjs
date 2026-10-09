@@ -33,3 +33,15 @@ test('row identities distinguish repositories, delimiters and arbitrary filename
   const pairs=[['one','same.txt'],['two','same.txt'],['a-b','c'],['a','b-c'],['a','b c'],['a','b%20c']];
   assert.equal(new Set(pairs.map(pair=>sessionChangeRowId(...pair))).size,pairs.length);
 });
+
+test('localized change labels preserve paths, markers, staging side and statistics', () => {
+  const input = {...file,staged:true,stagedStats:{additions:6,deletions:2},previousPath:'原目录/原文件.ts',kind:'renamed'};
+  const zh = sessionChangeFile(input,'zh-CN');
+  const en = sessionChangeFile(input,'en');
+  assert.equal(zh.stateLabel,'部分暂存');
+  assert.equal(en.stateLabel,'Partially staged');
+  assert.equal(en.kindLabel,'Renamed');
+  const {stateLabel:zhState,kindLabel:zhKind,statsTitle:zhTitle,...zhData} = zh;
+  const {stateLabel:enState,kindLabel:enKind,statsTitle:enTitle,...enData} = en;
+  assert.deepEqual(enData,zhData);
+});

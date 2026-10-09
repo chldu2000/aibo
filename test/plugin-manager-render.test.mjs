@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { translate } from '../packages/i18n/index.js';
 import { createServer } from 'vite';
 
 test('plugin manager hides uninstalled releases and shows the empty state in both default themes', async () => {
@@ -25,16 +26,18 @@ test('plugin manager hides uninstalled releases and shows the empty state in bot
       onInstall() {}, onEnabledChange() {},
       onUninstall() {}, onConfigure() {}, onCreateSession() {},
     };
-    for (const kit of ['light', 'dark']) {
+    const { language } = await server.ssrLoadModule('/src/lib/i18n/runtime.ts');
+    for (const locale of ['zh-CN', 'en']) for (const kit of ['light', 'dark']) {
+      language.set({preference:locale,locale});
       setUiTheme(kit);
       const mixed = render(Manager, { props: { ...props, installations: [removed, installed] } }).body;
       assert.doesNotMatch(mixed, /Removed plugin|已卸载/, kit);
       assert.match(mixed, /Installed plugin/);
       assert.match(mixed, /external.installed/);
-      assert.doesNotMatch(mixed, /尚未安装外部插件/);
+      assert.ok(!mixed.includes(translate(locale, 'plugins.empty')));
       const empty = render(Manager, { props: { ...props, installations: [removed] } }).body;
       assert.doesNotMatch(empty, /Removed plugin|已卸载/);
-      assert.match(empty, /尚未安装外部插件/);
+      assert.ok(empty.includes(translate(locale, 'plugins.empty')));
     }
   } finally {
     await server.close();

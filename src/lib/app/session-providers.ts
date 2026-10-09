@@ -1,3 +1,5 @@
+import { translate } from '../../../packages/i18n/index.js';
+import type { Locale } from '../../../packages/i18n/index.js';
 import { readAgentIcon, type AgentIcon } from '../../../packages/plugin-protocol/src/agent-icon.ts';
 
 type Contributions = {
@@ -51,13 +53,13 @@ export function sessionProviderIcon(installations: SessionProviderInstallation[]
 }
 
 /** Includes installed but unavailable choices for the host chooser; creation still uses readySessionProviders. */
-export function sessionProviderChoices(installations: SessionProviderInstallation[]): (SessionProviderChoice & { unavailableReason?: string })[] {
+export function sessionProviderChoices(installations: SessionProviderInstallation[], locale: Locale = 'zh-CN'): (SessionProviderChoice & { unavailableReason?: string })[] {
   const ready = new Set(readySessionProviders(installations).map(choice => choice.id));
   return installations.filter(installation => installation.installed).flatMap(installation =>
     sessionProviders(installation).map(provider => {
       const id = JSON.stringify([installation.id, provider.id]);
       return { id, installationId: installation.id, contributionId: provider.id, label: provider.displayName, icon: provider.icon,
-        ...(!ready.has(id) ? { unavailableReason: !installation.enabled ? '未启用' : installation.activationIssues?.length ? '运行环境不可用' : '缺少运行依赖' } : {}) };
+        ...(!ready.has(id) ? { unavailableReason: !installation.enabled ? translate(locale, 'provider.disabled') : installation.activationIssues?.length ? translate(locale, 'provider.runtimeUnavailable') : translate(locale, 'provider.dependenciesMissing') } : {}) };
     }),
   );
 }

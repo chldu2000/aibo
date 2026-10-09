@@ -1,3 +1,5 @@
+import { localizedMessage } from '../../../packages/i18n/index.js';
+import type { LocalizedText } from '../../../packages/i18n/index.js';
 import type { SetNotice } from './notifications';
 import type {
   ApprovalRequest,
@@ -8,7 +10,7 @@ import {
   replaceSession,
   upsertSession,
 } from './session-transitions';
-import { toErrorMessage } from './error-utils';
+import { toErrorText } from './error-utils';
 
 export type SessionLifecycleControllerContext = {
   api: {
@@ -31,7 +33,7 @@ export type SessionLifecycleControllerContext = {
   getPendingApprovals: () => ApprovalRequest[];
   setPendingApprovals: (value: ApprovalRequest[]) => void;
   setBusy: (value: boolean) => void;
-  setErrorMessage: (value: string | null) => void;
+  setErrorMessage: (value: LocalizedText | null) => void;
   setNotice: SetNotice;
   setArchiveConfirmationSessionId: (value: string | null) => void;
   setArchivingSessionId: (value: string | null) => void;
@@ -72,9 +74,9 @@ export function createSessionLifecycleController(
       const renamed = await context.api.renameSession(sessionId, label);
       context.setWorkspaceSessionMap(replaceSession(context.getWorkspaceSessionMap(), renamed));
       cancelRenameSession();
-      context.setNotice('会话名称已更新。', 'success');
+      context.setNotice(localizedMessage('app.sessionRenamed'), 'success');
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }
@@ -95,10 +97,10 @@ export function createSessionLifecycleController(
       ));
       if (context.getSelectedSessionId() === closingId) context.clearSelectedSessionContext();
       context.setNotice(
-        '会话已关闭；已保存的时间线仍可在下次启动时读取。', 'success',
+        localizedMessage('lifecycle.closed'), 'success',
       );
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }
@@ -108,7 +110,7 @@ export function createSessionLifecycleController(
     const target = sessionId ? context.findSession(sessionId) : null;
     if (!target || !context.getDesktop() || target.archived || !target.capabilities.includes('session.fork') || target.id === context.getArchivingSessionId()) return;
     if (running(target)) {
-      context.setErrorMessage('请等待当前 turn 完成后再创建分支。');
+      context.setErrorMessage(localizedMessage('lifecycle.forkBusy'));
       return;
     }
     context.setBusy(true);
@@ -123,10 +125,10 @@ export function createSessionLifecycleController(
       }
       void context.refreshCodexThreads(forked.workspaceId);
       context.setNotice(throughTurnId
-        ? '会话分支已创建，已复制到选定回复。'
-        : '会话分支已创建，已复制最近一条已完成 turn。', 'success');
+        ? localizedMessage('lifecycle.forkReply')
+        : localizedMessage('lifecycle.forkLatest'), 'success');
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }
@@ -136,7 +138,7 @@ export function createSessionLifecycleController(
     const target = sessionId ? context.findSession(sessionId) : null;
     if (!target || !context.getDesktop() || target.archived || context.getArchivingSessionId() !== null) return;
     if (running(target)) {
-      context.setErrorMessage('请等待当前 turn 完成后再归档。');
+      context.setErrorMessage(localizedMessage('lifecycle.archiveBusy'));
       return;
     }
     context.setArchiveConfirmationSessionId(target.id);
@@ -160,9 +162,9 @@ export function createSessionLifecycleController(
       if (invalidatedCurrentSession) context.clearSelectedSessionContext();
       void context.refreshCodexThreads(archived.workspaceId);
       await context.refreshSessions(archived.workspaceId);
-      context.setNotice(`会话已归档；本地时间线仍保留。`, 'success');
+      context.setNotice(localizedMessage('lifecycle.archived'), 'success');
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       if (context.getArchivingSessionId() === sessionId) {
         context.setArchivingSessionId(null);
@@ -186,9 +188,9 @@ export function createSessionLifecycleController(
       }
       if (restored.capabilities.includes('session.snapshot')) void context.refreshCodexThreads(restored.workspaceId);
       await context.refreshSessions(restored.workspaceId);
-      context.setNotice(`会话已取消归档，可以继续发送消息。`, 'success');
+      context.setNotice(localizedMessage('lifecycle.unarchived'), 'success');
     } catch (error) {
-      context.setErrorMessage(toErrorMessage(error));
+      context.setErrorMessage(toErrorText(error));
     } finally {
       context.setBusy(false);
     }

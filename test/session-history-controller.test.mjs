@@ -1,3 +1,4 @@
+import { translateMessage } from '../packages/i18n/index.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
@@ -32,7 +33,7 @@ test('history paging retains read scope, returns to newer/latest messages, and r
     await controller.older();assert.equal(state.pageNumber,2);assert.equal(calls.at(-1).before.sequence,'9223372036854775806');
     await controller.newer();assert.equal(state.pageNumber,1);assert.equal(calls.at(-1).before,null);
     await controller.older();await controller.latest();assert.equal(state.pageNumber,1);assert.equal(calls.at(-1).before,null);
-    wrong=true;await controller.refresh();assert.match(state.error,/不匹配/);assert.equal(state.page.session.workspaceId,'w');
+    wrong=true;await controller.refresh();assert.match(translateMessage('zh-CN',state.error),/不匹配/);assert.equal(state.page.session.workspaceId,'w');
     assert(calls.every(call=>call.workspaceId==='w'&&call.id==='archived'));
   }finally{controller?.close();await server.close();}
 });
@@ -47,4 +48,35 @@ test('search anchor survives older/newer navigation and latest explicitly leaves
     await controller.older();assert.equal(calls.at(-1),'read');await controller.newer();assert.equal(calls.at(-1),'hit');
     await controller.latest();assert.equal(state.targetMessageId,null);assert.equal(calls.at(-1),'read');controller.close();
   }finally{await server.close();}
+});
+
+
+test('history translates explicit system display metadata without changing the canonical page, cursor, scope, or raw bodies',async()=>{
+ const server=await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+ try{
+  const {createSessionHistoryController,sessionHistoryPresentation}=await server.ssrLoadModule('/src/lib/app/session-history-controller.ts');
+  const keys=['workspace','cursor','sequence','messageWorkspace','messageRemoved'].map(key=>'native.history.'+key);
+  let state, failure=null,reads=0;
+  const cursor={schema:'aibo.session-history-cursor/v1',workspaceId:'w',sessionId:'s',createdAt:'time',sequence:'7',id:'last'};
+  const display={schema:'aibo.host-message/v1',key:'native.session.controlChanged',params:{label:'原文 {label}'}};
+  const source={...page('w','s',cursor),items:['system','user','assistant','tool'].map(role=>({id:role,sessionId:'s',role,content:'审批后切换到 原文 {label}',localizedContent:display}))};
+  const controller=createSessionHistoryController({list:async()=>[session('w','s')],read:async()=>{reads++;if(failure)throw failure;return source;},publish:next=>state=next});
+  await controller.open('w','s');const canonical=structuredClone(state),count=reads;
+  for(const locale of ['zh-CN','en','zh-CN']){
+   const projected=sessionHistoryPresentation(state,locale);
+   assert.equal(projected.page.items[0].content,locale==='en'?'Switched to 原文 {label} after approval':'审批后切换到 原文 {label}');
+   assert.deepEqual(projected.page.nextBefore,cursor);
+   for(const item of projected.page.items.slice(1))assert.equal(item.content,'审批后切换到 原文 {label}');
+   assert(projected.page.items.every(item=>!('localizedContent' in item)));
+   assert.deepEqual(state,canonical);assert.equal(reads,count);
+  }
+  for(const key of keys){
+   failure={code:key.endsWith('Workspace')||key.endsWith('Removed')?'session_operation_error':'invalid_workspace_path',message:'原始诊断 {key}',localized:{schema:'aibo.host-message/v1',key,params:{}}};
+   await controller.refresh(); const count=reads;
+   for(const locale of ['en','zh-CN'])assert.notEqual(translateMessage(locale,sessionHistoryPresentation(state,locale).error),failure.message);
+   assert.equal(reads,count);assert.deepEqual(state.page,source,'a failed refresh preserves the last complete page');
+  }
+  failure={message:'原始诊断 {key}',localized:{schema:'aibo.host-message/v1',key:'native.history.unknown',params:{}}};await controller.refresh();assert.equal(translateMessage('en',state.error),failure.message);
+  failure=null;await controller.refresh();assert.equal(state.error,null);controller.close();
+ }finally{await server.close();}
 });

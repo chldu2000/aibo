@@ -96,6 +96,7 @@ mod tests {
         let mut command = shell("touch ready; (sleep 1; touch escaped) & wait"); command.current_dir(&root);
         let owner = tokio::spawn(execute(command, Duration::from_secs(30), 100));
         tokio::time::timeout(Duration::from_secs(3), async { while !root.join("ready").exists() { tokio::time::sleep(Duration::from_millis(10)).await; } }).await.unwrap();
+        assert!(!root.join("escaped").exists(), "descendant side effect occurred before cancellation");
         owner.abort(); let _ = owner.await;
         tokio::time::sleep(Duration::from_millis(1200)).await;
         assert!(!root.join("escaped").exists());

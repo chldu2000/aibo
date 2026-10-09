@@ -15,12 +15,13 @@ impl Category {
             Self::CapabilityWrite => "capabilityWrite", Self::ViewWrite => "viewWrite",
         }
     }
-    pub(crate) fn title(self) -> &'static str {
-        match self {
-            Self::Git => "Aibo · 确认 Git 写入", Self::ProjectAction => "Aibo · 确认工程动作",
-            Self::TurnRestore => "Aibo · 确认恢复本轮变更", Self::CapabilityWrite => "Aibo · 确认能力写入",
-            Self::ViewWrite => "Aibo · 确认视图写入",
-        }
+    pub(crate) fn title(self, locale: crate::ui_i18n::Locale) -> String {
+        let key = match self {
+            Self::Git => "native.confirmGit", Self::ProjectAction => "native.confirmProjectAction",
+            Self::TurnRestore => "native.confirmTurnRestore", Self::CapabilityWrite => "native.confirmCapabilityWrite",
+            Self::ViewWrite => "native.confirmViewWrite",
+        };
+        crate::ui_i18n::message(locale, key, &serde_json::json!({}))
     }
 }
 
@@ -33,7 +34,7 @@ impl Policy {
     fn parse(value: &str) -> Result<Self, CoreError> {
         match value {
             "always-allow" => Ok(Self::AlwaysAllow), "ask" => Ok(Self::Ask),
-            _ => Err(CoreError::Initialization("Invalid host confirmation policy".into())),
+            _ => Err(crate::ui_i18n::initialization_message(crate::ui_i18n::HostMessage::with_diagnostic("native.confirm.invalidPolicy",serde_json::json!({}),"Invalid host confirmation policy"))),
         }
     }
 }
@@ -47,7 +48,7 @@ pub(crate) async fn save(db: &SqlitePool, category: Category, policy: Policy) ->
     // Update only this category, so another window's unrelated setting is preserved.
     let changed = sqlx::query("UPDATE host_confirmation_preferences SET policy=? WHERE category=?")
         .bind(policy.key()).bind(category.key()).execute(db).await?.rows_affected();
-    if changed != 1 { return Err(CoreError::Initialization("Host confirmation preference is missing".into())); }
+    if changed != 1 { return Err(crate::ui_i18n::initialization_message(crate::ui_i18n::HostMessage::with_diagnostic("native.confirm.missingPreference",serde_json::json!({}),"Host confirmation preference is missing"))); }
     read(db).await
 }
 
@@ -77,6 +78,35 @@ mod tests {
     use super::*;
 
     const CATEGORIES: [Category; 5] = [Category::Git, Category::ProjectAction, Category::TurnRestore, Category::CapabilityWrite, Category::ViewWrite];
+
+    #[tokio::test]
+    async fn missing_confirmation_preferences_preserve_display_and_do_not_grant_or_change_other_categories() {
+        let root=tempfile::tempdir().unwrap();let db=crate::open_database(&root.path().join("host.db")).await.unwrap();
+        save(&db,Category::ProjectAction,Policy::Ask).await.unwrap();
+        sqlx::query("DELETE FROM host_confirmation_preferences WHERE category='git'").execute(&db).await.unwrap();
+        let before=read(&db).await.unwrap();
+        let payload=serde_json::to_value(save(&db,Category::Git,Policy::Ask).await.unwrap_err()).unwrap();
+        assert_eq!(payload["code"],"initialization_error");assert_eq!(payload["message"],"app initialization failed: Host confirmation preference is missing");
+        assert_eq!(payload["localized"]["key"],"native.confirm.missingPreference");
+        assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,&payload["localized"]),"宿主操作确认设置缺失。");
+        assert_eq!(confirm(&db,Category::Git,||async {panic!("missing setting prompted or granted")}).await.unwrap_err(),"confirmation_unavailable: 无法读取宿主操作确认设置");
+        assert_eq!(read(&db).await.unwrap(),before);
+        assert!(sqlx::query("UPDATE host_confirmation_preferences SET policy='raw /{policy}' WHERE category='projectAction'").execute(&db).await.is_err());
+        let invalid=serde_json::to_value(Policy::parse("raw /{policy}").unwrap_err()).unwrap();
+        assert_eq!(invalid["code"],"initialization_error");assert_eq!(invalid["message"],"app initialization failed: Invalid host confirmation policy");
+        assert_eq!(invalid["localized"]["key"],"native.confirm.invalidPolicy");assert_eq!(read(&db).await.unwrap(),before);
+        sqlx::query("INSERT INTO host_confirmation_preferences(category,policy) VALUES('git','always-allow')").execute(&db).await.unwrap();
+        assert!(confirm(&db,Category::Git,||async {panic!("restored allow setting prompted")}).await.unwrap());
+        assert_eq!(read(&db).await.unwrap()["projectAction"],Policy::Ask);db.close().await;
+    }
+
+    #[test]
+    fn all_confirmation_titles_use_the_selected_language() {
+        for category in CATEGORIES {
+            assert!(category.title(crate::ui_i18n::Locale::En).starts_with("Aibo · Confirm"));
+            assert!(category.title(crate::ui_i18n::Locale::ZhCn).starts_with("Aibo · 确认"));
+        }
+    }
 
     #[tokio::test]
     async fn categories_default_allow_persist_independently_and_prompt_only_when_requested() {

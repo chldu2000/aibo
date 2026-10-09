@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { locale } from '$lib/i18n/runtime';
   import { untrack } from 'svelte';
   import type { PresentationProps } from '../presentation-props';
   import type { ExternalPresentation } from '../external-presentation';
@@ -24,7 +25,7 @@
       if (!registration.package.release.manifest.snapshotSchemas.includes(snapshot.schema)) {
         fail(Error('unsupported_snapshot_schema')); return;
       }
-      void preparePresentationSandbox(target, registration.package, semanticInput(snapshot, version, registration.theme), intent => {
+      void preparePresentationSandbox(target, registration.package, semanticInput(snapshot, version, registration.theme, $locale), intent => {
         if (intent.event !== 'click') return;
         try { props.onAction(resolveSemanticIntent(latest, intent.id)); }
         catch (error) { fail(error); }
@@ -34,19 +35,20 @@
         instance.activate();
         if (revision > version) {
           if (!registration.package.release.manifest.snapshotSchemas.includes(latest.schema)) throw Error('unsupported_snapshot_schema');
-          instance.update(semanticInput(latest, revision, registration.theme));
+          instance.update(semanticInput(latest, revision, registration.theme, $locale));
         }
       }).catch(error => { if (!abort.signal.aborted) fail(error); });
     });
     return () => { abort.abort(); candidate?.dispose(); if (mounted === candidate) mounted = null; };
   });
   $effect(() => {
+    const displayLocale = $locale;
     latest = $state.snapshot(props.snapshot);
     const version = ++revision;
     if (mounted) {
       try {
         if (!presentation.package.release.manifest.snapshotSchemas.includes(latest.schema)) throw Error('unsupported_snapshot_schema');
-        mounted.update(semanticInput(latest, version, presentation.theme));
+        mounted.update(semanticInput(latest, version, presentation.theme, displayLocale));
       } catch (error) { fail(error); }
     }
   });
