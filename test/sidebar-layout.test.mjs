@@ -84,3 +84,20 @@ test('external sidebar actions bind current session, open tab and semantic snaps
  assert(nodes.some(node=>node.text==='Example'));assert(nodes.some(node=>node.events?.click===action.token));
  assert.equal(new Set(nodes.map(node=>node.key)).size,nodes.length);
 });
+
+
+test('tool rail reorder persists independently of pane membership and active view',()=>{
+ let state=changeSidebarLayout(defaultSidebarLayout(),{kind:'open',target:plugin});
+ state=changeSidebarLayout(state,{kind:'split',tabId:'context'});
+ state=changeSidebarLayout(state,{kind:'float',tabId:sidebarTabId(plugin)});
+ const panes=structuredClone(state.panes),activePane=state.activePane;
+ state=changeSidebarLayout(state,{kind:'reorder',tabId:sidebarTabId(plugin),before:'git'});
+ assert.deepEqual(state.tabs.map(tab=>tab.id),[sidebarTabId(plugin),'git','context']);
+ assert.deepEqual(state.panes,panes);
+ assert.equal(state.activePane,activePane);
+ assert.deepEqual(restoreSidebarLayout(state),state);
+ assert.equal(changeSidebarLayout(state,{kind:'reorder',tabId:'git',before:'missing'}),state);
+ assert.equal(changeSidebarLayout(state,{kind:'reorder',tabId:'missing'}),state);
+ state=changeSidebarLayout(state,{kind:'reorder',tabId:'git'});
+ assert.deepEqual(state.tabs.map(tab=>tab.id),[sidebarTabId(plugin),'context','git']);
+});

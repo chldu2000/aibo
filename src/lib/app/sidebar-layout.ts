@@ -41,7 +41,13 @@ export function changeSidebarLayout(previous: SidebarLayout, operation: SidebarO
     const owner = find(operation.tabId);
     if (!owner) return previous;
     if (operation.kind === 'focus') { owner.active = operation.tabId; layout.activePane = owner.id; }
-    else if (operation.kind === 'close') {
+    else if (operation.kind === 'reorder') {
+      const index = layout.tabs.findIndex(tab => tab.id === operation.tabId);
+      if (operation.before === operation.tabId || (operation.before && !layout.tabs.some(tab => tab.id === operation.before))) return previous;
+      const [tab] = layout.tabs.splice(index, 1);
+      const before = layout.tabs.findIndex(value => value.id === operation.before);
+      layout.tabs.splice(before < 0 ? layout.tabs.length : before, 0, tab);
+    } else if (operation.kind === 'close') {
       remove(operation.tabId); layout.tabs = layout.tabs.filter(value => value.id !== operation.tabId);
     } else if (operation.kind === 'move') {
       const destination = layout.panes.find(value => value.id === operation.paneId);

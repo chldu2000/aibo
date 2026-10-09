@@ -745,13 +745,14 @@
   const sidebarTitles = $derived(Object.fromEntries(sidebar.layout.tabs.map(tab => [tab.id, tab.target.kind === 'git' ? 'Git' : tab.target.kind === 'context' ? $t('side.context') : installedContributions.find(item => tab.target.kind === 'plugin' && item.installationId === tab.target.installationId && item.contributionId === tab.target.contributionId)?.title ?? tab.target.contributionId])));
   const sidebarEntries = $derived([{label:'Git',value:JSON.stringify({kind:'git'})},{label:$t('side.context'),value:JSON.stringify({kind:'context'})}, ...installedContributions.map(item => ({label:item.title,value:JSON.stringify({kind:'plugin',installationId:item.installationId,contributionId:item.contributionId}),disabled:!contributionAvailable(item)}))]);
   const externalSidebar = $derived<PresentationSidebar>({layout:sidebar.layout,titles:sidebarTitles,entries:sidebarEntries,views:Object.fromEntries(Object.entries(sidebar.views).map(([id,view])=>[id,installedWorkbenchPresentation(view,$locale)]))});
-  const sidebarGitVisible = $derived(sidePanelOpen && sidebar.layout.panes.some(pane => pane.active === 'git'));
-  const sidebarContextVisible = $derived(sidePanelOpen && sidebar.layout.panes.some(pane => pane.active === 'context'));
+  const sidebarGitVisible = $derived(sidePanelOpen && sidebar.layout.panes.some(pane => pane.active === 'git' && (!railCollapsed || pane.floating)));
+  const sidebarContextVisible = $derived(sidePanelOpen && sidebar.layout.panes.some(pane => pane.active === 'context' && (!railCollapsed || pane.floating)));
   const sidebarScope = $derived(JSON.stringify([selectedWorkspaceId,selectedSessionId]));
   function sidebarOperation(operation: SidebarOperation) {
     sidebarController.apply(operation);
     if (operation.kind === 'open' || operation.kind === 'focus') {
       sidePanelOpen = true;
+      sidebarRailCollapsed = false;
       const id = operation.kind === 'focus' ? operation.tabId : operation.target.kind;
       if (id === 'git' || id === 'context') sidePanelView = id;
     }
@@ -759,7 +760,7 @@
   function openSidebarPlugin(item: InstalledContribution) {
     // Older workbench packages do not consume the optional sidebar snapshot.
     if (presentationPackages.active?.release.manifest.surfaces?.includes('workbench')) { installedTool = item; return; }
-    sidebarController.openPlugin(item); sidePanelOpen = true;
+    sidebarController.openPlugin(item); sidePanelOpen = true; sidebarRailCollapsed = false;
   }
   import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { createLanguageController } from '$lib/app/language-controller';
@@ -1392,6 +1393,8 @@
     untrack(() => { void pluginOperation(refreshPluginInstallations); });
   });
   let sidePanelOpen = $state(savedWorkbenchLayout.auxiliaryOpen);
+  let sidebarRailCollapsed = $state(savedWorkbenchLayout.auxiliaryCollapsed);
+  const railCollapsed = $derived(sidebarRailCollapsed && !presentationPackages.active?.release.manifest.surfaces?.includes('workbench'));
   let sidePanelView = $state<SidePanelView>(savedWorkbenchLayout.activeView);
   const inspectorOpen = $derived(sidePanelOpen);
   let navigationCollapsed = $state(savedWorkbenchLayout.navigationCollapsed);
@@ -1408,12 +1411,12 @@
   let inspectorWidth = $state(savedWorkbenchLayout.auxiliaryWidth);
   let viewportWidth = $state(1280);
   let workspaceGridElement = $state<HTMLElement | null>(null);
-  $effect(() => { writeWorkbenchLayout(draftStorage, presentationWindowId(), { navigationCollapsed, navigationWidth: workspaceSidebarWidth, auxiliaryWidth: inspectorWidth, auxiliaryOpen: sidePanelOpen, activeView: sidePanelView }); });
+  $effect(() => { writeWorkbenchLayout(draftStorage, presentationWindowId(), { navigationCollapsed, navigationWidth: workspaceSidebarWidth, auxiliaryWidth: inspectorWidth, auxiliaryOpen: sidePanelOpen, auxiliaryCollapsed: sidebarRailCollapsed, activeView: sidePanelView }); });
   // Saved widths stay as the user's preference; narrow windows only compress the displayed columns.
   const displayedColumns = $derived(fitColumnWidths({
     space: sideColumnSpace(viewportWidth, navigationCollapsed, sidePanelOpen),
     navigation: { width: workspaceSidebarWidth, min: workspaceColumnMin, collapsed: navigationCollapsed, collapsedWidth: 56 },
-    inspector: { width: inspectorWidth, min: inspectorColumnMin, open: sidePanelOpen },
+    inspector: { width: railCollapsed ? 56 : inspectorWidth, min: railCollapsed ? 56 : inspectorColumnMin, open: sidePanelOpen },
   }));
   const navigationDisplayWidth = $derived(displayedColumns.navigation);
   const inspectorDisplayWidth = $derived(displayedColumns.inspector);
@@ -3853,7 +3856,7 @@
   </section>
 {/snippet}
 {#snippet auxiliaryResize(guard, slot)}
-    {#if sidePanelOpen}
+    {#if sidePanelOpen && !railCollapsed}
       <ColumnSplitter
         label={$t('app.resizeAuxiliary')}
         width={inspectorWidth}
@@ -3864,7 +3867,7 @@
 {/snippet}
 {#snippet auxiliary(guard)}
     {#if sidePanelOpen}
-      <SidebarDock layout={sidebar.layout} titles={sidebarTitles} entries={sidebarEntries} context={JSON.stringify([selectedWorkspaceId,selectedSessionId])} onOperation={guard('onSidebarOperation', sidebarOperation)}>
+      <SidebarDock collapsed={railCollapsed} onCollapsedChange={guard('onSidebarCollapsedChange', (value: boolean) => { endColumnResize(); sidebarRailCollapsed = value; })} layout={sidebar.layout} titles={sidebarTitles} entries={sidebarEntries} context={JSON.stringify([selectedWorkspaceId,selectedSessionId])} onOperation={guard('onSidebarOperation', sidebarOperation)}>
       {#snippet children(tabId)}
       {#if tabId === 'context'}
       <Inspector

@@ -256,6 +256,7 @@ try {
     };
     resized=await dragBoundary('调整导航宽度',32);
     const auxiliaryWidth=await dragBoundary('调整侧边面板宽度',-24);
+    await frame.locator('.workbench-inspector').waitFor({state:'visible'});
     assert.equal(await frame.locator('.workbench-inspector').evaluate(element=>Math.round(element.getBoundingClientRect().width)),auxiliaryWidth);
     const auxiliarySplitter=frame.getByRole('separator',{name:'调整侧边面板宽度',exact:true});
     await auxiliarySplitter.focus();await auxiliarySplitter.press('ArrowRight');

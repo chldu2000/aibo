@@ -2336,5 +2336,18 @@
   "sidebar.unavailable": "此插件当前不可用。启用插件后可恢复此标签页。",
   "sidebar.move": "移动面板",
   "sidebar.resize": "调整浮动面板大小",
-  "sidebar.plugins": "插件视图"
+  "sidebar.plugins": "插件视图",
+  "sidebar.rail": "工具轨",
+  "sidebar.addView": "添加视图",
+  "sidebar.searchViews": "搜索视图",
+  "sidebar.openView": "打开",
+  "sidebar.openBelow": "在下方打开",
+  "sidebar.removeView": "从工具轨移除",
+  "sidebar.collapseViews": "收起工具面板",
+  "sidebar.expandViews": "展开工具面板",
+  "sidebar.moveUp": "上移",
+  "sidebar.moveDown": "下移",
+  "sidebar.noViews": "没有匹配的视图",
+  "sidebar.returnMain": "移回主面板",
+  "sidebar.viewsEmpty": "从工具轨添加一个视图"
 }

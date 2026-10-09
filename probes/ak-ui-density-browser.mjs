@@ -16,12 +16,12 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
   await page.locator('.workspace-item').waitFor();
   if(await page.locator('.workspace-item').getAttribute('aria-expanded')!=='true')await page.locator('.workspace-item').click();
-  await page.getByRole('tab',{name:'上下文',exact:true}).click();
+  await page.locator('.sidebar-tool-rail').getByRole('button',{name:'上下文',exact:true}).click();
   await page.getByRole('button',{name:'刷新上下文',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'刷新上下文',exact:true}).count(),1,'workspace refresh remains reachable before a session is selected');
   await page.locator('.session-item').click();
   assert.equal(await page.getByRole('button',{name:'刷新上下文',exact:true}).count(),1,'selected session keeps only one refresh action');
-  await page.getByRole('tab',{name:'上下文',exact:true}).click();
+  await page.locator('.sidebar-tool-rail').getByRole('button',{name:'上下文',exact:true}).click();
   const contextTab=page.locator('#side-panel-tab-context');
   const sideGitTab=page.locator('#side-panel-tab-git');
   await contextTab.focus();await page.keyboard.press('ArrowLeft');
@@ -231,7 +231,7 @@ try {
   assert.match(await page.getByRole('button',{name:'选择仓库',exact:true}).textContent(),/tools/,'selecting another repository updates the trigger');
   await page.screenshot({path:output+'/git-dark.png'});
   await checkHistoryFileAlignment('dark');
-  await page.getByRole('tab',{name:'上下文',exact:true}).click();
+  await page.locator('.sidebar-tool-rail').getByRole('button',{name:'上下文',exact:true}).click();
   await page.screenshot({path:output+'/context-dark.png'});
   await page.setViewportSize({width:1000,height:760});
   await row.hover();await more.click();await menu.waitFor();

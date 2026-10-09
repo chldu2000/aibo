@@ -612,17 +612,38 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .file-preview-line-number { text-align: right; padding-inline: 8px 12px; user-select: none; }
 
 /* Session sidebar docking: layout shared by the built-in kits. */
-.sidebar-dock { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; gap: 4px; overflow: auto; }
+/* Tool entry order is independent of the docked/floating pane arrangement. */
+.sidebar-dock { position: relative; display: flex; height: 100%; min-height: 0; min-width: 0; padding-right: 56px; }
+.sidebar-dock.collapsed { padding-right: 56px; }
+.sidebar-dock-panes { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; gap: 4px; overflow: auto; }
 .sidebar-dock-pane { display: flex; flex-direction: column; flex: 1 1 0; min-height: 180px; min-width: 0; overflow: hidden; }
+.sidebar-dock-pane[hidden] { display: none; }
 .sidebar-dock-pane.floating { position: fixed; z-index: 35; flex: none; max-width: 100vw; max-height: calc(100dvh - 60px); }
-.sidebar-dock-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px; flex: none; }
-.sidebar-dock-toolbar > :first-child { flex: 1; min-width: 0; }
-.sidebar-dock-tabs { display: flex; overflow-x: auto; flex: none; min-height: 38px; }
-.sidebar-dock-tab { display: flex; align-items: center; flex: none; max-width: 240px; }
-.sidebar-dock-tab > [role='tab'] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-dock-tab > :last-child { flex: none; width: 28px; min-width: 28px; }
+.sidebar-dock-header { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 8px 0 14px; flex: none; }
+.sidebar-dock-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-dock-header > button { flex: none; width: 32px; min-width: 32px; height: 36px; touch-action: none; }
 .sidebar-dock-content { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
 .sidebar-dock-content[hidden] { display: none; }
 .sidebar-dock-content > .inspector { height: 100%; min-height: 0; }
 .sidebar-dock-resize { align-self: end; flex: none; touch-action: none; }
-.sidebar-dock-toolbar button { touch-action: none; }
+.sidebar-dock-empty { padding: 16px; }
+.sidebar-tool-rail { position: absolute; right: 0; top: 0; bottom: 0; z-index: 4; display: flex; flex-direction: column; width: 56px; padding: 6px 4px; }
+.sidebar-tool-rail:hover, .sidebar-tool-rail:has(:focus-visible) { width: min(224px, calc(100vw - 24px)); }
+.sidebar-tool-list { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 4px; overflow-y: auto; }
+.sidebar-tool-row { flex-direction: row-reverse; position: relative; display: flex; flex: none; align-items: center; }
+.sidebar-tool-rail .sidebar-tool { display: flex; justify-content: flex-start; gap: 8px; flex: none; width: 100%; min-height: 44px; padding: 0; overflow: hidden; }
+.sidebar-tool-row .sidebar-tool { flex: 1; min-width: 0; }
+.sidebar-tool-icon { display: flex; align-items: center; justify-content: center; position: relative; flex: none; width: 44px; height: 44px; }
+.sidebar-tool-visible { position: absolute; right: 7px; bottom: 7px; width: 4px; height: 4px; }
+.sidebar-tool-label { order: -1; flex: 1; padding-left: 8px; display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root .app-shell .sidebar-tool-rail .sidebar-tool-more { display: none; flex: none; width: 32px; min-width: 32px; }
+.sidebar-tool-rail:is(:hover,:has(:focus-visible)) .sidebar-tool-label { display: inline; }
+:root .app-shell .sidebar-tool-rail:is(:hover,:has(:focus-visible)) .sidebar-tool-more { display: flex; }
+.sidebar-tool-collapse { margin-top: 8px; }
+.sidebar-view-menu { position: fixed; inset: auto; margin: 0; width: min(248px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; padding: 4px; }
+.sidebar-view-menu:popover-open { display: flex; flex-direction: column; gap: 2px; }
+.sidebar-view-menu .ui-button { display: flex; flex: none; justify-content: flex-start; gap: 10px; width: 100%; min-height: 40px; padding: 8px 12px; }
+.sidebar-menu-title { padding: 8px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-view-picker { max-height: min(380px, calc(100dvh - 16px)); }
+.sidebar-picker-results { overflow-y: auto; min-height: 0; }
+.sidebar-picker-results .ui-button > span { flex: 1; overflow: hidden; text-overflow: ellipsis; text-align: left; }

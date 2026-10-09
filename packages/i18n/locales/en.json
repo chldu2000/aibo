@@ -2429,5 +2429,18 @@
   "sidebar.unavailable": "This plugin is unavailable. Enable it to restore this tab.",
   "sidebar.move": "Move pane",
   "sidebar.resize": "Resize floating pane",
-  "sidebar.plugins": "Plugin views"
+  "sidebar.plugins": "Plugin views",
+  "sidebar.rail": "Tool rail",
+  "sidebar.addView": "Add view",
+  "sidebar.searchViews": "Search views",
+  "sidebar.openView": "Open",
+  "sidebar.openBelow": "Open below",
+  "sidebar.removeView": "Remove from tool rail",
+  "sidebar.collapseViews": "Collapse tool panels",
+  "sidebar.expandViews": "Expand tool panels",
+  "sidebar.moveUp": "Move up",
+  "sidebar.moveDown": "Move down",
+  "sidebar.noViews": "No matching views",
+  "sidebar.returnMain": "Move to main panel",
+  "sidebar.viewsEmpty": "Add a view from the tool rail"
 }

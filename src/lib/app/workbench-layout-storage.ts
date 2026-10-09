@@ -3,11 +3,12 @@ export type WorkbenchLayoutState = {
   navigationCollapsed: boolean;
   auxiliaryWidth: number;
   auxiliaryOpen: boolean;
+  auxiliaryCollapsed: boolean;
   activeView: 'git' | 'context';
 };
 type StoragePort = { getItem(key: string): string | null; setItem(key: string, value: string): void };
 const key = (windowId: string) => `aibo.workbench-layout.v1.${encodeURIComponent(windowId)}`;
-export const defaultWorkbenchLayout = (): WorkbenchLayoutState => ({ navigationCollapsed: false, navigationWidth: 260, auxiliaryWidth: 340, auxiliaryOpen: true, activeView: 'git' });
+export const defaultWorkbenchLayout = (): WorkbenchLayoutState => ({ navigationCollapsed: false, navigationWidth: 260, auxiliaryWidth: 340, auxiliaryOpen: true, auxiliaryCollapsed: false, activeView: 'git' });
 function normalize(value: unknown): WorkbenchLayoutState {
   const defaults = defaultWorkbenchLayout();
   if (!value || typeof value !== 'object') return defaults;
@@ -17,6 +18,7 @@ function normalize(value: unknown): WorkbenchLayoutState {
     navigationCollapsed: record.navigationCollapsed === true,
     navigationWidth: width(record.navigationWidth, 180, defaults.navigationWidth),
     auxiliaryWidth: width(record.auxiliaryWidth, 220, defaults.auxiliaryWidth),
+    auxiliaryCollapsed: record.auxiliaryCollapsed === true,
     auxiliaryOpen: typeof record.auxiliaryOpen === 'boolean' ? record.auxiliaryOpen : defaults.auxiliaryOpen,
     activeView: record.activeView === 'context' ? 'context' : 'git',
   };

@@ -1,50 +1,115 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { tick } from 'svelte';
-  import { Button, Icon, Select } from '$lib/ui-kit';
+  import { Button, Icon, Input, Separator } from '$lib/ui-kit';
+  import type { UiIconName } from '$lib/ui-kit';
   import { t } from '$lib/i18n/runtime';
+  import { sidebarTabId } from '$lib/app/sidebar-layout';
   import type { SidebarLayout, SidebarOperation, SidebarPane, SidebarTarget } from '$lib/app/sidebar-layout';
-  let { layout, titles, entries, context, onOperation, children }: {
+  let { layout, titles, entries, context, collapsed = false, onCollapsedChange, onOperation, children }: {
     layout: SidebarLayout; titles: Record<string, string>; entries: {label:string;value:string;disabled?:boolean}[];
-    context: string; onOperation: (operation: SidebarOperation) => void; children: Snippet<[string]>;
+    context: string; collapsed?: boolean; onCollapsedChange: (collapsed: boolean) => void;
+    onOperation: (operation: SidebarOperation) => void; children: Snippet<[string]>;
   } = $props();
   let viewportWidth = $state(1400), viewportHeight = $state(900);
+  const prefix = $props.id();
   const mime = 'application/x-aibo-sidebar-tab';
-  let dragging = $state<string | null>(null);
+  const tabElement = (id: string) => `${prefix}-tool-${encodeURIComponent(id)}`;
+  const owner = (id: string) => layout.panes.find(pane => pane.tabs.includes(id));
+  const icon = (id: string): UiIconName => id === 'git' ? 'branch' : id === 'context' ? 'diagnostics' : 'plugins';
+  let menu: HTMLDivElement;
+  let picker: HTMLDivElement;
+  let menuTab = $state<string | null>(null);
+  let menuPosition = $state({ left: 0, top: 0 });
+  let search = $state('');
+  let dragOver = $state<string | null>(null);
+  let returnFocus: HTMLElement | null = null;
+  const menuPane = $derived(menuTab ? owner(menuTab) : undefined);
+  const filteredEntries = $derived(entries.filter(entry => entry.label.toLocaleLowerCase().includes(search.toLocaleLowerCase())));
+
+  $effect(() => {
+    // Menus and in-progress gestures cannot cross session boundaries.
+    void context;
+    menu?.hidePopover(); picker?.hidePopover();
+    menuTab = null; dragOver = null; pointer = null;
+  });
+  function position(trigger: HTMLElement) {
+    const bounds = trigger.getBoundingClientRect();
+    returnFocus = trigger;
+    menuPosition = { left: Math.max(8, Math.min(bounds.right - 248, viewportWidth - 256)), top: Math.max(8, Math.min(bounds.bottom + 4, viewportHeight - 380)) };
+  }
+  async function showMenu(event: MouseEvent | KeyboardEvent, id: string) {
+    event.preventDefault();
+    picker?.hidePopover();
+    position(event.currentTarget as HTMLElement); menuTab = id;
+    const scope = context;
+    // Some WebViews dispatch contextmenu before pointerup; wait until native light-dismiss has finished.
+    if (event instanceof MouseEvent && event.type === 'contextmenu' && event.buttons !== 0) {
+      await new Promise<void>(resolve => window.addEventListener('pointerup', () => setTimeout(resolve, 0), {once:true}));
+    }
+    await tick();
+    if (scope === context && menu.isConnected && owner(id)) menu.showPopover();
+  }
+  function menuToggle(event: ToggleEvent) {
+    if (event.newState === 'open') (event.currentTarget as HTMLElement).querySelector<HTMLElement>('input, button:not(:disabled)')?.focus();
+  }
+  function closeMenu() {
+    menu.hidePopover();
+    if (returnFocus?.getClientRects().length) returnFocus.focus();
+    else if (menuTab) document.getElementById(tabElement(menuTab))?.focus();
+  }
+  async function act(operation: SidebarOperation) {
+    closeMenu();
+    onOperation(operation);
+    if (['focus', 'split', 'dock', 'move'].includes(operation.kind)) onCollapsedChange(false);
+    await tick();
+    if ('tabId' in operation) {
+      const id = layout.tabs.some(tab => tab.id === operation.tabId) ? operation.tabId : layout.tabs[0]?.id;
+      if (id) document.getElementById(tabElement(id))?.focus();
+      else document.getElementById(`${prefix}-add`)?.focus();
+    }
+  }
+  function focus(id: string) {
+    onOperation({kind:'focus',tabId:id}); onCollapsedChange(false);
+  }
+  function reorder(id: string, delta: number) {
+    const index = layout.tabs.findIndex(tab => tab.id === id);
+    if (index + delta < 0 || index + delta >= layout.tabs.length) return;
+    onOperation({kind:'reorder',tabId:id,before:layout.tabs[index + (delta < 0 ? -1 : 2)]?.id});
+  }
+  async function navigate(event: KeyboardEvent, id: string) {
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { await showMenu(event,id); return; }
+    const delta = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+    if (event.altKey && delta) { event.preventDefault(); reorder(id,delta); return; }
+    const index = layout.tabs.findIndex(tab => tab.id === id);
+    const next = event.key === 'Home' ? layout.tabs[0] : event.key === 'End' ? layout.tabs.at(-1)
+      : delta ? layout.tabs[(index + delta + layout.tabs.length) % layout.tabs.length] : null;
+    if (next) { event.preventDefault(); document.getElementById(tabElement(next.id))?.focus(); }
+  }
+  function menuKeys(event: KeyboardEvent) {
+    if (event.key === 'Escape') { event.preventDefault(); closeMenu(); return; }
+    const buttons = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : event.key === 'ArrowDown' ? (index + 1) % buttons.length : event.key === 'ArrowUp' ? (index - 1 + buttons.length) % buttons.length : -1;
+    if (next >= 0) { event.preventDefault(); buttons[next]?.focus(); }
+  }
   function drag(event: DragEvent, id: string) {
-    dragging = id;
-    event.dataTransfer?.setData(mime, JSON.stringify({context,id}));
+    event.dataTransfer?.setData(mime,JSON.stringify({context,id}));
     if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
   }
-  function drop(event: DragEvent, paneId: string, before?: string) {
-    event.preventDefault(); event.stopPropagation();
+  function drop(event: DragEvent, before: string) {
+    event.preventDefault(); dragOver = null;
     try {
       const value = JSON.parse(event.dataTransfer?.getData(mime) ?? '');
-      if (value.context === context && layout.tabs.some(tab => tab.id === value.id)) onOperation({kind:'move',tabId:value.id,paneId,before});
+      if (value.context === context && layout.tabs.some(tab => tab.id === value.id)) onOperation({kind:'reorder',tabId:value.id,before});
     } catch { /* Ignore unrelated drags. */ }
-    dragging = null;
   }
-  function splitDrop(event: DragEvent) {
-    event.preventDefault(); event.stopPropagation();
-    try {
-      const value = JSON.parse(event.dataTransfer?.getData(mime) ?? '');
-      if (value.context === context && layout.tabs.some(tab => tab.id === value.id)) onOperation({kind:'split',tabId:value.id});
-    } catch { /* Ignore unrelated drags. */ }
-    dragging = null;
+  function add(entry: {value:string}) {
+    picker.hidePopover();
+    const target = JSON.parse(entry.value) as SidebarTarget;
+    onOperation({kind:'open',target}); onCollapsedChange(false);
+    void tick().then(() => document.getElementById(tabElement(sidebarTabId(target)))?.focus());
   }
-  async function navigate(event: KeyboardEvent, pane: SidebarPane) {
-    const index = pane.tabs.indexOf(pane.active ?? '');
-    const next = event.key === 'ArrowRight' ? pane.tabs[(index+1)%pane.tabs.length]
-      : event.key === 'ArrowLeft' ? pane.tabs[(index-1+pane.tabs.length)%pane.tabs.length]
-      : event.key === 'Home' ? pane.tabs[0] : event.key === 'End' ? pane.tabs.at(-1) : null;
-    if (event.key === 'Delete' && pane.active) { event.preventDefault(); onOperation({kind:'close',tabId:pane.active}); }
-    else if (next) { event.preventDefault(); onOperation({kind:'focus',tabId:next}); }
-    else return;
-    await tick();
-    const active = layout.panes.find(value => value.id === pane.id)?.active;
-    if (active) document.getElementById(tabElement(active))?.focus();
-  }
-  const tabElement = (id: string) => `sidebar-tab-${encodeURIComponent(id)}`;
   let pointer: {id:number;pane:SidebarPane;x:number;y:number;resize:boolean;context:string} | null = null;
   function begin(event: PointerEvent, pane: SidebarPane, resize: boolean) {
     if (event.button !== 0) return;
@@ -66,40 +131,84 @@
 </script>
 
 <svelte:window bind:innerWidth={viewportWidth} bind:innerHeight={viewportHeight}/>
-<section class="sidebar-dock" aria-label={$t('sidebar.title')}>
-  {#each layout.panes as pane (pane.id)}
-    <section class="sidebar-dock-pane" class:floating={pane.floating} aria-label={$t('sidebar.title')}
-      style:z-index={pane.floating?(pane.id===layout.activePane?36:35):undefined}
-      style:left={pane.floating?`${Math.min(pane.x,Math.max(0,viewportWidth-Math.min(pane.width,viewportWidth)))}px`:undefined}
-      style:top={pane.floating?`${Math.min(pane.y,Math.max(0,viewportHeight-Math.min(pane.height,viewportHeight-60)))}px`:undefined}
-      style:width={pane.floating?`${Math.min(pane.width,viewportWidth)}px`:undefined}
-      style:height={pane.floating?`${Math.min(pane.height,viewportHeight-60)}px`:undefined}>
-      <div class="sidebar-dock-toolbar">
-        {#if pane.floating}<Button variant="ghost" size="sm" aria-label={$t('sidebar.move')} onpointerdown={(event:PointerEvent)=>begin(event,pane,false)} onpointermove={move} onpointerup={()=>pointer=null} onpointercancel={()=>pointer=null} onkeydown={(event:KeyboardEvent)=>nudge(event,pane,false)}>{$t('sidebar.move')}</Button>{/if}
-        <Select aria-label={$t('sidebar.add')} placeholder={$t('sidebar.add')} value="" options={entries} onSelect={(value:string)=>onOperation({kind:'open',target:JSON.parse(value) as SidebarTarget,paneId:pane.id})}/>
-        {#if pane.active}
-          <Button variant="ghost" size="sm" disabled={!pane.floating&&pane.tabs.length<2} onclick={()=>onOperation({kind:'split',tabId:pane.active!})}>{$t('sidebar.split')}</Button>
-          <Button variant="ghost" size="sm" onclick={()=>onOperation({kind:pane.floating?'dock':'float',tabId:pane.active!})}>{$t(pane.floating?'sidebar.dock':'sidebar.float')}</Button>
-        {/if}
-      </div>
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions (Drop targets mirror the keyboard pane actions.) -->
-      <div class="sidebar-dock-tabs" role="tablist" tabindex="-1" aria-label={$t('side.views')} ondragover={(event)=>event.preventDefault()} ondrop={(event)=>drop(event,pane.id)}>
+<section class="sidebar-dock" class:collapsed aria-label={$t('sidebar.title')}>
+  <div class="sidebar-dock-panes">
+    {#each layout.panes as pane (pane.id)}
+      <section class="sidebar-dock-pane" class:floating={pane.floating} class:active={pane.id===layout.activePane}
+        hidden={collapsed && !pane.floating || !pane.tabs.length && layout.panes.some(other => !other.floating && other.tabs.length > 0)}
+        aria-label={pane.active ? titles[pane.active] : $t('sidebar.title')}
+        style:z-index={pane.floating?(pane.id===layout.activePane?36:35):undefined}
+        style:left={pane.floating?`${Math.min(pane.x,Math.max(0,viewportWidth-Math.min(pane.width,viewportWidth)))}px`:undefined}
+        style:top={pane.floating?`${Math.min(pane.y,Math.max(0,viewportHeight-Math.min(pane.height,viewportHeight-60)))}px`:undefined}
+        style:width={pane.floating?`${Math.min(pane.width,viewportWidth)}px`:undefined}
+        style:height={pane.floating?`${Math.min(pane.height,viewportHeight-60)}px`:undefined}>
+        <header class="sidebar-dock-header">
+          {#if pane.active}
+            <Icon name={icon(pane.active)} size={18}/>
+            <span class="sidebar-dock-title" title={titles[pane.active]}>{titles[pane.active]}</span>
+            {#if pane.floating}
+              <Button variant="ghost" size="icon" aria-label={$t('sidebar.move')} title={$t('sidebar.move')} onpointerdown={(event:PointerEvent)=>begin(event,pane,false)} onpointermove={move} onpointerup={()=>pointer=null} onpointercancel={()=>pointer=null} onkeydown={(event:KeyboardEvent)=>nudge(event,pane,false)}><Icon name="focus" size={16}/></Button>
+              <Button variant="ghost" size="icon" aria-label={$t('sidebar.dock')} title={$t('sidebar.dock')} onclick={()=>onOperation({kind:'dock',tabId:pane.active!})}><Icon name="panel-right" size={16}/></Button>
+            {/if}
+            <Button variant="ghost" size="icon" aria-label={$t('sidebar.moreActions',{name:titles[pane.active]})} title={$t('sidebar.moreActions',{name:titles[pane.active]})} aria-haspopup="true" onclick={(event:MouseEvent)=>showMenu(event,pane.active!)}><Icon name="more" size={18}/></Button>
+          {:else}<span class="sidebar-dock-title">{$t('sidebar.title')}</span>{/if}
+        </header>
         {#each pane.tabs as id (id)}
-          <div class="sidebar-dock-tab" class:selected={id===pane.active}>
-            <Button id={tabElement(id)} variant="ghost" size="sm" role="tab" aria-selected={id===pane.active} aria-controls={`sidebar-content-${encodeURIComponent(id)}`} tabindex={id===pane.active?0:-1}
-              draggable="true" ondragstart={(event:DragEvent)=>drag(event,id)} ondragend={()=>dragging=null} ondragover={(event:DragEvent)=>event.preventDefault()} ondrop={(event:DragEvent)=>drop(event,pane.id,id)} onkeydown={(event:KeyboardEvent)=>navigate(event,pane)} onclick={()=>onOperation({kind:'focus',tabId:id})}>{titles[id]??id}</Button>
-            <Button variant="ghost" size="icon" aria-label={$t('sidebar.close',{title:titles[id]??id})} onclick={()=>onOperation({kind:'close',tabId:id})}><Icon name="close" size={12}/></Button>
+          <div class="sidebar-dock-content" id={`${prefix}-content-${encodeURIComponent(id)}`} role="region" aria-label={titles[id]??id} hidden={id!==pane.active}>
+            {@render children(id)}
           </div>
         {/each}
-      </div>
-      {#each pane.tabs as id (id)}
-        <div class="sidebar-dock-content" id={`sidebar-content-${encodeURIComponent(id)}`} role="tabpanel" aria-labelledby={tabElement(id)} hidden={id!==pane.active}>
-          {@render children(id)}
+        {#if !pane.tabs.length}<p class="sidebar-dock-empty">{$t('sidebar.viewsEmpty')}</p>{/if}
+        {#if pane.floating}<Button class="sidebar-dock-resize" variant="ghost" size="sm" aria-label={$t('sidebar.resize')} onpointerdown={(event:PointerEvent)=>begin(event,pane,true)} onpointermove={move} onpointerup={()=>pointer=null} onpointercancel={()=>pointer=null} onkeydown={(event:KeyboardEvent)=>nudge(event,pane,true)}>↘</Button>{/if}
+      </section>
+    {/each}
+  </div>
+  <nav class="sidebar-tool-rail" aria-label={$t('sidebar.rail')}>
+    <div class="sidebar-tool-list">
+      {#each layout.tabs as tab (tab.id)}
+        {@const pane = owner(tab.id)}
+        <div class="sidebar-tool-row" class:drop-before={dragOver===tab.id}>
+          <Button id={tabElement(tab.id)} class="sidebar-tool" variant="ghost" aria-label={titles[tab.id]??tab.id} title={titles[tab.id]??tab.id}
+            aria-pressed={pane?.active===tab.id && pane?.id===layout.activePane} aria-controls={`${prefix}-content-${encodeURIComponent(tab.id)}`}
+            draggable="true" ondragstart={(event:DragEvent)=>drag(event,tab.id)} ondragend={()=>dragOver=null}
+            ondragover={(event:DragEvent)=>{event.preventDefault();dragOver=tab.id;}} ondragleave={()=>dragOver=null} ondrop={(event:DragEvent)=>drop(event,tab.id)}
+            onkeydown={(event:KeyboardEvent)=>navigate(event,tab.id)} oncontextmenu={(event:MouseEvent)=>showMenu(event,tab.id)} onclick={()=>focus(tab.id)}>
+            <span class="sidebar-tool-icon"><Icon name={icon(tab.id)} size={20}/>{#if pane?.active===tab.id}<span class="sidebar-tool-visible" aria-hidden="true"></span>{/if}</span>
+            <span class="sidebar-tool-label">{titles[tab.id]??tab.id}</span>
+          </Button>
+          <Button class="sidebar-tool-more" variant="ghost" size="icon" aria-label={$t('sidebar.moreActions',{name:titles[tab.id]??tab.id})} aria-haspopup="true" onclick={(event:MouseEvent)=>showMenu(event,tab.id)}><Icon name="more" size={16}/></Button>
         </div>
       {/each}
-      {#if !pane.tabs.length}<p>{$t('sidebar.empty')}</p>{/if}
-      {#if dragging}<Button variant="outline" ondragover={(event:DragEvent)=>event.preventDefault()} ondrop={splitDrop} onclick={()=>{if(dragging)onOperation({kind:'split',tabId:dragging});dragging=null;}}>{$t('sidebar.split')}</Button>{/if}
-      {#if pane.floating}<Button class="sidebar-dock-resize" variant="ghost" size="sm" aria-label={$t('sidebar.resize')} onpointerdown={(event:PointerEvent)=>begin(event,pane,true)} onpointermove={move} onpointerup={()=>pointer=null} onpointercancel={()=>pointer=null} onkeydown={(event:KeyboardEvent)=>nudge(event,pane,true)}>↘</Button>{/if}
-    </section>
-  {/each}
+      <Button id={`${prefix}-add`} class="sidebar-tool" variant="ghost" aria-label={$t('sidebar.addView')} title={$t('sidebar.addView')} popovertarget={`${prefix}-picker`} onclick={(event:MouseEvent)=>{position(event.currentTarget as HTMLElement); search='';}}>
+        <span class="sidebar-tool-icon"><Icon name="add" size={20}/></span><span class="sidebar-tool-label">{$t('sidebar.addView')}</span>
+      </Button>
+    </div>
+    <Button class="sidebar-tool sidebar-tool-collapse" variant="ghost" aria-label={$t(collapsed?'sidebar.expandViews':'sidebar.collapseViews')} title={$t(collapsed?'sidebar.expandViews':'sidebar.collapseViews')} onclick={()=>onCollapsedChange(!collapsed)}>
+      <span class="sidebar-tool-icon"><Icon name="panel-right" size={20}/></span><span class="sidebar-tool-label">{$t(collapsed?'sidebar.expandViews':'sidebar.collapseViews')}</span>
+    </Button>
+  </nav>
 </section>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions (Arrow keys supplement the native button and popover keyboard behavior.) -->
+<div bind:this={menu} class="sidebar-view-menu" popover="auto" role="group" aria-label={menuTab ? titles[menuTab] : $t('sidebar.rail')} ontoggle={menuToggle} onkeydown={menuKeys} style:left={`${menuPosition.left}px`} style:top={`${menuPosition.top}px`}>
+  {#if menuTab && menuPane}
+    <div class="sidebar-menu-title">{titles[menuTab]}</div>
+    <Button variant="ghost" onclick={()=>act({kind:'focus',tabId:menuTab!})}><Icon name="eye" size={16}/>{$t('sidebar.openView')}</Button>
+    <Button variant="ghost" disabled={!menuPane.floating&&menuPane.tabs.length<2} onclick={()=>act({kind:'split',tabId:menuTab!})}><Icon name="panel-right" size={16}/>{$t('sidebar.openBelow')}</Button>
+    <Button variant="ghost" onclick={()=>act({kind:menuPane!.floating?'dock':'float',tabId:menuTab!})}><Icon name="window-maximize" size={16}/>{$t(menuPane.floating?'sidebar.dock':'sidebar.float')}</Button>
+    {#if menuPane.id!=='main' && !menuPane.floating}<Button variant="ghost" onclick={()=>act({kind:'dock',tabId:menuTab!})}><Icon name="panel-right" size={16}/>{$t('sidebar.returnMain')}</Button>{/if}
+    <Separator/>
+    <Button variant="ghost" disabled={layout.tabs[0]?.id===menuTab} onclick={()=>{closeMenu();reorder(menuTab!,-1);}}>{$t('sidebar.moveUp')}</Button>
+    <Button variant="ghost" disabled={layout.tabs.at(-1)?.id===menuTab} onclick={()=>{closeMenu();reorder(menuTab!,1);}}>{$t('sidebar.moveDown')}</Button>
+    <Separator/>
+    <Button variant="ghost" onclick={()=>act({kind:'close',tabId:menuTab!})}><Icon name="close" size={16}/>{$t('sidebar.removeView')}</Button>
+  {/if}
+</div>
+<div bind:this={picker} id={`${prefix}-picker`} class="sidebar-view-menu sidebar-view-picker" popover="auto" role="group" aria-label={$t('sidebar.addView')} ontoggle={menuToggle} style:left={`${menuPosition.left}px`} style:top={`${menuPosition.top}px`}>
+  <Input aria-label={$t('sidebar.searchViews')} placeholder={$t('sidebar.searchViews')} bind:value={search}/>
+  <div class="sidebar-picker-results">
+    {#each filteredEntries as entry}
+      {@const id = sidebarTabId(JSON.parse(entry.value) as SidebarTarget)}
+      <Button variant="ghost" disabled={entry.disabled} onclick={()=>add(entry)}><Icon name={icon(id)} size={18}/><span>{entry.label}</span>{#if layout.tabs.some(tab=>tab.id===id)}<Icon name="check" size={16}/>{/if}</Button>
+    {:else}<p class="sidebar-dock-empty">{$t('sidebar.noViews')}</p>{/each}
+  </div>
+</div>

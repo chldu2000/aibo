@@ -20,6 +20,7 @@ export type SidebarLayout = { tabs: SidebarTab[]; panes: SidebarPane[]; activePa
 export type SidebarOperation =
   | { kind: 'open'; target: SidebarTarget; paneId?: string }
   | { kind: 'focus' | 'close'; tabId: string }
+  | { kind: 'reorder'; tabId: string; before?: string }
   | { kind: 'move'; tabId: string; paneId: string; before?: string }
   | { kind: 'split' | 'float' | 'dock'; tabId: string }
   | { kind: 'bounds'; paneId: string; x: number; y: number; width: number; height: number };
