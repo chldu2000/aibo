@@ -167,14 +167,18 @@
     return $t('git.modified');
   }
 
+  // Untracked directories arrive as `dir/`; the trailing slash must not erase the name.
+  function pathSegments(path: string): string[] {
+    return path.replace(/\/+$/, '').split('/');
+  }
+
   function pathName(path: string): string {
-    return path.split('/').at(-1) ?? path;
+    const name = pathSegments(path).at(-1) ?? path;
+    return path.endsWith('/') ? `${name}/` : name;
   }
 
   function pathParent(path: string): string {
-    const segments = path.split('/');
-    segments.pop();
-    return segments.join('/');
+    return pathSegments(path).slice(0, -1).join('/');
   }
 
   function fileName(file: Pick<WorkspaceFileChange, 'path' | 'previousPath'>): string {
@@ -310,13 +314,17 @@
 {/snippet}
 
 {#snippet repositoryGroup(repo: GitRepositoryState)}
+  {@const stagedAny = repo.changes?.files.some(file => file.staged) ?? false}
+  {@const repoLabel = stagedAny ? $t('git.commitEllipsis') : $t('git.openRepository')}
   <section class="git-change-group" aria-label={$t('git.repositoryLabel', {name: repo.name, path: repo.relativePath})}>
-    <header class="git-change-group-heading">
-      <Button variant="ghost" size="sm" aria-expanded={!collapsedRepositories.includes(repo.id)} onclick={() => onToggleRepository(repo.id)}>
-        <Icon name="chevron-down" size={12} data-collapsed={collapsedRepositories.includes(repo.id) ? 'true' : undefined} /><strong>{repo.name}</strong>
-        <span>{repo.changes?.branch ?? $t('git.detachedHead')}</span><Badge variant="secondary">{repo.changes?.files.length ?? 0}</Badge>
+    <header class="git-change-group-heading git-repository-heading">
+      <Button variant="ghost" size="sm" class="git-change-group-trigger" aria-expanded={!collapsedRepositories.includes(repo.id)} title={repo.relativePath !== '.' ? repo.relativePath : undefined} onclick={() => onToggleRepository(repo.id)}>
+        <Icon name="chevron-down" size={12} data-collapsed={collapsedRepositories.includes(repo.id) ? 'true' : undefined} aria-hidden="true" />
+        <strong class="git-change-group-title">{repo.name}</strong>
+        <span class="git-repository-branch">{repo.changes?.branch ?? $t('git.detachedHead')}</span>
+        <Badge variant="secondary" class="git-change-group-count">{repo.changes?.files.length ?? 0}</Badge>
       </Button>
-      <small>{repo.relativePath !== repo.name && repo.relativePath !== '.' ? repo.relativePath : ''}{repo.kind === 'submodule' ? $t('git.submoduleSuffix') : repo.kind === 'worktree' ? $t('git.worktreeSuffix') : ''}{repo.externalRoot ? $t('git.externalRootSuffix') : ''}</small>
+      <Button variant="ghost" size="icon" class="git-change-group-action git-repository-open" aria-label={repoLabel} title={repoLabel} disabled={operationBusy} onclick={() => onSelectRepository(repo.id)}><Icon name={stagedAny ? 'check' : 'folder'} size={14} /></Button>
     </header>
     {#if !collapsedRepositories.includes(repo.id)}
       {#if repo.error}<p role="status">{repo.error}</p>
@@ -327,10 +335,7 @@
         {@render fileGroup('staged', $t('git.staged'), repo.changes.files.filter(file => file.staged && !file.conflicted), 'unstage', repo.id)}
         {@render fileGroup('changed', $t('git.changed'), repo.changes.files.filter(file => file.unstaged && !file.untracked && !file.conflicted), 'stage', repo.id)}
         {@render fileGroup('untracked', $t('git.untracked'), repo.changes.files.filter(file => file.untracked && !file.conflicted), 'stage', repo.id)}
-        {#if repo.changes.files.some(file => file.unstaged || file.untracked)}<Button variant="ghost" size="sm" disabled={operationBusy || workspace?.trust !== 'trusted'} onclick={() => workspace && onApplyWorkspaceAction(workspace.id, 'stage_all', repo.id)}>{$t('git.stageAll')}</Button>{/if}
-        {#if repo.changes.files.some(file => file.staged)}<Button variant="ghost" size="sm" disabled={operationBusy || workspace?.trust !== 'trusted'} onclick={() => workspace && onApplyWorkspaceAction(workspace.id, 'unstage_all', repo.id)}>{$t('git.unstageEverything')}</Button>{/if}
       {/if}
-      <Button variant="outline" size="sm" disabled={operationBusy} onclick={() => onSelectRepository(repo.id)}>{repo.changes?.files.some(file => file.staged) ? $t('git.commitEllipsis') : $t('git.openRepository')}</Button>
     {/if}
   </section>
 {/snippet}
@@ -452,7 +457,12 @@
       {#each repositories.filter(repo => !repo.changes || repo.error || repo.changes.captureStatus !== 'captured' || repo.changes.files.length > 0) as repo (repo.id)}{@render repositoryGroup(repo)}{/each}
       {@const clean = repositories.filter(repo => !repo.error && repo.changes?.captureStatus === 'captured' && repo.changes.files.length === 0)}
       {#if clean.length > 0}
-        <Button variant="ghost" size="sm" aria-expanded={cleanRepositoriesOpen} onclick={() => cleanRepositoriesOpen = !cleanRepositoriesOpen}>{$t('git.cleanRepositories', {count: clean.length})}</Button>
+        <header class="git-change-group-heading git-clean-heading">
+          <Button variant="ghost" size="sm" class="git-change-group-trigger" aria-expanded={cleanRepositoriesOpen} onclick={() => cleanRepositoriesOpen = !cleanRepositoriesOpen}>
+            <Icon name="chevron-down" size={12} data-collapsed={cleanRepositoriesOpen ? undefined : 'true'} aria-hidden="true" />
+            <span class="git-change-group-title">{$t('git.cleanRepositories', {count: clean.length})}</span>
+          </Button>
+        </header>
         {#if cleanRepositoriesOpen}{#each clean as repo (repo.id)}{@render repositoryGroup(repo)}{/each}{/if}
       {/if}
       {#if loading}<p role="status">{$t('git.scanning')}</p>{:else if error}<p role="status">{error}</p>{:else if repositories.length === 0}<div class="inspector-empty">{$t('git.noRepositories')}</div>{/if}

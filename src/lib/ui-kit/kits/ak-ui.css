@@ -2623,6 +2623,20 @@
 .app-shell[data-ui-kit='ak-ui'] .git-change-group-count {
   transition: none;
 }
+/* Repository headings are the top tier; file-group headings nest one step deeper without a second banner. */
+.app-shell[data-ui-kit='ak-ui'] .git-repository-heading .git-change-group-title {
+  font-weight: 600;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-repository-heading ~ .git-change-group > .git-change-group-heading,
+.app-shell[data-ui-kit='ak-ui'] .git-change-group .git-change-group > .git-change-group-heading {
+  background: transparent;
+}
+.app-shell[data-ui-kit='ak-ui'] .git-change-group .git-change-group > .git-change-group-heading .git-change-group-trigger {
+  padding-inline-start: var(--ak-space-5);
+}
+.app-shell[data-ui-kit='ak-ui'] .git-repository-branch {
+  font-size: var(--aibo-type-meta);
+}
 
 /* Expanded tools retain the design's compact 36px rows, independently of their summary. */
 .app-shell[data-ui-kit='ak-ui'] .tool-group-items {

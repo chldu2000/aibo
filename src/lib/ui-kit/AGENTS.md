@@ -9,3 +9,7 @@ including its current desktop scope, precedence over generic skill defaults, rol
 Before changing shared controls or styles, identify external presentation consumers
 and default-inheritance paths. Internal adapter members are distinct from public
 Presentation surfaces; extending one does not automatically extend the other.
+
+Panels follow the [panel information architecture](../../../docs/ui-architecture.md#面板信息架构): actions only in
+toolbars, heading slots, row actions or footers; at most two visible heading levels; no new feature-named skin selectors.
+Plugin tool views receive tokens through the [visual contract](../../../docs/tool-view-contract.md#visual-contract).

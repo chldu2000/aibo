@@ -207,4 +207,5 @@ Host 0.1.1 adds `toolView` for plugin-owned interactive applications with a pack
 native backend and an isolated frontend. This is a separate contract, not arbitrary
 DOM injection into `semanticView` or a relaxation of PresentationNode. See the
 [tool view contract](tool-view-contract.md) for ownership, permissions, packaging,
-communication, transient state and shutdown requirements.
+communication, transient state and shutdown requirements. Tool views must also follow its
+[visual contract](tool-view-contract.md#visual-contract): colours from host tokens, square geometry, one toolbar row.

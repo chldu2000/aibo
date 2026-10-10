@@ -78,6 +78,29 @@ The host provides `AIBO_TOOL_SETTINGS`, a validated private `tool-settings` inst
 inside existing plugin storage. Configuration may be stored there. This does not
 permit the terminal implementation to persist output or scrollback.
 
+## Visual contract
+
+A tool view is a panel of the host UI, not a separate application window. The iframe cannot load
+the host stylesheet, so the host delivers design tokens and the view must use them.
+
+- **Tokens.** The `aibo.tool-view.connect` message carries `theme`, a map of allowlisted `--aibo-*`
+  values (`TOOL_THEME_TOKENS` in `src/lib/tool-view-runtime/frame.ts`) plus `--aibo-ui-kit`. The host
+  pushes `{type:"theme", theme}` on the port whenever the skin or colour scheme changes. A view applies them
+  as CSS custom properties, derives every colour from them, and never caches them. Hard-coded colours
+  are only fallbacks for the first paint. Tokens carry colours, mono font and focus colour; they do not
+  expose layout or host state.
+- **Geometry.** Square corners, 1px hairline borders, no cut corners, minimum text 12px. Text
+  inputs follow the ak-form anatomy (1px border plus 4px left edge, signal border and 3px halo on focus).
+  Tabs are a bottom bar; the selected tab is not a filled, bordered button.
+- **One toolbar row.** A view has at most one toolbar row, about 32px tall: tabs on the left,
+  icon buttons (with tooltip and `aria-label`) on the right. Text buttons are for dialog and primary actions only.
+  Hit areas still meet the 44px contract without changing the visible size.
+- **Host chrome.** The host adds no permanent row above or below the frame. Recovery appears only on
+  failure. A view whose backend is lost sends `{type:"reload"}` on the port and the host rebuilds the
+  iframe; this is the only host request that is not a numbered RPC.
+- **Acceptance.** Screenshots in both built-in skins, dark and light, at 320px and at the normal
+  panel width, with an empty state, one tab, and many tabs.
+
 ## Closing and faults
 
 Closing a tool tab, disabling/removing/replacing the plugin, removing its workspace,

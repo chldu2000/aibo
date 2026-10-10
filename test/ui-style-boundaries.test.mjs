@@ -161,3 +161,19 @@ test('shared skin code detects dialogs natively instead of by skin class name', 
   assert.match(source, /dialog\[open\]/, 'the keyboard guard must see every skin modal, not one skin’s class');
   assert.doesNotMatch(source, /settings-overlay/, 'that class no longer exists, so the guard silently never matched');
 });
+
+test('ak-ui does not grow feature-named skin selectors', async () => {
+  // Panel information architecture: skins style headings/rows, not features. Lower this ceiling as selectors are consolidated.
+  const ceiling = 119;
+  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
+  const count = source.split('\n').filter((line) => /\.(?:git|changeset)-[a-z-]+/.test(line)).length;
+  assert.ok(count <= ceiling, `ak-ui.css has ${count} feature-named git/changeset lines (ceiling ${ceiling}); reuse heading/row structure`);
+});
+
+test('tool view host adds no permanent chrome and only forwards allowlisted tokens', async () => {
+  const view = await readFile(path.join(root, 'src/lib/components/app/ToolView.svelte'), 'utf8');
+  assert.match(view, /\{#if error\}[\s\S]*tool-view-recovery/, 'recovery row must be conditional on a failure');
+  const frame = await readFile(path.join(root, 'src/lib/tool-view-runtime/frame.ts'), 'utf8');
+  assert.match(frame, /TOOL_THEME_TOKENS/);
+  assert.doesNotMatch(frame.match(/TOOL_THEME_TOKENS = \[([\s\S]*?)\]/)[1], /--(?!aibo-)/, 'only --aibo-* tokens may cross the frame');
+});

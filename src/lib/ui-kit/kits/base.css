@@ -313,6 +313,7 @@ h1, h2, h3, p { margin: 0; }
 .git-change-group-trigger { width: 100%; min-width: 0; justify-content: flex-start; gap: 5px; padding: 2px 4px; }
 .git-change-group-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-change-group-trigger [data-slot='badge'] { flex: none; margin-left: auto; }
+.git-repository-branch { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--aibo-muted); }
 .git-change-group-trigger svg { flex: none; }
 .git-change-list { display: grid; min-width: 0; gap: 0; }
 .git-change-list .changeset-file-row { min-height: 26px; }

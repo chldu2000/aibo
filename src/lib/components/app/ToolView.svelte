@@ -21,19 +21,18 @@
     disconnect();
     if (loaded) { error = $t('toolView.navigation'); return; }
     loaded = true;
-    if (handle) { const id = handle.id; disconnect=connectToolFrame(frame!,payload=>request(id,payload)); }
+    if (handle) { const id = handle.id; disconnect=connectToolFrame(frame!,payload=>request(id,payload),()=>generation++); }
   }
   onDestroy(()=>disconnect());
 </script>
 <section class="tool-view" aria-label={title}>
-  <div class="tool-view-recovery"><Button variant="ghost" size="sm" onclick={()=>generation++}>{$t('toolView.reload')}</Button></div>
-  {#if error}<p role="alert">{error}</p>{/if}
+  {#if error}<div class="tool-view-recovery" role="alert"><span>{error}</span><Button variant="ghost" size="sm" onclick={()=>generation++}>{$t('toolView.reload')}</Button></div>{/if}
   {#if handle}
     {#key generation}<iframe bind:this={frame} title={title} sandbox="allow-scripts" src={handle.url} referrerpolicy="no-referrer" onload={connect}></iframe>{/key}
   {/if}
 </section>
 <style>
   .tool-view { display:flex; flex-direction:column; height:100%; min-height:240px; min-width:0; }
-  .tool-view-recovery { display:flex; justify-content:flex-end; }
+  .tool-view-recovery { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 8px; }
   iframe { flex:1; width:100%; min-height:200px; }
 </style>
