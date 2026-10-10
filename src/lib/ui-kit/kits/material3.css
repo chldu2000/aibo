@@ -2743,7 +2743,7 @@
 .app-shell[data-ui-kit='material3'] .window-title { letter-spacing: 0; }
 .app-shell[data-ui-kit='material3'] .window-actions .ui-button { border-radius: 50%; }
 .app-shell[data-ui-kit='material3'] .window-actions .ui-button[data-host-navigation] { border-radius: var(--md-sys-shape-corner-full); }
-.app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0 8px 0 0; background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0; background: var(--aibo-surface-hover); }
 .app-shell[data-ui-kit='material3'] .sidebar { background: var(--aibo-surface-hover); }
 .app-shell[data-ui-kit='material3'] .sidebar .panel-heading { padding-inline: 20px 12px; }
 .app-shell[data-ui-kit='material3'] .sidebar .panel-heading [data-slot='card-title'] { letter-spacing: 0; font-weight: 500; }
@@ -2894,7 +2894,7 @@
   .app-shell[data-ui-kit='material3'] .timeline { border-radius: 20px; }
 }
 @media (max-width: 760px) {
-  .app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0 8px; }
+  .app-shell[data-ui-kit='material3'] .workspace-grid { padding: 0 0 0 8px; }
   .app-shell[data-ui-kit='material3'] .workbench-chrome[data-layout] .timeline { border-radius: var(--md-sys-shape-corner-large); }
   .app-shell[data-ui-kit='material3'] .management-nav { padding: 8px 12px; gap: 4px; }
   .app-shell[data-ui-kit='material3'] .management-header { padding: 16px; }
