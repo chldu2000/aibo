@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
+import { assertMaterial3Tokens } from './lib/material3-token-scan.mjs';
 
 const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null},plugins:[{
   name:'material-controls-fixture',configureServer(server) {
@@ -29,15 +30,16 @@ try {
     await field.fill(`保留 ${theme} 输入`);
     for(const label of ['普通输入','校验错误','不可编辑','多行输入']) {
       const [s]=await styles(page.getByRole('textbox',{name:label}));
-      assert.equal(s.borderTopLeftRadius,'8px',label);
+      assert.equal(s.borderTopLeftRadius,'4px',label);
       assert.equal(s.borderLeftWidth,s.borderTopWidth,`${label}: no ak-form left rail`);
-      assert.doesNotMatch(s.boxShadow,/inset/,label);
+      assert.match(s.boxShadow,/^(none|.* 0px 0px 0px 2px inset)$/,`${label}: only the uniform focus ring`);
     }
     await field.focus();
     const [focused]=await styles(field);
+    // M3 3px focused outline: 1px border plus a uniform 2px inset ring, not an ak-form left rail.
     assert.equal(focused.borderLeftWidth,'1px');
     assert.equal(focused.borderTopColor,theme==='light'?'rgb(36, 94, 167)':'rgb(167, 200, 255)');
-    assert.doesNotMatch(focused.boxShadow,/inset/);
+    assert.match(focused.boxShadow,/ 0px 0px 0px 2px inset$/);
     // Re-choosing the current option is a no-op, so each theme pass picks the other context size.
     const [contextLabel,contextId]=theme==='light'?['扩展','large']:['标准','normal'];
     await page.getByRole('combobox',{name:'模型上下文大小'}).click(); await page.getByRole('option',{name:contextLabel,exact:true}).click();
@@ -54,14 +56,17 @@ try {
       assert.equal(s.clipPath,'none');
     }
     for(const s of await styles(page.locator('.variant-fixture [data-slot="badge"]'))) {
-      assert.equal(s.borderTopLeftRadius,'6px');
+      assert.equal(s.borderTopLeftRadius,'8px');
       assert.doesNotMatch(s.boxShadow,/inset/);
     }
     await page.getByRole('checkbox',{name:'复选选择'}).check();
     await page.getByRole('switch',{name:'开关选择'}).check();
     await page.getByRole('radio',{name:'第二个'}).check();
     const [radio]=await styles(page.getByRole('radio',{name:'第二个'}));
-    assert.equal(radio.backgroundColor,theme==='light'?'rgb(36, 94, 167)':'rgb(167, 200, 255)');
+    // M3 radio: selected is a primary ring around a primary dot, not a filled disc.
+    assert.equal(radio.backgroundColor,'rgba(0, 0, 0, 0)');
+    assert.equal(radio.borderTopColor,theme==='light'?'rgb(36, 94, 167)':'rgb(167, 200, 255)');
+    await assertMaterial3Tokens(page, `controls ${theme}`);
     await page.screenshot({path:`/tmp/aibo-material3-controls/${theme}.png`,fullPage:true});
     // Delete every ak-ui scoped rule and palette variable. M3 must render identically.
     const controls=page.locator('button,input,select,textarea,[data-slot="badge"],.ui-model-matrix-wrap');
@@ -94,12 +99,12 @@ try {
     assert.equal(await choice.getAttribute('aria-pressed'),'true');
     assert.equal(await page.getByLabel('操作结果').textContent(),'max');
     assert.equal(await matrix.locator('tbody button[aria-pressed="true"]').count(),1);
-    assert.equal(await matrix.evaluate(e=>getComputedStyle(e).borderTopLeftRadius),'16px');
+    assert.equal(await matrix.evaluate(e=>getComputedStyle(e).borderTopLeftRadius),'4px'); // M3 data-table container shape
     assert(await matrix.evaluate(e=>e.scrollWidth<=e.clientWidth),'500px matrix fits default plus low/medium/high/xhigh/max/ultra with a reserved scrollbar');
     const lastHeader=matrix.locator('thead th').last();
     assert.equal(await lastHeader.textContent(),'ultra');
     assert((await lastHeader.boundingBox()).x+(await lastHeader.boundingBox()).width<=(await matrix.boundingBox()).x+(await matrix.boundingBox()).width);
-    assert.equal((await choice.boundingBox()).height,36,'desktop matrix uses compact selection targets');
+    assert.equal((await choice.boundingBox()).height,40,'desktop matrix uses dense data-table rows (density -3)');
     const cells=await matrix.locator('th,td').evaluateAll(es=>es.map(e=>getComputedStyle(e).borderBottomWidth));
     assert(cells.every(width=>width==='0px'),'matrix uses spacing instead of a ruled grid');
     assert.equal(await choice.evaluate(e=>getComputedStyle(e).borderTopLeftRadius),'999px');
@@ -108,6 +113,7 @@ try {
     assert(await page.getByRole('button',{name:'第三方模型，max',exact:true}).isDisabled());
     const fast=page.getByRole('button',{name:'快速',exact:true});
     await fast.click();assert.equal(await fast.getAttribute('aria-pressed'),'true');
+    await assertMaterial3Tokens(page, `model matrix ${theme}`);
     await matrix.screenshot({path:`/tmp/aibo-material3-controls/matrix-${theme}.png`});
     await fast.click();assert.equal(await fast.getAttribute('aria-pressed'),'false');
     await page.getByRole('button',{name:'第三方模型，默认',exact:true}).click();

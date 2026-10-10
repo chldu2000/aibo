@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
 import {installDensityFixture} from './lib/density-fixture.mjs';
+import { assertMaterial3Tokens } from './lib/material3-token-scan.mjs';
 
 const server = await createServer({server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});
 await server.listen();
@@ -35,7 +36,18 @@ try {
     await page.evaluate(command=>window.requestApproval('long',command),command);
     const card = page.locator('.approval-card');
     await card.waitFor();
+    // Column widths are recomputed after a resize; measure once the card and composer stop moving.
+    const settle = () => page.evaluate(() => new Promise(resolve => {
+      let last = '', stable = 0;
+      const tick = () => {
+        const now = JSON.stringify([...document.querySelectorAll('.approval-card, .composer')].map(e => { const r = e.getBoundingClientRect(); return [r.top, r.bottom, r.left, r.right]; }));
+        stable = now === last ? stable + 1 : 0; last = now;
+        if (stable >= 3) resolve(); else requestAnimationFrame(tick);
+      };
+      tick();
+    }));
     const assertActionsReachable = async () => {
+      await settle();
       for (const button of await card.getByRole('button').all()) {
         assert.ok(await button.evaluate(node=>{
           const r=node.getBoundingClientRect();
@@ -70,6 +82,7 @@ try {
     assert.ok(await page.evaluate(()=>window.densityCalls.some(call=>call.command==='resolve_agent_approval' && call.args.requestId==='first' && call.args.optionId==='reject')));
     assert.ok(await page.evaluate(()=>window.densityCalls.some(call=>call.command==='resolve_agent_approval' && call.args.requestId==='second' && call.args.decision==='cancel')));
     assert.deepEqual(errors,[]);
+    await assertMaterial3Tokens(page, `approval ${theme}`);
     console.log(`${kit}/${theme}: long command, scrolling, resize and approval dispatch passed`);
     await page.close();
   }

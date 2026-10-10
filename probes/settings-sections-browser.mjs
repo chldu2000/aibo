@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
+import { assertMaterial3Tokens } from './lib/material3-token-scan.mjs';
 
 const kit = process.env.AIBO_PROBE_UI_KIT ?? 'ak-ui';
 // Real App and host dialog; native persistence is substituted at the IPC boundary.
@@ -92,6 +93,7 @@ try {
     await dialog.getByRole('heading',{name:'界面语言',exact:true}).waitFor();
     assert.equal(await dialog.getByRole('switch').count(),0,'trust is not an appearance preference');
     assert.equal(await dialog.getByRole('button',{name:'安装皮肤插件',exact:true}).count(),0,'appearance selects skins without managing packages');
+    await assertMaterial3Tokens(page, `settings sections ${theme}`);
     await page.screenshot({path:`/tmp/aibo-settings-${kit}-${theme}-appearance.png`});
     await tab('外观').focus();
     await page.keyboard.press('ArrowDown');
@@ -171,6 +173,7 @@ try {
       }
       await tab('外观').click();
       await checkLanguageLayout();
+      await assertMaterial3Tokens(page, `settings ${theme} ${width}px`);
       await page.screenshot({path:`/tmp/aibo-settings-${kit}-${theme}-${width}.png`});
     }
     await dialog.getByRole('button',{name:'关闭设置',exact:true}).click();

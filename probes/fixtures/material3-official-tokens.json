@@ -1,0 +1,265 @@
+{
+ "source": "@material/web 2.5.0 tokens/versions/latest (Material 3 design system 34.0.21)",
+ "density": "https://m3.material.io/foundations/layout/understanding-layout/density",
+ "sys": {
+  "focus-indicator": {
+   "inner-offset": -3.0,
+   "outer-offset": 2.0,
+   "thickness": 3.0
+  },
+  "state": {
+   "disabled-state-layer-opacity": 0.38,
+   "dragged-state-layer-opacity": 0.16,
+   "focus-state-layer-opacity": 0.1,
+   "hover-state-layer-opacity": 0.08,
+   "pressed-state-layer-opacity": 0.1
+  },
+  "shape": {
+   "corner-extra-extra-large": 48.0,
+   "corner-extra-large": 28.0,
+   "corner-extra-large-increased": 32.0,
+   "corner-extra-small": 4.0,
+   "corner-full": 9999.0,
+   "corner-large": 16.0,
+   "corner-large-increased": 20.0,
+   "corner-medium": 12.0,
+   "corner-none": 0.0,
+   "corner-small": 8.0
+  }
+ },
+ "comp": {
+  "button-small": {
+   "container-height": 40.0,
+   "leading-space": 16.0,
+   "trailing-space": 16.0,
+   "container-shape-round": 9999.0,
+   "pressed-container-shape": 8.0
+  },
+  "button-xsmall": {
+   "container-height": 32.0,
+   "leading-space": 12.0
+  },
+  "button": {
+   "icon-size": 20.0
+  },
+  "filled-button": {
+   "label-text-size": 14,
+   "label-text-weight": "md-ref-typeface.$weight-medium"
+  },
+  "button-filled": {
+   "container-color": {
+    "color": "primary"
+   },
+   "label-text-color": {
+    "color": "on-primary"
+   }
+  },
+  "button-tonal": {
+   "container-color": {
+    "color": "secondary-container"
+   },
+   "label-text-color": {
+    "color": "on-secondary-container"
+   }
+  },
+  "button-outlined": {
+   "outline-color": {
+    "color": "outline-variant"
+   },
+   "label-text-color": {
+    "color": "on-surface-variant"
+   }
+  },
+  "icon-button-small": {
+   "container-height": 40.0
+  },
+  "icon-button-xsmall": {
+   "container-height": 32.0
+  },
+  "button-group-connected-small": {
+   "between-space": 2.0,
+   "inner-corner-corner-size": 8.0,
+   "container-height": 40.0
+  },
+  "switch": {
+   "track-width": 52.0,
+   "track-height": 32.0,
+   "track-outline-width": 2.0,
+   "unselected-handle-width": 16.0,
+   "selected-handle-width": 24.0,
+   "pressed-handle-width": 28.0,
+   "selected-track-color": {
+    "color": "primary"
+   },
+   "unselected-track-color": {
+    "color": "surface-container-highest"
+   },
+   "unselected-track-outline-color": {
+    "color": "outline"
+   },
+   "unselected-handle-color": {
+    "color": "outline"
+   },
+   "selected-handle-color": {
+    "color": "on-primary"
+   },
+   "state-layer-size": 40.0
+  },
+  "checkbox": {
+   "container-size": 18.0,
+   "container-shape": 2.0,
+   "unselected-outline-width": 2.0,
+   "unselected-outline-color": {
+    "color": "on-surface-variant"
+   },
+   "selected-container-color": {
+    "color": "primary"
+   },
+   "state-layer-size": 40.0
+  },
+  "radio-button": {
+   "icon-size": 20.0,
+   "selected-icon-color": {
+    "color": "primary"
+   },
+   "unselected-icon-color": {
+    "color": "on-surface-variant"
+   },
+   "state-layer-size": 40.0
+  },
+  "outlined-text-field": {
+   "container-shape": 4.0,
+   "outline-width": 1.0,
+   "outline-color": {
+    "color": "outline"
+   },
+   "focus-outline-width": 3.0,
+   "focus-outline-color": {
+    "color": "primary"
+   },
+   "hover-outline-color": {
+    "color": "on-surface"
+   },
+   "input-text-size": 16,
+   "caret-color": {
+    "color": "primary"
+   }
+  },
+  "menus": {
+   "container-shape": 16.0,
+   "menu-item-height": 44.0,
+   "gap": 2.0,
+   "group-padding": 2.0,
+   "menu-item-leading-space": 16.0,
+   "menu-item-label-text-size": 14,
+   "menu-item-shape": 4.0,
+   "menu-item-first-child-shape": 12.0,
+   "menu-item-selected-shape": 12.0
+  },
+  "menus-standard": {
+   "container-color": {
+    "color": "surface-container-low"
+   },
+   "menu-item-selected-container-color": {
+    "color": "tertiary-container"
+   },
+   "menu-item-selected-label-text-color": {
+    "color": "on-tertiary-container"
+   }
+  },
+  "dialog": {
+   "container-shape": 28.0,
+   "container-color": {
+    "color": "surface-container-high"
+   },
+   "headline-size": 24,
+   "supporting-text-color": {
+    "color": "on-surface-variant"
+   }
+  },
+  "snackbar": {
+   "container-shape": 4.0,
+   "container-color": {
+    "color": "inverse-surface"
+   },
+   "supporting-text-color": {
+    "color": "inverse-on-surface"
+   },
+   "with-single-line-container-height": 48.0
+  },
+  "primary-navigation-tab": {
+   "container-height": 48.0,
+   "active-indicator-height": 3.0,
+   "active-indicator-color": {
+    "color": "primary"
+   },
+   "with-label-text-active-label-text-color": {
+    "color": "primary"
+   },
+   "with-label-text-inactive-label-text-color": {
+    "color": "on-surface-variant"
+   },
+   "with-label-text-label-text-size": 14
+  },
+  "extended-fab-small": {
+   "container-height": 56.0,
+   "container-shape": 16.0
+  },
+  "fab-small": {
+   "container-height": 40.0,
+   "container-shape": 12.0
+  },
+  "nav-rail-collapsed": {
+   "narrow-container-width": 80.0,
+   "container-color": {
+    "color": "surface"
+   },
+   "item-vertical-space": 4.0
+  },
+  "nav-rail-item-vertical": {
+   "active-indicator-width": 56.0,
+   "active-indicator-height": 32.0
+  },
+  "nav-rail-item": {
+   "icon-size": 24.0,
+   "active-indicator-shape": 9999.0,
+   "short-container-height": 56.0
+  },
+  "scrim": {
+   "container-opacity": 0.32,
+   "container-color": {
+    "color": "scrim"
+   }
+  },
+  "list": {
+   "list-item-one-line-container-height": 56.0
+  },
+  "navigation-drawer": {
+   "active-indicator-height": 56.0,
+   "active-indicator-shape": 9999.0
+  },
+  "drag-handle": {
+   "container-width": 24.0,
+   "width": 4.0,
+   "height": 48.0,
+   "color": {
+    "color": "outline"
+   },
+   "shape": 9999.0
+  },
+  "outlined-card": {
+   "container-shape": 12.0,
+   "container-color": {
+    "color": "surface"
+   },
+   "outline-color": {
+    "color": "outline-variant"
+   },
+   "outline-width": 1.0
+  },
+  "data-table": {
+   "row-item-container-height": 52.0,
+   "header-container-height": 56.0
+  }
+ }
+}

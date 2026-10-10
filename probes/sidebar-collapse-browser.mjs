@@ -11,6 +11,8 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
   await page.evaluate(async ({kit,theme}) => { const r = await import('/src/lib/ui-kit/registry.ts'); r.setUiKit(kit); r.setUiTheme(theme); }, {kit,theme});
   const sidebar = page.locator('[data-ui-component="workspace-sidebar"]');
+  // M3 collapses to an 80px navigation rail; ak-ui keeps its 56px rail.
+  const railWidth = kit === 'material3' ? 80 : 56;
   const toggle = page.getByRole('button', { name: '收起导航栏', exact: true });
   await toggle.waitFor(); const before = await toggle.boundingBox(); const expanded = await sidebar.boundingBox();
   const create = await page.getByRole('button', { name: '新建会话', exact: true }).boundingBox();
@@ -22,7 +24,7 @@ try {
   await expand.waitFor();
   const after = await expand.boundingBox();
   assert.equal(after.x, before.x); assert.equal(after.y, before.y);
-  assert.equal(Math.round((await sidebar.boundingBox()).width), 56);
+  assert.equal(Math.round((await sidebar.boundingBox()).width), railWidth);
   assert.equal(await page.getByRole('separator', { name: '调整工作区与会话宽度' }).count(), 0);
   assert.equal(await sidebar.getByRole('button').count(), 5);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
@@ -30,7 +32,7 @@ try {
   await page.keyboard.press('Escape');
   await page.screenshot({ path: `/tmp/aibo-sidebar-${kit}-${theme}.png` });
   await page.reload(); await expand.waitFor();
-  assert.equal(Math.round((await sidebar.boundingBox()).width), 56);
+  assert.equal(Math.round((await sidebar.boundingBox()).width), railWidth);
   await expand.press('Enter'); await toggle.waitFor();
   assert.equal(Math.round((await sidebar.boundingBox()).width), Math.round(expanded.width));
   await page.getByRole('button', { name: '工作台设置', exact: true }).click();

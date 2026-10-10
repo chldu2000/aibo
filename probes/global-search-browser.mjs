@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { buildPresentationSkins } from './lib/build-presentation-skins.mjs';
+import { assertMaterial3Tokens } from './lib/material3-token-scan.mjs';
 const built = await buildPresentationSkins();
 const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}}); await server.listen();
 const browser = await chromium.launch({headless:true});
@@ -129,6 +130,7 @@ try {
     await page.waitForFunction(()=>window.searchCalls.some(call=>call.command==='search_global'&&call.args.request.workspaceId==='w2'&&call.args.request.kind==='workspace'&&call.args.request.query==='正文'));
     assert.equal((await dialog.getByRole('combobox',{name:'搜索范围'}).innerText()).trim(),'其他工程');
     await page.keyboard.press('Shift+Tab');assert.equal(await selectedKind(),'全部');
+    await assertMaterial3Tokens(page, `search ${theme}`);
     await page.screenshot({path:`/tmp/aibo-search-${theme}-${pkg?.release.manifest.id??'builtin'}.png`});
     await page.setViewportSize({width:680,height:740});
     assert.ok((await dialog.boundingBox()).width<=648);

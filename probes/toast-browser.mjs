@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import { assertMaterial3Tokens } from './lib/material3-token-scan.mjs';
 
 // Exercise the real producer, expiry effect, AppOverlays and Card components.
 // The bridge exists only in this browser fixture, never in the shipped app.
@@ -49,7 +50,9 @@ try {
           const reference = document.createElement('div');
           const surface = kit === 'ak-ui' ? '--ak-surface-raised' : '--md-aibo-surface-inverse';
           const text = kit === 'ak-ui' ? '--aibo-text' : '--md-aibo-text-inverse';
-          reference.style.cssText = `background:var(${surface});color:var(${text});border:1px solid var(--aibo-${semantic}-text)`;
+          // ak-ui colours the status signal; M3 Snackbar icons stay inverse-on-surface and differ by shape.
+          const signal = kit === 'ak-ui' ? `var(--aibo-${semantic}-text)` : `var(${text})`;
+          reference.style.cssText = `background:var(${surface});color:var(${text});border:1px solid ${signal}`;
           element.parentElement.append(reference);
           const expected = getComputedStyle(reference);
           const result = {
@@ -68,7 +71,7 @@ try {
         assert.equal(actual.borderWidth, kit === 'ak-ui' ? '3px' : '0px');
         if (kit === 'ak-ui') assert.equal(actual.border, actual.expectedSignal);
         assert.notEqual(actual.shadow, 'none', `${kit}/${theme} ${type} elevation`);
-        colors.push(actual.signal);
+        colors.push(kit === 'ak-ui' ? actual.signal : await toast.locator('svg path').first().getAttribute('d'));
         assert.equal(await toast.locator('.toast-label').textContent(), labels[type]);
         assert.ok(await toast.locator('svg path').getAttribute('d'));
         assert.equal(await toast.getAttribute('role'), type === 'error' ? 'alert' : 'status');
@@ -81,10 +84,11 @@ try {
         await page.emulateMedia({ reducedMotion: 'reduce' });
         assert.equal(await toast.evaluate(e => getComputedStyle(e).animationName), 'none');
         await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await assertMaterial3Tokens(page, `snackbar ${theme} ${type}`);
         await page.screenshot({ animations: 'disabled', path: `/tmp/aibo-notifications/${kit}-${theme}-${type}.png` });
         await page.setViewportSize({ width: 1280, height: 900 });
       }
-      assert.equal(new Set(colors).size, 4, 'all four status signals are distinct');
+      assert.equal(new Set(colors).size, 4, 'all four status signals are distinct (colour in ak-ui, icon shape in M3)');
       // The existing exception channel remains visible alongside typed feedback.
       await page.evaluate(() => {
         window.__toastProbe.notify('设置已保存', 'success');

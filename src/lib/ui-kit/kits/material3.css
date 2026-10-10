@@ -12,11 +12,10 @@
   font-family: var(--md-aibo-font-sans);
   font-size: var(--aibo-type-body);
   letter-spacing: 0;
-  --workbench-splitter-width: 6px;
 
   --workbench-content-inset: var(--md-aibo-space-5);
   --workbench-content-width: 760px;
-  --aibo-selected-ink: color-mix(in srgb, var(--aibo-accent) 85%, var(--md-sys-color-scrim));
+  --aibo-selected-ink: var(--md-sys-color-on-secondary-container);
 }
 
 .app-shell[data-ui-kit='material3'][data-color-scheme='dark'] {
@@ -24,6 +23,11 @@
 }
 
 
+
+/* Unstyled small print takes body-small instead of the browser's relative size. */
+:where(.app-shell[data-ui-kit='material3']) small {
+  font-size: var(--aibo-type-meta);
+}
 
 .app-shell[data-ui-kit='material3'] :is(button, input, :is(select, .ui-select-trigger), textarea, summary):focus-visible {
   outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
@@ -50,19 +54,20 @@
   justify-content: center;
   gap: var(--md-aibo-space-2);
   flex-shrink: 0;
-  min-height: var(--md-aibo-density-control-height);
+  min-height: var(--md-aibo-button-height);
   border: 1px solid transparent;
-  padding: 0 var(--md-aibo-space-3);
-  font-size: var(--aibo-type-meta);
+  padding: 0 var(--md-aibo-space-4);
+  font-size: var(--aibo-type-ui);
   font-weight: 500;
   color: var(--aibo-text);
   background: transparent;
-  transition: box-shadow var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
+  --md-state-layer: transparent;
+  transition: border-radius var(--md-sys-motion-spring-fast-spatial-duration) var(--md-sys-motion-spring-fast-spatial), box-shadow var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
 }
 
 .app-shell[data-ui-kit='material3'] .ui-button[data-size='icon'] {
-  min-width: 44px;
-  width: 44px;
+  min-width: var(--md-aibo-button-height);
+  width: var(--md-aibo-button-height);
   padding: 0;
 }
 
@@ -70,55 +75,59 @@
   flex: none;
 }
 
+/* M3 state layers tint the container with the content colour instead of replacing it,
+   so tonal, filled and danger buttons keep their role colour while hovered or pressed. */
 .app-shell[data-ui-kit='material3'] .ui-button:hover:not(:disabled) {
-  background: var(--aibo-hover, var(--aibo-surface-hover));
+  --md-state-layer: color-mix(in srgb, currentColor var(--md-sys-state-hover-state-layer-opacity), transparent);
+  background-image: linear-gradient(var(--md-state-layer), var(--md-state-layer));
 }
 
+.app-shell[data-ui-kit='material3'] .ui-button:is(:focus-visible, :active):not(:disabled) {
+  --md-state-layer: color-mix(in srgb, currentColor var(--md-sys-state-pressed-state-layer-opacity), transparent);
+  background-image: linear-gradient(var(--md-state-layer), var(--md-state-layer));
+}
+
+/* Pressed buttons morph toward the small corner on the fast spatial spring (stiffness 1400, damping 0.9),
+   sampled into a CSS linear() curve. */
 .app-shell[data-ui-kit='material3'] .ui-button:active:not(:disabled) {
-  transform: translateY(1px);
+  border-radius: var(--md-sys-shape-corner-small);
 }
 
 .app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='default'], [data-variant='send']) {
   background: var(--primary);
   color: var(--primary-foreground);
-  font-weight: 600;
-}
-
-.app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='default'], [data-variant='send']):hover:not(:disabled) {
-  background: var(--primary);
-  color: var(--primary-foreground);
 }
 
 .app-shell[data-ui-kit='material3'] .ui-button[data-variant='secondary'] {
-  background: var(--aibo-surface-hover);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
 }
 
 .app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='outline'], [data-variant='queue']) {
-  border-color: var(--aibo-border);
+  border-color: var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='destructive'], [data-variant='abort']) {
   background: var(--aibo-danger-surface);
-  color: var(--aibo-danger-text);
-  border-color: var(--aibo-danger-border);
+  color: var(--md-sys-color-on-error-container);
 }
 
+/* Disabled: on-surface container at 10%, content at 38%; text and outlined buttons keep no container. */
 .app-shell[data-ui-kit='material3'] .ui-button:disabled {
-  color: var(--md-aibo-signal-disabled);
-  background: var(--aibo-surface-hover);
-  border-color: var(--aibo-border-strong);
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-disabled-content-opacity), transparent);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-disabled-container-opacity), transparent);
+  border-color: transparent;
   cursor: not-allowed;
 }
 
-/* M3 disabled text and outlined buttons keep no container, so they do not read as tonal actions. */
 .app-shell[data-ui-kit='material3'] .ui-button:disabled:is([data-variant='ghost'], [data-variant='link'], [data-variant='toolbar']) {
   background: transparent;
-  border-color: transparent;
 }
 
-.app-shell[data-ui-kit='material3'] .ui-button[data-variant='outline']:disabled {
+.app-shell[data-ui-kit='material3'] .ui-button:disabled:is([data-variant='outline'], [data-variant='queue']) {
   background: transparent;
-  border-color: var(--aibo-border);
+  border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
 }
 
 .app-shell[data-ui-kit='material3'] .window-titlebar {
@@ -137,10 +146,10 @@
 }
 
 .app-shell[data-ui-kit='material3'] .window-actions [data-slot='button'] {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  min-height: 28px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
 }
 
 .app-shell[data-ui-kit='material3'] .window-actions [data-slot='button']:focus-visible {
@@ -199,8 +208,8 @@
 }
 
 .app-shell[data-ui-kit='material3'] .workspace-toolbar [data-slot='button'] {
-  width: 44px;
-  min-height: 44px;
+  width: 40px;
+  min-height: 40px;
 }
 
 .app-shell[data-ui-kit='material3'] .workspace-list {
@@ -216,7 +225,7 @@
 
 .app-shell[data-ui-kit='material3'] .workspace-copy strong {
   font-size: var(--aibo-type-ui);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .app-shell[data-ui-kit='material3'] .workspace-session-group {
@@ -253,8 +262,7 @@
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='material3'] .session-item-row.selected,
-.app-shell[data-ui-kit='material3'] .session-item-row.selected:is(:hover, :focus-within) {
+.app-shell[data-ui-kit='material3'] .session-item-row.selected {
   background: var(--aibo-accent-soft);
   box-shadow: none;
 }
@@ -271,25 +279,31 @@
 
 .app-shell[data-ui-kit='material3'] .sidebar-footer .ui-button {
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   justify-content: flex-start;
   padding-left: var(--md-aibo-space-4);
   border-radius: var(--md-sys-shape-corner-small);
 }
 
+/* M3 drag handle: a 24px spacer between panes holding a 4×48 full-round handle in outline;
+   hover and press darken it to on-surface. */
 .app-shell[data-ui-kit='material3'] .workspace-splitter {
+  align-items: center;
   background: var(--aibo-surface-hover);
   border: 0;
   padding: 0;
 }
 
-.app-shell[data-ui-kit='material3'] .workspace-splitter-line {
-  background: var(--aibo-border);
+.app-shell[data-ui-kit='material3'] .workspace-splitter-line,
+.app-shell[data-ui-kit='material3'] .workspace-splitter:focus-visible .workspace-splitter-line {
+  width: 4px;
+  height: 48px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-outline);
 }
 
-.app-shell[data-ui-kit='material3'] .workspace-splitter:hover .workspace-splitter-line {
-  background: var(--aibo-accent);
-  width: 3px;
+.app-shell[data-ui-kit='material3'] .workspace-splitter:is(:hover, :active) .workspace-splitter-line {
+  background: var(--md-sys-color-on-surface);
 }
 
 .app-shell[data-ui-kit='material3'] .timeline {
@@ -307,7 +321,7 @@
 
 .app-shell[data-ui-kit='material3'] .timeline-heading [data-slot='card-title'] {
   overflow: hidden;
-  font: 700 20px/1.25 var(--md-aibo-font-command);
+  font: 400 22px/28px var(--md-aibo-font-command);
   letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -352,7 +366,7 @@
 }
 
 .app-shell[data-ui-kit='material3'] .timeline-session-status[data-tone='running'] .timeline-session-signal {
-  background: var(--md-aibo-focus-color);
+  background: var(--md-sys-color-primary);
   animation: md-timeline-session-pulse 1.2s ease-in-out infinite;
 }
 
@@ -427,14 +441,14 @@
 }
 .app-shell[data-ui-kit='material3'] .session-changes-repo { border-radius: var(--md-sys-shape-corner-small); }
 .app-shell[data-ui-kit='material3'] .session-changes-repo-heading {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 var(--md-aibo-space-3);
   gap: var(--md-aibo-space-2);
   background: var(--md-aibo-surface-muted);
 }
 .app-shell[data-ui-kit='material3'] .session-change-row.ui-button {
-  height: 36px;
-  min-height: 36px;
+  height: 44px;
+  min-height: 44px;
   justify-content: flex-start;
   gap: var(--md-aibo-space-2);
   padding: 0 var(--md-aibo-space-2) 0 var(--md-aibo-space-3);
@@ -449,7 +463,7 @@
   background: var(--aibo-accent-soft);
   box-shadow: none;
 }
-.app-shell[data-ui-kit='material3'] .session-change-row:focus-visible { outline-offset: -2px; }
+.app-shell[data-ui-kit='material3'] .session-change-row:focus-visible { outline-offset: -3px; }
 .app-shell[data-ui-kit='material3'] .file-change-mark {
   display: grid;
   place-items: center;
@@ -459,7 +473,7 @@
   border: var(--md-aibo-line-hairline) solid currentColor;
   border-radius: var(--md-sys-shape-corner-small);
   background: transparent;
-  font: 600 var(--aibo-type-meta)/1 var(--md-aibo-font-mono);
+  font: 500 var(--aibo-type-meta)/1 var(--md-aibo-font-mono);
 }
 .app-shell[data-ui-kit='material3'] .file-change-mark[data-kind='added'] { color: var(--md-aibo-signal-success); }
 .app-shell[data-ui-kit='material3'] .file-change-mark[data-kind='modified'] { color: var(--md-aibo-signal-accent); }
@@ -467,11 +481,11 @@
 .app-shell[data-ui-kit='material3'] .file-change-mark:is([data-kind='deleted'], [data-kind='conflicted']) { color: var(--md-aibo-signal-danger); }
 .app-shell[data-ui-kit='material3'] .session-change-preview { border-top: var(--md-aibo-line-hairline) solid var(--aibo-border); }
 .app-shell[data-ui-kit='material3'] .session-change-preview-toolbar {
-  min-height: 36px;
+  min-height: 40px;
   border-bottom: var(--md-aibo-line-hairline) solid var(--aibo-border);
   background: var(--md-aibo-surface-muted);
 }
-.app-shell[data-ui-kit='material3'] .session-change-sides > .ui-button { min-height: 36px; }
+.app-shell[data-ui-kit='material3'] .session-change-sides > .ui-button { min-height: 32px; }
 .app-shell[data-ui-kit='material3'] .session-change-sides > .ui-button[aria-pressed='true'] { background: var(--aibo-accent-soft); color: var(--aibo-selected-ink); }
 
 .app-shell[data-ui-kit='material3'] .timeline-entry {
@@ -534,7 +548,7 @@
 .app-shell[data-ui-kit='material3'] .entry-author {
   color: var(--aibo-text);
   font-size: var(--aibo-type-meta);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .app-shell[data-ui-kit='material3'] .entry-content {
@@ -565,7 +579,7 @@
   color: var(--aibo-text);
   flex-wrap: wrap;
 }
-.app-shell[data-ui-kit='material3'] .tool-group > summary:hover { background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='material3'] .tool-group > summary:hover { background: var(--aibo-hover); }
 .app-shell[data-ui-kit='material3'] .disclosure-chevron {
   transform: rotate(-90deg);
   transition: transform var(--md-aibo-motion-fast);
@@ -594,7 +608,7 @@
 .app-shell[data-ui-kit='material3'] .timeline-empty h3 {
   color: var(--aibo-text);
   font-size: 24px;
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .app-shell[data-ui-kit='material3'] .timeline-empty p {
@@ -671,13 +685,13 @@
 }
 
 .app-shell[data-ui-kit='material3'] .composer .attachment-caption button {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--md-sys-shape-corner-small);
 }
 
 .app-shell[data-ui-kit='material3'] .composer-toolbar [data-slot='button'] {
-  min-height: 44px;
+  min-height: 40px;
   font-size: var(--md-aibo-type-label-size);
 }
 
@@ -712,48 +726,51 @@
   background: var(--aibo-surface-hover);
 }
 
+/* M3 primary tabs: rectangular state layers, title-small labels, on-surface-variant
+   inactive and primary active, with a 3px primary indicator rounded on top. */
 .app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) {
-  --md-aibo-tabs-signal: var(--aibo-accent);
+  --md-aibo-tabs-signal: var(--md-sys-color-primary);
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
-  gap: var(--md-aibo-space-1);
-  border-bottom: 1px solid var(--aibo-border);
-  background: var(--aibo-surface-hover);
+  gap: 0;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface);
 }
 
-.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button {
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button,
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:active:not(:disabled) {
   position: relative;
   min-width: 0;
-  min-height: 44px;
+  min-height: 48px;
   border: 0;
-  border-radius: var(--md-sys-shape-corner-small);
-  padding: 0 var(--md-aibo-space-3);
-  background: transparent;
-  color: var(--aibo-muted);
+  border-radius: 0;
+  padding: 0 var(--md-aibo-space-4);
+  background-color: transparent;
+  color: var(--md-sys-color-on-surface-variant);
   box-shadow: none;
   font-size: var(--aibo-type-ui);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:hover:not(:disabled) {
-  background: transparent;
-  color: var(--aibo-text);
+  color: var(--md-sys-color-on-surface);
   box-shadow: none;
 }
 
 .app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:is([aria-selected='true'], [aria-current='page']) {
-  background: transparent;
-  color: var(--aibo-text);
+  background-color: transparent;
+  color: var(--md-sys-color-primary);
   box-shadow: none;
 }
 
 .app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:is([aria-selected='true'], [aria-current='page'])::after {
   position: absolute;
-  right: var(--md-aibo-space-2);
+  right: 14px;
   bottom: 0;
-  left: var(--md-aibo-space-2);
+  left: 14px;
   height: var(--md-aibo-line-strong);
+  border-radius: 3px 3px 0 0;
   background: var(--md-aibo-tabs-signal);
   content: '';
 }
@@ -761,7 +778,7 @@
 .app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:focus-visible {
   z-index: 1;
   outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
-  outline-offset: -4px;
+  outline-offset: -3px;
 }
 
 .app-shell[data-ui-kit='material3'] :is(.git-summary-card, .trust-card, .agent-card, .inspector-empty) {
@@ -792,8 +809,8 @@
   border: 0;
 }
 .app-shell[data-ui-kit='material3'] .git-commit-file.ui-button {
-  height: 36px;
-  min-height: 36px;
+  height: 44px;
+  min-height: 44px;
   gap: var(--md-aibo-space-2);
   padding: 0 var(--md-aibo-space-2) 0 var(--md-aibo-space-3);
   border: 0;
@@ -810,11 +827,11 @@
   max-width: 65%;
 }
 .app-shell[data-ui-kit='material3'] .git-commit-file .changeset-file-name-only { max-width: 100%; }
-.app-shell[data-ui-kit='material3'] .git-commit-file:focus-visible { outline-offset: -2px; }
+.app-shell[data-ui-kit='material3'] .git-commit-file:focus-visible { outline-offset: -3px; }
 
 @media (pointer: coarse) {
   .app-shell[data-ui-kit='material3'] :is(.session-change-row, .git-commit-file).ui-button { height: 44px; min-height: 44px; }
-  .app-shell[data-ui-kit='material3'] .session-change-sides > .ui-button { min-height: 44px; }
+  .app-shell[data-ui-kit='material3'] .session-change-sides > .ui-button { min-height: 40px; }
 }
 
 
@@ -886,7 +903,7 @@
 
 .app-shell[data-ui-kit='material3'] .workbench-status-usage:focus-visible {
   outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
-  outline-offset: -2px;
+  outline-offset: -3px;
 }
 
 .app-shell[data-ui-kit='material3'] .composer-context-actions {
@@ -897,7 +914,7 @@
 }
 
 .app-shell[data-ui-kit='material3'] .agent-status-mark {
-  border-radius: 1px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
 }
 
 @keyframes md-status-track {
@@ -919,16 +936,11 @@
   padding: 0;
   color: var(--aibo-text);
   background: var(--aibo-surface);
-  border: 1px solid var(--aibo-border);
-  border-top: 3px solid var(--aibo-accent);
-  border-radius: var(--md-sys-shape-corner-small);
-  box-shadow: var(--md-aibo-shadow-panel);
   margin: auto;
 }
 
 .app-shell[data-ui-kit='material3'] :is(.ui-management, .ui-alert)::backdrop {
-  background: color-mix(in srgb, var(--md-sys-color-scrim) 40%, transparent);
-  backdrop-filter: blur(3px);
+  background: color-mix(in srgb, var(--md-sys-color-scrim) var(--md-sys-scrim-opacity), transparent);
 }
 
 .app-shell[data-ui-kit='material3'] .ui-management {
@@ -955,7 +967,7 @@
 }
 
 .app-shell[data-ui-kit='material3'] .management-header h1 {
-  font: 700 20px/1.3 var(--md-aibo-font-command);
+  font: 400 24px/32px var(--md-aibo-font-command);
   margin: 0;
 }
 
@@ -1011,7 +1023,7 @@
 
 .app-shell[data-ui-kit='material3'] .management-nav strong {
   font-size: var(--aibo-type-ui);
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .app-shell[data-ui-kit='material3'] .management-nav small {
@@ -1083,18 +1095,30 @@
 
 @media (max-width: 1100px) {
 
+  /* Narrow headers follow the M3 top app bar: title and trailing actions share the first row,
+     primary tabs take the second, so the header never grows a third row. */
   .app-shell[data-ui-kit='material3'] .timeline-heading {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'copy actions' 'tabs tabs';
     align-items: center;
+    column-gap: var(--md-aibo-space-2);
     padding: 0 var(--md-aibo-space-4);
   }
 
   .app-shell[data-ui-kit='material3'] .timeline-heading-copy {
-    flex-basis: 100%;
+    grid-area: copy;
+    min-width: 0;
     padding-bottom: 0;
   }
 
+  .app-shell[data-ui-kit='material3'] .timeline-heading > .conversation-navigation {
+    grid-area: tabs;
+    justify-self: start;
+  }
+
   .app-shell[data-ui-kit='material3'] .timeline-heading-actions {
+    grid-area: actions;
     margin-left: auto;
   }
 
@@ -1128,7 +1152,8 @@
   }
 
   .app-shell[data-ui-kit='material3'] .timeline-heading [data-slot='card-title'] {
-    font-size: 17px;
+    font-size: 16px;
+    font-weight: 500;
   }
 
 
@@ -1272,7 +1297,7 @@
 }
 
 .app-shell[data-ui-kit='material3'] .session-agent-option:focus-visible {
-  outline-offset: -2px;
+  outline-offset: -3px;
 }
 
 .app-shell[data-ui-kit='material3'] .session-agent-wheel [data-slot='button'].session-agent-option:disabled {
@@ -1341,13 +1366,13 @@
 
 .app-shell[data-ui-kit='material3'] .markdown-heading-1 {
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .app-shell[data-ui-kit='material3'] .markdown-heading-2 {
-  font-size: 20px;
-  font-weight: 650;
-  line-height: 1.4;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 28px;
 }
 
 .app-shell[data-ui-kit='material3'] .markdown-list {
@@ -1360,7 +1385,7 @@
   margin-bottom: var(--md-aibo-space-1);
 }
 .app-shell[data-ui-kit='material3'] .entry-content .markdown-content :not(pre) > code {
-  font: 12.5px var(--md-aibo-font-mono);
+  font: var(--aibo-type-meta) var(--md-aibo-font-mono);
   background: var(--md-aibo-surface-muted);
   border-radius: var(--md-sys-shape-corner-small);
 }
@@ -1382,18 +1407,13 @@
   transform: none;
 }
 
-.app-shell[data-ui-kit='material3'] .host-panel {
-  border-radius: var(--md-sys-shape-corner-small);
-  border-top: 3px solid var(--aibo-accent);
-  box-shadow: var(--md-aibo-shadow-panel);
-}
 
 
 
 .app-shell[data-ui-kit='material3'] .inspector [data-slot='card-title'] {
   font-size: var(--aibo-type-ui);
   line-height: 1.4;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .app-shell[data-ui-kit='material3'] .inspector .panel-heading + [data-slot='separator'] {
@@ -1456,7 +1476,7 @@
   --repo-focus: var(--aibo-focus);
   --repo-radius: var(--md-aibo-radius-subtle);
   --repo-trigger: var(--aibo-surface);
-  --repo-hover: var(--aibo-surface-hover);
+  --repo-hover: var(--aibo-hover);
   --repo-surface: var(--md-aibo-surface-raised);
   --repo-shadow: var(--md-aibo-shadow-panel);
 }
@@ -1576,7 +1596,7 @@
 }
 
 .app-shell[data-ui-kit='material3'] .row-action-menu .ui-button:focus-visible {
-  outline-offset: -2px;
+  outline-offset: -3px;
 }
 
 .app-shell[data-ui-kit='material3'] .row-action-menu .row-action-danger {
@@ -1640,14 +1660,16 @@
 
 .app-shell[data-ui-kit='material3'] .workspace-preference-option input {
   flex: none;
-  width: 20px;
-  height: 20px;
-  accent-color: var(--aibo-accent);
 }
 
-.app-shell[data-ui-kit='material3'] .workspace-preference-option:focus-within {
+/* The whole row is the target, so it carries the list-item focus ring instead of the control. */
+.app-shell[data-ui-kit='material3'] .workspace-preference-option:has(input:focus-visible) {
   outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
-  outline-offset: 2px;
+  outline-offset: -3px;
+}
+
+.app-shell[data-ui-kit='material3'] .workspace-preference-option input[type]:focus-visible {
+  outline: none;
 }
 
 .app-shell[data-ui-kit='material3'] .workspace-preference-option:has(input:disabled) {
@@ -1725,11 +1747,6 @@
   height: auto;
 }
 
-.app-shell[data-ui-kit='material3'] .subagent-dialog {
-  border-radius: var(--md-sys-shape-corner-small);
-  border-top: var(--md-aibo-line-strong) solid var(--aibo-accent);
-  box-shadow: var(--md-aibo-shadow-panel);
-}
 
 .app-shell[data-ui-kit='material3'] .subagent-dialog summary {
   min-height: var(--md-aibo-density-control-height);
@@ -1749,10 +1766,10 @@
 }
 
 .app-shell[data-ui-kit='material3'] :is(.tool-entry, .system-entry) {
-  border: 1px solid var(--aibo-border);
+  border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-medium);
   padding-block: var(--md-aibo-space-2);
-  background: var(--aibo-surface);
+  background: var(--md-sys-color-surface); /* M3 outlined card */
   padding-inline: var(--md-aibo-space-3);
 }
 
@@ -1786,7 +1803,7 @@
 }
 .app-shell[data-ui-kit='material3'] .agent-activity .tone-running { color: var(--aibo-muted); }
 .app-shell[data-ui-kit='material3'] .agent-activity .md-agent-status-track {
-  color: var(--aibo-focus);
+  color: var(--md-sys-color-primary);
   inset: -2px;
   width: 24px;
   height: 24px;
@@ -1932,43 +1949,51 @@
 
 
 
+/* M3 outlined text field: extra-small corners, outline -> on-surface on hover,
+   3px primary when focused (1px border plus a 2px inset ring, so layout never shifts). */
 .app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea']),
 .app-shell[data-ui-kit='material3'] :is(select, .ui-select-trigger) {
   min-height: var(--md-aibo-density-control-height);
-  border: var(--md-aibo-line-hairline) solid var(--aibo-border);
-  border-radius: var(--md-sys-shape-corner-small);
-  padding-inline: var(--md-aibo-space-3);
-  background-color: var(--md-aibo-surface-panel);
+  border: var(--md-aibo-line-hairline) solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  padding-inline: var(--md-aibo-space-4);
+  background-color: transparent;
   color: var(--aibo-text);
   box-shadow: none;
-  font: var(--aibo-type-body)/1.45 var(--md-aibo-font-sans);
-  caret-color: var(--aibo-focus);
+  font: 16px/24px var(--md-aibo-font-sans);
+  caret-color: var(--md-sys-color-primary);
 }
 
 .app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))::placeholder {
-  color: var(--aibo-muted);
+  color: var(--md-sys-color-on-surface-variant);
   opacity: 1;
 }
 
 .app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):hover:not(:disabled) {
-  border-color: var(--aibo-border-strong);
+  border-color: var(--md-sys-color-on-surface);
 }
 
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):focus-visible {
-  border-color: var(--aibo-focus);
+/* Focus outranks hover: a hovered focused field keeps its primary outline. */
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):is(:focus-visible, :focus):not(:disabled) {
+  border-color: var(--md-sys-color-primary);
   outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent);
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-primary);
 }
 
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))[aria-invalid='true'] {
-  border-color: var(--aibo-danger-border);
-  box-shadow: none;
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))[aria-invalid='true'],
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))[aria-invalid='true']:hover:not(:disabled) {
+  border-color: var(--md-sys-color-error);
+  caret-color: var(--md-sys-color-error);
+}
+
+.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))[aria-invalid='true']:is(:focus-visible, :focus):not(:disabled) {
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-error);
 }
 
 .app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):disabled {
-  color: var(--aibo-muted);
-  background-color: var(--aibo-surface-hover);
-  opacity: .72;
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-disabled-content-opacity), transparent);
+  border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+  background-color: transparent;
   cursor: not-allowed;
 }
 
@@ -2001,86 +2026,179 @@
 }
 
 .app-shell[data-ui-kit='material3'] :is(.composer, .global-search-heading, .workspace-tool-panel, .repository-search):focus-within {
-  border-color: var(--aibo-focus);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aibo-focus) 20%, transparent);
+  border-color: var(--md-sys-color-primary);
+  box-shadow: inset 0 0 0 2px var(--md-sys-color-primary);
 }
 
 
 
+/* M3 selection controls. Each paints a 40px circular state layer around its glyph:
+   checkbox and radio through ::before, the switch through its handle's box-shadow. */
 .app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']),
 .app-shell[data-ui-kit='material3'] input[type='radio'] {
+  --md-control-ink: var(--md-sys-color-on-surface-variant);
+  --md-control-layer: transparent;
   appearance: none;
   position: relative;
+  box-sizing: border-box;
   flex: none;
-  width: 24px;
-  height: 24px;
-  margin: 0;
-  border: 2px solid var(--aibo-border-strong);
-  border-radius: var(--md-sys-shape-corner-small);
-  background: var(--md-aibo-surface-panel);
+  width: 18px;
+  height: 18px;
+  margin: 3px;
+  border: 2px solid var(--md-control-ink);
+  border-radius: 2px;
+  background: transparent;
   cursor: pointer;
 }
 
 .app-shell[data-ui-kit='material3'] input[type='radio'] {
+  width: 20px;
+  height: 20px;
+  margin: 2px;
   border-radius: 50%;
 }
 
-.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked,
-.app-shell[data-ui-kit='material3'] input[type='radio']:checked {
-  border-color: var(--aibo-focus);
-  background: var(--md-sys-color-primary);
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox']:not([role='switch']), input[type='radio'])::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--md-control-layer);
+  content: '';
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox']:not([role='switch']), input[type='radio']):hover:not(:disabled) {
+  --md-control-ink: var(--md-sys-color-on-surface);
+  --md-control-layer: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity), transparent);
+}
+
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox']:not([role='switch']), input[type='radio']):is(:focus-visible, :active):not(:disabled) {
+  --md-control-ink: var(--md-sys-color-on-surface);
+  --md-control-layer: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-focus-state-layer-opacity), transparent);
+}
+
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox']:not([role='switch']), input[type='radio']):checked {
+  --md-control-ink: var(--md-sys-color-primary);
+}
+
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox']:not([role='switch']), input[type='radio']):checked:hover:not(:disabled) {
+  --md-control-ink: var(--md-sys-color-primary);
+  --md-control-layer: color-mix(in srgb, var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity), transparent);
+}
+
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox']:not([role='switch']), input[type='radio']):checked:focus-visible:not(:disabled) {
+  --md-control-ink: var(--md-sys-color-primary);
+  --md-control-layer: color-mix(in srgb, var(--md-sys-color-primary) var(--md-sys-state-focus-state-layer-opacity), transparent);
+}
+
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox']:not([role='switch']), input[type='radio'])[aria-invalid='true'] {
+  --md-control-ink: var(--md-sys-color-error);
+}
+
+.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked {
+  background: var(--md-control-ink);
 }
 
 .app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked::after {
   position: absolute;
-  inset: 4px 3px 5px 5px;
-  border-bottom: 3px solid var(--md-sys-color-scrim);
-  border-left: 3px solid var(--md-sys-color-scrim);
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 9px;
+  border: solid var(--md-sys-color-on-primary);
+  border-width: 0 2px 2px 0;
   content: '';
-  transform: rotate(-45deg);
+  transform: rotate(45deg);
 }
 
 .app-shell[data-ui-kit='material3'] input[type='radio']:checked::after {
   position: absolute;
-  inset: 5px;
+  inset: 3px;
   border-radius: 50%;
-  background: var(--md-sys-color-scrim);
+  background: var(--md-control-ink);
   content: '';
+}
+
+.app-shell[data-ui-kit='material3'] :is(input[type='checkbox']:not([role='switch']), input[type='radio']):disabled {
+  --md-control-ink: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-disabled-content-opacity), transparent);
+  cursor: not-allowed;
+}
+
+.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked:disabled::after {
+  border-color: var(--md-sys-color-surface);
 }
 
 .app-shell[data-ui-kit='material3'] input[role='switch'] {
+  --md-switch-handle: 16px;
+  --md-switch-handle-color: var(--md-sys-color-outline);
+  --md-switch-layer: transparent;
   appearance: none;
   position: relative;
+  box-sizing: border-box;
   flex: none;
-  width: 44px;
-  height: 24px;
+  width: 52px;
+  height: 32px;
   margin: 0;
-  border: 2px solid var(--aibo-border-strong);
-  border-radius: 16px;
-  background: var(--aibo-surface-hover);
+  border: 2px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-highest);
   cursor: pointer;
 }
 
+/* Handle centres sit 14px from either inner edge; size changes keep them centred. */
 .app-shell[data-ui-kit='material3'] input[role='switch']::after {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 14px;
-  height: 14px;
+  top: calc(14px - var(--md-switch-handle) / 2);
+  left: calc(14px - var(--md-switch-handle) / 2);
+  width: var(--md-switch-handle);
+  height: var(--md-switch-handle);
   border-radius: 50%;
-  background: var(--aibo-text);
+  background: var(--md-switch-handle-color);
+  box-shadow: 0 0 0 calc(20px - var(--md-switch-handle) / 2) var(--md-switch-layer);
   content: '';
-  transition: transform var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
+  transition: top var(--md-sys-motion-spring-fast-spatial-duration) var(--md-sys-motion-spring-fast-spatial), left var(--md-sys-motion-spring-fast-spatial-duration) var(--md-sys-motion-spring-fast-spatial), width var(--md-sys-motion-spring-fast-spatial-duration) var(--md-sys-motion-spring-fast-spatial), height var(--md-sys-motion-spring-fast-spatial-duration) var(--md-sys-motion-spring-fast-spatial);
 }
 
 .app-shell[data-ui-kit='material3'] input[role='switch']:checked {
+  --md-switch-handle: 24px;
+  --md-switch-handle-color: var(--md-sys-color-on-primary);
   border-color: var(--md-sys-color-primary);
   background: var(--md-sys-color-primary);
 }
 
 .app-shell[data-ui-kit='material3'] input[role='switch']:checked::after {
-  background: var(--md-sys-color-on-primary);
-  transform: translateX(19px);
+  left: calc(34px - var(--md-switch-handle) / 2);
+}
+
+.app-shell[data-ui-kit='material3'] input[role='switch']:is(:hover, :focus-visible):not(:disabled) {
+  --md-switch-handle-color: var(--md-sys-color-on-surface-variant);
+  --md-switch-layer: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-hover-state-layer-opacity), transparent);
+}
+
+.app-shell[data-ui-kit='material3'] input[role='switch']:checked:is(:hover, :focus-visible):not(:disabled) {
+  --md-switch-handle-color: var(--md-sys-color-primary-container);
+  --md-switch-layer: color-mix(in srgb, var(--md-sys-color-primary) var(--md-sys-state-hover-state-layer-opacity), transparent);
+}
+
+.app-shell[data-ui-kit='material3'] input[role='switch']:active:not(:disabled) {
+  --md-switch-handle: 28px;
+}
+
+.app-shell[data-ui-kit='material3'] input[role='switch']:disabled {
+  --md-switch-handle-color: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-disabled-content-opacity), transparent);
+  border-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-highest) 12%, transparent);
+  cursor: not-allowed;
+}
+
+.app-shell[data-ui-kit='material3'] input[role='switch']:checked:disabled {
+  --md-switch-handle-color: var(--md-sys-color-surface);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
 }
 
 .app-shell[data-ui-kit='material3'] :is(input[type='checkbox'], input[type='radio']):focus-visible {
@@ -2088,26 +2206,13 @@
   outline-offset: 2px;
 }
 
-.app-shell[data-ui-kit='material3'] :is(input[type='checkbox'], input[type='radio']):disabled {
-  opacity: .5;
-  cursor: not-allowed;
-}
-
-.app-shell[data-ui-kit='material3'] .workspace-preference-option input[role='switch'] {
-  width: 44px;
-  height: 24px;
-}
-
-.app-shell[data-ui-kit='material3'] .agent-settings-surface input[type='checkbox'] {
-  width: 24px;
-  height: 24px;
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-ui-kit='material3'] input[role='switch']::after { transition: none; }
 }
 
 .app-shell[data-ui-kit='material3'] .agent-settings-surface :is(select, .ui-select-trigger) {
   min-height: var(--md-aibo-density-control-height);
-  padding-inline: var(--md-aibo-space-3) var(--md-aibo-space-6);
-  border-radius: var(--md-sys-shape-corner-small);
-  background-color: var(--md-aibo-surface-panel);
+  padding-inline: var(--md-aibo-space-4) var(--md-aibo-space-6);
 }
 
 
@@ -2122,10 +2227,9 @@
   color: var(--aibo-selected-ink);
 }
 
-.app-shell[data-ui-kit='material3'] .ui-button[aria-pressed='true'],
-.app-shell[data-ui-kit='material3'] .ui-button[aria-pressed='true']:hover:not(:disabled) {
+.app-shell[data-ui-kit='material3'] .ui-button[aria-pressed='true'] {
   color: var(--aibo-selected-ink);
-  background: var(--aibo-accent-soft);
+  background-color: var(--aibo-accent-soft);
   box-shadow: none;
 }
 
@@ -2192,7 +2296,10 @@
 .app-shell[data-ui-kit='material3'] .git-history-entry {
   border-bottom: var(--md-aibo-line-hairline) solid var(--aibo-border);
 }
+/* Commit rows are two-line list items: 72px, 60px at density −3. */
 .app-shell[data-ui-kit='material3'] .git-history-item {
+  box-sizing: border-box;
+  min-height: 60px;
   border-radius: var(--md-sys-shape-corner-small);
   padding: 6px var(--md-aibo-space-4);
   background: transparent;
@@ -2333,8 +2440,8 @@
 }
 
 .app-shell[data-ui-kit='material3'] .attachment-caption button {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
 }
 
 .app-shell[data-ui-kit='material3'] .attachment-item a {
@@ -2367,8 +2474,8 @@
 }
 .app-shell[data-ui-kit='material3'] .git-repository-toolbar .repository-trigger {
   position: relative;
-  height: 36px;
-  min-height: 36px;
+  height: 44px;
+  min-height: 44px;
   font-size: var(--aibo-type-ui);
 }
 .app-shell[data-ui-kit='material3'] .git-repository-toolbar .repository-trigger::before {
@@ -2394,7 +2501,7 @@
   min-height: 32px;
   max-width: 40%;
   font-family: var(--md-aibo-font-mono);
-  font-weight: 600;
+  font-weight: 500;
 }
 .app-shell[data-ui-kit='material3'] .git-branch-label {
   overflow: hidden;
@@ -2426,8 +2533,8 @@
   align-items: center;
 }
 .app-shell[data-ui-kit='material3'] .git-branch-create [data-slot='input'] {
-  height: 36px;
-  min-height: 36px;
+  height: 44px;
+  min-height: 44px;
 }
 .app-shell[data-ui-kit='material3'] .git-section-toolbar {
   margin: 0;
@@ -2452,8 +2559,8 @@
   padding: var(--md-aibo-space-3) var(--md-aibo-space-4);
 }
 .app-shell[data-ui-kit='material3'] .git-commit-form [data-slot='input'] {
-  height: 36px;
-  min-height: 36px;
+  height: 44px;
+  min-height: 44px;
   font-size: var(--aibo-type-ui);
 }
 .app-shell[data-ui-kit='material3'] .git-commit-form [data-slot='button'] {
@@ -2471,8 +2578,8 @@
 }
 .app-shell[data-ui-kit='material3'] .git-change-group-trigger {
   flex: 1;
-  height: 35px;
-  min-height: 35px;
+  height: 44px;
+  min-height: 44px;
   padding-inline: var(--md-aibo-space-3) var(--md-aibo-space-2);
 }
 .app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-row {
@@ -2492,7 +2599,7 @@
   border: 0;
 }
 .app-shell[data-ui-kit='material3'] .git-stash-trigger {
-  min-height: 36px;
+  min-height: 32px;
 }
 
 
@@ -2538,13 +2645,13 @@
 
 
 .app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-button {
-  height: 36px;
-  min-height: 36px;
+  height: 44px;
+  min-height: 44px;
   padding-block: 0;
 }
 .app-shell[data-ui-kit='material3'] .git-change-list .changeset-file-row {
-  height: 36px;
-  min-height: 36px;
+  height: 44px;
+  min-height: 44px;
 }
 .app-shell[data-ui-kit='material3'] .git-change-group-heading {
   position: relative;
@@ -2571,8 +2678,8 @@
 .app-shell[data-ui-kit='material3'] .git-change-list .changeset-actions .ui-button {
   width: auto;
   min-width: 0;
-  height: 36px;
-  min-height: 36px;
+  height: 32px;
+  min-height: 32px;
   padding: 0 var(--md-aibo-space-1);
   color: var(--aibo-muted);
   font-weight: 400;
@@ -2599,19 +2706,19 @@
   border-top: var(--md-aibo-line-hairline) solid var(--aibo-border);
 }
 .app-shell[data-ui-kit='material3'] .tool-group-items .tool-output > summary {
-  min-height: 36px;
+  min-height: 44px;
   gap: var(--md-aibo-space-2);
   padding-left: 36px;
   font-size: var(--aibo-type-meta);
 }
-.app-shell[data-ui-kit='material3'] .tool-group-items .tool-output > summary:hover { background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='material3'] .tool-group-items .tool-output > summary:hover { background: var(--aibo-hover); }
 .app-shell[data-ui-kit='material3'] .tool-record-status { flex: none; color: var(--aibo-muted); }
 .app-shell[data-ui-kit='material3'] .tool-record-status[data-status='completed'] { color: var(--md-aibo-signal-success); }
 .app-shell[data-ui-kit='material3'] .tool-record-status[data-status='failed'] { color: var(--md-aibo-signal-danger); }
 .app-shell[data-ui-kit='material3'] .tool-record-name {
   width: 56px;
   flex: none;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--aibo-text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2636,9 +2743,8 @@
   .app-shell[data-ui-kit='material3'] .tone-running .md-agent-status-track { animation: none; }
   .app-shell[data-ui-kit='material3'] .timeline-session-status[data-tone='running'] .timeline-session-signal { animation: none; }
 }
-.app-shell[data-ui-kit='material3'] .git-history .git-history-item[aria-expanded='true'],
-.app-shell[data-ui-kit='material3'] .git-history .git-history-item[aria-expanded='true']:hover:not(:disabled) {
-  background: var(--aibo-accent-soft);
+.app-shell[data-ui-kit='material3'] .git-history .git-history-item[aria-expanded='true'] {
+  background-color: var(--aibo-accent-soft);
   box-shadow: none;
   border-radius: var(--md-sys-shape-corner-small);
 }
@@ -2695,7 +2801,7 @@
   border-radius: var(--md-sys-shape-corner-small);
   font-family: var(--md-aibo-font-mono);
 }
-.app-shell[data-ui-kit='material3'] .execution-table .execution-toggle:focus-visible { outline-offset: -2px; }
+.app-shell[data-ui-kit='material3'] .execution-table .execution-toggle:focus-visible { outline-offset: -3px; }
 .app-shell[data-ui-kit='material3'] .execution-toggle span {
   min-width: 0;
   overflow: hidden;
@@ -2725,20 +2831,11 @@
 .app-shell[data-ui-kit='material3'] :is(button, input, :is(select, .ui-select-trigger), textarea, summary):focus-visible { outline-offset: 2px; }
 .app-shell[data-ui-kit='material3'] .ui-button {
   border-radius: var(--md-sys-shape-corner-full);
-  font-size: var(--aibo-type-ui);
-  /* Theme/kit changes apply atomically, without blending the previous palette. */
-  transition: box-shadow var(--md-aibo-motion-fast);
+  /* Theme/kit changes apply atomically, without blending the previous palette; only shape morphs. */
+  transition: border-radius var(--md-sys-motion-spring-fast-spatial-duration) var(--md-sys-motion-spring-fast-spatial), box-shadow var(--md-aibo-motion-fast);
 }
-.app-shell[data-ui-kit='material3'] .ui-button:active:not(:disabled) { transform: none; }
 .app-shell[data-ui-kit='material3'] .ui-button[data-size='icon'] { border-radius: 50%; }
-.app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='default'], [data-variant='send']):hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary) 90%, var(--primary-foreground));
-}
-.app-shell[data-ui-kit='material3'] .ui-button[data-variant='outline'] { border-color: var(--md-sys-color-outline); color: var(--md-sys-color-primary); }
-.app-shell[data-ui-kit='material3'] .ui-button[data-variant='secondary'] { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
-.app-shell[data-ui-kit='material3'] .ui-button:is([data-variant='destructive'], [data-variant='abort']) { border-color: transparent; }
-.app-shell[data-ui-kit='material3'] .ui-button:disabled { border-color: transparent; background: var(--aibo-hover); color: var(--aibo-muted); opacity: .65; }
-.app-shell[data-ui-kit='material3'] :is([data-slot='badge'], .session-state-label) { border: 0; border-radius: 6px; }
+.app-shell[data-ui-kit='material3'] :is([data-slot='badge'], .session-state-label) { border: 0; border-radius: 8px; }
 .app-shell[data-ui-kit='material3'] .window-titlebar { border-bottom: 0; background: var(--aibo-surface-hover); }
 .app-shell[data-ui-kit='material3'] .window-title { letter-spacing: 0; }
 .app-shell[data-ui-kit='material3'] .window-actions .ui-button { border-radius: 50%; }
@@ -2748,7 +2845,7 @@
 .app-shell[data-ui-kit='material3'] .sidebar .panel-heading { padding-inline: 20px 12px; }
 .app-shell[data-ui-kit='material3'] .sidebar .panel-heading [data-slot='card-title'] { letter-spacing: 0; font-weight: 500; }
 .app-shell[data-ui-kit='material3'] .sidebar-new-session.ui-button {
-  min-height: 48px;
+  min-height: 56px;
   width: calc(100% - 32px);
   margin: 16px 16px 8px;
   padding-inline: 18px;
@@ -2759,7 +2856,6 @@
   color: var(--md-sys-color-on-primary-container);
 }
 .app-shell[data-ui-kit='material3'] .sidebar-new-session.ui-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-sys-color-primary-container) 92%, var(--md-sys-color-primary));
   color: var(--md-sys-color-on-primary-container);
   box-shadow: none;
 }
@@ -2768,21 +2864,19 @@
 .app-shell[data-ui-kit='material3'] .session-item { padding-left: 18px; }
 .app-shell[data-ui-kit='material3'] :is(.workspace-item-row, .session-item-row) { border-radius: var(--md-sys-shape-corner-full); }
 .app-shell[data-ui-kit='material3'] :is(.workspace-item-row, .session-item-row) .ui-button { border-radius: inherit; }
-.app-shell[data-ui-kit='material3'] .session-item-row.selected,
-.app-shell[data-ui-kit='material3'] .session-item-row.selected:is(:hover, :focus-within) { box-shadow: none; background: var(--md-sys-color-secondary-container); }
+.app-shell[data-ui-kit='material3'] .session-item-row.selected { box-shadow: none; background: var(--md-sys-color-secondary-container); }
+/* Selected rows keep their container; hover and focus add the state layer on top. */
+.app-shell[data-ui-kit='material3'] :is(.session-item-row.selected, .changeset-file-row.changeset-file-selected, .git-history .git-history-item[aria-expanded='true']):is(:hover, :focus-within) { background-image: linear-gradient(var(--aibo-hover), var(--aibo-hover)); }
 .app-shell[data-ui-kit='material3'] .session-item-row.selected .session-item { color: var(--md-sys-color-on-secondary-container); }
 .app-shell[data-ui-kit='material3'] .sidebar-footer { margin: 8px 12px 0; padding-block: 4px; border: 0; }
 .app-shell[data-ui-kit='material3'] .sidebar-footer .ui-button { border-radius: var(--md-sys-shape-corner-full); }
-.app-shell[data-ui-kit='material3'] .workspace-splitter-line { background: transparent; }
-.app-shell[data-ui-kit='material3'] .workspace-splitter:focus-visible .workspace-splitter-line { background: var(--aibo-focus); }
 .app-shell[data-ui-kit='material3'] .timeline { border-radius: 20px 0 0 20px; overflow: hidden; background: var(--aibo-bg); }
 .app-shell[data-ui-kit='material3'] .workbench-chrome[data-layout='focus'] .timeline { border-radius: 20px; }
 .app-shell[data-ui-kit='material3'] .timeline-heading { border-radius: 0; background: var(--aibo-bg); }
-.app-shell[data-ui-kit='material3'] .timeline-heading [data-slot='card-title'] { font-weight: 600; }
 .app-shell[data-ui-kit='material3'] .timeline-session-signal { border-radius: 50%; }
 .app-shell[data-ui-kit='material3'] .timeline-entry.timeline-entry.user-entry .entry-content {
   border: 0;
-  border-radius: 4px 18px 18px 18px;
+  border-radius: 4px 20px 20px 20px;
   background: var(--aibo-surface-hover);
   padding: 14px 18px;
 }
@@ -2791,21 +2885,15 @@
 .app-shell[data-ui-kit='material3'] :is(.tool-output pre, .entry-content pre) { border-radius: var(--md-sys-shape-corner-small); }
 .app-shell[data-ui-kit='material3'] .markdown-content a { color: var(--md-sys-color-primary); }
 .app-shell[data-ui-kit='material3'] .timeline-empty h3 { font-weight: 500; }
-.app-shell[data-ui-kit='material3'] :is(.conversation-navigation, .side-panel-tabs, .git-section-tabs) .ui-button[aria-selected='true'] {
-  color: var(--md-sys-color-primary);
-}
-.app-shell[data-ui-kit='material3'] :is(.conversation-navigation, .side-panel-tabs, .git-section-tabs) .ui-button[aria-selected='true']::after {
-  left: 14px; right: 14px; border-radius: 3px 3px 0 0;
-}
 .app-shell[data-ui-kit='material3'] .compact-region-navigation .ui-button[aria-pressed='true']::after { border-radius: 3px 3px 0 0; }
 .app-shell[data-ui-kit='material3'] .side-panel-tabs-shell { background: var(--aibo-surface); border-radius: var(--md-sys-shape-corner-large) var(--md-sys-shape-corner-large) 0 0; }
 .app-shell[data-ui-kit='material3'] .composer {
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 24px;
+  border-radius: 28px;
   background: var(--aibo-surface);
   box-shadow: none;
 }
-.app-shell[data-ui-kit='material3'] .composer:focus-within { border-color: var(--aibo-focus); box-shadow: 0 0 0 1px var(--aibo-focus); }
+.app-shell[data-ui-kit='material3'] .composer:focus-within { border-color: var(--md-sys-color-primary); box-shadow: inset 0 0 0 2px var(--md-sys-color-primary); }
 /* The textarea and painted mention layer must retain exactly the same metrics. */
 .app-shell[data-ui-kit='material3'] :is(.composer-textarea, .composer-mention-layer) { padding: 14px 18px; }
 .app-shell[data-ui-kit='material3'] .composer .attachment-list { padding: 12px 14px 0; }
@@ -2813,37 +2901,20 @@
 .app-shell[data-ui-kit='material3'] .composer .attachment-item :is(.attachment-image-preview, .attachment-image-placeholder) { border-radius: 4px; }
 .app-shell[data-ui-kit='material3'] .composer-toolbar { padding: 4px 10px 10px; }
 .app-shell[data-ui-kit='material3'] .composer-send-button.ui-button { border-radius: 50%; }
-.app-shell[data-ui-kit='material3'] :is(.composer-menu, .composer-suggestions, .workspace-row-menu, .session-row-menu, .sidebar-row-menu, .repository-menu, .model-context-menu, .session-agent-wheel) {
+.app-shell[data-ui-kit='material3'] .session-agent-wheel {
   border: 0;
-  border-radius: var(--md-sys-shape-corner-medium);
-  background: var(--popover);
-  box-shadow: var(--md-sys-elevation-panel);
+  background: var(--md-sys-color-surface-container-low);
+  box-shadow: var(--md-sys-elevation-level2);
 }
-.app-shell[data-ui-kit='material3'] :is(.sidebar-row-menu, .workspace-row-menu, .session-row-menu, .session-agent-wheel) .ui-button { border-radius: var(--md-sys-shape-corner-small); }
-.app-shell[data-ui-kit='material3'] .composer-menu .ui-button { border-radius: var(--md-sys-shape-corner-small); }
-.app-shell[data-ui-kit='material3'] :is(.management-nav [aria-selected='true'], .repository-option[aria-selected='true'], .composer-access-options [aria-checked='true'], .pi-navigation-mode-list [aria-checked='true']) {
+.app-shell[data-ui-kit='material3'] .session-agent-wheel .ui-button { border-radius: var(--md-sys-shape-corner-small); }
+.app-shell[data-ui-kit='material3'] .management-nav [aria-selected='true'] {
   box-shadow: none;
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
 }
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)),
-.app-shell[data-ui-kit='material3'] .agent-settings-surface :is(select, .ui-select-trigger) {
-  border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-small);
-  background-color: transparent;
-}
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger)):focus-visible { box-shadow: 0 0 0 1px var(--aibo-focus); }
-.app-shell[data-ui-kit='material3'] :is([data-slot='input'], [data-slot='textarea'], :is(select, .ui-select-trigger))[aria-invalid='true'] { box-shadow: 0 0 0 1px var(--aibo-danger-border); }
 .app-shell[data-ui-kit='material3'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input),
 .app-shell[data-ui-kit='material3'] :is(.composer-textarea, .global-search-heading [data-slot='input'], .workspace-tool-panel [data-slot='input'], .repository-search input):focus-visible { border: 0; outline: 0; box-shadow: none; background: transparent; }
-.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']) { border-radius: 4px; }
-.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked,
-.app-shell[data-ui-kit='material3'] input[type='radio']:checked { background: var(--md-sys-color-primary); }
-.app-shell[data-ui-kit='material3'] input[type='checkbox']:not([role='switch']):checked::after { border-color: var(--md-sys-color-on-primary); }
-.app-shell[data-ui-kit='material3'] input[type='radio']:checked::after { background: var(--md-sys-color-on-primary); }
-.app-shell[data-ui-kit='material3'] input[role='switch']:checked { border-color: var(--md-sys-color-primary); background: var(--md-sys-color-primary); }
-.app-shell[data-ui-kit='material3'] input[role='switch']:checked::after { background: var(--md-sys-color-on-primary); }
-.app-shell[data-ui-kit='material3'] :is(.approval-card, .user-input-card) { border-radius: var(--md-sys-shape-corner-large); }
+.app-shell[data-ui-kit='material3'] :is(.approval-card, .user-input-card) { border-radius: var(--md-sys-shape-corner-medium); }
 .app-shell[data-ui-kit='material3'] .approval-card { border: 0; }
 .app-shell[data-ui-kit='material3'] .approval-card code { border: 0; border-radius: var(--md-sys-shape-corner-small); }
 .app-shell[data-ui-kit='material3'] .inspector { background: var(--aibo-surface); }
@@ -2851,28 +2922,28 @@
 .app-shell[data-ui-kit='material3'] :is(.git-branch-menu, .git-stash-menu, .git-diff-view) { border-radius: var(--md-sys-shape-corner-small); }
 .app-shell[data-ui-kit='material3'] .git-repository-toolbar .repository-trigger { border: 1px solid var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-small); background: transparent; }
 .app-shell[data-ui-kit='material3'] .git-change-group-heading { border-top: 0; background: var(--aibo-surface-hover); }
-.app-shell[data-ui-kit='material3'] .changeset-file-row.changeset-file-selected,
-.app-shell[data-ui-kit='material3'] .changeset-file-row.changeset-file-selected:is(:hover, :focus-within) { box-shadow: none; background: var(--md-sys-color-secondary-container); }
-.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .git-change-group-trigger) [data-slot='badge'] { border: 0; border-radius: 6px; background: var(--aibo-hover); }
+.app-shell[data-ui-kit='material3'] .changeset-file-row.changeset-file-selected { box-shadow: none; background-color: var(--md-sys-color-secondary-container); }
+.app-shell[data-ui-kit='material3'] :is(.side-panel-tabs, .git-section-tabs, .git-change-group-trigger) [data-slot='badge'] { border: 0; border-radius: 8px; background: var(--aibo-hover); }
 .app-shell[data-ui-kit='material3'] .file-change-mark { border-radius: 4px; }
 .app-shell[data-ui-kit='material3'] .session-change-row[aria-expanded='true'],
 .app-shell[data-ui-kit='material3'] .session-change-row[aria-expanded='true']:hover:not(:disabled) { box-shadow: none; }
-.app-shell[data-ui-kit='material3'] :is(.ui-management, .ui-alert) {
+/* M3 dialogs: surface-container-high, extra-large corners, elevation level 3, no outline. */
+.app-shell[data-ui-kit='material3'] :is(.ui-management, .ui-alert, .alert-dialog, .pi-navigation-dialog, .host-panel, .subagent-dialog, .global-search) {
   border: 0;
   border-radius: var(--md-sys-shape-corner-extra-large);
-  background: var(--aibo-surface);
-  box-shadow: var(--md-sys-elevation-panel);
+  background: var(--md-sys-color-surface-container-high);
+  box-shadow: var(--md-sys-elevation-level3);
 }
-.app-shell[data-ui-kit='material3'] :is(.ui-management, .ui-alert)::backdrop { backdrop-filter: none; }
-.app-shell[data-ui-kit='material3'] .management-header { padding: 20px 24px; border: 0; }
-.app-shell[data-ui-kit='material3'] .management-header h1 { font-size: 22px; font-weight: 500; }
+.app-shell[data-ui-kit='material3'] .management-header { padding: 24px 24px 16px; border: 0; }
+.app-shell[data-ui-kit='material3'] :is(.ui-alert, .alert-dialog) :is(h1, h2) { font-size: 24px; font-weight: 400; line-height: 32px; }
+.app-shell[data-ui-kit='material3'] :is(.ui-alert, .alert-dialog) p { color: var(--md-sys-color-on-surface-variant); font-size: var(--aibo-type-body); line-height: 20px; }
 .app-shell[data-ui-kit='material3'] .management-nav { padding: 8px 12px; border: 0; background: transparent; gap: 4px; }
 .app-shell[data-ui-kit='material3'] .management-nav button { border-radius: var(--md-sys-shape-corner-full); }
 .app-shell[data-ui-kit='material3'] .management-nav .management-tools-start { border: 0; margin-top: 0; }
 .app-shell[data-ui-kit='material3'] .management-content { padding-top: 8px; }
 .app-shell[data-ui-kit='material3'] .settings-section-heading h2 { font-weight: 500; }
 .app-shell[data-ui-kit='material3'] :is(.appearance-kit-option, .appearance-theme-option) {
-  border-radius: var(--md-sys-shape-corner-large);
+  border-radius: var(--md-sys-shape-corner-medium);
   min-height: 80px;
   background: var(--md-sys-color-surface-container-lowest);
 }
@@ -2882,10 +2953,11 @@
   box-shadow: inset 0 0 0 1px var(--md-sys-color-primary);
 }
 .app-shell[data-ui-kit='material3'] .theme-swatches { height: 36px; border-radius: var(--md-sys-shape-corner-small); overflow: hidden; }
-.app-shell[data-ui-kit='material3'] :is(.settings-row, .workspace-preference-option) { border-radius: var(--md-sys-shape-corner-medium); background: var(--aibo-surface-hover); }
+/* Settings groups are outlined cards: surface container with an outline-variant edge. */
+.app-shell[data-ui-kit='material3'] :is(.settings-row, .workspace-preference-option) { border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface); }
 /* Rows inside a grouped list share the group's rounded outline; their own corners drew seams between rows. */
 .app-shell[data-ui-kit='material3'] .settings-rows > .settings-row { border-radius: 0; }
-.app-shell[data-ui-kit='material3'] :is(.host-panel, .global-search-panel) { border-radius: var(--md-sys-shape-corner-large); }
+.app-shell[data-ui-kit='material3'] .global-search-panel { border-radius: var(--md-sys-shape-corner-large); }
 .app-shell[data-ui-kit='material3'] .global-search-heading { border-left-width: 1px; border-radius: var(--md-sys-shape-corner-medium); }
 .app-shell[data-ui-kit='material3'] .global-search-result { border-radius: var(--md-sys-shape-corner-medium); }
 .app-shell[data-ui-kit='material3'] .global-search-result.active { box-shadow: none; }
@@ -2907,8 +2979,9 @@
 }
 
 /* Brightness and palette are independent choices; their visuals belong to this kit. */
-/* M3 Expressive connected button group: tonal segments 2px apart, inner corners
-   square off to 8px, and the selected segment morphs to a full pill in primary.
+/* M3 Expressive connected button group (tonal toggle): secondary-container segments
+   2px apart, inner corners square off to 8px, and the selected segment morphs to a
+   full pill in secondary.
    Equal 1fr columns never shrink below their label; narrow widths wrap instead. */
 .app-shell[data-ui-kit='material3'] .appearance-mode-control {
   display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px;
@@ -2920,15 +2993,15 @@
   border-radius: var(--md-sys-shape-corner-small);
   background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);
   font-size: var(--aibo-type-ui); font-weight: 500; text-align: center;
-  transition: border-radius var(--md-aibo-motion-fast) var(--md-aibo-ease-standard), background-color var(--md-aibo-motion-fast) var(--md-aibo-ease-standard), color var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
+  transition: border-radius var(--md-sys-motion-spring-fast-spatial-duration) var(--md-sys-motion-spring-fast-spatial), background-color var(--md-aibo-motion-fast) var(--md-aibo-ease-standard), color var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
 }
 .app-shell[data-ui-kit='material3'] .appearance-mode-option::before {
   content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
-  background: currentColor; opacity: 0; transition: opacity var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
+  background: currentColor; opacity: 0; transition: opacity var(--md-sys-motion-spring-fast-effects-duration) var(--md-sys-motion-spring-fast-effects);
 }
-.app-shell[data-ui-kit='material3'] .appearance-mode-option:hover::before { opacity: .08; }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:hover::before { opacity: var(--md-sys-state-hover-state-layer-opacity); }
 .app-shell[data-ui-kit='material3'] .appearance-mode-option:has(> input:focus-visible)::before,
-.app-shell[data-ui-kit='material3'] .appearance-mode-option:active::before { opacity: .1; }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:active::before { opacity: var(--md-sys-state-pressed-state-layer-opacity); }
 .app-shell[data-ui-kit='material3'] .appearance-mode-option:first-child { border-start-start-radius: var(--md-sys-shape-corner-full); border-end-start-radius: var(--md-sys-shape-corner-full); }
 .app-shell[data-ui-kit='material3'] .appearance-mode-option:last-child { border-start-end-radius: var(--md-sys-shape-corner-full); border-end-end-radius: var(--md-sys-shape-corner-full); }
 .app-shell[data-ui-kit='material3'] .appearance-mode-option:not(.active):active { border-radius: 4px; }
@@ -2936,12 +3009,12 @@
 .app-shell[data-ui-kit='material3'] .appearance-mode-option:not(.active):last-child:active { border-start-end-radius: var(--md-sys-shape-corner-full); border-end-end-radius: var(--md-sys-shape-corner-full); }
 .app-shell[data-ui-kit='material3'] .appearance-mode-option.active {
   border-radius: var(--md-sys-shape-corner-full);
-  background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-secondary); color: var(--md-sys-color-on-secondary);
 }
 .app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option) > input {
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer;
 }
-.app-shell[data-ui-kit='material3'] .appearance-mode-option:has(> input:focus-visible) { outline: 2px solid var(--aibo-focus); outline-offset: 2px; }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:has(> input:focus-visible) { outline: var(--md-aibo-focus-width) solid var(--aibo-focus); outline-offset: 2px; }
 .app-shell[data-ui-kit='material3'] .appearance-choice-mark { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: none; }
 /* Expressive signals selection by shape and colour alone; dropping the checkmark keeps
    every segment's content width constant, so switching never resizes the group. */
@@ -2954,56 +3027,110 @@
 .app-shell[data-ui-kit='material3'] .appearance-palette-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-inline: 0; }
 .app-shell[data-ui-kit='material3'] .appearance-palette-option {
   position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px;
-  border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--md-sys-shape-corner-large);
+  border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--md-sys-shape-corner-medium);
   background: var(--aibo-bg); color: var(--aibo-text); cursor: pointer;
 }
 .app-shell[data-ui-kit='material3'] .appearance-palette-option:hover { background: var(--aibo-hover); }
-.app-shell[data-ui-kit='material3'] .appearance-palette-option.active { border-color: var(--aibo-focus); box-shadow: inset 0 0 0 1px var(--aibo-focus); background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
-.app-shell[data-ui-kit='material3'] .appearance-palette-option:focus-within { outline: 2px solid var(--aibo-focus); outline-offset: 3px; }
+.app-shell[data-ui-kit='material3'] .appearance-palette-option.active { border-color: var(--md-sys-color-primary); box-shadow: inset 0 0 0 1px var(--md-sys-color-primary); background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+.app-shell[data-ui-kit='material3'] .appearance-palette-option:focus-within { outline: var(--md-aibo-focus-width) solid var(--aibo-focus); outline-offset: 2px; }
 .app-shell[data-ui-kit='material3'] .appearance-palette-preview { display: grid; grid-template-columns: 2fr 1fr 1fr; height: 48px; overflow: hidden; border: 1px solid var(--md-sys-color-outline-variant); border-radius: var(--md-sys-shape-corner-small); }
 .app-shell[data-ui-kit='material3'] .appearance-palette-preview i { display: block; }
 .app-shell[data-ui-kit='material3'] .appearance-palette-name { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--aibo-type-ui); }
 .app-shell[data-ui-kit='material3'] .appearance-palette-name strong { font-weight: 500; }
 .app-shell[data-ui-kit='material3'] .appearance-palette-option small { color: var(--aibo-muted); font-size: var(--aibo-type-meta); line-height: 1.5; }
 .app-shell[data-ui-kit='material3'] .appearance-palette-option.active small { color: inherit; }
-.app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option).unavailable { opacity: .5; cursor: not-allowed; }
+.app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option).unavailable { opacity: .38; cursor: not-allowed; }
 .app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option) > input:disabled { cursor: not-allowed; }
 
 /* Skin-owned select trigger and top-layer option list. */
 .app-shell[data-ui-kit='material3'] .ui-select-trigger { background-image: none; padding-right: 12px; text-align: left; font-family: inherit; cursor: pointer; }
-.app-shell[data-ui-kit='material3'] .ui-select-popup { color: var(--aibo-text); background: var(--md-sys-color-surface-container-high); border: 1px solid var(--aibo-border); border-radius: 12px; box-shadow: 0 8px 24px color-mix(in srgb, var(--aibo-text) 18%, transparent); font: inherit; font-size: var(--aibo-type-ui); }
-.app-shell[data-ui-kit='material3'] .ui-select-option { color: var(--aibo-text); background: transparent; border: 0; border-radius: 12px; box-shadow: none; font: inherit; cursor: pointer; }
-.app-shell[data-ui-kit='material3'] .ui-select-option:hover:not(:disabled), .app-shell[data-ui-kit='material3'] .ui-select-option.is-active:not(:disabled) { background: var(--aibo-hover); }
-.app-shell[data-ui-kit='material3'] .ui-select-option[aria-selected='true'] { color: var(--aibo-selected-ink); background: var(--aibo-selected); }
-.app-shell[data-ui-kit='material3'] .ui-select-option.is-active { outline: 2px solid var(--aibo-focus); outline-offset: -2px; }
-.app-shell[data-ui-kit='material3'] .ui-select-option:disabled { color: var(--aibo-muted); cursor: not-allowed; }
+.app-shell[data-ui-kit='material3'] .ui-select-popup { font: inherit; font-size: var(--aibo-type-ui); }
+.app-shell[data-ui-kit='material3'] .ui-select-option { background: transparent; border: 0; box-shadow: none; font: inherit; padding-inline: 16px; cursor: pointer; }
 
 /* Keep the navigation tree mounted so expanding restores its scroll position. */
-.app-shell[data-ui-kit='material3'] .sidebar .sidebar-primary-actions { display: flex; align-items: center; gap: 6px; padding: 16px 6px 0; flex-shrink: 0; }
-.app-shell[data-ui-kit='material3'] .sidebar .sidebar-toggle { flex: 0 0 44px; width: 44px; height: 44px; padding: 0; }
-.app-shell[data-ui-kit='material3'] .sidebar .sidebar-primary-actions .sidebar-new-session { flex: 1; min-width: 0; width: auto; height: 44px; min-height: 44px; margin: 0; padding-inline: 12px; justify-content: flex-start; gap: 8px; }
-.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-primary-actions { flex-direction: column; gap: 8px; }
+.app-shell[data-ui-kit='material3'] .sidebar .sidebar-primary-actions { display: flex; align-items: center; gap: 8px; padding: 16px 8px 0 20px; flex-shrink: 0; }
+/* The 40px toggle sits centred beside the 56px FAB; collapsed, it keeps that 8px offset so it never moves. */
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-primary-actions .sidebar-toggle { margin-top: 8px; }
+.app-shell[data-ui-kit='material3'] .sidebar .sidebar-toggle { flex: 0 0 40px; width: 40px; height: 40px; min-height: 40px; padding: 0; }
+.app-shell[data-ui-kit='material3'] .sidebar .sidebar-primary-actions .sidebar-new-session { flex: 1; min-width: 0; width: auto; height: 56px; min-height: 56px; margin: 0; padding-inline: 12px; justify-content: flex-start; gap: 8px; }
+/* Collapsed, the sidebar is an 80px navigation rail; its centred 40px toggle lands on the expanded x of 20px. */
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-primary-actions { flex-direction: column; gap: 8px; padding-inline: 0; }
 .app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed { min-width: 0; padding: 0; gap: 0; }
 .app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed > :is(.panel-heading, .workspace-tool-panel, .workspace-list) { display: none; }
-.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-primary-actions .sidebar-new-session { flex: 0 0 44px; width: 44px; min-width: 44px; height: 44px; margin: 0; padding: 0; justify-content: center; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-primary-actions .sidebar-new-session { flex: 0 0 40px; width: 40px; min-width: 40px; height: 40px; min-height: 40px; border-radius: var(--md-sys-shape-corner-medium); margin: 0; padding: 0; justify-content: center; }
 .app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed :is(.sidebar-new-session, .sidebar-footer .ui-button) > span { display: none; }
-.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-browse { position: relative; width: 44px; height: 44px; margin: 8px 6px; padding: 0; }
-.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-footer { margin: auto 6px 8px; padding: 0; }
-.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-footer .ui-button { width: 44px; min-width: 44px; height: 44px; padding: 0; justify-content: center; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-browse { position: relative; width: 40px; height: 40px; margin: 8px auto; padding: 0; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-footer { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: auto 0 8px; padding: 0; }
+.app-shell[data-ui-kit='material3'] .sidebar.sidebar-collapsed .sidebar-footer .ui-button { width: 40px; min-width: 40px; height: 40px; padding: 0; justify-content: center; }
 .app-shell[data-ui-kit='material3'] .sidebar .sidebar-attention { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--aibo-warning-text); }
 
 /* Settings headings sit outside a consistent content surface. */
-.app-shell[data-ui-kit='material3'] .settings-section-body { padding: 16px; border: 1px solid var(--aibo-border); background: var(--aibo-surface-hover); border-radius: var(--md-sys-shape-corner-medium); }
+.app-shell[data-ui-kit='material3'] .settings-section-body { padding: 16px; border: 1px solid var(--md-sys-color-outline-variant); background: var(--md-sys-color-surface); border-radius: var(--md-sys-shape-corner-medium); }
 
 .app-shell[data-ui-kit='material3'] .sidebar-dock-pane { background: var(--aibo-surface); border: 1px solid var(--aibo-border); border-radius: 12px; }
-.app-shell[data-ui-kit='material3'] .sidebar-dock-pane.floating { box-shadow: 0 8px 28px var(--aibo-border); }
+.app-shell[data-ui-kit='material3'] .sidebar-dock-pane.floating { box-shadow: var(--md-sys-elevation-level3); }
 
-.app-shell[data-ui-kit='material3'] .sidebar-dock-header { border-bottom: 1px solid var(--aibo-border); font-size: var(--aibo-type-ui); font-weight: 600; }
-.app-shell[data-ui-kit='material3'] .sidebar-tool-rail { background: var(--aibo-surface); border-left: 1px solid var(--aibo-border); }
-.app-shell[data-ui-kit='material3'] .sidebar-tool { justify-content: flex-end; text-align: left; padding: 0; border-radius: 12px; color: var(--aibo-muted); }
-.app-shell[data-ui-kit='material3'] .sidebar-tool[aria-pressed='true'] { background: var(--aibo-selected); color: var(--aibo-accent); }
+.app-shell[data-ui-kit='material3'] .sidebar-dock-header { border-bottom: 1px solid var(--aibo-border); font-size: var(--aibo-type-ui); font-weight: 500; }
+/* M3 navigation rail (narrow, 80px): surface container, 56px items 4px apart, 24px icons in a
+   56x32 pill indicator that carries both the selection colour and the state layer. */
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail { padding: 4px 0; border-left: 0; background: var(--md-sys-color-surface); }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-list { gap: 4px; }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool,
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool:active:not(:disabled) { justify-content: center; min-height: 56px; padding: 0; border-radius: 0; background: transparent; color: var(--md-sys-color-on-surface-variant); }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool:is(:hover, :focus-visible, :active):not(:disabled) { background-image: none; }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool-icon { width: 56px; height: 32px; border-radius: var(--md-sys-shape-corner-full); transition: background-color var(--md-sys-motion-spring-fast-effects-duration) var(--md-sys-motion-spring-fast-effects); }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool-icon svg { width: 24px; height: 24px; }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool:hover:not(:disabled) .sidebar-tool-icon { background-image: linear-gradient(var(--aibo-hover), var(--aibo-hover)); }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool:is(:focus-visible, :active):not(:disabled) .sidebar-tool-icon { background-image: linear-gradient(color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-pressed-state-layer-opacity), transparent), color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-pressed-state-layer-opacity), transparent)); }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool[aria-pressed='true'] { color: var(--md-sys-color-on-secondary-container); }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool[aria-pressed='true'] .sidebar-tool-icon { background-color: var(--md-sys-color-secondary-container); }
+.app-shell[data-ui-kit='material3'] .sidebar-tool-rail .sidebar-tool:focus-visible { outline-offset: -3px; }
 .app-shell[data-ui-kit='material3'] .sidebar-tool-visible { background: currentColor; border-radius: 50%; }
 .app-shell[data-ui-kit='material3'] .sidebar-tool-row.drop-before { box-shadow: inset 0 2px var(--aibo-accent); }
-.app-shell[data-ui-kit='material3'] .sidebar-view-menu { background: var(--aibo-surface); color: var(--aibo-text); border: 1px solid var(--aibo-border); border-radius: 12px; box-shadow: 0 8px 28px var(--aibo-border); }
-.app-shell[data-ui-kit='material3'] .sidebar-view-menu .ui-button { text-align: left; border-radius: 12px; font-size: var(--aibo-type-ui); }
+.app-shell[data-ui-kit='material3'] .sidebar-view-menu .ui-button { justify-content: flex-start; text-align: left; }
 .app-shell[data-ui-kit='material3'] .sidebar-menu-title, .app-shell[data-ui-kit='material3'] .sidebar-dock-empty { color: var(--aibo-muted); font-size: var(--aibo-type-meta); }
+
+/* M3 Expressive menus: large-corner low container at elevation 2. Items are 44px,
+   extra-small corners with medium outer corners on the first and last item, 2px apart;
+   the selected item takes tertiary-container and the medium corner. */
+.app-shell[data-ui-kit='material3'] :is(.row-action-menu, .repository-popup, .composer-menu, .composer-suggestions, .workspace-row-menu, .session-row-menu, .sidebar-row-menu, .repository-menu, .model-context-menu, .ui-select-popup, .sidebar-view-menu, .git-branch-menu, .git-stash-menu) {
+  gap: 2px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+}
+.app-shell[data-ui-kit='material3'] :is(.row-action-menu .ui-button, .composer-menu button, .composer-suggestions button, .ui-select-option, .sidebar-view-menu .ui-button, .repository-option, .git-branch-item, .git-stash-item) {
+  min-height: 44px;
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  color: var(--md-sys-color-on-surface);
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='material3'] :is(.row-action-menu .ui-button, .composer-menu button, .composer-suggestions button, .ui-select-option, .sidebar-view-menu .ui-button, .repository-option, .git-branch-item, .git-stash-item):first-child { border-start-start-radius: var(--md-sys-shape-corner-medium); border-start-end-radius: var(--md-sys-shape-corner-medium); }
+.app-shell[data-ui-kit='material3'] :is(.row-action-menu .ui-button, .composer-menu button, .composer-suggestions button, .ui-select-option, .sidebar-view-menu .ui-button, .repository-option, .git-branch-item, .git-stash-item):last-child { border-end-start-radius: var(--md-sys-shape-corner-medium); border-end-end-radius: var(--md-sys-shape-corner-medium); }
+.app-shell[data-ui-kit='material3'] :is(.row-action-menu .ui-button, .composer-menu button, .composer-suggestions button, .ui-select-option, .sidebar-view-menu .ui-button, .repository-option, .git-branch-item, .git-stash-item):is(:hover, :focus-visible, .is-active, .active):not(:disabled) { background-image: linear-gradient(var(--aibo-hover), var(--aibo-hover)); }
+.app-shell[data-ui-kit='material3'] :is(.row-action-menu .ui-button, .composer-menu button, .composer-suggestions button, .ui-select-option, .sidebar-view-menu .ui-button, .repository-option, .git-branch-item, .git-stash-item):focus-visible, .app-shell[data-ui-kit='material3'] .ui-select-option.is-active { outline: var(--md-aibo-focus-width) solid var(--aibo-focus); outline-offset: -3px; }
+.app-shell[data-ui-kit='material3'] :is(.ui-select-option[aria-selected='true'], .repository-option[aria-selected='true'], .composer-access-options [aria-checked='true'], .pi-navigation-mode-list [aria-checked='true']) {
+  border-radius: var(--md-sys-shape-corner-medium);
+  box-shadow: none;
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+.app-shell[data-ui-kit='material3'] .repository-option[aria-selected='true'] .repository-option-name { color: inherit; }
+.app-shell[data-ui-kit='material3'] :is(.row-action-menu .ui-button, .composer-menu button, .composer-suggestions button, .ui-select-option, .sidebar-view-menu .ui-button, .repository-option, .git-branch-item, .git-stash-item):disabled { color: color-mix(in srgb, var(--md-sys-color-on-surface) var(--md-sys-state-disabled-content-opacity), transparent); cursor: not-allowed; }
+
+/* Compact tool records are list rows: one-line height at density −3, overriding the shared 30px layout minimum. */
+.app-shell[data-ui-kit='material3'] .timeline-entry.timeline-entry:is(.compact-record, .execution-record) > .tool-output > summary {
+  min-height: 44px;
+}
+
+/* M3 density applies to pointer input only: with touch, every target returns to at least 48px. */
+@media (pointer: coarse) {
+  .app-shell[data-ui-kit='material3'] :is(.ui-button, [data-slot='input'], select, .ui-select-trigger, .ui-select-option, .workspace-item, .session-item, .session-change-row, .git-commit-file, .changeset-file-row, .git-change-group-trigger, .management-nav button, .workspace-preference-option, summary) {
+    min-height: 48px !important;
+    height: auto !important;
+  }
+  .app-shell[data-ui-kit='material3'] .ui-button[data-size='icon'] { min-width: 48px !important; width: 48px !important; }
+}

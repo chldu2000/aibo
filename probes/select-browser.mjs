@@ -26,8 +26,9 @@ try {
       await page.screenshot({path:`/tmp/aibo-select/${kit}-${theme}.png`});
       const list=page.getByRole('listbox',{name:'模型上下文大小'});
       assert(await list.evaluate(element=>element.matches(':popover-open')));
-      const styles=await list.evaluate(element=>{const s=getComputedStyle(element);return {background:s.backgroundColor,color:s.color,border:s.borderTopWidth,radius:s.borderTopLeftRadius};});
-      assert.notEqual(styles.background,'rgba(0, 0, 0, 0)');assert.notEqual(styles.background,styles.color);assert.equal(styles.border,'1px');assert.equal(styles.radius,kit==='ak-ui'?'0px':'12px');
+      const styles=await list.evaluate(element=>{const s=getComputedStyle(element);return {background:s.backgroundColor,color:s.color,border:s.borderTopWidth,radius:s.borderTopLeftRadius,shadow:s.boxShadow};});
+      assert.notEqual(styles.background,'rgba(0, 0, 0, 0)');assert.notEqual(styles.background,styles.color);// M3 Expressive menus separate by elevation and large corners; ak-ui keeps a hairline square frame.
+      if(kit==='ak-ui'){assert.equal(styles.border,'1px');assert.equal(styles.radius,'0px');}else{assert.equal(styles.border,'0px');assert.equal(styles.radius,'16px');assert.notEqual(styles.shadow,'none');}
       await page.keyboard.press('Escape');assert.equal(await control.getAttribute('aria-expanded'),'false');assert(await control.evaluate(e=>e===document.activeElement));
       await control.click();await page.getByRole('option',{name:'扩展',exact:true}).click();assert.equal((await control.innerText()).trim(),'扩展');
       await control.press('Space');await control.press('Home');await control.press('Enter');assert.equal((await control.innerText()).trim(),'标准');

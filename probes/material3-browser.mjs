@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { createBuiltinWorkbenchServer } from './lib/builtin-workbench-fixture.mjs';
+import { assertMaterial3Tokens } from './lib/material3-token-scan.mjs';
 
 const server = await createBuiltinWorkbenchServer();
 await server.listen();
@@ -44,7 +45,7 @@ try {
   assert.deepEqual(await input.evaluate(el=>[el.selectionStart,el.selectionEnd]),[4,8]);
   for (const theme of ['light','dark']) {
     if(await page.locator('.app-shell').getAttribute('data-ui-theme')!==theme) await page.getByRole('button',{name:'切换明暗主题',exact:true}).click();
-    assert.equal(await page.locator('.composer').evaluate(el=>getComputedStyle(el).borderRadius),'24px');
+    assert.equal(await page.locator('.composer').evaluate(el=>getComputedStyle(el).borderRadius),'28px');
     assert.equal(await page.locator('.sidebar-new-session').evaluate(el=>getComputedStyle(el).clipPath),'none');
     assert.equal(await page.locator('.sidebar-new-session').evaluate(el=>getComputedStyle(el).backgroundColor),theme==='light'?'rgb(215, 231, 255)':'rgb(36, 71, 117)','tonal action uses the design palette immediately');
     assert.equal(await page.locator('.session-item-row.selected').evaluate(el=>getComputedStyle(el).boxShadow),'none');
@@ -52,12 +53,15 @@ try {
     await input.fill('请看 @pnpm-lock.yaml 然后\n继续检查组件外观');
     const metrics = await page.locator('.composer-textarea,.composer-mention-layer').evaluateAll(nodes => nodes.map(el=>{const s=getComputedStyle(el);return [s.padding,s.fontSize,s.lineHeight,s.fontFamily].join('|');}));
     assert.equal(new Set(metrics).size,1,'mention layer aligns with actual text');
+    await assertMaterial3Tokens(page, `workbench ${theme}`);
     await page.screenshot({path:`${output}/${theme}-workbench.png`});
     await openSettings();
+    await assertMaterial3Tokens(page, `settings ${theme}`);
     await page.screenshot({path:`${output}/${theme}-settings.png`});
     for(const name of ['布局','工作区','插件与能力','运行与诊断','外观']) {
       await settings.getByRole('tab',{name,exact:true}).click();
       assert.equal(await settings.getByRole('tab',{name,exact:true}).getAttribute('aria-selected'),'true');
+      await assertMaterial3Tokens(page, `settings ${name} ${theme}`);
     }
     await selectKit('ak-ui');
     assert.equal(await page.locator('.app-shell').getAttribute('data-ui-theme'),theme,'brightness survives kit switches');
@@ -82,6 +86,7 @@ try {
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await openSettings();
     assert.equal(await settings.evaluate(el=>el.scrollWidth<=el.clientWidth),true);
+    await assertMaterial3Tokens(page, `settings dark ${width}px`);
     await page.screenshot({path:`${output}/dark-settings-${width}.png`});
     await page.keyboard.press('Escape');
   }

@@ -173,7 +173,7 @@ try{
  }
  const regions=page.getByRole('navigation',{name:'工作台区域'});
  await regions.getByRole('button',{name:'工作区',exact:true}).click();assert(await page.locator('.sidebar-new-session').isVisible());
- await regions.getByRole('button',{name:'辅助面板',exact:true}).click();assert(await page.locator('.inspector').isVisible());
+ await regions.getByRole('button',{name:'辅助面板',exact:true}).click();await page.locator('.inspector:visible').first().waitFor(); // the tool rail can mount several views
  await regions.getByRole('button',{name:'会话',exact:true}).click();assert(await input.isVisible());
  await page.emulateMedia({reducedMotion:'reduce'});
  assert(await page.locator('.sidebar-new-session').evaluate(e=>parseFloat(getComputedStyle(e).transitionDuration)<.001));

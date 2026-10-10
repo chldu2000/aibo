@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdir,readFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
 import {createBuiltinWorkbenchServer} from './lib/builtin-workbench-fixture.mjs';
+import { assertMaterial3Tokens } from './lib/material3-token-scan.mjs';
 
 const metadata=JSON.parse(await readFile('src/lib/ui-kit/kits/material3/themes.json','utf8'));
 const server=await createBuiltinWorkbenchServer();
@@ -42,6 +43,7 @@ try {
       assert.equal(await settings.evaluate(element=>element===window.paletteSettings),true);
       const swatch=await settings.locator('.appearance-palette-option.active .appearance-palette-preview i').last().evaluate(element=>getComputedStyle(element).backgroundColor);
       assert.equal(swatch,rgb(theme.tokens['--md-sys-color-primary']));
+      await assertMaterial3Tokens(page, `settings ${theme.id}`);
       await page.screenshot({path:`${output}/${theme.id}-settings.png`});
       await page.keyboard.press('Escape');
       assert.equal(await input.inputValue(),'配色与明暗切换保留 @pnpm-lock.yaml 草稿');
@@ -50,7 +52,8 @@ try {
       const send=page.getByRole('button',{name:'发送',exact:true});
       assert.equal(await send.evaluate(element=>getComputedStyle(element).backgroundColor),rgb(theme.tokens['--md-sys-color-primary']));
       assert.equal(await page.locator('.timeline').evaluate(element=>getComputedStyle(element).backgroundColor),rgb(theme.tokens['--md-sys-color-surface']));
-      assert.equal(await page.locator('.composer').evaluate(element=>getComputedStyle(element).borderRadius),'24px');
+      assert.equal(await page.locator('.composer').evaluate(element=>getComputedStyle(element).borderRadius),'28px');
+      await assertMaterial3Tokens(page, `workbench ${theme.id}`);
       await page.screenshot({path:`${output}/${theme.id}-workbench.png`});
       await page.getByRole('button',{name:'切换明暗主题',exact:true}).click();
       assert.equal(await themeId(),pair.find(candidate=>candidate.colorScheme!==theme.colorScheme).id);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
 import {installDensityFixture} from './lib/density-fixture.mjs';
+import { assertMaterial3Tokens } from './lib/material3-token-scan.mjs';
 
 const server = await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});
 await server.listen();
@@ -66,6 +67,7 @@ try {
     assert.ok(await region.evaluate(node=>node.scrollHeight>node.clientHeight));
     await page.setViewportSize({width:960,height:640});
     await assertActionsReachable();
+    await assertMaterial3Tokens(page, `questions ${theme}`);
     await page.screenshot({path:`/tmp/aibo-questions-${kit}-${theme}.png`});
     await page.setViewportSize({width:1000,height:540});
     await assertActionsReachable();

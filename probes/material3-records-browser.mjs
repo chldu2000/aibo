@@ -3,6 +3,7 @@ import {mkdir} from 'node:fs/promises';
 import {createServer} from 'vite';
 import {chromium} from 'playwright';
 import {installDensityFixture} from './lib/density-fixture.mjs';
+import { assertMaterial3Tokens } from './lib/material3-token-scan.mjs';
 
 const server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});
 await server.listen();
@@ -42,6 +43,7 @@ try {
     assert.equal(await cards.count(),3,'reasoning, single tool and grouped tools are all present');
     for(const widths of await borders(cards))assert.deepEqual(widths,['1px','1px','1px','1px']);
     for(const radius of await cards.evaluateAll(es=>es.map(e=>getComputedStyle(e).borderTopLeftRadius)))assert.equal(radius,'12px');
+    await assertMaterial3Tokens(page, `tool cards ${theme}`);
     await page.screenshot({path:`${output}/cards-${theme}.png`});
     const disclosure=cards.first().locator('details');
     await disclosure.locator(':scope > summary').click();
@@ -59,14 +61,18 @@ try {
     await toggle.focus();await page.keyboard.press('Enter');
     assert.equal(await toggle.getAttribute('aria-expanded'),'true');
     await table.locator('.execution-detail:not([hidden]) pre').waitFor();
+    await assertMaterial3Tokens(page, `executions ${theme}`);
     await table.screenshot({path:`${output}/executions-${theme}.png`});
     await toggle.click();
     await page.locator('#session-tab-changes').click();
     const files=page.locator('.session-change-row');await files.first().waitFor();
     assert((await files.count())>=2);
     for(const widths of await borders(files))assert.deepEqual(widths,['0px','0px','0px','0px']);
+    await assertMaterial3Tokens(page, `changes ${theme}`);
     await page.locator('#session-panel-changes').screenshot({path:`${output}/changes-${theme}.png`});
-    await page.getByRole('tab',{name:'Git',exact:true}).click();
+    // The side panel is a fixed tool rail: open the Git tool unless it is already the visible view.
+    const gitTool=page.getByRole('button',{name:'Git',exact:true});
+    if(await gitTool.getAttribute('aria-pressed')!=='true')await gitTool.click();
     await page.getByRole('button',{name:'选择仓库',exact:true}).click();
     await page.getByRole('option',{name:/^aibo/}).click();
     await page.locator('#git-history-tab').click();
@@ -75,6 +81,7 @@ try {
     const commitFiles=page.locator('.git-commit-file');await commitFiles.first().waitFor();
     assert((await commitFiles.count())>=2);
     for(const widths of await borders(commitFiles))assert.deepEqual(widths,['0px','0px','0px','0px']);
+    await assertMaterial3Tokens(page, `git history ${theme}`);
     await page.locator('.git-history').screenshot({path:`${output}/history-${theme}.png`});
     await commitFiles.first().click();
     await page.waitForFunction(()=>window.densityCalls.some(c=>c.command==='get_workspace_git_commit_file_diff'));

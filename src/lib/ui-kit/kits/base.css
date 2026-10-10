@@ -613,8 +613,8 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 
 /* Session sidebar docking: layout shared by the built-in kits. */
 /* Tool entry order is independent of the docked/floating pane arrangement. */
-.sidebar-dock { position: relative; display: flex; height: 100%; min-height: 0; min-width: 0; padding-right: 56px; }
-.sidebar-dock.collapsed { padding-right: 56px; }
+.sidebar-dock { position: relative; display: flex; height: 100%; min-height: 0; min-width: 0; padding-right: var(--aibo-rail-width, 56px); }
+.sidebar-dock.collapsed { padding-right: var(--aibo-rail-width, 56px); }
 .sidebar-dock-panes { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; gap: 4px; overflow: auto; }
 .sidebar-dock-pane { display: flex; flex-direction: column; flex: 1 1 0; min-height: 180px; min-width: 0; overflow: hidden; }
 .sidebar-dock-pane[hidden] { display: none; }
@@ -627,7 +627,7 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .sidebar-dock-content > .inspector { height: 100%; min-height: 0; }
 .sidebar-dock-resize { align-self: end; flex: none; touch-action: none; }
 .sidebar-dock-empty { padding: 16px; }
-.sidebar-tool-rail { position: absolute; right: 0; top: 0; bottom: 0; z-index: 4; display: flex; flex-direction: column; width: 56px; padding: 6px 4px; }
+.sidebar-tool-rail { position: absolute; right: 0; top: 0; bottom: 0; z-index: 4; display: flex; flex-direction: column; width: var(--aibo-rail-width, 56px); padding: 6px 4px; }
 .sidebar-tool-list { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 4px; overflow-y: auto; }
 .sidebar-tool-row { flex-direction: row-reverse; position: relative; display: flex; flex: none; align-items: center; }
 .sidebar-tool-rail .sidebar-tool { display: flex; justify-content: flex-start; gap: 8px; flex: none; width: 100%; min-height: 44px; padding: 0; overflow: hidden; }

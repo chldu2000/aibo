@@ -1424,17 +1424,20 @@
   const workspaceColumnMin = 180;
   const timelineColumnMin = 320;
   const inspectorColumnMin = 220;
-  const splitterTrackWidth = 14;
+  // The skin's splitter track (M3 drag-handle container is 24px); skins without the token keep 14px.
+  const splitterTrackWidth = $derived(Number.parseFloat($activeTheme.tokens['--workbench-splitter-width'] ?? '') || 14);
   let workspaceSidebarWidth = $state(savedWorkbenchLayout.navigationWidth);
   let inspectorWidth = $state(savedWorkbenchLayout.auxiliaryWidth);
   let viewportWidth = $state(1280);
   let workspaceGridElement = $state<HTMLElement | null>(null);
   $effect(() => { writeWorkbenchLayout(draftStorage, presentationWindowId(), { navigationCollapsed, navigationWidth: workspaceSidebarWidth, auxiliaryWidth: inspectorWidth, auxiliaryOpen: sidePanelOpen, auxiliaryCollapsed: sidebarRailCollapsed, activeView: sidePanelView }); });
+  // Collapsed rails take the active skin's rail width (M3 navigation rail is 80px); skins without the token keep 56px.
+  const railWidth = $derived(Number.parseFloat($activeTheme.tokens['--aibo-rail-width'] ?? '') || 56);
   // Saved widths stay as the user's preference; narrow windows only compress the displayed columns.
   const displayedColumns = $derived(fitColumnWidths({
     space: sideColumnSpace(viewportWidth, navigationCollapsed, sidePanelOpen),
-    navigation: { width: workspaceSidebarWidth, min: workspaceColumnMin, collapsed: navigationCollapsed, collapsedWidth: 56 },
-    inspector: { width: railCollapsed ? 56 : inspectorWidth, min: railCollapsed ? 56 : inspectorColumnMin, open: sidePanelOpen },
+    navigation: { width: workspaceSidebarWidth, min: workspaceColumnMin, collapsed: navigationCollapsed, collapsedWidth: railWidth },
+    inspector: { width: railCollapsed ? railWidth : inspectorWidth, min: railCollapsed ? railWidth : inspectorColumnMin, open: sidePanelOpen },
   }));
   const navigationDisplayWidth = $derived(displayedColumns.navigation);
   const inspectorDisplayWidth = $derived(displayedColumns.inspector);

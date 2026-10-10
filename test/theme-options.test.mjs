@@ -30,7 +30,8 @@ test('palette selection changes only color tokens within the existing Material 3
   for (const theme of themes) {
     const original = themes.find(candidate => candidate.palette.id === 'blue' && candidate.colorScheme === theme.colorScheme);
     assert.deepEqual(Object.keys(theme.tokens), Object.keys(original.tokens));
-    for (const key of Object.keys(theme.tokens)) if (!key.startsWith('--md-sys-color-')) assert.equal(theme.tokens[key],original.tokens[key],key);
+    // Success/warning are M3 custom colours harmonised to each palette's primary, so they are colour tokens too.
+    for (const key of Object.keys(theme.tokens)) if (!key.startsWith('--md-sys-color-') && !/^--aibo-(success|warning)-/.test(key)) assert.equal(theme.tokens[key],original.tokens[key],key);
   }
 });
 

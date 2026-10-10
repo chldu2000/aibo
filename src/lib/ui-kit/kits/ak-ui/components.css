@@ -127,8 +127,8 @@
     .app-shell[data-ui-kit='ak-ui'] .workbench-chrome .workspace-grid { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr); }
     .app-shell[data-ui-kit='ak-ui'] .workbench-chrome .workspace-grid > .workspace-splitter { display: none; }
     .app-shell[data-ui-kit='ak-ui'] .workbench-chrome:not([data-layout='focus']):not([data-mobile-region='navigation']) .workspace-grid > .sidebar,
-    .app-shell[data-ui-kit='ak-ui'] .workbench-chrome:not([data-layout='focus']):not([data-mobile-region='auxiliary']) .workspace-grid > .inspector,
-    .app-shell[data-ui-kit='ak-ui'] .workbench-chrome:not([data-layout='focus']):not([data-mobile-region='content']) .workspace-grid > :not(.sidebar):not(.inspector):not(.workspace-splitter) { display: none; }
+    .app-shell[data-ui-kit='ak-ui'] .workbench-chrome:not([data-layout='focus']):not([data-mobile-region='auxiliary']) .workspace-grid > :is(.inspector, .sidebar-dock),
+    .app-shell[data-ui-kit='ak-ui'] .workbench-chrome:not([data-layout='focus']):not([data-mobile-region='content']) .workspace-grid > :not(.sidebar):not(.inspector):not(.sidebar-dock):not(.workspace-splitter) { display: none; }
   }
 
 
