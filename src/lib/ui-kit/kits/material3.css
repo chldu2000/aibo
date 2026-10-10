@@ -285,7 +285,7 @@
   border-radius: var(--md-sys-shape-corner-small);
 }
 
-/* M3 drag handle: a 24px spacer between panes holding a 4×48 full-round handle in outline;
+/* M3 drag handle: a 12px spacer between panes (narrower than M3's 24px container by request) holding a 4×48 full-round handle in outline;
    hover and press darken it to on-surface. */
 .app-shell[data-ui-kit='material3'] .workspace-splitter {
   align-items: center;

@@ -7,7 +7,7 @@
   import type { WorkbenchSnapshot, WorkbenchAction } from '../presentation/workbench-contract';
   type Guard = (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any;
   let { snapshot, windowId, navigation, navigationResize, content, auxiliaryResize, auxiliary, overlays,
-    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationCollapsed = false, navigationWidth = 260, auxiliaryWidth = 340, auxiliaryOpen = true, suspended = false, hideWhenSuspended = true, onRestore }: {
+    layout = $bindable('standard'), switching = $bindable(false), gridElement = $bindable(null), navigationCollapsed = false, navigationWidth = 260, auxiliaryWidth = 340, auxiliaryOpen = true, auxiliaryCollapsed = false, suspended = false, hideWhenSuspended = true, onRestore }: {
     onRestore?: () => Promise<void>;
     layout?: string;
     switching?: boolean;
@@ -26,6 +26,7 @@
     navigationWidth?: number;
     auxiliaryWidth?: number;
     auxiliaryOpen?: boolean;
+    auxiliaryCollapsed?: boolean;
   } = $props();
   const slots = $derived({ navigation, navigationResize, content, auxiliaryResize, auxiliary });
   let target: HTMLDivElement;
@@ -33,7 +34,7 @@
   let failure = $state('');
   let switchTicket = 0;
   let instance = $state<{ generation: number; layout: string; guard: (id: string, callback: (...args: any[]) => any) => (...args: any[]) => any } | null>(null);
-  const visibleSlots = $derived(instance ? defaultWorkbenchSlots(instance.layout).filter(slot => slots[slot] && (!navigationCollapsed || slot !== 'navigationResize') && (auxiliaryOpen || (slot !== 'auxiliary' && slot !== 'auxiliaryResize'))) : []);
+  const visibleSlots = $derived(instance ? defaultWorkbenchSlots(instance.layout).filter(slot => slots[slot] && (!navigationCollapsed || slot !== 'navigationResize') && (!auxiliaryCollapsed || slot !== 'auxiliaryResize') && (auxiliaryOpen || (slot !== 'auxiliary' && slot !== 'auxiliaryResize'))) : []);
   const columns = $derived(visibleSlots.map(slot => slot === 'content' ? 'minmax(0, 1fr)' : slot === 'navigation' ? `minmax(0, ${navigationWidth}px)` : slot === 'auxiliary' ? `minmax(0, ${auxiliaryWidth}px)` : 'var(--workbench-splitter-width, 14px)').join(' '));
   const storageKey = $derived(`aibo.workbench-presentation.v1.${encodeURIComponent(windowId)}`);
   let focus = $state<string | null>(null);

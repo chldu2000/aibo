@@ -37,7 +37,7 @@
     "--md-aibo-density-control-height": "44px",
     "--md-aibo-button-height": "40px",
     "--aibo-rail-width": "80px",
-    "--workbench-splitter-width": "24px",
+    "--workbench-splitter-width": "12px",
     "--md-aibo-density-panel-padding": "24px",
     "--md-aibo-line-hairline": "1px",
     "--md-aibo-line-strong": "3px",

@@ -1424,7 +1424,7 @@
   const workspaceColumnMin = 180;
   const timelineColumnMin = 320;
   const inspectorColumnMin = 220;
-  // The skin's splitter track (M3 drag-handle container is 24px); skins without the token keep 14px.
+  // The skin's splitter track; skins without the token keep 14px.
   const splitterTrackWidth = $derived(Number.parseFloat($activeTheme.tokens['--workbench-splitter-width'] ?? '') || 14);
   let workspaceSidebarWidth = $state(savedWorkbenchLayout.navigationWidth);
   let inspectorWidth = $state(savedWorkbenchLayout.auxiliaryWidth);
@@ -1492,7 +1492,7 @@
 
   function sideColumnSpace(availableWidth: number, collapsed: boolean, inspectorOpen: boolean): number {
     const totalWidth = workspaceGridElement?.clientWidth || availableWidth;
-    const splitterWidth = splitterTrackWidth * ((collapsed ? 0 : 1) + (inspectorOpen ? 1 : 0));
+    const splitterWidth = splitterTrackWidth * ((collapsed ? 0 : 1) + (inspectorOpen && !railCollapsed ? 1 : 0));
     return totalWidth - splitterWidth - timelineColumnMin;
   }
 
@@ -3665,7 +3665,7 @@
   </HostPanel>
 {/if}
 <PresentationHost readAttachmentPreview={getSessionAttachmentPreview} onPasteImages={(files) => void pasteComposerImages(files)} hideWhenSuspended={sessionHistoryOpen || Boolean(externalToolView)} onRestore={() => void presentationOperation(() => presentationPackagesController.restore())} bind:this={presentationHost} active={externalActive} themeId={externalActive ? presentationPackages.themeId : null} input={externalInput} suspended={Boolean(externalToolView) || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} onIntent={externalIntent}>
-<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen || Boolean(externalToolView)} onRestore={() => desktop ? presentationPackagesController.restore() : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={navigationDisplayWidth} {navigationCollapsed} auxiliaryWidth={inspectorDisplayWidth} auxiliaryOpen={sidePanelOpen} suspended={Boolean(externalToolView) || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
+<WorkbenchPresentation hideWhenSuspended={sessionHistoryOpen || Boolean(externalToolView)} onRestore={() => desktop ? presentationPackagesController.restore() : Promise.resolve()} bind:this={workbenchPresentation} bind:layout={presentationLayout} bind:switching={presentationSwitching} bind:gridElement={workspaceGridElement} navigationWidth={navigationDisplayWidth} {navigationCollapsed} auxiliaryWidth={inspectorDisplayWidth} auxiliaryOpen={sidePanelOpen} auxiliaryCollapsed={railCollapsed} suspended={Boolean(externalToolView) || historyOpen || sessionHistoryOpen || capabilityHistoryOpen || settingsOpen || globalSearchOpen || archiveConfirmationSessionId !== null || piNavigationEntryId !== null} windowId={presentationWindowId()} snapshot={{ workspaceId: selectedWorkspaceId, sessionId: selectedSessionId, draft: composerText, navigation: sidePanelView, timelineRevision: timeline.length }}>
 {#snippet navigation(guard)}
     <WorkspaceSidebar
       collapsed={navigationCollapsed}

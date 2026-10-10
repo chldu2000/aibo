@@ -168,7 +168,8 @@ async function auditWorkbench(browser, port, theme) {
 
   const handle = comp['drag-handle'];
   const splitter = page.locator('.workspace-splitter').first();
-  check('drag-handle', 'container-width', handle['container-width'], (await style(splitter)).width);
+  // The track is deliberately 12px instead of M3's 24px container-width; the handle itself stays official.
+  assert.equal((await style(splitter)).width, 12);
   const grip = await style(splitter.locator('.workspace-splitter-line'));
   check('drag-handle', 'width', handle.width, grip.width);
   check('drag-handle', 'height', handle.height, grip.height);
