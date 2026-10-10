@@ -2907,25 +2907,49 @@
 }
 
 /* Brightness and palette are independent choices; their visuals belong to this kit. */
+/* M3 Expressive connected button group: tonal segments 2px apart, inner corners
+   square off to 8px, and the selected segment morphs to a full pill in primary.
+   Equal 1fr columns never shrink below their label; narrow widths wrap instead. */
 .app-shell[data-ui-kit='material3'] .appearance-mode-control {
-  display: flex; width: fit-content; margin-inline: 0; overflow: hidden;
-  border: 1px solid var(--md-sys-color-outline); border-radius: var(--md-sys-shape-corner-full);
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px;
+  width: fit-content; max-width: 100%; margin-inline: 0;
 }
 .app-shell[data-ui-kit='material3'] .appearance-mode-option {
-  position: relative; display: flex; align-items: center; justify-content: center; gap: 8px;
-  min-width: 116px; min-height: 40px; padding: 8px 20px; cursor: pointer;
-  color: var(--aibo-text); font-size: var(--aibo-type-ui); font-weight: 500;
+  position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-width: 96px; min-height: 40px; padding: 8px 16px; cursor: pointer;
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container);
+  font-size: var(--aibo-type-ui); font-weight: 500; text-align: center;
+  transition: border-radius var(--md-aibo-motion-fast) var(--md-aibo-ease-standard), background-color var(--md-aibo-motion-fast) var(--md-aibo-ease-standard), color var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
 }
-.app-shell[data-ui-kit='material3'] .appearance-mode-option + .appearance-mode-option { border-left: 1px solid var(--md-sys-color-outline); }
-.app-shell[data-ui-kit='material3'] .appearance-mode-option.active { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: currentColor; opacity: 0; transition: opacity var(--md-aibo-motion-fast) var(--md-aibo-ease-standard);
+}
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:hover::before { opacity: .08; }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:has(> input:focus-visible)::before,
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:active::before { opacity: .1; }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:first-child { border-start-start-radius: var(--md-sys-shape-corner-full); border-end-start-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:last-child { border-start-end-radius: var(--md-sys-shape-corner-full); border-end-end-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:not(.active):active { border-radius: 4px; }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:not(.active):first-child:active { border-start-start-radius: var(--md-sys-shape-corner-full); border-end-start-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:not(.active):last-child:active { border-start-end-radius: var(--md-sys-shape-corner-full); border-end-end-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option.active {
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
+}
 .app-shell[data-ui-kit='material3'] :is(.appearance-mode-option, .appearance-palette-option) > input {
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer;
 }
-.app-shell[data-ui-kit='material3'] .appearance-mode-option:focus-within { outline: 2px solid var(--aibo-focus); outline-offset: -3px; }
-/* Round the outer segments so the focus outline follows the pill instead of drawing a square inside it. */
-.app-shell[data-ui-kit='material3'] .appearance-mode-option:first-child { border-start-start-radius: var(--md-sys-shape-corner-full); border-end-start-radius: var(--md-sys-shape-corner-full); }
-.app-shell[data-ui-kit='material3'] .appearance-mode-option:last-child { border-start-end-radius: var(--md-sys-shape-corner-full); border-end-end-radius: var(--md-sys-shape-corner-full); }
+.app-shell[data-ui-kit='material3'] .appearance-mode-option:has(> input:focus-visible) { outline: 2px solid var(--aibo-focus); outline-offset: 2px; }
 .app-shell[data-ui-kit='material3'] .appearance-choice-mark { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: none; }
+/* Expressive signals selection by shape and colour alone; dropping the checkmark keeps
+   every segment's content width constant, so switching never resizes the group. */
+.app-shell[data-ui-kit='material3'] .appearance-mode-option .appearance-choice-mark { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-ui-kit='material3'] .appearance-mode-option,
+  .app-shell[data-ui-kit='material3'] .appearance-mode-option::before { transition: none; }
+}
 .app-shell[data-ui-kit='material3'] .appearance-palette-heading { margin-top: 24px; }
 .app-shell[data-ui-kit='material3'] .appearance-palette-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-inline: 0; }
 .app-shell[data-ui-kit='material3'] .appearance-palette-option {

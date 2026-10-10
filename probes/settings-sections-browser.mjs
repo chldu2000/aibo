@@ -69,7 +69,7 @@ try {
           const mark = el.querySelector('.appearance-choice-mark').getBoundingClientRect();
           const label = el.lastElementChild.getBoundingClientRect();
           const bounds = el.getBoundingClientRect();
-          return {offset: Math.abs(mark.y + mark.height / 2 - label.y - label.height / 2), height: bounds.height,
+          return {offset: mark.height ? Math.abs(mark.y + mark.height / 2 - label.y - label.height / 2) : 0, height: bounds.height,
             contained: label.right <= bounds.right && label.left >= bounds.left};
         });
         assert.ok(geometry.offset <= 1, 'language checkmark and text are vertically aligned');
@@ -83,9 +83,9 @@ try {
     await checkLanguageLayout();
     assert.equal(await languageRadio('en').isChecked(),true);
     await languageRadio('en').focus();
-    assert.equal(await languageRadio('en').evaluate(el => getComputedStyle(el.parentElement).outlineStyle),'solid');
     await page.keyboard.press('ArrowLeft');
     assert.equal(await languageRadio('zh-CN').isChecked(),true);
+    assert.equal(await languageRadio('zh-CN').evaluate(el => getComputedStyle(el.parentElement).outlineStyle),'solid');
     await languageRadio('system').click();
     assert.equal(await languageRadio('system').isChecked(),true);
     await languageRadio('zh-CN').click();
@@ -158,9 +158,7 @@ try {
     await tab('运行与诊断').click();
     await dialog.getByRole('heading',{name:'运行环境',exact:true}).waitFor();
     await dialog.getByRole('button',{name:'查看执行历史',exact:true}).waitFor();
-    // Material 3's existing segmented language control overflows at 390px.
-    // Keep this probe's original ak-ui coverage; check Material 3 at desktop widths.
-    for (const width of kit === 'ak-ui' ? [480,390] : [760,480]) {
+    for (const width of kit === 'ak-ui' ? [480,390] : [760,480,390]) {
       await page.setViewportSize({width,height:820});
       for (const name of ['外观','布局','工作区','插件与能力','运行与诊断']) {
         await tab(name).click();
