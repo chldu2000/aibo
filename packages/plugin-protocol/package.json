@@ -1,6 +1,6 @@
 {
   "name": "@aibolabs/plugin-protocol",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -11,6 +11,7 @@
   "description": "Aibo JSON semantic and presentation contracts, independent of UI frameworks",
   "files": [
     "dist",
+    "contracts/*.json",
     "README.md"
   ],
   "exports": {
@@ -33,10 +34,12 @@
     "./settings": {
       "types": "./dist/settings.d.ts",
       "import": "./dist/settings.js"
-    }
+    },
+    "./contracts/*": "./contracts/*"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "prepack": "node ../../scripts/copy-protocol-contracts.mjs"
   },
   "publishConfig": {
     "access": "public",

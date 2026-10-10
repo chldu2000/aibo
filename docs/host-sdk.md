@@ -28,7 +28,9 @@ Node ESM 能力插件可在 `plugin.json` 声明：
 开发时从 npm 安装 SDK 为 `devDependencies`，以提供类型和本地开发工具，例如
 `npm install -D @aibolabs/capability-runtime@0.1.8 @aibolabs/plugin-protocol@0.1.8`（ACP 插件另加
 `@aibolabs/acp-adapter`）。宿主提供的这三个包版本等于宿主 SDK 版本，插件的 `hostSdk.min`
-应不低于所用版本。TypeScript
+应不低于所用版本。`@aibolabs/plugin-protocol` 0.1.12 起附带仓库 `contracts/` 下的 JSON 合同
+（`@aibolabs/plugin-protocol/contracts/<文件名>`，打包时由 `scripts/copy-protocol-contracts.mjs` 复制），
+供插件仓库在测试中校验 manifest 与操作 schema；它们不是宿主运行时解析的 SDK 入口。TypeScript
 仍需编译为 JavaScript。使用 bundler 时将上述入口标记为 external，不能内联 SDK。
 插件额外使用的第三方运行库仍放在插件自身 `node_modules`，或编入业务 bundle。
 不要把它们一并改为开发依赖。Aibo 不会运行 `npm install`，也不公开应用自身的

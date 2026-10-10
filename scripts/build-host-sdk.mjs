@@ -17,11 +17,13 @@ try {
   if (process.argv.includes('--check')) {
     if (await readFile(bridgePath,'utf8') !== bridge) throw Error('Host MCP bridge is stale');
   } else await writeFile(bridgePath,bridge);
-  const sdk = { version: '0.1.11', exports: {}, modules: {} };
+  const sdk = { version: '0.1.12', exports: {}, modules: {} };
   for (const name of ['capability-runtime', 'plugin-protocol', 'acp-adapter']) {
     const directory = path.join(root, 'packages', name);
     const manifest = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8'));
     for (const [entry, target] of Object.entries(manifest.exports)) {
+      // Contract JSON (`./contracts/*`) is development data for plugin tests, not a host SDK module.
+      if (typeof target !== 'object') continue;
       const specifier = manifest.name + (entry === '.' ? '' : entry.slice(1));
       sdk.exports[specifier] = `${name}/${target.import.slice(2)}`;
       // Deprecated pre-publication names stay resolvable for plugins installed before the rename.
