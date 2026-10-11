@@ -7,7 +7,9 @@ use crate::{
     CoreError,
 };
 use serde::Serialize;
-use std::{path::Path, process::Command};
+use std::path::Path;
+#[cfg(test)]
+use std::process::Command;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +36,7 @@ pub(crate) fn workspace_file_diff(
     crate::workspace_guard::canonicalize_target_message(root, Path::new(path))
         .map_err(crate::ui_i18n::invalid_path_message)?;
 
-    let mut command = Command::new("git");
+    let mut command = crate::process_command::background("git");
     command.args([
         "-C",
         workspace_path,
@@ -61,7 +63,7 @@ pub(crate) fn workspace_file_diff(
     if diff.is_empty() && !staged {
         let target = crate::workspace_guard::canonicalize_target_message(root, Path::new(path))
             .map_err(crate::ui_i18n::invalid_path_message)?;
-        let tracked = Command::new("git")
+        let tracked = crate::process_command::background("git")
             .args([
                 "-C",
                 workspace_path,

@@ -13,6 +13,7 @@ mod host_confirmation;
 mod ui_i18n;
 mod project_actions;
 mod controlled_process;
+mod process_command;
 mod workspace_git;
 mod git_repositories;
 mod core_turn_git;
@@ -2158,7 +2159,9 @@ pub(crate) fn isolate_process_tree(command: &mut TokioCommand) {
 }
 
 #[cfg(not(unix))]
-pub(crate) fn isolate_process_tree(_command: &mut TokioCommand) {}
+pub(crate) fn isolate_process_tree(command: &mut TokioCommand) {
+    process_command::hide_window(command.as_std_mut());
+}
 
 pub(crate) async fn terminate_process_tree(child: &mut tokio::process::Child) {
     let pid = child.id();
@@ -2172,10 +2175,13 @@ pub(crate) async fn terminate_process_tree(child: &mut tokio::process::Child) {
     }
     #[cfg(windows)]
     if let Some(pid) = pid {
-        let _ = TokioCommand::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .status()
-            .await;
+        let mut command = TokioCommand::from(process_command::background("taskkill"));
+        command.args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        let _ = tokio::time::timeout(Duration::from_secs(1), command.status()).await;
     }
     let _ = child.kill().await;
     let _ = child.wait().await;
@@ -2610,20 +2616,7 @@ async fn navigate_pi_session_tree(
 
 fn find_executable(name: &str) -> Option<PathBuf> {
     if name == "node" { return node_runtime::executable(); }
-    for directory in env::split_paths(&executable_search_path()) {
-        let candidate = directory.join(name);
-        if is_executable(&candidate) {
-            return Some(candidate);
-        }
-        #[cfg(windows)]
-        for extension in [".exe", ".cmd", ".bat"] {
-            let candidate = directory.join(format!("{name}{extension}"));
-            if is_executable(&candidate) {
-                return Some(candidate);
-            }
-        }
-    }
-    None
+    process_command::find_in_path(name, &executable_search_path())
 }
 
 pub(crate) fn executable_search_path() -> std::ffi::OsString {
@@ -2725,7 +2718,7 @@ fn probe_binary(agent: &str, label: &str, capabilities: &[&str]) -> AgentDiagnos
         };
     };
 
-    match Command::new(&path).arg("--version").output() {
+    match process_command::background(&path).arg("--version").output() {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);

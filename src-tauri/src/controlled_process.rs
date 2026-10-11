@@ -11,13 +11,33 @@ pub(crate) struct ProcessResult {
     pub stderr: Vec<u8>,
 }
 
-struct ProcessGroup(u32);
+struct ProcessGroup { pid: u32, completed: bool }
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
         #[cfg(unix)]
-        unsafe { libc::kill(-(self.0 as i32), libc::SIGKILL); }
+        unsafe { libc::kill(-(self.pid as i32), libc::SIGKILL); }
         #[cfg(windows)]
-        { let _ = std::process::Command::new("taskkill").args(["/PID", &self.0.to_string(), "/T", "/F"]).spawn(); }
+        if !self.completed {
+            // Normal completion has already reaped the PID. Only cancellation,
+            // timeout or I/O failure needs this best-effort tree termination.
+            if let Ok(mut cleanup) = crate::process_command::background("taskkill")
+                .args(["/PID", &self.pid.to_string(), "/T", "/F"])
+                .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+            {
+                // Finish walking the tree before Child::drop/start_kill removes
+                // its root. Bound this fallback, including owner-task abortion.
+                let deadline = std::time::Instant::now() + Duration::from_secs(1);
+                loop {
+                    match cleanup.try_wait() {
+                        Ok(Some(_)) => break,
+                        Ok(None) if std::time::Instant::now() < deadline => {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        _ => { let _ = cleanup.kill(); let _ = cleanup.wait(); break; }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -49,7 +69,7 @@ pub(crate) async fn execute_cancellable(
     crate::isolate_process_tree(&mut command);
     let mut child = command.spawn()?;
     // Retain the process group ID even after wait() reaps the root process.
-    let group = ProcessGroup(child.id().expect("spawned process has an id"));
+    let mut group = ProcessGroup { pid: child.id().expect("spawned process has an id"), completed: false };
     let stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");
     let mut result = ProcessResult { exit_code: None, success: false, timed_out: false, cancelled: false, stdout: Vec::new(), stderr: Vec::new() };
@@ -59,6 +79,7 @@ pub(crate) async fn execute_cancellable(
         }) => Some(completion),
         _ = cancellation => None,
     };
+    group.completed = matches!(&completion, Some(Ok(Ok(_))));
     drop(group);
     match completion {
         Some(Ok(Ok((status, (), ())))) => { result.exit_code = status.code(); result.success = status.success(); }
@@ -101,5 +122,106 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(1200)).await;
         assert!(!root.join("escaped").exists());
         std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use std::path::Path;
+
+    fn fixture(action: &str, directory: &Path) -> Command {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command.args(["--exact", "controlled_process::windows_tests::child_fixture", "--nocapture"])
+            .env("AIBO_PROCESS_TEST_ACTION", action).current_dir(directory);
+        command
+    }
+
+    // A separate copy of the test process gives these tests real Windows
+    // children without depending on shell quoting, Node or a network service.
+    #[test]
+    fn child_fixture() {
+        let Ok(action) = std::env::var("AIBO_PROCESS_TEST_ACTION") else { return; };
+        match action.as_str() {
+            "output" => {
+                #[link(name = "kernel32")]
+                extern "system" { fn GetConsoleWindow() -> *mut std::ffi::c_void; }
+                assert!(unsafe { GetConsoleWindow() }.is_null(), "background child has a console");
+                println!("{}", "x".repeat(200_000));
+                eprint!("CHILD_STDERR");
+            }
+            "normal" => {
+                let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                for _ in 0..3 {
+                    let result = runtime.block_on(execute(fixture("output", Path::new(".")), Duration::from_secs(5), 100)).unwrap();
+                    assert!(result.success);
+                    assert_eq!(result.stdout.len(), 100);
+                    assert_eq!(result.stderr, b"CHILD_STDERR");
+                }
+                // Catch cleanup commands that wrongly inherit this process's stderr.
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            "tree" => {
+                let mut descendant = crate::process_command::background(std::env::current_exe().unwrap());
+                descendant.args(["--exact", "controlled_process::windows_tests::child_fixture", "--nocapture"])
+                    .env("AIBO_PROCESS_TEST_ACTION", "delayed-write");
+                let mut child = descendant.spawn().unwrap();
+                std::fs::write("ready", b"ready").unwrap();
+                let _ = child.wait();
+            }
+            "delayed-write" => {
+                std::thread::sleep(Duration::from_millis(1500));
+                std::fs::write("escaped", b"escaped").unwrap();
+            }
+            _ => panic!("unknown fixture action"),
+        }
+    }
+
+    async fn ready(root: &Path) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !root.join("ready").exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.expect("fixture started");
+    }
+
+    #[test]
+    fn normal_completion_is_quiet_and_children_have_no_console() {
+        let root = tempfile::tempdir().unwrap();
+        let mut command = crate::process_command::background(std::env::current_exe().unwrap());
+        let output = command.args(["--exact", "controlled_process::windows_tests::child_fixture", "--nocapture"])
+            .env("AIBO_PROCESS_TEST_ACTION", "normal").current_dir(root.path()).output().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+        assert!(output.stderr.is_empty(), "{}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    #[tokio::test]
+    async fn cancellation_stops_descendant_side_effects() {
+        let root = tempfile::tempdir().unwrap();
+        let result = execute_cancellable(fixture("tree", root.path()), Duration::from_secs(10), 1024, ready(root.path())).await.unwrap();
+        assert!(result.cancelled);
+        tokio::time::sleep(Duration::from_millis(1800)).await;
+        assert!(!root.path().join("escaped").exists());
+    }
+
+    #[tokio::test]
+    async fn timeout_stops_descendant_side_effects() {
+        let root = tempfile::tempdir().unwrap();
+        let result = execute(fixture("tree", root.path()), Duration::from_millis(700), 1024).await.unwrap();
+        assert!(root.path().join("ready").exists());
+        assert!(result.timed_out);
+        tokio::time::sleep(Duration::from_millis(1800)).await;
+        assert!(!root.path().join("escaped").exists());
+    }
+
+    #[tokio::test]
+    async fn aborting_owner_stops_descendant_side_effects() {
+        let root = tempfile::tempdir().unwrap();
+        let owner = tokio::spawn(execute(fixture("tree", root.path()), Duration::from_secs(10), 1024));
+        ready(root.path()).await;
+        owner.abort();
+        let _ = owner.await;
+        tokio::time::sleep(Duration::from_millis(1800)).await;
+        assert!(!root.path().join("escaped").exists());
     }
 }

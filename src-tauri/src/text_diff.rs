@@ -52,7 +52,7 @@ pub(crate) fn run_unified_text_diff_bounded(
     // Git's patch machinery when hunk-level actions are added.
     let baseline_label = format!("a/{path}");
     let result_label = format!("b/{path}");
-    let mut command = Command::new("git");
+    let mut command = crate::process_command::background("git");
     let output = command_output_bounded(
         command
             .args([

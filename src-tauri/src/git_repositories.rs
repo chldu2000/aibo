@@ -4,8 +4,9 @@ use serde::Serialize;
 use std::{
     collections::{HashSet, VecDeque},
     path::{Component, Path, PathBuf},
-    process::Command,
 };
+#[cfg(test)]
+use std::process::Command;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,7 +31,7 @@ fn invalid(message: impl Into<String>) -> CoreError {
     CoreError::InvalidWorkspacePath(message.into())
 }
 fn top_level(path: &Path) -> Option<PathBuf> {
-    let output = Command::new("git")
+    let output = crate::process_command::background("git")
         .args(["-C"])
         .arg(path)
         .args(["rev-parse", "--show-toplevel"])
@@ -107,7 +108,7 @@ fn discover(workspace: &str, budget: usize) -> Result<Discovery, CoreError> {
                         relative.to_string_lossy().into_owned()
                     };
                     let kind = if marker.is_file() {
-                        let output = Command::new("git")
+                        let output = crate::process_command::background("git")
                             .arg("-C")
                             .arg(&path)
                             .args(["rev-parse", "--show-superproject-working-tree"])

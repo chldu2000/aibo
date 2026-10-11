@@ -5,7 +5,9 @@ use crate::{CoreError, GitFileActionResult, GitWorkspaceActionResult, GitCommitR
     GitBranch, GitCommit, GitCommitFile, GitCommitFileList, WorkspaceFileDiff, GitRemoteStatus,
     GitStashEntry, workspace_by_id};
 use sqlx::SqlitePool;
-use std::{path::Path, process::Command, time::{Duration, Instant}};
+use std::{path::Path, time::{Duration, Instant}};
+#[cfg(test)]
+use std::process::Command;
 use tokio::process::Command as TokioCommand;
 
 const GIT_OUTPUT_LIMIT: usize = 256 * 1024;
@@ -199,7 +201,7 @@ pub(crate) async fn commit_workspace_changes_requested_in_repository(
 }
 
 fn list_git_branches(workspace_path: &str) -> Result<Vec<GitBranch>, CoreError> {
-    let output = Command::new("git")
+    let output = crate::process_command::background("git")
         .args([
             "-C",
             workspace_path,
@@ -323,7 +325,7 @@ pub(crate) async fn create_workspace_git_branch_requested_in_repository(
 
 fn list_git_history(workspace_path: &str, limit: u32, offset: u32) -> Result<Vec<GitCommit>, CoreError> {
     let limit = limit.clamp(1, 100);
-    let output = Command::new("git")
+    let output = crate::process_command::background("git")
         .args([
             "-C",
             workspace_path,
@@ -386,7 +388,7 @@ pub(crate) async fn list_workspace_git_history_in_repository(
 }
 
 fn git_commit_files(workspace_path: &str, commit: &str) -> Result<Vec<GitCommitFile>, CoreError> {
-    let output = Command::new("git")
+    let output = crate::process_command::background("git")
         .args([
             "-C",
             workspace_path,
@@ -505,7 +507,7 @@ pub(crate) async fn get_workspace_git_commit_file_diff_in_repository(
     }
     let workspace = workspace_by_id(db, &workspace_id).await?;
     let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
-    let mut command = Command::new("git");
+    let mut command = crate::process_command::background("git");
     let output = command_output_bounded(
         command.args([
             "-C",
@@ -551,13 +553,13 @@ pub(crate) async fn get_workspace_git_commit_file_diff_in_repository(
 }
 
 fn git_remote_status(workspace_path: &str) -> Result<GitRemoteStatus, CoreError> {
-    let branch = Command::new("git")
+    let branch = crate::process_command::background("git")
         .args(["-C", workspace_path, "branch", "--show-current"])
         .output()
         .map_err(|error| CoreError::Database(format!("read Git branch: {error}")))?;
     let branch = String::from_utf8_lossy(&branch.stdout).trim().to_owned();
     let branch = (!branch.is_empty()).then_some(branch);
-    let upstream = Command::new("git")
+    let upstream = crate::process_command::background("git")
         .args([
             "-C",
             workspace_path,
@@ -579,7 +581,7 @@ fn git_remote_status(workspace_path: &str) -> Result<GitRemoteStatus, CoreError>
             behind: 0,
         });
     };
-    let counts = Command::new("git")
+    let counts = crate::process_command::background("git")
         .args([
             "-C",
             workspace_path,
@@ -713,7 +715,7 @@ pub(crate) async fn list_workspace_git_stashes_in_repository(
 ) -> Result<Vec<GitStashEntry>, CoreError> {
     let workspace = workspace_by_id(db, &workspace_id).await?;
     let repository_path = crate::git_repositories::resolve(&workspace.path, repository_id)?;
-    let output = Command::new("git")
+    let output = crate::process_command::background("git")
         .args([
             "-C",
             &repository_path,

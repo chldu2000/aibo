@@ -7,7 +7,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
 use tokio::task;
 use ulid::Ulid;
@@ -297,7 +296,7 @@ fn capture_sync(root: &Path) -> Result<WorkspaceSnapshot, crate::ui_i18n::HostMe
 }
 
 fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, crate::ui_i18n::HostMessage> {
-    let probe = Command::new("git")
+    let probe = crate::process_command::background("git")
         .args([
             "-C",
             &root.to_string_lossy(),
@@ -312,7 +311,7 @@ fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, crate::ui_i18n:
         return Ok(None);
     }
 
-    let head = Command::new("git")
+    let head = crate::process_command::background("git")
         .args(["-C", &root.to_string_lossy(), "rev-parse", "HEAD"])
         .output()
         .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.readHead",serde_json::json!({"error":error.to_string()}),format!("read Git HEAD: {error}")))?;
@@ -320,7 +319,7 @@ fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, crate::ui_i18n:
         .status
         .success()
         .then(|| String::from_utf8_lossy(&head.stdout).trim().to_owned());
-    let status = Command::new("git")
+    let status = crate::process_command::background("git")
         .args([
             "-C",
             &root.to_string_lossy(),
@@ -336,7 +335,7 @@ fn capture_git(root: &Path) -> Result<Option<WorkspaceSnapshot>, crate::ui_i18n:
         return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.changes.statusExited",serde_json::json!({"status":status.status.to_string()}),format!("git status exited with {}", status.status)));
     }
     let dirty = status.stdout.iter().any(|byte| *byte != 0);
-    let tracked = Command::new("git")
+    let tracked = crate::process_command::background("git")
         .args(["-C", &root.to_string_lossy(), "ls-files", "-z"])
         .output()
         .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.capture.readTracked",serde_json::json!({"error":error.to_string()}),format!("read tracked Git files: {error}")))?;
@@ -397,7 +396,7 @@ pub(crate) async fn workspace_changes_message(root: &Path) -> Result<WorkspaceCh
 fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, crate::ui_i18n::HostMessage> {
     let root =
         fs::canonicalize(root).map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.canonicalize", serde_json::json!({"error":error.to_string()}), format!("canonicalize workspace: {error}")))?;
-    let probe = Command::new("git")
+    let probe = crate::process_command::background("git")
         .args([
             "-C",
             &root.to_string_lossy(),
@@ -429,7 +428,7 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, crate::ui_i18
             localized_capture_error: Some(crate::ui_i18n::display_descriptor("native.changes.nonGit", serde_json::json!({}))),
         });
     }
-    let head = Command::new("git")
+    let head = crate::process_command::background("git")
         .args(["-C", &root.to_string_lossy(), "rev-parse", "HEAD"])
         .output()
         .map_err(|error| crate::ui_i18n::HostMessage::with_diagnostic("native.changes.readHead", serde_json::json!({"error":error.to_string()}), format!("read Git HEAD: {error}")))?;
@@ -437,7 +436,7 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, crate::ui_i18
         .status
         .success()
         .then(|| String::from_utf8_lossy(&head.stdout).trim().to_owned());
-    let branch = Command::new("git")
+    let branch = crate::process_command::background("git")
         .args([
             "-C",
             &root.to_string_lossy(),
@@ -451,7 +450,7 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, crate::ui_i18
         .filter(|output| output.status.success())
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
         .filter(|branch| !branch.is_empty());
-    let status = Command::new("git")
+    let status = crate::process_command::background("git")
         .args([
             "-C",
             &root.to_string_lossy(),
@@ -491,7 +490,7 @@ fn workspace_changes_sync(root: &Path) -> Result<WorkspaceChanges, crate::ui_i18
 
 // Optional statistics never block the status list (binary files and errors have no counts).
 fn read_workspace_numstat(root: &Path, staged: bool) -> BTreeMap<String, GitLineStats> {
-    let mut command = Command::new("git");
+    let mut command = crate::process_command::background("git");
     command.arg("-C").arg(root).args(["diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv"]);
     if staged { command.arg("--cached"); }
     command.arg("--");
