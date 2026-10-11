@@ -33,7 +33,7 @@ for(const kitId of ['material3','ak-ui'])for(const themeId of ['light','dark']){
  await page.getByRole('button',{name:'插件与能力',exact:true}).click();
  const dialog=page.getByRole('dialog');
  await page.getByRole('dialog',{name:'工作台设置',exact:true}).waitFor();
- const impact=dialog.locator('section.plugin-details').filter({has:page.getByRole('heading',{level:3,name:/ · third\.party$/})});
+ const impact=dialog.getByRole('region',{name:/^(安装影响|Installation impact)$/}).filter({has:page.getByRole('heading',{level:3,name:/ · third\.party$/})});
  for(const key of ['running','dependencies','candidates','historicalInstalls'].map(key=>'native.plugin.'+key)){
   await page.evaluate(key=>window.blockerKey=key,key);
   await dialog.getByRole('button',{name:'选择目录安装',exact:true}).click();
@@ -51,7 +51,7 @@ for(const kitId of ['material3','ak-ui'])for(const themeId of ['light','dark']){
  }
  await page.evaluate(()=>window.blockerKey='');
  await dialog.getByRole('button',{name:'选择目录安装',exact:true}).click();
- await impact.getByText('会话：Important history（可重建）',{exact:true}).waitFor();
+ await impact.getByText('Important history（可重建）',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>window.calls.some(c=>c.command==='install_agent_plugin')),false);
  const skip=impact.getByRole('checkbox',{name:'跳过已归档会话（1）',exact:true});
  assert.equal(await skip.isChecked(),true);

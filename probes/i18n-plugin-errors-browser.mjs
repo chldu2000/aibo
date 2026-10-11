@@ -44,7 +44,7 @@ try {
    if(command==='install_agent_plugin'){
     await dialog.getByRole('button',{name:'选择目录安装',exact:true}).click();await dialog.getByRole('button',{name:'确认安装',exact:true}).click();
    }else if(command==='set_agent_plugin_enabled'){
-    await dialog.getByRole('button',{name:'插件原文 · 1.0.0',exact:true}).click();await dialog.getByRole('button',{name:'启用插件',exact:true}).click();
+    await dialog.getByRole('button',{name:'插件原文 · 1.0.0',exact:true}).click();await dialog.getByRole('switch',{name:'启用插件',exact:true}).click();
    }else if(command==='undo_plugin_replacement'){
     await dialog.getByRole('button',{name:'插件原文 · 1.0.0',exact:true}).click();await dialog.getByRole('button',{name:'撤销本次升级',exact:true}).click();
    }else{

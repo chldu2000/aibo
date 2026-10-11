@@ -13,11 +13,11 @@ try {
     await page.waitForFunction(() => window.managementRecoveryProbe);
     await page.evaluate(kit => window.managementRecoveryProbe.show(kit), kit);
     assert.match(await page.getByRole('alert').innerText(), /执行依赖不可用/);
-    await page.getByRole('button',{name:'禁用插件',exact:true}).click();
+    await page.getByRole('switch',{name:'启用插件',exact:true}).click();
     assert.deepEqual(await page.evaluate(() => window.managementRecoveryProbe.actions()), [{type:'enabled',id:'broken-installation',value:false}]);
     // The host supplies the new installation state after completing the request.
     await page.evaluate(kit => window.managementRecoveryProbe.show(kit,false), kit);
-    assert.equal(await page.getByRole('button',{name:'启用插件',exact:true}).isDisabled(), true);
+    assert.equal(await page.getByRole('switch',{name:'启用插件',exact:true}).isDisabled(), true);
     await page.getByRole('button',{name:'卸载插件',exact:true}).click();
     assert.deepEqual(await page.evaluate(() => window.managementRecoveryProbe.actions()), [
       {type:'enabled',id:'broken-installation',value:false}, {type:'uninstall',id:'broken-installation'},

@@ -37,14 +37,14 @@ try {
     await page.getByRole('dialog',{name:'工作台设置',exact:true}).waitFor();
     await dialog.getByRole('button',{name:'卸载插件',exact:true}).click();
     const impact=dialog.getByRole('region',{name:/^(卸载影响|Uninstallation impact)$/});
-    await impact.getByText('会话：Important history（session-1）').waitFor();
-    await impact.getByText('能力绑定：原文{contribution} · 候选绑定',{exact:true}).waitFor();
+    await impact.getByText('Important history（session-1）',{exact:true}).waitFor();
+    await impact.getByText('原文{contribution} · 候选绑定',{exact:true}).waitFor();
     const reads=await page.evaluate(()=>window.lifecycleCalls.filter(call=>call.command==='preview_plugin_removal').length);
     await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'en',locale:'en'})});
-    await impact.getByText('Capability binding: 原文{contribution} · candidate binding',{exact:true}).waitFor();
+    await impact.getByText('原文{contribution} · candidate binding',{exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>window.lifecycleCalls.filter(call=>call.command==='preview_plugin_removal').length),reads);
     await page.evaluate(async()=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'})});
-    await impact.getByText('能力绑定：原文{contribution} · 候选绑定',{exact:true}).waitFor();
+    await impact.getByText('原文{contribution} · 候选绑定',{exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>window.lifecycleCalls.some(c=>c.command==='uninstall_agent_plugin')),false);
     await impact.getByRole('button',{name:'取消',exact:true}).click();
     await page.evaluate(()=>window.blockDependency());

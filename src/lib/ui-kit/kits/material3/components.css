@@ -140,14 +140,26 @@
   .app-shell[data-ui-kit='material3'] :where(.settings-group) header { margin-bottom: 12px; }
   .app-shell[data-ui-kit='material3'] :where(.settings-group) h2 { margin: 0; color: var(--aibo-text); font-size: 14px; font-weight: 500; }
   .app-shell[data-ui-kit='material3'] :where(.settings-group) p { margin: 5px 0 0; color: var(--aibo-subtle); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-  .app-shell[data-ui-kit='material3'] :where(.settings-group) .settings-rows { border-radius: var(--md-sys-shape-corner-medium); border: 1px solid var(--aibo-border); overflow: hidden; }
-  .app-shell[data-ui-kit='material3'] :where(.settings-group) .settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; min-height: 56px; padding: 8px 16px; }
-  .app-shell[data-ui-kit='material3'] :where(.settings-group) .settings-row + .settings-row { border-top: 1px solid var(--aibo-border); }
-  .app-shell[data-ui-kit='material3'] :where(.settings-group) .settings-copy { flex: 1 1 200px; min-width: 0; }
+  .app-shell[data-ui-kit='material3'] .settings-rows { border-radius: var(--md-sys-shape-corner-medium); border: 1px solid var(--aibo-border); overflow: hidden; }
+  .app-shell[data-ui-kit='material3'] .settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; min-height: 56px; padding: 8px 16px; }
+  .app-shell[data-ui-kit='material3'] .settings-row + .settings-row { border-top: 1px solid var(--aibo-border); }
+  .app-shell[data-ui-kit='material3'] .settings-copy { flex: 1 1 200px; min-width: 0; }
   .app-shell[data-ui-kit='material3'] :where(.settings-group) h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 500; color: var(--aibo-text); overflow-wrap: anywhere; }
-  .app-shell[data-ui-kit='material3'] :where(.settings-group) .settings-row-actions { display: flex; flex-wrap: wrap; flex: 0 0 auto; gap: 8px; max-width: 100%; }
+  .app-shell[data-ui-kit='material3'] .settings-row-actions { display: flex; flex-wrap: wrap; flex: 0 0 auto; gap: 8px; max-width: 100%; }
   .app-shell[data-ui-kit='material3'] :where(.settings-group) kbd { display: inline-block; margin-top: 8px; padding: 2px 5px; border: 1px solid var(--aibo-border); border-radius: var(--md-sys-shape-corner-small); color: var(--aibo-muted); font-size: 12px; line-height: 1.5; }
   .app-shell[data-ui-kit='material3'] :where(.settings-group) .settings-error { color: var(--aibo-danger-text); }
+  /* Rows reused inside cards and section bodies: the container already draws the frame, rows keep dividers only. */
+  .app-shell[data-ui-kit='material3'] .settings-rows { margin: 0; padding: 0; list-style: none; min-width: 0; }
+  .app-shell[data-ui-kit='material3'] :is(.settings-section-body, [data-slot='card']) .settings-rows { border: 0; border-radius: 0; overflow: visible; background: transparent; }
+  .app-shell[data-ui-kit='material3'] :is(.settings-section-body, [data-slot='card']) .settings-row { padding-inline: 0; border-radius: 0; background: transparent; }
+  .app-shell[data-ui-kit='material3'] .settings-rows[data-density='compact'] .settings-row { min-height: 44px; padding-block: 4px; }
+  .app-shell[data-ui-kit='material3'] :is(.settings-section-body, [data-slot='card']) .settings-copy { display: flex; flex: 1 1 160px; flex-direction: column; gap: 2px; }
+  .app-shell[data-ui-kit='material3'] .settings-card-footer { padding-top: 12px; border-top: 1px solid var(--aibo-border); }
+  .app-shell[data-ui-kit='material3'] .settings-rows-title { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--aibo-muted); font-size: 12px; font-weight: 500; }
+  .app-shell[data-ui-kit='material3'] .settings-row-title { color: var(--aibo-text); font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+  .app-shell[data-ui-kit='material3'] .settings-row-meta { margin: 0; color: var(--aibo-subtle); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+  .app-shell[data-ui-kit='material3'] .settings-row-meta[role='alert'] { color: var(--aibo-danger-text); }
+  .app-shell[data-ui-kit='material3'] .settings-switch { color: var(--aibo-text); font-size: 14px; }
 
 
 /* SubagentCard */

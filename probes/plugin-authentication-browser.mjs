@@ -54,7 +54,7 @@ try {
     await page.evaluate(()=>window.completeLogin());
     await dialog.getByRole('button',{name:'检查登录状态',exact:true}).click();
     await dialog.getByText(/CLI 报告已登录/).waitFor();
-    await dialog.getByRole('button',{name:'禁用插件',exact:true}).click();
+    await dialog.getByRole('switch',{name:'启用插件',exact:true}).click();
     await dialog.getByText('启用插件后可登录或检查状态。',{exact:true}).waitFor();
     assert.equal(await dialog.getByRole('button',{name:'登录 / 授权',exact:true}).isDisabled(),true);
     await dialog.getByRole('button',{name:'Plain Agent · 1.0.0',exact:true}).click();
@@ -65,7 +65,7 @@ try {
     await page.screenshot({path:`/tmp/aibo-plugin-authentication-${kitId}-${themeId}.png`});
     const calls=await page.evaluate(()=>window.authenticationCalls.filter(c=>c.command==='plugin_authentication_action'));
     assert.deepEqual(calls.map(c=>c.args),['status','login','login','status'].map(action=>({id:'third-release',action})));
-    await dialog.getByRole('button',{name:'启用插件',exact:true}).click();
+    await dialog.getByRole('switch',{name:'启用插件',exact:true}).click();
     await page.evaluate(()=>window.hostAuthFailure=true);
     await dialog.getByRole('button',{name:'登录 / 授权',exact:true}).click();
     await page.getByRole('alert').filter({hasText:'此操作需要可信工作区。请先确认工作区可信。'}).waitFor();

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { translateMessage } from '../../../../packages/i18n/index.js';
   import { locale, t } from '$lib/i18n/runtime';
-  import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '$lib/ui-kit';
+  import { Badge, Button, Card, CardContent, CardFooter, CardHeader, CardTitle } from '$lib/ui-kit';
   import type { PluginAuthenticationState } from '$lib/app/plugin-authentication-controller';
   import type { PluginLifecycleState } from '$lib/app/plugin-lifecycle-controller';
 
@@ -49,32 +49,36 @@
   const selected = $derived(installedPlugins.find(item => item.id === selectedId) ?? installedPlugins[0]);
   const undoTargets = $derived(installation?.undoTargets ?? []);
   let showingDetail = $state(false);
+  const uid = $props.id();
+
+  // Status lives in a Badge; the secondary line only carries facts that explain it.
+  const statusVariant = (available: boolean, required: boolean) => available ? 'success' : required ? 'destructive' : 'warning';
+  const meta = (...parts: (string | null | undefined | false)[]) => parts.filter(Boolean).join(' · ');
 
 </script>
 
 <section class="settings-section" aria-label={$t('plugins.title')} aria-busy={busy}>
-  <div class="settings-section-heading"><div><h2>{$t('plugins.title')}</h2><p>{$t('plugins.description')}</p></div></div>
+  <div class="settings-section-heading">
+    <div><h2>{$t('plugins.title')}</h2><p>{$t('plugins.description')}</p></div>
+    <Button type="button" variant="outline" size="sm" disabled={busy} onclick={onInstall}>{$t('plugins.installDirectory')}</Button>
+  </div>
   <div class="settings-section-body">
     <div class="plugin-manager">
       {#if installation?.error}<p role="alert">{translateMessage($locale, installation.error)}</p>{/if}
       {#if installation?.notice}<p role="status">{translateMessage($locale, installation.notice)}</p>{/if}
       {#if installation?.preview}
         {@const preview=installation.preview}
-        <section aria-label={$t('plugins.installImpact')} class="plugin-details">
+        <section aria-label={$t('plugins.installImpact')} class="settings-block">
           <h3>{preview.kind === 'downgrade' ? $t('plugins.downgrade') : preview.kind === 'replace' ? $t('plugins.replace') : preview.kind === 'upgrade' ? $t('plugins.upgrade') : $t('plugins.install')} · {preview.pluginId}</h3>
-          <p>{preview.previous.length ? `${preview.previous.join('、')} → ` : ''}{preview.version}</p>
+          <p class="settings-row-meta">{preview.previous.length ? `${preview.previous.join('、')} → ` : ''}{preview.version}</p>
           {#each preview.impacts as impact}
-            <p>{$t('plugins.references', { sessions: impact.sessions.length, bindings: impact.bindings.length, dependencies: impact.dependencies.length })}</p>
-            {#each impact.sessions as session}<p>{$t('plugins.sessionPrefix')}{session.label}{preview.archivedSessions?.includes(session.id) ? $t('history.archivedSuffix') : ''}{preview.rebuildSessions?.includes(session.id) ? $t('plugins.rebuildSuffix') : ''}</p>{/each}
-            {#each impact.bindings as binding}<p>{$t('plugins.bindingPrefix')}{binding.label}</p>{/each}
-            {#each impact.dependencies as dependency}<p>{$t('plugins.dependencyPrefix')}{dependency.label}</p>{/each}
+            {@render impactGroup($t('plugins.impactSessions'), impact.sessions.map(session => `${session.label}${preview.archivedSessions?.includes(session.id) ? $t('history.archivedSuffix') : ''}${preview.rebuildSessions?.includes(session.id) ? $t('plugins.rebuildSuffix') : ''}`))}
+            {@render impactGroup($t('plugins.impactBindings'), impact.bindings.map(binding => binding.label))}
+            {@render impactGroup($t('plugins.impactDependencies'), impact.dependencies.map(dependency => dependency.label))}
           {/each}
-          {#each preview.blockers as blocker}<p role="alert">{blocker}</p>{/each}
-          {#if preview.kind === 'downgrade'}
-            <p role="alert">{$t('plugins.downgradeWarning')}</p>
-          {:else if preview.previous.length}
+          {#if preview.kind !== 'downgrade' && preview.previous.length}
             {#if preview.archivedSessions?.length}
-              <label>
+              <label class="settings-check">
                 <input type="checkbox" checked={installation.skipArchived} disabled={busy}
                   aria-describedby="skip-archived-description"
                   onchange={event => {
@@ -84,16 +88,16 @@
                   }} />
                 {$t('plugins.skipArchived', { count: preview.archivedSessions.length })}
               </label>
-              <p id="skip-archived-description">{$t('plugins.skipArchivedDescription')}</p>
+              <p id="skip-archived-description" class="settings-row-meta">{$t('plugins.skipArchivedDescription')}</p>
             {/if}
-            {#if preview.rebuildSessions?.length}
-              <p>{$t('plugins.rebuildDescription')}</p>
-            {/if}
-            <p>{$t('plugins.upgradeDescription')}</p>
+            {#if preview.rebuildSessions?.length}<p class="settings-row-meta">{$t('plugins.rebuildDescription')}</p>{/if}
+            <p class="settings-row-meta">{$t('plugins.upgradeDescription')}</p>
           {/if}
-          <div class="plugin-actions">
-            <Button disabled={busy || !!preview.blockers.length} onclick={()=>onInstallConfirm?.(preview.kind === 'downgrade')}>{preview.kind === 'downgrade' ? $t('plugins.clearAndDowngrade') : $t('plugins.confirmInstall')}</Button>
-            <Button variant="outline" disabled={busy} onclick={onInstallCancel}>{$t('common.cancel')}</Button>
+          {#each preview.blockers as blocker}<p role="alert">{blocker}</p>{/each}
+          {#if preview.kind === 'downgrade'}<p role="alert">{$t('plugins.downgradeWarning')}</p>{/if}
+          <div class="settings-row-actions">
+            <Button variant={preview.kind === 'downgrade' ? 'destructive' : 'default'} disabled={busy || !!preview.blockers.length} onclick={()=>onInstallConfirm?.(preview.kind === 'downgrade')}>{preview.kind === 'downgrade' ? $t('plugins.clearAndDowngrade') : $t('plugins.confirmInstall')}</Button>
+            <Button variant="ghost" disabled={busy} onclick={onInstallCancel}>{$t('common.cancel')}</Button>
           </div>
         </section>
       {/if}
@@ -101,38 +105,35 @@
         {#if lifecycle.error}<p role="alert">{translateMessage($locale, lifecycle.error)}</p>{/if}
         {#if lifecycle.report}
           <p role="status">{$t('plugins.migrationReport', { migrated: lifecycle.report.migrated.length, failed: lifecycle.report.failed.length })}</p>
-          {#each lifecycle.report.failed as item}<p>{item.label}</p>{/each}
+          {@render impactGroup('', lifecycle.report.failed.map(item => item.label))}
         {/if}
         {#if lifecycle.impact}
           {@const impact = lifecycle.impact}
-          <section aria-label={$t('plugins.uninstallImpact')} class="plugin-details">
-            <h3>{$t('plugins.uninstallHeading', { name: installations.find(item => item.id === impact.id)?.manifest.displayName ?? impact.id, version: installations.find(item => item.id === impact.id)?.pluginVersion ?? '' })}</h3>
-            <p>{$t('plugins.uninstallDescription')}</p>
-            <p>{$t('plugins.uninstallReferences', { sessions: impact.sessions.length, bindings: impact.bindings.length, dependencies: impact.dependencies.length, active: impact.active })}</p>
-            {#each impact.sessions as item}<p>{$t('plugins.sessionPrefix')}{item.label}（{item.id}）</p>{/each}
-            {#each impact.bindings as item}<p>{$t('plugins.bindingPrefix')}{item.label}</p>{/each}
-            {#each impact.dependencies as item}<p>{$t('plugins.dependencyPrefix')}{item.label}</p>{/each}
+          {@const target = installations.find(item => item.id === impact.id)}
+          <section aria-label={$t('plugins.uninstallImpact')} class="settings-block">
+            <h3>{$t('plugins.uninstallHeading', { name: target?.manifest.displayName ?? impact.id, version: target?.pluginVersion ?? '' })}</h3>
+            <p class="settings-row-meta">{$t('plugins.uninstallDescription')}</p>
+            {@render impactGroup($t('plugins.impactSessions'), impact.sessions.map(item => `${item.label}（${item.id}）`))}
+            {@render impactGroup($t('plugins.impactBindings'), impact.bindings.map(item => item.label))}
+            {@render impactGroup($t('plugins.impactDependencies'), impact.dependencies.map(item => item.label))}
+            {#if impact.sessions.length && !impact.targets.length}<p class="settings-row-meta">{$t('plugins.migrationTargetNeeded')}</p>{/if}
+            {#if impact.active}<p class="settings-row-meta">{$t('plugins.activeTasks', { count: impact.active })} · {$t('plugins.stopBeforeUninstall')}</p>{/if}
+            {#if impact.sessions.length}<p class="settings-row-meta">{$t('plugins.historyOnlyWarning')}</p>{/if}
             {#if impact.dependencies.length}<p role="alert">{$t('plugins.dependencyBlocker')}</p>{/if}
-            {#if impact.sessions.length && !impact.targets.length}<p>{$t('plugins.migrationTargetNeeded')}</p>{/if}
-            {#if impact.active}<p>{$t('plugins.stopBeforeUninstall')}</p>{/if}
-            <div class="plugin-actions">
+            <div class="settings-row-actions">
               {#each impact.targets as target}
                 <Button disabled={busy || !impact.sessions.length} onclick={() => onMigrate?.(target.id)}>{$t('plugins.migrateTo', { name: target.label })}</Button>
               {/each}
               {#if impact.sessions.length || impact.bindings.length}
-                <Button disabled={busy || impact.dependencies.length > 0} onclick={() => onRemovalConfirm?.(true)}>{$t('plugins.keepHistoryAndRemove')}</Button>
+                <Button variant="destructive" disabled={busy || impact.dependencies.length > 0} onclick={() => onRemovalConfirm?.(true)}>{$t('plugins.keepHistoryAndRemove')}</Button>
               {:else}
-                <Button disabled={busy || impact.dependencies.length > 0} onclick={() => onRemovalConfirm?.(false)}>{$t('plugins.removeData')}</Button>
+                <Button variant="destructive" disabled={busy || impact.dependencies.length > 0} onclick={() => onRemovalConfirm?.(false)}>{$t('plugins.removeData')}</Button>
               {/if}
-              <Button variant="outline" disabled={busy} onclick={onRemovalCancel}>{$t('common.cancel')}</Button>
+              <Button variant="ghost" disabled={busy} onclick={onRemovalCancel}>{$t('common.cancel')}</Button>
             </div>
-            {#if impact.sessions.length}<p>{$t('plugins.historyOnlyWarning')}</p>{/if}
           </section>
         {/if}
       {/if}
-      <div class="plugin-actions">
-        <Button type="button" variant="outline" disabled={busy} onclick={onInstall}>{$t('plugins.installDirectory')}</Button>
-      </div>
 
       {#if installedPlugins.length === 0}
         <p role="status">{$t('plugins.empty')}</p>
@@ -141,8 +142,10 @@
           <nav class="plugin-navigation" aria-label={$t('plugins.installedList')}>
             {#each installedPlugins as installation (installation.id)}
               <Button variant={selected?.id === installation.id ? 'secondary' : 'ghost'} aria-pressed={selected?.id === installation.id}
+                aria-label={`${installation.manifest.displayName} · ${installation.pluginVersion}`}
                 onclick={() => { selectedId = installation.id; showingDetail = true; }}>
-                {installation.manifest.displayName} · {installation.pluginVersion}
+                <span class="plugin-navigation-name">{installation.manifest.displayName}</span>
+                <small class="settings-row-meta">{installation.pluginVersion}</small>
               </Button>
             {/each}
           </nav>
@@ -150,58 +153,110 @@
             <div class="plugin-list-back"><Button variant="ghost" onclick={() => (showingDetail = false)}>{$t('plugins.back')}</Button></div>
           {#each installedPlugins as installation (installation.id)}
             {#if selected?.id === installation.id}
+            {@const blocked = !installation.enabled && !installation.runnable}
+            {@const settingsEntries = installation.contributions?.filter(entry => entry.metadata.settings) ?? []}
+            {@const packageDependencies = installation.packageDependencies?.dependencies ?? []}
             <Card aria-label={installation.manifest.displayName}>
-              <CardHeader>
-                <div class="plugin-heading">
+              <CardHeader class="settings-card-header">
+                <div class="settings-copy">
                   <CardTitle>{installation.manifest.displayName}</CardTitle>
-                  <Badge>{!installation.installed ? $t('plugins.uninstalled') : installation.enabled ? $t('plugins.enabled') : $t('plugins.disabled')}</Badge>
+                  <p class="settings-row-meta">{installation.pluginId} · {installation.pluginVersion}</p>
+                  {#if blocked}<p class="settings-row-meta" id={`${uid}-blocked`}>{$t('plugins.cannotEnable')}</p>{/if}
                 </div>
+                <label class="settings-switch">
+                  <span>{$t('plugins.enable')}</span>
+                  <input type="checkbox" role="switch" checked={installation.enabled} disabled={busy || blocked}
+                    aria-describedby={blocked ? `${uid}-blocked` : undefined}
+                    onchange={event => {
+                      const checked = event.currentTarget.checked;
+                      event.currentTarget.checked = installation.enabled;
+                      onEnabledChange(installation.id, checked);
+                    }} />
+                </label>
               </CardHeader>
-              <CardContent>
-                <div class="plugin-details">
-                  <p>{installation.pluginId} · {installation.pluginVersion}</p>
-                  {#each installation.dependencies as dependency (`${dependency.kind}:${dependency.name}`)}
-                    <p role={dependency.required && !dependency.available ? 'alert' : undefined}>
-                      {dependency.kind} · {dependency.name}{dependency.versionRange ? ` ${dependency.versionRange}` : ''}{dependency.detectedVersion ? $t('plugins.detectedVersion', { version: dependency.detectedVersion }) : ''} · {dependency.available ? $t('plugins.available') : dependency.required ? $t('plugins.requiredUnavailable', { issue: dependency.issue ? $t('plugins.issueSuffix', { issue: dependency.issue }) : '' }) : $t('plugins.optionalUnavailable', { issue: dependency.issue ? $t('plugins.issueSuffix', { issue: dependency.issue }) : '' })}
-                    </p>
-                  {/each}
-                  {#each installation.packageDependencies?.dependencies ?? [] as dependency (dependency.pluginId)}
-                    <p role={dependency.required && !dependency.available ? 'alert' : 'status'}>
-                      {$t('plugins.packageDependency', { id: dependency.pluginId, version: dependency.version ? ` · ${dependency.version}` : '', status: dependency.available ? $t('plugins.available') : dependency.required ? $t('plugins.requiredMissing') : $t('plugins.optionalMissing'), issue: dependency.issue ? ` (${dependency.issue})` : '' })}
-                    </p>
-                  {/each}
-                  {#each installation.activationIssues ?? [] as issue}<p role="status">{issue}</p>{/each}
-                  {#if installation.manifest.authentication}
-                    {@const auth = authentication?.entries[installation.id]}
-                    <section aria-label={$t('plugins.authTitle')}>
-                      <p>{$t('plugins.authDescription')}</p>
-                      <div class="plugin-actions">
-                        <Button variant="outline" disabled={busy || !installation.enabled || !installation.runnable} onclick={() => onAuthenticate?.(installation.id, 'login')}>{$t('plugins.login')}</Button>
-                        <Button variant="outline" disabled={busy || !installation.enabled || !installation.runnable} onclick={() => onAuthenticate?.(installation.id, 'status')}>{$t('plugins.checkLogin')}</Button>
+              <CardContent class="settings-card-content">
+                {#if installation.dependencies.length || packageDependencies.length || installation.activationIssues?.length}
+                  <section class="settings-block" aria-label={$t('plugins.dependenciesTitle')}>
+                    <h4 class="settings-rows-title">{$t('plugins.dependenciesTitle')}</h4>
+                    <div class="settings-rows" data-density="compact">
+                      {#each installation.dependencies as dependency (`${dependency.kind}:${dependency.name}`)}
+                        <div class="settings-row" role={dependency.required && !dependency.available ? 'alert' : undefined}>
+                          <div class="settings-copy">
+                            <span class="settings-row-title">{dependency.name}</span>
+                            <span class="settings-row-meta">{meta(dependency.kind, dependency.required ? $t('plugins.dependencyRequired') : $t('plugins.dependencyOptional'), dependency.versionRange && $t('plugins.dependencyRequirement', { range: dependency.versionRange }), dependency.detectedVersion && $t('plugins.dependencyDetected', { version: dependency.detectedVersion }), !dependency.available && dependency.issue)}</span>
+                          </div>
+                          <Badge variant={statusVariant(dependency.available, dependency.required)}>{dependency.available ? $t('plugins.available') : $t('plugins.unavailable')}</Badge>
+                        </div>
+                      {/each}
+                      {#each packageDependencies as dependency (dependency.pluginId)}
+                        <div class="settings-row" role={dependency.required && !dependency.available ? 'alert' : 'status'}>
+                          <div class="settings-copy">
+                            <span class="settings-row-title">{dependency.pluginId}</span>
+                            <span class="settings-row-meta">{meta($t('plugins.dependencyPlugin'), dependency.required ? $t('plugins.dependencyRequired') : $t('plugins.dependencyOptional'), dependency.version, !dependency.available && !dependency.required && $t('plugins.optionalMissingEffect'), dependency.issue)}</span>
+                          </div>
+                          <Badge variant={statusVariant(dependency.available, dependency.required)}>{dependency.available ? $t('plugins.available') : $t('plugins.unavailable')}</Badge>
+                        </div>
+                      {/each}
+                      {#each installation.activationIssues ?? [] as issue}
+                        <div class="settings-row" role="status"><span class="settings-row-meta">{issue}</span></div>
+                      {/each}
+                    </div>
+                  </section>
+                {/if}
+                {#if installation.manifest.authentication}
+                  {@const auth = authentication?.entries[installation.id]}
+                  {@const authDisabled = busy || !installation.enabled || !installation.runnable}
+                  <section class="settings-block" aria-label={$t('plugins.authTitle')}>
+                    <h4 class="settings-rows-title">{$t('plugins.authTitle')}</h4>
+                    <div class="settings-rows">
+                      <div class="settings-row">
+                        <div class="settings-copy">
+                          <span class="settings-row-meta">{$t('plugins.authDescription')}</span>
+                          {#if !installation.enabled}<span class="settings-row-meta">{$t('plugins.enableToLogin')}</span>{/if}
+                          {#if authentication?.busyId === installation.id}<span class="settings-row-meta" role="status">{$t('plugins.authPending')}</span>{/if}
+                          {#if auth?.error}<span class="settings-row-meta" role="alert">{translateMessage($locale, auth.error)}</span>
+                          {:else if auth?.result === 'loginOpened'}<span class="settings-row-meta" role="status">{$t('plugins.loginOpened')}</span>
+                          {:else if auth?.result === 'authenticated'}<span class="settings-row-meta" role="status">{$t('plugins.authenticated')}</span>
+                          {:else if auth?.result === 'unauthenticated'}<span class="settings-row-meta" role="status">{$t('plugins.unauthenticated')}</span>{/if}
+                        </div>
+                        <div class="settings-row-actions">
+                          <Button variant="ghost" size="sm" disabled={authDisabled} onclick={() => onAuthenticate?.(installation.id, 'status')}>{$t('plugins.checkLogin')}</Button>
+                          <Button variant="outline" size="sm" disabled={authDisabled} onclick={() => onAuthenticate?.(installation.id, 'login')}>{$t('plugins.login')}</Button>
+                        </div>
                       </div>
-                      {#if !installation.enabled}<p>{$t('plugins.enableToLogin')}</p>{/if}
-                      {#if authentication?.busyId === installation.id}<p role="status">{$t('plugins.authPending')}</p>{/if}
-                      {#if auth?.error}<p role="alert">{translateMessage($locale, auth.error)}</p>
-                      {:else if auth?.result === 'loginOpened'}<p role="status">{$t('plugins.loginOpened')}</p>
-                      {:else if auth?.result === 'authenticated'}<p role="status">{$t('plugins.authenticated')}</p>
-                      {:else if auth?.result === 'unauthenticated'}<p role="status">{$t('plugins.unauthenticated')}</p>{/if}
-                    </section>
-                  {/if}
-                  <div class="plugin-actions">
-                    {#if installation.installed}
-                      <Button type="button" variant="outline" disabled={busy || (!installation.enabled && !installation.runnable)} onclick={() => onEnabledChange(installation.id, !installation.enabled)}>{installation.enabled ? $t('plugins.disable') : $t('plugins.enable')}</Button>
-                      <Button type="button" variant="outline" disabled={busy} onclick={() => onUninstall(installation.id)}>{$t('plugins.uninstall')}</Button>
-                      {#if undoTargets.includes(installation.id)}<Button variant="outline" disabled={busy} onclick={()=>onUndo?.(installation.id)}>{$t('plugins.undoUpgrade')}</Button>{/if}
-                    {/if}
-                    {#each installation.contributions?.filter(entry => entry.metadata.settings) ?? [] as entry (entry.id)}
-                      <Button type="button" variant="outline" disabled={busy || !installation.installed} onclick={() => onConfigure(installation.id, entry.id)}>{$t('plugins.settingsFor', { name: String(entry.metadata.displayName ?? entry.id) })}</Button>
-                    {/each}
+                    </div>
+                  </section>
+                {/if}
+                {#if settingsEntries.length}
+                  <section class="settings-block" aria-label={$t('plugins.contributionsTitle')}>
+                    <h4 class="settings-rows-title">{$t('plugins.contributionsTitle')}</h4>
+                    <div class="settings-rows" data-density="compact">
+                      {#each settingsEntries as entry (entry.id)}
+                        {@const name = String(entry.metadata.displayName ?? entry.id)}
+                        <div class="settings-row">
+                          <div class="settings-copy"><span class="settings-row-title">{name}</span></div>
+                          <div class="settings-row-actions">
+                            <Button type="button" variant="outline" size="sm" aria-label={$t('plugins.settingsFor', { name })} disabled={busy || !installation.installed} onclick={() => onConfigure(installation.id, entry.id)}>{$t('plugins.openSettings')}</Button>
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  </section>
+                {/if}
+              </CardContent>
+              <CardFooter class="settings-card-footer">
+                <div class="settings-row-actions">
+                  <Button type="button" variant="ghost" size="sm" disabled={busy} onclick={() => onUninstall(installation.id)}>{$t('plugins.uninstall')}</Button>
+                  {#if undoTargets.includes(installation.id)}<Button variant="ghost" size="sm" disabled={busy} onclick={()=>onUndo?.(installation.id)}>{$t('plugins.undoUpgrade')}</Button>{/if}
+                </div>
+                {#if installation.sessionProviders?.length}
+                  <div class="settings-row-actions">
                     {#each installation.sessionProviders as provider (provider.id)}
                       <Button type="button" disabled={busy || !installation.installed || !installation.enabled || !installation.runnable} onclick={() => onCreateSession(installation.id, provider.id)}>{$t('plugins.createSession', { name: provider.displayName })}</Button>
                     {/each}
                   </div>
-                </div>
-              </CardContent>
+                {/if}
+              </CardFooter>
             </Card>
             {/if}
           {/each}
@@ -212,11 +267,23 @@
   </div>
 </section>
 
+{#snippet impactGroup(title: string, items: string[])}
+  {#if items.length}
+    <div class="settings-block">
+      {#if title}<h4 class="settings-rows-title">{title} <Badge variant="outline">{items.length}</Badge></h4>{/if}
+      <ul class="settings-rows" data-density="compact">
+        {#each items as item}<li class="settings-row"><span class="settings-row-title">{item}</span></li>{/each}
+      </ul>
+    </div>
+  {/if}
+{/snippet}
+
 <style>
-  .plugin-manager, .plugin-details { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-  .plugin-heading, .plugin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
-  .plugin-browser { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px; }
-  .plugin-navigation { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .plugin-manager { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .plugin-browser { display: grid; grid-template-columns: minmax(160px, 200px) minmax(0, 1fr); gap: 16px; }
+  .plugin-navigation { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .plugin-navigation :global(.ui-button[data-slot='button']) { justify-content: space-between; gap: 8px; }
+  .plugin-navigation-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .plugin-detail { min-width: 0; }
   .plugin-list-back { display: none; }
   @media (max-width: 720px) {

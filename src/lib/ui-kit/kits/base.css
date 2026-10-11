@@ -570,6 +570,12 @@ dd { max-width: 68%; overflow: hidden; margin: 0; text-overflow: ellipsis; white
 .global-search-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .settings-section-body { display: grid; gap: 12px; min-width: 0; }
 .settings-section-body > p { margin: 0; }
+.settings-block { display: grid; gap: 8px; min-width: 0; }
+.settings-block > :is(h3, p) { margin: 0; }
+.settings-card-header { flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.settings-card-content { display: grid; gap: 16px; }
+.settings-card-footer { flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.settings-switch, .settings-check { display: inline-flex; align-items: center; gap: 8px; flex: none; }
 .global-search-categories [data-slot='button'], .global-search-group-heading [data-slot='button'] { min-height: 32px; height: 32px; padding: 0 8px; }
 .global-search :is(select, .ui-select-trigger) { max-width: 180px; min-height: 32px; }
 .global-search-results { min-height: 100px; overflow: auto; overscroll-behavior: contain; }
