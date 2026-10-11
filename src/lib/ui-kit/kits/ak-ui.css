@@ -578,6 +578,63 @@
   font: var(--aibo-type-meta)/1.8 var(--aibo-mono);
 }
 
+/* Referenced session: one bordered disclosure like the tool group; excerpts read as conversation, not tool output. */
+.app-shell[data-ui-kit='ak-ui'] .session-reference {
+  margin-top: var(--ak-space-2);
+  border: var(--ak-line-hairline) solid var(--aibo-border);
+  border-radius: 0;
+  background: var(--aibo-surface);
+}
+.app-shell[data-ui-kit='ak-ui'] .session-reference > summary {
+  min-height: 44px;
+  padding: 0 var(--ak-space-3);
+  gap: var(--ak-space-2);
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='ak-ui'] .session-reference > summary:hover { background: var(--aibo-surface-hover); }
+.app-shell[data-ui-kit='ak-ui'] .session-reference > summary:focus-visible { outline-offset: -2px; }
+.app-shell[data-ui-kit='ak-ui'] :is(.session-reference-kicker, .session-reference-count, .session-reference-meta) {
+  color: var(--aibo-muted);
+  font-size: var(--aibo-type-meta);
+}
+.app-shell[data-ui-kit='ak-ui'] .session-reference-title { font-weight: 600; }
+.app-shell[data-ui-kit='ak-ui'] .session-reference-count { font-variant-numeric: tabular-nums; }
+.app-shell[data-ui-kit='ak-ui'] .session-reference-meta {
+  padding: var(--ak-space-2) var(--ak-space-3);
+  border-top: var(--ak-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='ak-ui'] .session-reference-excerpts {
+  gap: var(--ak-space-4);
+  padding: var(--ak-space-3);
+  border-top: var(--ak-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='ak-ui'] .session-reference-excerpts:focus-visible {
+  outline: var(--ak-focus-width) solid var(--aibo-focus);
+  outline-offset: -2px;
+}
+.app-shell[data-ui-kit='ak-ui'] .session-reference-role {
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-meta);
+  font-weight: 600;
+}
+.app-shell[data-ui-kit='ak-ui'] .session-reference-text {
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-ui);
+  line-height: 1.7;
+}
+.app-shell[data-ui-kit='ak-ui'] .session-reference-excerpt[data-role='user'] .session-reference-text {
+  padding: var(--ak-space-2) var(--ak-space-3);
+  border: var(--ak-line-hairline) solid var(--aibo-border);
+  background: var(--ak-surface-raised);
+}
+.app-shell[data-ui-kit='ak-ui'] .session-reference-text .markdown-content > p:not(:last-child) { margin-bottom: var(--ak-space-1); }
+.app-shell[data-ui-kit='ak-ui'] .session-reference-text .markdown-content :not(pre) > code {
+  font: 12.5px var(--ak-font-mono);
+  background: var(--ak-surface-muted);
+  border-radius: 2px;
+}
+
 .app-shell[data-ui-kit='ak-ui'] .timeline-empty {
   color: var(--aibo-muted);
 }

@@ -46,6 +46,15 @@ export function sessionProviderInfo(installations: SessionProviderInstallation[]
   return provider ? { label: provider.displayName, ...(provider.icon ? { icon: provider.icon } : {}) } : { label: session.agent };
 }
 
+/** Display name for a bare provider ID (e.g. a referenced snapshot's source agent), from any installation that declares it. */
+export function sessionProviderLabel(installations: SessionProviderInstallation[], agent: string): string {
+  for (const installation of installations) {
+    const provider = sessionProviders(installation).find(item => item.id === agent);
+    if (provider) return provider.displayName;
+  }
+  return agent;
+}
+
 /** Existing sessions retain their release's identity even when that release is disabled. */
 export function sessionProviderIcon(installations: SessionProviderInstallation[], session: { agent: string; pluginInstallationId?: string | null }): AgentIcon | undefined {
   const installation = installations.find(item => item.id === session.pluginInstallationId);

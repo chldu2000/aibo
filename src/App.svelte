@@ -958,7 +958,7 @@
     unarchiveSession as unarchiveSessionApi,
   } from './lib/api';
   import type { PluginInstallation } from './lib/api';
-  import { sessionProviders, sessionProviderChoices, readySessionProviders, sessionProviderIcon, sessionProviderInfo } from '$lib/app/session-providers';
+  import { sessionProviders, sessionProviderChoices, readySessionProviders, sessionProviderIcon, sessionProviderInfo, sessionProviderLabel } from '$lib/app/session-providers';
   import type {
     AgentQueueSnapshot,
     AgentCommand,
@@ -3762,6 +3762,7 @@
       session={selectedSession}
       sessionProviderLabel={selectedSession ? sessionProviderInfo(pluginInstallations, selectedSession).label : undefined}
       sessionProviderIcon={selectedSession ? sessionProviderIcon(pluginInstallations, selectedSession) : undefined}
+      referenceAgentLabel={(agent) => sessionProviderLabel(pluginInstallations, agent)}
       selectedSessionId={selectedSessionId}
       {codexGoal}
       goalBusy={goalBusy}

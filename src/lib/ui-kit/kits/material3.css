@@ -597,6 +597,64 @@
   font: var(--aibo-type-meta)/1.8 var(--aibo-mono);
 }
 
+/* Referenced session: an outlined card like the tool group; excerpts read as conversation, not tool output. */
+.app-shell[data-ui-kit='material3'] .session-reference {
+  margin-top: var(--md-aibo-space-2);
+  border: var(--md-aibo-line-hairline) solid var(--aibo-border);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--aibo-surface);
+  overflow: hidden;
+}
+.app-shell[data-ui-kit='material3'] .session-reference > summary {
+  min-height: 44px;
+  padding: 0 var(--md-aibo-space-3);
+  gap: var(--md-aibo-space-2);
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-ui);
+}
+.app-shell[data-ui-kit='material3'] .session-reference > summary:hover { background: var(--aibo-hover); }
+.app-shell[data-ui-kit='material3'] .session-reference > summary:focus-visible { outline-offset: -2px; }
+.app-shell[data-ui-kit='material3'] :is(.session-reference-kicker, .session-reference-count, .session-reference-meta) {
+  color: var(--aibo-muted);
+  font-size: var(--aibo-type-meta);
+}
+.app-shell[data-ui-kit='material3'] .session-reference-title { font-weight: 500; }
+.app-shell[data-ui-kit='material3'] .session-reference-count { font-variant-numeric: tabular-nums; }
+.app-shell[data-ui-kit='material3'] .session-reference-meta {
+  padding: var(--md-aibo-space-2) var(--md-aibo-space-3);
+  border-top: var(--md-aibo-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='material3'] .session-reference-excerpts {
+  gap: var(--md-aibo-space-4);
+  padding: var(--md-aibo-space-3);
+  border-top: var(--md-aibo-line-hairline) solid var(--aibo-border);
+}
+.app-shell[data-ui-kit='material3'] .session-reference-excerpts:focus-visible {
+  outline: var(--md-aibo-focus-width) solid var(--aibo-focus);
+  outline-offset: -2px;
+}
+.app-shell[data-ui-kit='material3'] .session-reference-role {
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-meta);
+  font-weight: 500;
+}
+.app-shell[data-ui-kit='material3'] .session-reference-text {
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-ui);
+  line-height: 1.7;
+}
+.app-shell[data-ui-kit='material3'] .session-reference-excerpt[data-role='user'] .session-reference-text {
+  padding: var(--md-aibo-space-2) var(--md-aibo-space-3);
+  border-radius: 4px var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium) var(--md-sys-shape-corner-medium);
+  background: var(--aibo-surface-hover);
+}
+.app-shell[data-ui-kit='material3'] .session-reference-text .markdown-content > p:not(:last-child) { margin-bottom: var(--md-aibo-space-1); }
+.app-shell[data-ui-kit='material3'] .session-reference-text .markdown-content :not(pre) > code {
+  font: var(--aibo-type-meta) var(--md-aibo-font-mono);
+  background: var(--md-aibo-surface-muted);
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
 .app-shell[data-ui-kit='material3'] .timeline-empty {
   color: var(--aibo-muted);
 }

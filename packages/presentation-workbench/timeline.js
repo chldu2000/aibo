@@ -29,6 +29,7 @@ export function renderTimeline(entries,actions,groupSystemItems=false,attachment
 
 
 /** Tool payloads are literal text; only conversational prose uses Markdown. */
+const referenceScope=(reference,t)=>reference.mode==='complete'?(reference.messageLimit===null?t('timeline.referenceScopeAll'):t('timeline.referenceScopeRecent',{count:reference.messageLimit})):reference.mode==='excerpts'?t('timeline.referenceScopeExcerpts'):t('timeline.referenceScopeLegacy');
 export function renderTimelineEntry(entry,actions,attachments=[],locale='zh-CN'){
  const t=presentationTranslator(locale);
  const timelineStatusLabels={streaming:t('timeline.streaming'),completed:t('timeline.completed'),failed:t('timeline.failed'),queued:t('timeline.queued'),interrupted:t('timeline.interrupted')};
@@ -66,8 +67,8 @@ export function renderTimelineEntry(entry,actions,attachments=[],locale='zh-CN')
    ...attached.attachments.map(item=>renderMessageAttachment(item,key+':attachment:'+item.id)),
    ...message.references.map((reference,index)=>{const refKey=key+':reference:'+index;return node('details',refKey,null,[
     node('summary',refKey+':title',t('external.referenceTitle',{title:reference.title})),
-    text(refKey+':note',reference.omitted===null?reference.agent+' · '+reference.note:t('external.referenceOmitted',{agent:reference.agent,note:reference.note,count:reference.omitted})),
-    ...reference.excerpts.flatMap((excerpt,i)=>[text(refKey+':role:'+i,(excerpt.role==='user'?t('role.user'):t('role.assistant'))+(excerpt.truncated?t('timeline.excerptTruncated'):'')),node('pre',refKey+':text:'+i,excerpt.text)]),
+    text(refKey+':note',[reference.agent,referenceScope(reference,t),reference.omitted?t('timeline.referenceOmitted',{count:reference.omitted}):''].filter(Boolean).join(' · ')),
+    ...reference.excerpts.flatMap((excerpt,i)=>[text(refKey+':role:'+i,(excerpt.role==='user'?t('timeline.you'):reference.agent||t('role.assistant'))+(excerpt.truncated?' · '+t('timeline.referenceTruncated'):'')),renderRichText(excerpt.text,refKey+':text:'+i,entry.id,actions,locale)]),
    ]);}),
   ]);
   if(reasoning)content=node('details',key+':disclosure',null,[node('summary',key+':summary',t('timeline.reasoningDetails')),content]);

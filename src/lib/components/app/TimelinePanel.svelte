@@ -43,6 +43,8 @@
     /** Provider name declared by the session's plugin, shown as the assistant's author label. */
     sessionProviderLabel?: string;
     sessionProviderIcon?: import('../../../../packages/plugin-protocol/src/agent-icon').AgentIcon;
+    /** Resolves a referenced snapshot's source provider ID to its display name. */
+    referenceAgentLabel?: (agent: string) => string;
     selectedSessionId: string | null;
     codexGoal: AgentGoal | null;
     goalBusy?: boolean;
@@ -122,6 +124,7 @@
     session,
     sessionProviderLabel,
     sessionProviderIcon,
+    referenceAgentLabel = (agent) => agent,
     selectedSessionId,
     codexGoal,
     goalBusy = false,
@@ -440,13 +443,31 @@
                 <div class="entry-content">{#if message.body}<MarkdownContent {onOpenLink} content={message.body} />{:else if !message.references.length && !attached.attachments.length}…{/if}</div>
                 <AttachmentList items={attached.attachments} previews={attachmentPreviews} />
                 {#each message.references as reference, index (`${reference.id}-${index}`)}
-                  <details class="tool-output">
-                    <summary>{$t('timeline.reference', { title: reference.title })}</summary>
-                    <p>{reference.agent} · {reference.note}{reference.omitted === null ? '' : $t('timeline.omitted', { count: reference.omitted })}</p>
-                    {#each reference.excerpts as excerpt}
-                      <p>{excerpt.role === 'user' ? $t('role.user') : $t('role.assistant')}{excerpt.truncated ? $t('timeline.excerptTruncated') : ''}</p>
-                      <pre>{excerpt.text}</pre>
-                    {/each}
+                  {@const scope = reference.mode === 'complete' ? (reference.messageLimit === null ? $t('timeline.referenceScopeAll') : $t('timeline.referenceScopeRecent', { count: reference.messageLimit })) : reference.mode === 'excerpts' ? $t('timeline.referenceScopeExcerpts') : $t('timeline.referenceScopeLegacy')}
+                  <details class="session-reference">
+                    <summary>
+                      <Icon name="chevron-down" class="disclosure-chevron" />
+                      <span class="session-reference-kicker">{$t('timeline.referenceKicker')}</span>
+                      <span class="session-reference-title" title={reference.title}>{reference.title}</span>
+                      <span class="session-reference-count">{$t('timeline.referenceCount', { count: reference.excerpts.length })}</span>
+                    </summary>
+                    <p class="session-reference-meta" title={$t('timeline.referenceToolsHidden')}>
+                      {#if reference.agent}<span>{referenceAgentLabel(reference.agent)}</span>{/if}
+                      <span>{scope}</span>
+                      {#if reference.omitted}<span>{$t('timeline.referenceOmitted', { count: reference.omitted })}</span>{/if}
+                    </p>
+                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                    <ol class="session-reference-excerpts" tabindex="0" aria-label={$t('timeline.referenceExcerpts')}>
+                      {#each reference.excerpts as excerpt, excerptIndex (excerptIndex)}
+                        <li class="session-reference-excerpt" data-role={excerpt.role}>
+                          <div class="session-reference-role">
+                            <span>{excerpt.role === 'user' ? $t('timeline.you') : referenceAgentLabel(reference.agent) || $t('role.assistant')}</span>
+                            {#if excerpt.truncated}<Badge variant="outline">{$t('timeline.referenceTruncated')}</Badge>{/if}
+                          </div>
+                          <div class="session-reference-text"><MarkdownContent {onOpenLink} content={excerpt.text} /></div>
+                        </li>
+                      {/each}
+                    </ol>
                   </details>
                 {/each}
               {/if}

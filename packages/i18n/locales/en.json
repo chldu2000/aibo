@@ -864,12 +864,25 @@
   "timeline.replyForkLabel": "Create a session branch from this reply",
   "timeline.replyFork": "Branch from this reply",
   "timeline.reasoningDetails": "Reasoning · View details",
-  "timeline.reference": "Referenced session · {title}",
-  "timeline.omitted": {
-    "one": " · {count} message omitted",
-    "other": " · {count} messages omitted"
+  "timeline.referenceKicker": "Referenced session",
+  "timeline.referenceCount": {
+    "one": "{count} message",
+    "other": "{count} messages"
   },
-  "timeline.excerptTruncated": " · excerpted",
+  "timeline.referenceScopeAll": "Full conversation",
+  "timeline.referenceScopeRecent": {
+    "one": "Last {count} message",
+    "other": "Last {count} messages"
+  },
+  "timeline.referenceScopeExcerpts": "Conversation excerpts",
+  "timeline.referenceScopeLegacy": "Legacy reference",
+  "timeline.referenceOmitted": {
+    "one": "{count} message omitted",
+    "other": "{count} messages omitted"
+  },
+  "timeline.referenceToolsHidden": "Only user and agent messages; tool output is not included",
+  "timeline.referenceTruncated": "Excerpted",
+  "timeline.referenceExcerpts": "Referenced conversation",
   "timeline.welcome": "What shall we work on today?",
   "timeline.welcomeDescription": "Start with a question, a piece of code or an idea still taking shape.",
   "timeline.toBottom": "Back to bottom",
@@ -1419,7 +1432,6 @@
   "external.taskId": "Task ID: {id}",
   "external.exitCode": "Exit code: {code}",
   "external.referenceTitle": "Referenced session · {title}",
-  "external.referenceOmitted": "{agent} · {note} · {count} messages omitted",
   "external.fullFileAccess": "Full file access",
   "external.neverApprove": "Never request approval",
   "external.approveUntrusted": "Untrusted operations require approval",

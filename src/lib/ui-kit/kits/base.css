@@ -151,6 +151,17 @@ h1, h2, h3, p { margin: 0; }
 .tool-output-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-output-action { flex: none; margin-left: auto; }
 .tool-output pre { max-height: 280px; overflow: auto; margin: 7px 0 0; padding: 9px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.session-reference { margin-top: 8px; min-width: 0; }
+.session-reference > summary { display: flex; min-width: 0; align-items: center; gap: 8px; list-style: none; cursor: pointer; }
+.session-reference > summary::-webkit-details-marker { display: none; }
+.session-reference-kicker, .session-reference-count { flex: none; white-space: nowrap; }
+.session-reference-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-reference-meta { display: flex; flex-wrap: wrap; align-items: center; margin: 0; }
+.session-reference-meta > span + span::before { content: '·'; margin-inline: 6px; }
+.session-reference-excerpts { display: grid; max-height: min(480px, 60vh); overflow: auto; margin: 0; padding: 0; list-style: none; overscroll-behavior: contain; }
+.session-reference-excerpt { display: grid; min-width: 0; gap: 4px; }
+.session-reference-role { display: flex; align-items: center; gap: 6px; }
+.session-reference-text { min-width: 0; overflow-wrap: anywhere; }
 .checkpoint-summary { display: grid; gap: 6px; margin: 8px 0; padding: 7px 8px; }
 .checkpoint-summary-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .checkpoint-list { display: grid; gap: 3px; }
