@@ -35,7 +35,7 @@
   成功与警告使用官方 custom color：由 Material Color Utilities `customColor` 以主色协调生成（color 用于文字与描边，
   color container 用于底色），不再手调。
   inverse-primary 取对应明暗版本的主色。形状只使用 0/4/8/12/16/20/28/32/48px 与全圆角；
-  字号只使用官方字阶（正文与标签 14px、辅助 12px、标题 16/22/24px），字重为 400/500。
+  字号只使用官方字阶（正文与标签 14px、辅助 12px、标题 16/22/24px）；组件字重为 400/500，700 只用于正文中的强调（Markdown 粗体），ak-ui 常用的 600 不适用。
 - 交互状态使用状态层：在原容器色上叠加内容色，悬停 8%、聚焦与按下 10%，不替换容器色；选中项保留选中色再叠加状态层。
   禁用时容器为 on-surface 10%、内容为 on-surface 38%。键盘焦点框统一为 3px secondary，
   独立控件外偏移 2px，标签、菜单项和列表行内偏移 3px。遮罩为 scrim 32%，不加模糊。
@@ -64,6 +64,8 @@
 - 导航选中使用圆角容器填充，去掉左侧信号边；主标签为 48px 高、14px/500，未选中 on-surface-variant，选中 primary，
   底部 3px primary 指示条带顶部圆角，标签状态层为直角；标签栏容器为 surface，下方 outline-variant 分隔线。
 - 用户正文使用柔和色调表面，助手正文直接排在画布上；思考、工具与工具分组卡片使用完整四边轮廓和 12px 圆角。
+- 引用会话卡片为 outlined card：12px 圆角、outline-variant 描边，结构、信息与滚动规则同 [ak-ui 规范](ak-ui-current-spec.md#会话阅读区)。
+  用户摘录使用与用户正文相同的柔和表面和不对称圆角（起始角 4px、其余 12px），会话标题与角色名为 500。
 - 窄窗口（≤1100px）会话标题区按 M3 top app bar 排两行：标题与尾部操作同一行，主标签在第二行。
 - 卡片统一按 M3 card 使用 12px（corner-medium）：工具卡片、审批与提问卡片、设置分组以及外观中的可选卡片。
 - 栏间拖动分隔按 M3 drag handle：12px 宽的栏间距内居中 4×48 全圆角手柄，颜色 outline，悬停与按下为 on-surface；

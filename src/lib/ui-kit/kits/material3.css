@@ -2520,6 +2520,7 @@
 }
 
 
+.app-shell[data-ui-kit='material3'] .git-repository-branch { color: var(--aibo-muted); }
 .app-shell[data-ui-kit='material3'] .git-repository-toolbar {
   display: flex;
   align-items: center;

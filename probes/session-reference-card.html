@@ -1,6 +1,12 @@
-<!doctype html><html><head><meta charset="UTF-8"><title>Session reference cards</title></head><body><div id="probe"></div><script type="module">
+<!doctype html><html><head><meta charset="UTF-8"><title>Session reference cards</title></head><body><div id="shell" class="app-shell"><div id="probe"></div></div><script type="module">
 import '/src/app.css';
 import { mount } from 'svelte';
+import { activeUiKitName, activeTheme, activeThemeStyle } from '/src/lib/ui-kit/registry.ts';
+// Mirror App.svelte's shell so the active kit's `.app-shell[data-ui-kit]` styles actually apply.
+const shell=document.getElementById('shell');
+activeUiKitName.subscribe(kit=>{shell.dataset.uiKit=kit;});
+activeTheme.subscribe(theme=>{shell.dataset.uiTheme=theme.id;shell.dataset.colorScheme=theme.colorScheme;});
+activeThemeStyle.subscribe(style=>shell.setAttribute('style',style));
 import Panel from '/src/lib/components/app/TimelinePanel.svelte';
 const full=new URLSearchParams(location.search).has('full');
 const payload=JSON.stringify([{snapshotId:'r',snapshot:{...(full?{schema:'aibo.session-reference/v3',messageLimit:null}:{}),sourceSessionId:'source',sourceLabel:'设计讨论',sourceAgent:'codex',contextMode:'conversation-excerpts',omittedMessageCount:3,messages:full?Array.from({length:18},(_,i)=>({role:'assistant',content:i===0?'界'.repeat(1600)+'完整正文末尾':`第 ${i+1} 条消息`})):[{role:'assistant',content:'精简后的设计结论'},{role:'tool',content:'SECRET_TOOL_BODY'}]}}]);

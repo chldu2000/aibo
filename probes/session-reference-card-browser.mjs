@@ -12,6 +12,10 @@ try {
   const details=page.locator('details.session-reference').filter({hasText:'设计讨论'});
   assert.equal(await details.evaluate(el=>el.open),false);assert.equal(await page.getByText('精简后的设计结论',{exact:true}).isVisible(),false);
   await summary.click();assert.equal(await page.getByText('精简后的设计结论',{exact:true}).isVisible(),true);
+  assert.equal(await page.locator('.app-shell').getAttribute('data-ui-kit'),kit);
+  // base.css draws nothing, so a hairline border proves the skin's card styles are active.
+  assert.equal(await details.evaluate(el=>getComputedStyle(el).borderTopWidth),'1px');
+  assert.equal(await page.locator('.session-reference-excerpts').evaluate(el=>getComputedStyle(el).overflowY),'auto');
   const body=await page.locator('body').innerText();assert.ok(!body.includes('AIBO_SESSION_REFERENCES'));assert.ok(!body.includes('SECRET_TOOL_BODY'));assert.ok(body.includes('这个会话内容是什么'));
   await summary.focus();await page.keyboard.press('Enter');assert.equal(await details.evaluate(el=>el.open),false);
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/session-reference-card.html?full`);

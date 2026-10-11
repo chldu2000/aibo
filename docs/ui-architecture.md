@@ -382,6 +382,7 @@ UI 实现变化需检查默认 Material 3 与 ak-ui 的浅/深主题，以及受
 | 多题提问分页与回答草稿 | `probes/user-input-pagination-browser.mjs` |
 | 导航栏收起、等待提示与布局恢复 | `probes/sidebar-collapse-browser.mjs` |
 | 应用通知类型与各 kit 样式 | `probes/toast-browser.mjs` |
+| 引用会话卡片的收起/展开、摘录排版与两套 kit 样式 | `probes/session-reference-card-browser.mjs` |
 | 回答中的文件链接、类型图标与预览面板 | `probes/file-links-browser.mjs` |
 | 内置外观作为预装 release 的选择与回退 | `probes/builtin-presentation-browser.mjs` |
 | hostApi 1.1.0 公开控件的定制与预检 | `probes/presentation-controls-browser.mjs`、`probes/presentation-skin-controls-browser.mjs` |

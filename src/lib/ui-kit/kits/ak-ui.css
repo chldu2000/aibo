@@ -2692,6 +2692,7 @@
   padding-inline-start: var(--ak-space-5);
 }
 .app-shell[data-ui-kit='ak-ui'] .git-repository-branch {
+  color: var(--aibo-muted);
   font-size: var(--aibo-type-meta);
 }
 
