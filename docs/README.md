@@ -63,6 +63,8 @@
 
 以下计划按各自标注的阶段推进；未实施部分不改变现行规则。
 
+- [本地诊断日志规格](diagnostic-logging-spec.md)：待实现；日志事件、内容限制、轮转与容量、故障降级及逐项验收标准。
+
 - [内置外观并入 Presentation 合同](presentation-unification-migration.md)：内置 kit 成为预装可信 release（P0–P2 已实施，P3 未实施），复合控件统一为纯数据合同。
 - [合同版本收敛](contract-version-consolidation.md)：每个合同族只保留当前版本与兼容读取版本，版本转换在边界完成。
 - [SDK 公开发布与按仓库安装插件](sdk-and-plugin-distribution.md)：D1 已实施，已登记的 npm SDK 发布基线为 `@aibolabs/*` 0.1.8；当前源码 SDK 版本见[宿主快照](../packages/plugin-host/sdk.json)，发布记录见[版本登记](../packages/plugin-host/sdk-releases.json)；按 Git 仓库的 Release 索引下载、校验并安装插件（D2–D4）未实施。
