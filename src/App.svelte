@@ -1303,11 +1303,27 @@
   });
   const agentChoices = $derived(readySessionProviders(pluginInstallations));
   let pluginRefreshRevision = 0;
+  let pluginCheckedAt = $state<number | null>(null);
+  let pluginRefreshLoading = $state(false);
+  let pluginRefreshError = $state<LocalizedText>('');
+  let selectedPluginId = $state<string | null>(null);
   async function refreshPluginInstallations(): Promise<void> {
     if (!desktop) return;
     const revision = ++pluginRefreshRevision;
-    const installations = await listPluginInstallations();
-    if (revision === pluginRefreshRevision) pluginInstallations = installations;
+    pluginRefreshLoading = true;
+    pluginRefreshError = '';
+    try {
+      const installations = await listPluginInstallations();
+      if (revision === pluginRefreshRevision) {
+        pluginInstallations = installations;
+        pluginCheckedAt = Date.now();
+      }
+    } catch (error) {
+      if (revision === pluginRefreshRevision) pluginRefreshError = toErrorText(error);
+      throw error;
+    } finally {
+      if (revision === pluginRefreshRevision) pluginRefreshLoading = false;
+    }
     await pluginInstallController.refreshUndo();
   }
   $effect(() => {
@@ -1320,6 +1336,8 @@
   });
   import {pluginDiagnosticsPresentation, semanticContributionPresentation} from '$lib/app/plugin-diagnostics';
   const pluginManagerInstallations = $derived(pluginInstallations.map(installation => ({ ...pluginDiagnosticsPresentation(installation, $locale), sessionProviders: sessionProviders(installation) })));
+  import { runtimeDiagnostics } from '$lib/app/runtime-diagnostics';
+  const runtimeDiagnosticItems = $derived(runtimeDiagnostics(pluginInstallations, pluginAuthentication, $locale));
   let pluginBusy = $state(false);
   let pluginError = $state<LocalizedText>('');
 
@@ -1402,14 +1420,19 @@
   }
 
   const managementNeedsAttention = $derived(
-    diagnostics.some(agent => agent.status !== 'ready')
-      || pluginInstallations.some(installation => !installation.runnable || (installation.activationIssues?.length ?? 0) > 0)
+    Boolean(pluginRefreshError) || runtimeDiagnosticItems.some(item => item.status === 'attention')
   );
 
   $effect(() => {
-    if (!settingsOpen || managementSection !== 'extensions' || !desktop) return;
+    if (!settingsOpen || !['extensions', 'runtime'].includes(managementSection) || !desktop) return;
     untrack(() => { void pluginOperation(refreshPluginInstallations); });
   });
+
+  function openDiagnosticPlugin(id: string): void {
+    selectedPluginId = id;
+    openManagementCenter('extensions');
+  }
+
   let sidePanelOpen = $state(savedWorkbenchLayout.auxiliaryOpen);
   let sidebarRailCollapsed = $state(savedWorkbenchLayout.auxiliaryCollapsed);
   const railCollapsed = $derived(sidebarRailCollapsed && !presentationPackages.active?.release.manifest.surfaces?.includes('workbench'));
@@ -3479,6 +3502,7 @@
 
 {#snippet extensionManagement()}
   <PluginManagerPanel
+    bind:selectedId={selectedPluginId}
     installations={pluginManagerInstallations}
     authentication={pluginAuthentication}
     onAuthenticate={hostGuard('onAuthenticate', (id, action) => void pluginOperation(() => pluginAuthenticationController.run(id, action)))}
@@ -3515,26 +3539,25 @@
 {/snippet}
 
 {#snippet runtimeStatus()}
-  <NodeRuntimePanel state={nodeRuntime} {desktop}
-    onDetect={() => void nodeRuntimeController.load()} onChoose={() => void nodeRuntimeController.choose()}
-    onAutomatic={() => void nodeRuntimeController.automatic()} onDownload={() => void nodeRuntimeController.download()} />
-  <div class="management-runtime-actions">
-    <Button variant="outline" size="sm" type="button" onclick={() => void refresh()} disabled={busy}>
-      {$t('app.refreshRuntime')}
-    </Button>
-  </div>
   <DiagnosticsPanel
-    presentationActions={diagnosticsActions}
     open={true}
     embedded={true}
-    diagnostics={displayedDiagnostics}
+    items={runtimeDiagnosticItems}
+    checkedAt={pluginCheckedAt}
+    loading={pluginRefreshLoading}
+    error={pluginRefreshError ? translateMessage($locale, pluginRefreshError) : ''}
+    onOpenPlugin={openDiagnosticPlugin}
     desktop={desktop}
     workspaceCount={workspaces.length}
     sessionCount={sessions.length}
-    busy={busy}
-    onRefresh={() => void refresh()}
+    busy={pluginBusy || pluginRefreshLoading || !desktop}
+    onRefresh={() => void pluginOperation(refreshPluginInstallations)}
     onClose={() => (settingsOpen = false)}
   />
+  <NodeRuntimePanel state={nodeRuntime} {desktop}
+    onDetect={() => void nodeRuntimeController.load()} onChoose={() => void nodeRuntimeController.choose()}
+    onAutomatic={() => void nodeRuntimeController.automatic()} onDownload={() => void nodeRuntimeController.download()} />
+  {@render diagnosticsActions()}
 {/snippet}
 
 {#snippet hostPanelActions()}

@@ -1,14 +1,18 @@
 <script lang="ts">
-  import { t } from '$lib/i18n/runtime';
+  import { locale, t } from '$lib/i18n/runtime';
   import type { Snippet } from 'svelte';
-  import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Icon, Separator } from '$lib/ui-kit';
-  import type { AgentDiagnosticView } from './view-types';
+  import { Badge, Button, Icon, Separator } from '$lib/ui-kit';
+  import type { RuntimeDiagnostic } from '$lib/app/runtime-diagnostics';
 
   type DiagnosticsPanelProps = {
     presentationActions?: Snippet;
     open: boolean;
     embedded?: boolean;
-    diagnostics: AgentDiagnosticView[];
+    items: RuntimeDiagnostic[];
+    checkedAt: number | null;
+    loading: boolean;
+    error: string;
+    onOpenPlugin: (id: string) => void;
     desktop: boolean;
     workspaceCount: number;
     sessionCount: number;
@@ -21,7 +25,7 @@
     presentationActions,
     open,
     embedded = false,
-    diagnostics,
+    items, checkedAt, loading, error, onOpenPlugin,
     desktop,
     workspaceCount,
     sessionCount,
@@ -30,46 +34,66 @@
     onClose,
   }: DiagnosticsPanelProps = $props();
 
-  const readyAgents = $derived(diagnostics.filter((agent) => agent.status === 'ready').length);
+  const attention = $derived(items.filter(item => item.status === 'attention'));
+  const other = $derived(items.filter(item => item.status !== 'attention'));
+  const time = (value: number) => new Date(value).toLocaleString($locale);
 </script>
+
+{#snippet diagnosticRow(item: RuntimeDiagnostic)}
+  <div class="settings-row">
+    <div class="settings-copy">
+      <span class="settings-row-title">{item.label}</span>
+      {#if item.providers.length}<span class="settings-row-meta">{$t('diagnostics.providers', { names: item.providers.join(', ') })}</span>{/if}
+      {#each item.issues as issue}<span class="settings-row-meta">{issue}</span>{/each}
+      <details>
+        <summary>{$t('diagnostics.checkDetails')}</summary>
+        <p class="settings-row-meta">{item.auth}</p>
+        {#if item.authCheckedAt}<p class="settings-row-meta">{$t('diagnostics.authCheckedAt', { time: time(item.authCheckedAt) })}</p>{/if}
+        <p class="settings-row-meta">{$t('diagnostics.connectionNotChecked')}</p>
+      </details>
+    </div>
+    <Badge variant={item.status === 'attention' ? 'warning' : 'outline'}>{$t(`diagnostics.status.${item.status}`)}</Badge>
+    <div class="settings-row-actions">
+      <Button variant="ghost" size="icon" title={$t('diagnostics.openPlugin', { name: item.label })} aria-label={$t('diagnostics.openPlugin', { name: item.label })} onclick={() => onOpenPlugin(item.installationId)}><Icon name="settings" size={16} /></Button>
+    </div>
+  </div>
+{/snippet}
 
 {#if open}
   <div class:settings-content={!embedded}>
     <div id="diagnostics-panel-content" class="settings-tab-panel" role="tabpanel" aria-label={$t('diagnostics.runtimeStatus')}>
       {@render presentationActions?.()}
-      <section class="settings-section" aria-labelledby="agent-diagnostics-title">
+      <section class="settings-section" aria-labelledby="runtime-diagnostics-title" aria-busy={loading}>
         <div class="settings-section-heading">
           <div>
-            <h2 id="agent-diagnostics-title">{$t('diagnostics.agents')}</h2>
-            <p>{$t('diagnostics.description')}</p>
+            <h2 id="runtime-diagnostics-title">{$t('diagnostics.overview')}</h2>
+            <p>{$t('diagnostics.overviewDescription')}</p>
           </div>
-          {#if desktop && diagnostics.length}<Badge variant={diagnostics.length > 0 && readyAgents === diagnostics.length ? 'success' : 'warning'}>{$t('diagnostics.ready', { ready: readyAgents, total: diagnostics.length })}</Badge>{/if}
+          <div class="settings-row-actions">
+            {#if desktop && checkedAt}<Badge variant={attention.length ? 'warning' : 'outline'}>{$t('diagnostics.attentionCount', { count: attention.length })}</Badge>{/if}
+            {#if embedded}<Button variant="ghost" size="icon" type="button" onclick={onRefresh} disabled={busy} title={$t('diagnostics.refresh')} aria-label={$t('diagnostics.refresh')}><Icon name="refresh" size={16} /></Button>{/if}
+          </div>
         </div>
         <div class="settings-section-body">
-        {#if !desktop}<p role="status">{$t('diagnostics.preview')}</p>
-        {:else if !diagnostics.length}<p role="status">{$t('diagnostics.empty')}</p>{/if}
-        <div class="settings-agent-cards">
-          {#each diagnostics as agent (agent.agent)}
-            <Card as="article" class="agent-card">
-              <CardHeader class="agent-card-head">
-                <div class="agent-identity">
-                  <div><strong>{agent.label}</strong><small>{agent.version ?? $t('inspector.noVersion')}</small></div>
-                </div>
-                <Badge variant={agent.status === 'ready' ? 'success' : 'warning'}>{agent.status === 'ready' ? $t('inspector.available') : agent.status === 'missing' ? $t('inspector.notInstalled') : agent.status === 'error' ? $t('inspector.error') : agent.status}</Badge>
-              </CardHeader>
-              <CardContent class="agent-card-content">
-                <dl>
-                  <div><dt>{$t('diagnostics.channel')}</dt><dd>{agent.agent === 'codex' ? 'app-server' : 'sdk-host'}</dd></div>
-                  <div><dt>{$t('diagnostics.auth')}</dt><dd>{agent.authState === 'delegated' ? $t('diagnostics.systemCredentials') : agent.authState === 'not_required' ? $t('diagnostics.authNotRequired') : agent.authState === 'unknown' ? $t('diagnostics.authUnknown') : agent.authState}</dd></div>
-                  {#if agent.executable}<div><dt>{$t('diagnostics.executable')}</dt><dd title={agent.executable}>{agent.executable}</dd></div>{/if}
-                </dl>
-                <div class="capability-list">
-                  {#each agent.capabilities as capability}<Badge variant="outline">{capability}</Badge>{/each}
-                </div>
-              </CardContent>
-            </Card>
-          {/each}
-        </div>
+          {#if !desktop}<p role="status">{$t('diagnostics.preview')}</p>
+          {:else}
+            {#if loading}<p role="status">{$t('diagnostics.loading')}</p>{/if}
+            {#if error}<p role="alert">{$t('diagnostics.refreshFailed', { error })}</p>{/if}
+            {#if checkedAt}<p class="settings-row-meta">{$t('diagnostics.checkedAt', { time: time(checkedAt) })}</p>
+            {:else if !loading && !error}<p role="status">{$t('diagnostics.notChecked')}</p>{/if}
+            {#if checkedAt && !items.length}<p role="status">{$t('diagnostics.noPlugins')}</p>{/if}
+            {#if attention.length}
+              <div class="settings-rows">{#each attention as item (item.installationId)}{@render diagnosticRow(item)}{/each}</div>
+            {:else if checkedAt && items.length && !error}
+              <p role="status">{$t('diagnostics.noIssues')}</p>
+            {/if}
+            {#if other.length}
+              <details>
+                <summary>{$t('diagnostics.otherItems', { count: other.length })}</summary>
+                <div class="settings-rows">{#each other as item (item.installationId)}{@render diagnosticRow(item)}{/each}</div>
+              </details>
+            {/if}
+          {/if}
         </div>
       </section>
       <Separator />

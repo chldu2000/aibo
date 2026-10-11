@@ -23,6 +23,7 @@
   };
 
   type Props = {
+    selectedId?: string | null;
     authentication?: PluginAuthenticationState;
     onAuthenticate?: (id: string, action: 'login' | 'status') => void;
     installation?: PluginInstallState;
@@ -43,12 +44,11 @@
     onMigrate?: (target: string) => void;
   };
 
-  let { authentication, onAuthenticate, installation, onInstallConfirm, onSkipArchivedChange, onInstallCancel, onUndo, installations, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure, lifecycle, onRemovalCancel, onRemovalConfirm, onMigrate }: Props = $props();
-  let selectedId = $state<string | null>(null);
+  let { selectedId = $bindable(null), authentication, onAuthenticate, installation, onInstallConfirm, onSkipArchivedChange, onInstallCancel, onUndo, installations, busy, onInstall, onEnabledChange, onUninstall, onCreateSession, onConfigure, lifecycle, onRemovalCancel, onRemovalConfirm, onMigrate }: Props = $props();
   const installedPlugins = $derived(installations.filter(item => item.installed));
   const selected = $derived(installedPlugins.find(item => item.id === selectedId) ?? installedPlugins[0]);
   const undoTargets = $derived(installation?.undoTargets ?? []);
-  let showingDetail = $state(false);
+  let showingDetail = $state(selectedId !== null);
   const uid = $props.id();
 
   // Status lives in a Badge; the secondary line only carries facts that explain it.

@@ -3,7 +3,7 @@ import { toErrorText } from './error-utils.ts';
 export type PluginAuthenticationResult = 'loginOpened' | 'authenticated' | 'unauthenticated';
 export type PluginAuthenticationState = {
   busyId: string | null;
-  entries: Record<string, { result?: PluginAuthenticationResult; error: LocalizedText }>;
+  entries: Record<string, { result?: PluginAuthenticationResult; error: LocalizedText; checkedAt?: number }>;
 };
 export const emptyPluginAuthentication = (): PluginAuthenticationState => ({ busyId: null, entries: {} });
 
@@ -21,9 +21,9 @@ export function createPluginAuthenticationController(ports: {
       emit();
       try {
         const result = await ports.execute(id, action);
-        state.entries[id] = { result, error: '' };
+        state.entries[id] = { result, error: '', ...(action === 'status' ? { checkedAt: Date.now() } : {}) };
       } catch (error) {
-        state.entries[id] = { error: toErrorText(error) };
+        state.entries[id] = { error: toErrorText(error), ...(action === 'status' ? { checkedAt: Date.now() } : {}) };
       } finally { state.busyId = null; emit(); }
     },
   };

@@ -51,7 +51,7 @@ test('host panels render the selected language and preserve user content', async
       ['AppOverlays', {notice:{type:'success',message:localizedMessage('app.compacted')},errorMessage:null,archiveConfirmationOpen:false,piNavigationOpen:false}, 'app.compacted'],
       ['MarkdownContent', {content:'用户原文\n\n```js\nconst 原文 = 1;\n```'}, 'markdown.copy', '用户原文'],
       ['PluginManagerPanel', {installations:[],busy:false,installation:{error:localizedMessage('native.error.workspaceTrust'),notice:'',preview:null,undoTargets:[]},lifecycle:{error:localizedMessage('native.error.workspaceWriteBusy'),impact:null,report:null,busy:false}}, 'native.error.workspaceTrust'],
-      ['DiagnosticsPanel', {open:true,embedded:true,diagnostics:[],desktop:true,workspaceCount:1,sessionCount:1,busy:false}, 'diagnostics.environment'],
+      ['DiagnosticsPanel', {open:true,embedded:true,items:[],checkedAt:null,loading:false,error:'',onOpenPlugin:()=>{},desktop:true,workspaceCount:1,sessionCount:1,busy:false}, 'diagnostics.environment'],
     ];
     for (const [name, props, key, preserved] of fixtures) {
       const { default: Component } = await server.ssrLoadModule(`/src/lib/components/app/${name}.svelte`);
