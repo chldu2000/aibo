@@ -12,6 +12,10 @@ $logs = Join-Path $data 'logs'
 $installed = Join-Path $root 'installed'
 $child = $null
 $evidence = @()
+$listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+$listener.Start()
+$debugPort = $listener.LocalEndpoint.Port
+$listener.Stop()
 function Assert-Probe($Condition, $Message) { if (-not $Condition) { throw $Message } }
 function Read-Rows([switch]$AllowIncompleteTail) {
     $rows = @()
@@ -39,7 +43,7 @@ function Read-Rows([switch]$AllowIncompleteTail) {
 Assert-Probe (-not (Test-Path -LiteralPath $data)) 'The isolated profile must not already exist.'
 New-Item -ItemType Directory -Path $root | Out-Null
 $configPath = Join-Path $root 'tauri.json'
-@{ identifier = $identifier; productName = $product; mainBinaryName = $product; app = @{ windows = @(@{ label = 'main'; title = $product; width = 1100; height = 740 }) } } |
+@{ identifier = $identifier; productName = $product; mainBinaryName = $product; app = @{ windows = @(@{ label = 'main'; title = $product; width = 1100; height = 740; additionalBrowserArgs = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=$debugPort" }) } } |
     ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configPath -Encoding utf8NoBOM
 $consoleHelper = Join-Path $root 'check-console.ps1'
 @'
@@ -92,6 +96,27 @@ try {
             Start-Sleep -Milliseconds 100
         }
         Assert-Probe ($ready -and $child.MainWindowHandle -ne 0) 'Packaged frontend did not become ready.'
+        $frontendProof = Join-Path (Split-Path $EvidencePath -Parent) "windows-frontend-$run.json"
+        $screenshot = Join-Path (Split-Path $EvidencePath -Parent) "windows-runtime-$run.png"
+        & node ./probes/diagnostic-logging-windows-webview.mjs $debugPort $logs $child.Id $frontendProof $screenshot
+        Assert-Probe ($LASTEXITCODE -eq 0) 'Installed WebView2 frontend or IPC verification failed.'
+        $shell = New-Object -ComObject Shell.Application
+        $folderProof = $null
+        $folderDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        while ([DateTime]::UtcNow -lt $folderDeadline -and -not $folderProof) {
+            foreach ($window in $shell.Windows()) {
+                try {
+                    if ($window.Document.Folder.Self.Path -eq $logs) {
+                        $folderProof = @{ path = $window.Document.Folder.Self.Path; hwnd = $window.HWND; fileManager = 'Explorer' }
+                        $window.Quit() # Close only this probe's unique profile directory window.
+                        break
+                    }
+                } catch { # Non-folder shell windows are not evidence.
+                }
+            }
+            if (-not $folderProof) { Start-Sleep -Milliseconds 100 }
+        }
+        Assert-Probe ($folderProof -and $folderProof.path -eq $logs) 'Explorer did not display the current profile logs directory.'
         $consoleProof = Join-Path $root "console-$run.json"
         $helper = Start-Process -FilePath (Get-Command pwsh).Source -WindowStyle Hidden -Wait -PassThru -ArgumentList @(
             '-NoProfile', '-NonInteractive', '-File', ('"' + $consoleHelper + '"'), '-TargetPid', $child.Id,
@@ -105,12 +130,12 @@ try {
         Assert-Probe (@($rows | Where-Object event -eq 'app.previous_exit_unknown').Count -eq 0) 'Clean restart was classified as abnormal.'
         Assert-Probe (@($rows | Where-Object { $_.schema -ne 'aibo.diagnostic/v1' -or $_.pid -ne $child.Id -or $_.build_channel -ne 'release' -or $_.os -ne 'windows' -or $_.arch -ne $arch -or $_.app_version -ne $version }).Count -eq 0) 'Incorrect packaged environment fields.'
         Assert-Probe (-not (Test-Path (Join-Path $data 'development/logs'))) 'Release wrote development logs.'
-        $evidence += @{ boot_id = $ready.boot_id; directory = $logs; console = (Get-Content $consoleProof -Raw | ConvertFrom-Json); exitCode = $child.ExitCode; events = @($rows.event) }
+        $evidence += @{ boot_id = $ready.boot_id; directory = $logs; folderWindow = $folderProof; frontend = (Get-Content $frontendProof -Raw | ConvertFrom-Json); console = (Get-Content $consoleProof -Raw | ConvertFrom-Json); exitCode = $child.ExitCode; events = @($rows.event) }
         $child.Dispose(); $child = $null
     }
     Assert-Probe ($evidence[0].boot_id -ne $evidence[1].boot_id) 'Restart reused boot_id.'
     @{ passed = $true; platform = 'windows'; installer = $packages[0].FullName; evidence = $evidence;
-        notCovered = @('native directory opening', 'junction boundary', 'frontend IPC security') } |
+        notCovered = @('junction boundary (covered separately by the Rust suite)') } |
         ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $EvidencePath -Encoding utf8NoBOM
     Write-Output "Windows packaged profile, no-console and normal exit passed: $EvidencePath"
 } finally {

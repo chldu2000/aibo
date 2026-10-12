@@ -34,12 +34,13 @@ node probes/diagnostic-logging-native.mjs
 node probes/diagnostic-logging-release.mjs --build
 ```
 
-当前本机为 macOS arm64。最终 `pnpm run verify` 通过，包含架构、类型、676 项 Node 测试和构建；完整 Rust `--lib -- --test-threads=4` 回归为 423 项通过、0 项失败、4 项既有忽略（不算通过）。日志模块单独为 29 项通过；运行诊断浏览器探针覆盖六个场景，原生开发与正式打包探针均通过。完整回归中的本地监听与子进程权限边界需要在允许这些操作的环境执行；沙箱中的 EPERM 失败不算通过。不限测试并发的一次完整运行发生既有 durable_queue 测试的 transport 失败，限制并发后全部通过；未减少用例或修改该用例。
+当前本机为 macOS arm64。最终 `pnpm run verify` 通过，包含架构、类型、676 项 Node 测试和构建；完整 Rust `--lib -- --test-threads=4` 回归为 424 项通过、0 项失败、4 项既有忽略（不算通过）。日志模块单独为 30 项通过；运行诊断浏览器探针覆盖六个场景，原生开发与正式打包探针均通过。完整回归中的本地监听与子进程权限边界需要在允许这些操作的环境执行；沙箱中的 EPERM 失败不算通过。不限测试并发的一次完整运行发生既有 durable_queue 测试的 transport 失败，限制并发后全部通过；未减少用例或修改该用例。
 
 本轮留存的输出：
 
 - `/private/tmp/aibo-diagnostics-verify.log`
 - `/private/tmp/aibo-diagnostics-rust.log`
+- `/private/tmp/aibo-diagnostic-final-rust.log`（当前源码 424 项通过）
 - `/private/tmp/aibo-diagnostics-focused.log`
 - `/private/tmp/aibo-diagnostics-integration.log`
 - `/private/tmp/aibo-diagnostics-tools.log`
@@ -73,7 +74,7 @@ Rust 用例使用独立临时目录并读取实际 JSONL。原生桌面探针创
 | T09 | 通过（macOS） | 独立非可信窗口、缺少顶层文档访问凭据、opaque iframe、伪造级别/会话/路径/message 均拒绝；可信顶层文档正常报告。未扩大现有 Tauri 文件权限。 |
 | T10 | 通过（macOS 正式与开发运行） | 正式 app 包启动并正常关闭两次，写入正式 DATA/logs，build_channel 为 release，无 development/logs、boot_id 不复用；开发 profile、同日重启、普通与应急分片 UTC 换日/回拨及大小边界已验证。应急轮转复用一个容量租约，保留旧文件不覆盖，panic hook 不取得日志锁。 |
 | T11 | 通过（注入时间及小容量） | 14 天边界、完整记录轮转、总容量、相同封存时间按文件名排序；年龄和容量两种清理都删除了含 app.starting 的旧片，任一保留记录独立包含运行环境。 |
-| T12 | 通过（macOS 已覆盖边界） | 两个真实进程并发写入小配额；活动文件不被回收；不可回收时 quota_exhausted；未知文件、外部符号链接与链接目录不被写入或删除。Windows junction 尚未执行。 |
+| T12 | 通过（macOS 已覆盖边界） | 两个真实进程并发写入小配额；活动文件不被回收；不可回收时 quota_exhausted；未知文件、外部符号链接与链接目录不被写入或删除。Windows junction 原生拒绝测试已通过，见下方 Windows CI 结果。 |
 | T13 | 通过（macOS 与故障注入） | 原生权限故障时业务数据库仍可读，生产 30 秒周期恢复；Rust 注入 ENOSPC 的部分写入及删除拒绝，实际文件恢复可解析并有失败/恢复/丢弃汇总；周期性汇总写失败保留原计数，恢复后只汇总一次，不把汇总自身递归计为新丢弃。故障注入仅编译进测试，不接受 IPC 设置。 |
 | T14 | 通过（macOS） | 持有真实 profile 文件锁暂停 writer，填满 1024/64 队列后解除；实际文件中 ERROR 保留、丢弃总数准确、正常排空。 |
 | T15 | 通过（macOS） | 正常关闭完整排空；持有文件锁永久阻塞场景在 2 秒内返回未完成状态；退出时丢弃汇总遭 ENOSPC，保留待汇总计数和 storage_full，实际文件没有 app.stopped、运行元数据仍为 running。 |
@@ -83,15 +84,15 @@ Rust 用例使用独立临时目录并读取实际 JSONL。原生桌面探针创
 
 ## 尚未完成的门槛
 
-Windows 无控制台的正式桌面打包、目录打开、退出与 junction 边界尚未实测。本机的 macOS 结果不能代替 Windows，Linux 容器结果也不计为 Windows 结果。
+Windows 正式包无控制台启动、日志落盘、正常退出及 junction 原生测试已通过。剩余门槛是正式包设置页实际打开 Explorer，以及生产前端异常与 IPC 边界到文件的端到端检查。macOS 与 Linux 结果分别登记，不代替 Windows。
 
-已提供 [Windows 正式包探针](../probes/diagnostic-logging-windows-release.ps1)及 `refuses_windows_junction_without_writing_or_cleaning_its_target` 原生测试。前者在交互式 Windows 桌面、PowerShell 7、Rust MSVC、Node/pnpm 和 WebView2 环境中构建 NSIS、安装独立产品/二进制/应用身份，读取两次正式运行的实际 JSONL，用独立辅助进程的 [AttachConsole](https://learn.microsoft.com/en-us/windows/console/attachconsole) 错误 6 检查无控制台，再通过 CloseMainWindow 请求正常退出。辅助进程不会改变测试操作者的控制台。它不把启动请求或打包成功当作运行成功；证据显式标注不覆盖目录打开、junction 和前端 IPC。尚未在 Windows 执行该脚本或条件编译测试，不能将语法检查视为 Windows 验收通过。
+已提供 [Windows 正式包探针](../probes/diagnostic-logging-windows-release.ps1)及 `refuses_windows_junction_without_writing_or_cleaning_its_target` 原生测试。前者在交互式 Windows 桌面、PowerShell 7、Rust MSVC、Node/pnpm 和 WebView2 环境中构建 NSIS、安装独立产品/二进制/应用身份，读取两次正式运行的实际 JSONL，用独立辅助进程的 [AttachConsole](https://learn.microsoft.com/en-us/windows/console/attachconsole) 错误 6 检查无控制台，再通过 CloseMainWindow 请求正常退出。辅助进程不会改变测试操作者的控制台。它不把启动请求或打包成功当作运行成功；证据显式标注不覆盖目录打开、junction 和前端 IPC。该脚本和 junction 条件编译测试已实际在 Windows 执行；通过结果以对应 run 的 JSON 与测试输出为证据。
 
 本轮已用官方 `mcr.microsoft.com/powershell:lts-ubuntu-22.04` Linux 容器的 PowerShell 解析器验证外层及生成的辅助脚本语法，并编译 C# P/Invoke 声明；没有执行 Windows API。输出在 `/private/tmp/aibo-diagnostics-powershell-syntax.log`。`pnpm run verify` 676 项 Node 测试及构建通过，本机日志模块 29 项通过；新 junction 用例受 `cfg(windows)` 限定，未计为本机通过。
 
-Windows 待执行命令：
+Windows 可复现命令与远程结果：
 
-另已准备 [Windows CI 工作流](../.github/workflows/diagnostic-logging-windows.yml)，仅在手动触发或推送 `diagnostic-logging-windows/**` 专用验收分支时执行，不在普通分支推送时运行。它在 `windows-2022` 上构建当前选择的 revision、执行诊断与 IPC Rust 测试（包括 junction）、安装并运行无控制台的正式包，并按 `github.sha` 留存日志与 JSON。专用分支推送触发可在工作流尚未进入默认分支时使用。该文件尚未发布或执行；只有某 revision 的实际 job 和证据才能证明对应源码结果。这个工作流仍不替代 Windows 设置页打开目录与前端 IPC 到文件的端到端检查。
+另已准备 [Windows CI 工作流](../.github/workflows/diagnostic-logging-windows.yml)，仅在手动触发或推送 `diagnostic-logging-windows/**` 专用验收分支时执行，不在普通分支推送时运行。它在 `windows-2022` 上构建当前选择的 revision、执行诊断与 IPC Rust 测试（包括 junction）、安装并运行无控制台的正式包，并按 `github.sha` 留存日志与 JSON。专用分支推送触发可在工作流尚未进入默认分支时使用。该工作流已发布并运行；只有某 revision 的实际 job 和证据才能证明对应源码结果。新增 WebView2 探针将继续补验 Windows 正式包设置页目录动作和前端 IPC 到文件。
 
 首次远程运行：[176b13a / Windows job](https://github.com/chldu2000/aibo/actions/runs/38285864145)。依赖安装、前端构建和 Rust 编译成功，但库单元测试程序在运行任何断言前以 `0xc0000139 / STATUS_ENTRYPOINT_NOT_FOUND` 退出。真实错误记录在该 run 的 `diagnostics-rust.log` artifact 中；该次运行不能计为 Windows 测试通过。
 
@@ -102,11 +103,15 @@ Windows 待执行命令：
 [1cc7669 / Windows job](https://github.com/chldu2000/aibo/actions/runs/38289916936) 的诊断 29 项、IPC 2 项全部通过，含活动文件可读、租约互斥、真实并发进程和 junction 检查。NSIS 正式包也成功构建并安装。运行探针在轮询 JSONL 时因 `.NET ReadAllText` 默认 `FileShare.Read` 与活动写入句柄冲突而失败；探针现改用显式 `FileShare.ReadWrite`，没有忽略共享错误或放宽 JSONL 断言。无控制台及正常退出证据仍须等待此修复的实际运行。
 
 ```powershell
-cargo test --manifest-path src-tauri/Cargo.toml --lib diagnostics::tests -- --test-threads=1
+pwsh -NoProfile -File probes/diagnostic-logging-windows-tests.ps1
 pwsh -NoProfile -File probes/diagnostic-logging-windows-release.ps1
 ```
 
-正式包探针结束会卸载自身并删除自身的隔离数据；默认 JSON 证据位于系统临时目录的 `aibo-diagnostic-logging-windows-release.json`。目录打开另须在真实 Windows 设置页触发并核对当前 profile 的目录；前端 IPC 与其他 Windows 原生边界仍须逐项取得实际结果。当前没有 Windows VM、远程桌面或已运行本次源码的 Windows CI 结果，因此这些门槛保留为未验证。
+正式包探针结束会卸载自身并删除自身的隔离数据；默认 JSON 证据位于系统临时目录的 `aibo-diagnostic-logging-windows-release.json`。目录打开另须在真实 Windows 设置页触发并核对当前 profile 的目录；前端 IPC 与其他 Windows 原生边界仍须逐项取得实际结果。当前 Windows CI 已能运行实际正式包；尚未取得新的 WebView2 与 Explorer 检查结果，因此这些门槛暂保留为未验证。
+
+[31bf724 / Windows 完整工作流](https://github.com/chldu2000/aibo/actions/runs/38291892851) 已通过：29 项诊断测试、2 项 IPC 测试；实际 NSIS 安装包连续两次运行，两个不同 boot_id 均有 app.ready 和 app.stopped、退出码 0，辅助进程 AttachConsole 均返回错误 6（无控制台）。该 run 的 `windows-release.json` 与原生测试日志保存在 artifact；本机已下载 JSON 至 `/private/tmp/aibo-diagnostic-logging-windows-release.json`。这份正式包证据不含目录动作和前端 IPC，junction 的证据来自同一 run 的独立 Rust 测试。
+
+新增 [Windows WebView2 探针](../probes/diagnostic-logging-windows-webview.mjs)通过 Playwright CDP 连接安装包实际 WebView2，触发真实未捕获异常和未处理拒绝、检查缺失访问凭据及未知字段、加载真实 opaque 呈现桥，然后在固定宿主设置页以键盘触发打开日志目录。PowerShell 从 Shell.Application.Windows 核对 Explorer 的实际目录和窗口句柄，只关闭自身唯一 profile 的目录窗口。脚本读取实际 JSONL / run 元数据并检查合成 canary，截图与前端证据保存到同一 artifact。CDP 端口仅加入隔离验收包配置，保留默认浏览器特性设置，不修改产品配置或 CSP；目前尚待这一扩展探针的实际 Windows 结果。
 
 Linux 验证在独立的 `aibo-diagnostics-linux` Ubuntu 22.04 arm64 容器内，无用户目录挂载；Rust 1.99.0、Node 24.18.1、Git 2.56.0、真实 Codex CLI 0.162.1。非 root 用户完整 `cargo test --manifest-path src-tauri/Cargo.toml --lib --jobs 4 -- --test-threads=4` 已取得 423 项通过、0 项失败、4 项既有忽略，覆盖实际文件和子进程。首轮的 Git 2.34.1 缺少 `--no-lazy-fetch`、CLI 缺失及 macOS 专用测试夹具导致失败；已补齐真实依赖，两个测试 helper 设置当前平台，未修改生产插件平台声明或跳过用例。
 
