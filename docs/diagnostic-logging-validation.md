@@ -93,7 +93,9 @@ Windows 待执行命令：
 
 另已准备 [Windows CI 工作流](../.github/workflows/diagnostic-logging-windows.yml)，仅在手动触发或推送 `diagnostic-logging-windows/**` 专用验收分支时执行，不在普通分支推送时运行。它在 `windows-2022` 上构建当前选择的 revision、执行诊断与 IPC Rust 测试（包括 junction）、安装并运行无控制台的正式包，并按 `github.sha` 留存日志与 JSON。专用分支推送触发可在工作流尚未进入默认分支时使用。该文件尚未发布或执行；只有某 revision 的实际 job 和证据才能证明对应源码结果。这个工作流仍不替代 Windows 设置页打开目录与前端 IPC 到文件的端到端检查。
 
-工作流已用 YAML 1.2 解析器检查，触发范围、Windows runner 与只读仓库权限符合上述配置；没有远程 job。最新本机 `pnpm run verify` 仍为 676 项 Node 测试通过及构建通过。
+首次远程运行：[176b13a / Windows job](https://github.com/chldu2000/aibo/actions/runs/38285864145)。依赖安装、前端构建和 Rust 编译成功，但库单元测试程序在运行任何断言前以 `0xc0000139 / STATUS_ENTRYPOINT_NOT_FOUND` 退出。真实错误记录在该 run 的 `diagnostics-rust.log` artifact 中；该次运行不能计为 Windows 测试通过。
+
+已增加 [Windows 测试启动探针](../probes/diagnostic-logging-windows-tests.ps1)：编译并取得 Cargo 返回的库测试程序路径，保留补入 manifest 前后的 `--list` 结果。当原程序报上述入口点错误且没有 manifest 时，使用 Windows SDK `mt.exe` 为这个测试程序嵌入 Common Controls v6 manifest，再执行原有两组测试。这对应 [Tauri 上游问题](https://github.com/tauri-apps/tauri/issues/13419)，不改变正式应用的 manifest，也不省略诊断断言。工作流同时将错误输出写入 artifact 和控制台；其他启动错误仍直接失败。实际修复结果须以新 revision 的 Windows job 为准。
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml --lib diagnostics::tests -- --test-threads=1

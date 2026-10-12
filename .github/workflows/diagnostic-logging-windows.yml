@@ -43,15 +43,11 @@ jobs:
 
       - name: Test actual Windows diagnostic files and junction rejection
         run: |
-          New-Item -ItemType Directory -Force artifacts | Out-Null
-          cargo test --manifest-path src-tauri/Cargo.toml --lib diagnostics::tests -- --test-threads=1 *> artifacts/diagnostics-rust.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test --manifest-path src-tauri/Cargo.toml --lib diagnostics_ipc::tests -- --test-threads=1 *> artifacts/diagnostics-ipc-rust.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./probes/diagnostic-logging-windows-tests.ps1
 
       - name: Run the installed no-console release application
         run: |
-          & ./probes/diagnostic-logging-windows-release.ps1 -EvidencePath (Join-Path $PWD 'artifacts/windows-release.json') *> artifacts/windows-release.log
+          & ./probes/diagnostic-logging-windows-release.ps1 -EvidencePath (Join-Path $PWD 'artifacts/windows-release.json') 2>&1 | Tee-Object -FilePath artifacts/windows-release.log
 
       - name: Save evidence for this revision
         if: always()
