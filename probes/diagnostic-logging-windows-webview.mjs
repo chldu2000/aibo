@@ -79,6 +79,7 @@ try {
   await dialog.getByRole('tab', { name: /^(Runtime and diagnostics|运行与诊断)$/ }).click();
   const panel = dialog.locator('[aria-labelledby="diagnostic-logs-title"]');
   await panel.getByText(directory, { exact: true }).waitFor();
+  assert(await dialog.locator('.management-content').evaluate(element => element.scrollWidth <= element.clientWidth), 'Actual Windows profile path must not overflow the settings page');
   await panel.getByRole('button', { name: /^(Open log folder|打开日志文件夹)$/ }).focus();
   await page.keyboard.press('Enter');
   await page.screenshot({ path: screenshotPath });

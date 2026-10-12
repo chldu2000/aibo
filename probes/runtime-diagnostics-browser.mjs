@@ -3,6 +3,7 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { buildPresentationSkins } from './lib/build-presentation-skins.mjs';
 const skins = await buildPresentationSkins();
+const logDirectory = 'C:\\Users\\Aibo-user\\AppData\\Roaming\\' + 'isolated-diagnostic-profile-'.repeat(8) + '\\development\\logs';
 const server = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
 await server.listen();
 const browser = await chromium.launch({ headless: true });
@@ -13,7 +14,7 @@ try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     page.setDefaultTimeout(20000);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(({ kit, theme, pkg }) => {
+    await page.addInitScript(({ kit, theme, pkg, logDirectory }) => {
       if (window.Worker) {
         const NativeWorker = window.Worker; window.diagnosticWorkers = [];
         window.Worker = class extends NativeWorker { constructor(...args) { super(...args); window.diagnosticWorkers.push(this); } };
@@ -42,11 +43,11 @@ try {
         if (command === 'list_presentation_packages') return pkg ? [pkg.release] : [];
         if (command === 'read_presentation_package') return pkg;
         if (command === 'get_node_runtime') return { selected: { path: '/node', version: '24.18.0', source: 'system' }, manualPath: null, hostRequirement: '>=22', downloadVersion: '24.18.0', downloadSupported: true, issues: [] };
-        if (command === 'get_diagnostic_log_status') return { directory: '/isolated/development/logs', state: 'healthy', error_code: null, dropped: 3, shutdown_complete: false };
+        if (command === 'get_diagnostic_log_status') return { directory: logDirectory, state: 'healthy', error_code: null, dropped: 3, shutdown_complete: false };
         if (command === 'get_turn_change_set') return null;
         return [];
       } };
-    }, config);
+    }, { ...config, logDirectory });
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
     if (config.pkg) await page.locator('.presentation-external iframe').first().waitFor();
     await page.locator('[data-host-navigation="management"]').click();
@@ -54,7 +55,7 @@ try {
     const runtime = () => dialog.getByRole('tab', { name: '运行与诊断', exact: true }).click();
     await runtime();
     const logs = dialog.locator('[aria-labelledby="diagnostic-logs-title"]');
-    await logs.getByText('/isolated/development/logs', { exact: true }).waitFor();
+    await logs.getByText(logDirectory, { exact: true }).waitFor();
     await logs.getByRole('button', { name: '打开日志文件夹' }).focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.evaluate(() => window.diagnosticCalls.filter(call => call.command === 'open_diagnostic_log_directory').length), 1);

@@ -25,3 +25,14 @@
     {/if}
   </div>
 </section>
+
+<style>
+  .settings-runtime-list { min-width: 0; }
+  .settings-runtime-list div { min-width: 0; gap: 16px; }
+  .settings-runtime-list dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    overflow: visible;
+  }
+</style>
