@@ -2,7 +2,7 @@
 
 日期：2026-10-13。对应[本地诊断日志规格 v1](diagnostic-logging-spec.md)。
 
-L1 原生与前端路径已接入，验收仍未全部完成。本文区分本机通过的行为、尚未执行的平台与打包检查；不能据此声称全部 L1 验收完成。L2 的临时 DEBUG 与 ZIP 导出未实现，界面不显示这些操作。
+L1 日志落盘与 T01–T16 验收已完成，支持保存诊断日志。下面逐项列出实际命令、文件、平台范围和证据；不将浏览器替身等同于原生持久化。L2 的临时 DEBUG 与 ZIP 导出未实现，界面不显示这些操作。
 
 ## 实现位置与保存合同
 
@@ -45,6 +45,9 @@ node probes/diagnostic-logging-release.mjs --build
 - `/private/tmp/aibo-diagnostics-integration.log`
 - `/private/tmp/aibo-diagnostics-tools.log`
 - `/private/tmp/aibo-diagnostics-browser.log`
+- `/private/tmp/aibo-diagnostic-long-path-browser.log`（长路径六场景）
+- `/private/tmp/aibo-diagnostic-final-verify.log`
+- `/private/tmp/aibo-diagnostic-panic-modes.log`（T03 三模式）
 - `/private/tmp/aibo-diagnostics-native.log`
 - `/private/tmp/aibo-diagnostic-logging-native.json`
 - `/private/tmp/aibo-diagnostics-release-build.log`
@@ -65,53 +68,45 @@ Rust 用例使用独立临时目录并读取实际 JSONL。原生桌面探针创
 | --- | --- | --- |
 | T01 | 通过（macOS 开发运行） | 原生探针正常启动/关闭；真实数据库打开、迁移、插件注册故障，各自只有正确阶段失败，无 ready/stopped；Rust 子进程补验数据库故障落盘。 |
 | T02 | 通过（macOS） | 原生强杀后重启只有一次 previous_exit_unknown，正常重启不误报；运行锁测试覆盖两个活动实例、正常结束、损坏元数据；降级时运行租约继续持有。 |
-| T03 | 通过（macOS） | Rust 子进程持有普通队列锁时 panic，实际应急 JSONL 存在；日期前进与回拨后预备通道轮转，panic 文件日期与记录 UTC 日期一致且分片号递增；每条包含版本/渠道/OS/架构，payload canary 未保存。 |
+| T03 | 通过（macOS） | Rust 子进程分别在普通运行、实际普通队列装满 1024 条及持有队列锁时 panic；每个模式先确认自己的前置条件，再触发含合成秘密的 panic，实际应急 JSONL 均存在；日期前进与回拨后预备通道轮转，panic 文件日期与记录 UTC 日期一致且分片号递增；每条包含版本/渠道/OS/架构，payload canary 未保存。 |
 | T04 | 通过（macOS 已覆盖路径） | 实际 Node 子进程覆盖 ready、预期停止、启动失败、意外退出、协议拒绝与请求失败；SessionHost 与终端工具回归读取实际文件。第三方与内置均按同一宿主合同处理。 |
 | T05 | 通过（macOS 已覆盖路径） | SessionHost 子进程覆盖创建、发送、恢复原 nativeSessionId、取消、关闭、错误及退出门禁；完整原生回归保护绑定、代际与队列。 |
-| T06 | 通过（macOS 端到端） | 原生桌面真实未捕获异常与未处理拒绝经生产前端提取器及 IPC 落盘；真实 Worker 在后续 revision 的 render 中抛错，经生产可信呈现桥产生 presentation.failed 并读取实际文件。重复指纹被原生抑制并汇总，故障正文不保存。 |
+| T06 | 通过（macOS/Linux/Windows 原生） | 原生桌面真实未捕获异常与未处理拒绝经生产前端提取器及 IPC 落盘；真实 Worker 在后续 revision 的 render 中抛错，经生产可信呈现桥产生 presentation.failed 并读取实际文件。重复指纹被原生抑制并汇总，故障正文不保存。Windows 正式安装包的生产监听器另外验证真实 exception/rejection 到 JSONL，每次运行各 1 条。 |
 | T07 | 通过（受控字段预算） | 实际 JSONL 解析、超长/中文/换行/控制字符身份拒绝、20 帧边界、单行字节上限、UTC 日期回拨与 sequence/elapsed 单调性。有效 schema 的字段预算小于 16 KiB，超长输入被拒绝或省略，不开放自由文本来构造更大的合法行。 |
 | T08 | 通过（已覆盖合成 canary） | 普通文件、panic 应急文件和运行元数据分别检查；请求/响应、token、Cookie、嵌套对象、错误链、panic、聊天、路径、stderr、终端输入输出、URL 参数均不透传。匹配 tracing target 的任意事件也不能进入 sink。 |
-| T09 | 通过（macOS） | 独立非可信窗口、缺少顶层文档访问凭据、opaque iframe、伪造级别/会话/路径/message 均拒绝；可信顶层文档正常报告。未扩大现有 Tauri 文件权限。 |
-| T10 | 通过（macOS 正式与开发运行） | 正式 app 包启动并正常关闭两次，写入正式 DATA/logs，build_channel 为 release，无 development/logs、boot_id 不复用；开发 profile、同日重启、普通与应急分片 UTC 换日/回拨及大小边界已验证。应急轮转复用一个容量租约，保留旧文件不覆盖，panic hook 不取得日志锁。 |
+| T09 | 通过（macOS/Linux/Windows） | 独立非可信窗口、缺少顶层文档访问凭据、opaque iframe、伪造级别/会话/路径/message 均拒绝；可信顶层文档正常报告。未扩大现有 Tauri 文件权限。Windows 正式包验证缺失凭据、未知字段拒绝，opaque iframe 无凭据且其独立资源/行号标记不出现在实际文件中。 |
+| T10 | 通过（macOS/Windows 正式包，macOS/Linux 开发） | 正式 app 包启动并正常关闭两次，写入正式 DATA/logs，build_channel 为 release，无 development/logs、boot_id 不复用；开发 profile、同日重启、普通与应急分片 UTC 换日/回拨及大小边界已验证。应急轮转复用一个容量租约，保留旧文件不覆盖，panic hook 不取得日志锁。 |
 | T11 | 通过（注入时间及小容量） | 14 天边界、完整记录轮转、总容量、相同封存时间按文件名排序；年龄和容量两种清理都删除了含 app.starting 的旧片，任一保留记录独立包含运行环境。 |
-| T12 | 通过（macOS 已覆盖边界） | 两个真实进程并发写入小配额；活动文件不被回收；不可回收时 quota_exhausted；未知文件、外部符号链接与链接目录不被写入或删除。Windows junction 原生拒绝测试已通过，见下方 Windows CI 结果。 |
+| T12 | 通过（macOS/Linux/Windows 原生边界） | 两个真实进程并发写入小配额；活动文件不被回收；不可回收时 quota_exhausted；未知文件、外部符号链接与链接目录不被写入或删除。Windows junction 原生拒绝测试已通过，见下方 Windows CI 结果。 |
 | T13 | 通过（macOS 与故障注入） | 原生权限故障时业务数据库仍可读，生产 30 秒周期恢复；Rust 注入 ENOSPC 的部分写入及删除拒绝，实际文件恢复可解析并有失败/恢复/丢弃汇总；周期性汇总写失败保留原计数，恢复后只汇总一次，不把汇总自身递归计为新丢弃。故障注入仅编译进测试，不接受 IPC 设置。 |
 | T14 | 通过（macOS） | 持有真实 profile 文件锁暂停 writer，填满 1024/64 队列后解除；实际文件中 ERROR 保留、丢弃总数准确、正常排空。 |
 | T15 | 通过（macOS） | 正常关闭完整排空；持有文件锁永久阻塞场景在 2 秒内返回未完成状态；退出时丢弃汇总遭 ENOSPC，保留待汇总计数和 storage_full，实际文件没有 app.stopped、运行元数据仍为 running。 |
-| T16 | 通过（macOS/browser 已覆盖边界） | Material 3/ak-ui 浅深、480px 窄窗口、键盘打开目录动作；两个外部工作台及故障回退后的固定入口；真实桌面仅打开当前 profile 的日志目录，原登录/检查语义保留。 |
+| T16 | 通过（六个浏览器场景及原生目录动作） | Material 3/ak-ui 浅深、480px 窄窗口、键盘打开目录动作；两个外部工作台及故障回退后的固定入口；Linux 原生观察到 Thunar 日志目录窗口；Windows 正式包通过设置页键盘动作，COM 核对 Explorer 的完整目录和窗口句柄，两次均为当前 profile。长 Windows 路径在 480px、两套内置浅深及两个外部工作台不横向溢出；正式 WebView2 也断言不溢出。原登录/检查语义保留。 |
 | T17 | 未执行 | L2 未实现。 |
 | T18 | 未执行 | L2 未实现。 |
 
-## 尚未完成的门槛
+## Windows 原生与正式包验收
 
-Windows 正式包无控制台启动、日志落盘、正常退出及 junction 原生测试已通过。剩余门槛是正式包设置页实际打开 Explorer，以及生产前端异常与 IPC 边界到文件的端到端检查。macOS 与 Linux 结果分别登记，不代替 Windows。
+实际通过的实现 revision 为 `e6e7823d9a545a0ffde79e551e17c14c196a6df0`：[Windows 完整验收](https://github.com/chldu2000/aibo/actions/runs/38299741620)、[常规 CI](https://github.com/chldu2000/aibo/actions/runs/38299741540)。29 项诊断文件测试和 2 项 IPC 测试全部通过，包括两个真实进程共享容量、活动文件租约与可读性、junction 外部目标不被写入或清理。每个平台的结果独立登记。
 
-已提供 [Windows 正式包探针](../probes/diagnostic-logging-windows-release.ps1)及 `refuses_windows_junction_without_writing_or_cleaning_its_target` 原生测试。前者在交互式 Windows 桌面、PowerShell 7、Rust MSVC、Node/pnpm 和 WebView2 环境中构建 NSIS、安装独立产品/二进制/应用身份，读取两次正式运行的实际 JSONL，用独立辅助进程的 [AttachConsole](https://learn.microsoft.com/en-us/windows/console/attachconsole) 错误 6 检查无控制台，再通过 CloseMainWindow 请求正常退出。辅助进程不会改变测试操作者的控制台。它不把启动请求或打包成功当作运行成功；证据显式标注不覆盖目录打开、junction 和前端 IPC。该脚本和 junction 条件编译测试已实际在 Windows 执行；通过结果以对应 run 的 JSON 与测试输出为证据。
+[Windows 正式包探针](../probes/diagnostic-logging-windows-release.ps1)实际构建 NSIS、安装独立产品/二进制/应用身份并运行两次。两个不同 boot_id 分别为 `01M4RTY6Q2RQJZ59EZTXHGNNNH`、`01M4RTYRXMH0BEHENXPE8QB96A`；均有 app.ready、frontend.exception、frontend.unhandled_rejection、app.stopped，退出码 0。每条实际 JSONL 的 schema、PID、版本、release 渠道、Windows OS 和 PE 架构均经脚本验证，无 development/logs。独立辅助进程 AttachConsole 均返回错误 6，确认实际应用没有控制台。
 
-本轮已用官方 `mcr.microsoft.com/powershell:lts-ubuntu-22.04` Linux 容器的 PowerShell 解析器验证外层及生成的辅助脚本语法，并编译 C# P/Invoke 声明；没有执行 Windows API。输出在 `/private/tmp/aibo-diagnostics-powershell-syntax.log`。`pnpm run verify` 676 项 Node 测试及构建通过，本机日志模块 29 项通过；新 junction 用例受 `cfg(windows)` 限定，未计为本机通过。
+[WebView2 探针](../probes/diagnostic-logging-windows-webview.mjs)连接安装包的实际生产 WebView2，触发真实未捕获异常和未处理拒绝；每次各 1 条记录且 window_id=main，JSONL / run 元数据无合成 canary。缺少顶层访问凭据及未知字段被拒绝；真实 opaque 桥没有访问凭据，其独立资源/行号标记不进入文件。子帧回调可能不可用，因此负向调用有超时，但通过必须另由真实文件断言证明；完整探针限时 90 秒。CDP 端口只加入隔离验收包配置，保留默认 WebView2 特性设置，产品配置与 CSP 不变。
 
-Windows 可复现命令与远程结果：
+探针在固定宿主设置页以键盘触发打开日志目录。PowerShell 枚举实际 Shell.Application.Windows，两个 Explorer 窗口句柄分别为 66184、197224，完整路径均等于同一隔离 profile 的 DATA/logs；随后只关闭该目录窗口。截图还揭示过长路径横向溢出，已用局部布局 CSS 换行修复：六个浏览器场景覆盖长 Windows 路径，正式 WebView2 对实际路径再次断言 scrollWidth 不超过 clientWidth。最终截图保存于下列 artifact。
 
-另已准备 [Windows CI 工作流](../.github/workflows/diagnostic-logging-windows.yml)，仅在手动触发或推送 `diagnostic-logging-windows/**` 专用验收分支时执行，不在普通分支推送时运行。它在 `windows-2022` 上构建当前选择的 revision、执行诊断与 IPC Rust 测试（包括 junction）、安装并运行无控制台的正式包，并按 `github.sha` 留存日志与 JSON。专用分支推送触发可在工作流尚未进入默认分支时使用。该工作流已发布并运行；只有某 revision 的实际 job 和证据才能证明对应源码结果。新增 WebView2 探针将继续补验 Windows 正式包设置页目录动作和前端 IPC 到文件。
+证据：[Windows artifact](https://github.com/chldu2000/aibo/actions/runs/38299741620/artifacts/11770610044)。包含 diagnostics-rust.log、diagnostics-ipc-rust.log、windows-release.json、两份 windows-frontend JSON 和两张 windows-runtime PNG。本机解包在 `/private/tmp/aibo-diagnostics-windows-final/`，已读取 JSON 并查看实际截图。正式包脚本结束时卸载自身、删除自身隔离数据；junction 证据属于同一 run 的独立 Rust 测试，不冒充正式包脚本中的检查。
 
-首次远程运行：[176b13a / Windows job](https://github.com/chldu2000/aibo/actions/runs/38285864145)。依赖安装、前端构建和 Rust 编译成功，但库单元测试程序在运行任何断言前以 `0xc0000139 / STATUS_ENTRYPOINT_NOT_FOUND` 退出。真实错误记录在该 run 的 `diagnostics-rust.log` artifact 中；该次运行不能计为 Windows 测试通过。
-
-已增加 [Windows 测试启动探针](../probes/diagnostic-logging-windows-tests.ps1)：编译并取得 Cargo 返回的库测试程序路径，保留补入 manifest 前后的 `--list` 结果。当原程序报上述入口点错误且没有 manifest 时，使用 Windows SDK `mt.exe` 为这个测试程序嵌入 Common Controls v6 manifest，再执行原有两组测试。这对应 [Tauri 上游问题](https://github.com/tauri-apps/tauri/issues/13419)，不改变正式应用的 manifest，也不省略诊断断言。工作流同时将错误输出写入 artifact 和控制台；其他启动错误仍直接失败。实际修复结果须以新 revision 的 Windows job 为准。
-
-[1256e55 / Windows job](https://github.com/chldu2000/aibo/actions/runs/38288810474) 证实上述原因：原程序 `--list` 返回 `-1073741511`，`mt.exe` 报没有资源段，补入 manifest 后 `--list` 成功枚举 363 个测试。诊断组实际执行 28 项，15 通过（含 junction），13 因 Windows 错误 33 无法读取仍持有租约的日志文件而失败。Windows 的整文件独占字节锁会拒绝读者读取，与 Unix `flock` 不同。后续修复将同一租约范围移到 4 GiB 处的单个字节，位于受限日志和元数据内容之外；所有持有者和清理竞争者仍锁同一位置。新增回归用例同时检查活动 JSONL / run 元数据可读、租约竞争仍失败和释放后可重新取得租约。Windows 最终结果仍以该修复的实际 run 为准。
-
-[1cc7669 / Windows job](https://github.com/chldu2000/aibo/actions/runs/38289916936) 的诊断 29 项、IPC 2 项全部通过，含活动文件可读、租约互斥、真实并发进程和 junction 检查。NSIS 正式包也成功构建并安装。运行探针在轮询 JSONL 时因 `.NET ReadAllText` 默认 `FileShare.Read` 与活动写入句柄冲突而失败；探针现改用显式 `FileShare.ReadWrite`，没有忽略共享错误或放宽 JSONL 断言。无控制台及正常退出证据仍须等待此修复的实际运行。
+Windows 可复现命令：
 
 ```powershell
 pwsh -NoProfile -File probes/diagnostic-logging-windows-tests.ps1
 pwsh -NoProfile -File probes/diagnostic-logging-windows-release.ps1
 ```
 
-正式包探针结束会卸载自身并删除自身的隔离数据；默认 JSON 证据位于系统临时目录的 `aibo-diagnostic-logging-windows-release.json`。目录打开另须在真实 Windows 设置页触发并核对当前 profile 的目录；前端 IPC 与其他 Windows 原生边界仍须逐项取得实际结果。当前 Windows CI 已能运行实际正式包；尚未取得新的 WebView2 与 Explorer 检查结果，因此这些门槛暂保留为未验证。
+测试程序需要 [Windows 测试启动探针](../probes/diagnostic-logging-windows-tests.ps1)：Tauri 的库单元测试程序缺少 Common Controls v6 manifest 时会以 STATUS_ENTRYPOINT_NOT_FOUND 退出。脚本保留修复前后 --list 证据，只为该测试程序嵌入 manifest，正式程序继续采用 Tauri 自己的 manifest；见 [上游记录](https://github.com/tauri-apps/tauri/issues/13419)。Windows 租约锁位于文件内容之外的 4 GiB 单字节位置，所有持有者和清理竞争者仍锁同一范围，同时允许读取活动 JSONL。正式包轮询显式使用 FileShare.ReadWrite，与活动写入句柄兼容。
 
-[31bf724 / Windows 完整工作流](https://github.com/chldu2000/aibo/actions/runs/38291892851) 已通过：29 项诊断测试、2 项 IPC 测试；实际 NSIS 安装包连续两次运行，两个不同 boot_id 均有 app.ready 和 app.stopped、退出码 0，辅助进程 AttachConsole 均返回错误 6（无控制台）。该 run 的 `windows-release.json` 与原生测试日志保存在 artifact；本机已下载 JSON 至 `/private/tmp/aibo-diagnostic-logging-windows-release.json`。这份正式包证据不含目录动作和前端 IPC，junction 的证据来自同一 run 的独立 Rust 测试。
-
-新增 [Windows WebView2 探针](../probes/diagnostic-logging-windows-webview.mjs)通过 Playwright CDP 连接安装包实际 WebView2，触发真实未捕获异常和未处理拒绝、检查缺失访问凭据及未知字段、加载真实 opaque 呈现桥，然后在固定宿主设置页以键盘触发打开日志目录。PowerShell 从 Shell.Application.Windows 核对 Explorer 的实际目录和窗口句柄，只关闭自身唯一 profile 的目录窗口。脚本读取实际 JSONL / run 元数据并检查合成 canary，截图与前端证据保存到同一 artifact。CDP 端口仅加入隔离验收包配置，保留默认浏览器特性设置，不修改产品配置或 CSP；目前尚待这一扩展探针的实际 Windows 结果。
+[Windows 工作流](../.github/workflows/diagnostic-logging-windows.yml)已发布，仅由手动触发或专用 `diagnostic-logging-windows/**` 分支推送触发，按 github.sha 保存证据。Windows 真实 Worker 后续 render 故障没有单独重复驱动；该路径的原生端到端证据来自 macOS/Linux，Windows 已执行其生产前端异常、IPC、固定设置页和正式包检查。本文不声称每个平台都重复了整个测试矩阵。
 
 Linux 验证在独立的 `aibo-diagnostics-linux` Ubuntu 22.04 arm64 容器内，无用户目录挂载；Rust 1.99.0、Node 24.18.1、Git 2.56.0、真实 Codex CLI 0.162.1。非 root 用户完整 `cargo test --manifest-path src-tauri/Cargo.toml --lib --jobs 4 -- --test-threads=4` 已取得 423 项通过、0 项失败、4 项既有忽略，覆盖实际文件和子进程。首轮的 Git 2.34.1 缺少 `--no-lazy-fetch`、CLI 缺失及 macOS 专用测试夹具导致失败；已补齐真实依赖，两个测试 helper 设置当前平台，未修改生产插件平台声明或跳过用例。
 
@@ -128,4 +123,4 @@ Linux 原生结果见 `/private/tmp/aibo-diagnostic-logging-linux-native.json`�
 
 应急通道由 writer 按 UTC 日期预备新分片，使用 [arc-swap 1.9.2](https://docs.rs/arc-swap/1.9.2/arc_swap/docs/performance/index.html) 的原子引用替换；panic hook 持有自己的文件引用，不依赖队列、状态或 writer 锁。若日期刚变化而新通道尚未预备，旧日期通道不可使用，仅输出固定安全提示并累计丢弃；不把当前日期事件写入旧日期文件。前进与回拨已在实际 panic 子进程中验证，租约复用与分片递增另有实际文件测试。
 
-上述未执行的平台检查完成前保持验收中，不标记完整 L1 完成。
+T01–T16 的 L1 门槛已由上述组合验证完成。L2（临时 DEBUG、ZIP 导出）的 T17–T18 按规格后续交付，未实现也未显示入口。现有 4 项 Rust 忽略分别需要官方 Node 下载、额外已构建插件、原生认证和独立历史 SQLite 备份；不计为通过，诊断日志所需用例均已执行。

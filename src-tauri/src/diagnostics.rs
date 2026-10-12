@@ -2099,27 +2099,47 @@ mod tests {
             assert!(Instant::now() < deadline);
             std::thread::sleep(Duration::from_millis(5));
         }
-        let _locked = log.shared.queue.lock().unwrap();
+        let mode = std::env::var("AIBO_DIAGNOSTIC_PANIC_MODE").unwrap_or_else(|_| "locked".into());
+        if mode == "ordinary" {
+            println!("T03 panic mode ready: {mode}");
+            panic!("private-panic-canary token=secret /Users/private");
+        }
+        let mut queue = log.shared.queue.lock().unwrap();
+        if mode == "saturated" {
+            // Hold the queue while filling its actual record storage; the
+            // writer cannot race the saturated precondition before the hook.
+            while queue.normal < NORMAL_QUEUE {
+                queue.records.push_back(log.shared.context.record(Event::Ready, Fields::default()));
+                queue.normal += 1;
+            }
+            assert_eq!(queue.normal, NORMAL_QUEUE);
+        }
+        println!("T03 panic mode ready: {mode}");
         panic!("private-panic-canary token=secret /Users/private");
     }
     #[test]
     fn panic_subprocess_writes_safe_emergency_without_queue_lock() {
-        let root = tempfile::tempdir().unwrap();
-        let result = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "diagnostics::tests::panic_child", "--nocapture"])
-            .env("AIBO_DIAGNOSTIC_PANIC_TEST", root.path())
-            .output()
-            .unwrap();
-        assert!(!result.status.success());
-        let rows = records(root.path());
-        let panic = rows.iter().find(|row| row["event"] == "app.panic").unwrap();
-        assert_eq!(panic["level"], "ERROR");
-        for entry in std::fs::read_dir(root.path().join("logs")).unwrap() {
-            let bytes = std::fs::read(entry.unwrap().path()).unwrap();
-            assert!(!String::from_utf8_lossy(&bytes).contains("private-panic-canary"));
-        }
-        for key in ["app_version", "build_channel", "os", "arch"] {
-            assert!(panic.get(key).is_some());
+        for mode in ["ordinary", "saturated", "locked"] {
+            let root = tempfile::tempdir().unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "diagnostics::tests::panic_child", "--nocapture"])
+                .env("AIBO_DIAGNOSTIC_PANIC_TEST", root.path())
+                .env("AIBO_DIAGNOSTIC_PANIC_MODE", mode)
+                .output()
+                .unwrap();
+            assert!(!result.status.success());
+            assert!(String::from_utf8_lossy(&result.stdout).contains(&format!("T03 panic mode ready: {mode}")), "panic scenario reached its required precondition");
+            let rows = records(root.path());
+            let panic = rows.iter().find(|row| row["event"] == "app.panic").unwrap();
+            assert_eq!(panic["level"], "ERROR");
+            for entry in std::fs::read_dir(root.path().join("logs")).unwrap() {
+                let bytes = std::fs::read(entry.unwrap().path()).unwrap();
+                assert!(!String::from_utf8_lossy(&bytes).contains("private-panic-canary"));
+            }
+            for key in ["app_version", "build_channel", "os", "arch"] {
+                assert!(panic.get(key).is_some());
+            }
+
         }
     }
     #[test]
