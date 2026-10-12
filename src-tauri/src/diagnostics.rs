@@ -1438,12 +1438,25 @@ impl Directory {
     }
 }
 #[cfg(windows)]
+fn lease_position() -> windows_sys::Win32::System::IO::OVERLAPPED {
+    use windows_sys::Win32::System::IO::{OVERLAPPED, OVERLAPPED_0, OVERLAPPED_0_0};
+    // Windows locks deny ordinary reads, unlike Unix flock. Lease one byte at
+    // 4 GiB, beyond all bounded log and metadata contents, without extending EOF.
+    // Every owner and cleanup contender uses this same range.
+    OVERLAPPED {
+        Anonymous: OVERLAPPED_0 {
+            Anonymous: OVERLAPPED_0_0 { Offset: 0, OffsetHigh: 1 },
+        },
+        ..OVERLAPPED::default()
+    }
+}
+#[cfg(windows)]
 fn lock(file: &File, nonblocking: bool) -> io::Result<()> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{
         LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
     };
-    let mut overlapped = unsafe { std::mem::zeroed() };
+    let mut overlapped = lease_position();
     let flags = LOCKFILE_EXCLUSIVE_LOCK
         | if nonblocking {
             LOCKFILE_FAIL_IMMEDIATELY
@@ -1455,8 +1468,8 @@ fn lock(file: &File, nonblocking: bool) -> io::Result<()> {
             file.as_raw_handle(),
             flags,
             0,
-            u32::MAX,
-            u32::MAX,
+            1,
+            0,
             &mut overlapped,
         )
     } == 0
@@ -1468,13 +1481,13 @@ fn lock(file: &File, nonblocking: bool) -> io::Result<()> {
 #[cfg(windows)]
 fn unlock(file: &File) {
     use std::os::windows::io::AsRawHandle;
-    let mut overlapped = unsafe { std::mem::zeroed() };
+    let mut overlapped = lease_position();
     unsafe {
         windows_sys::Win32::Storage::FileSystem::UnlockFileEx(
             file.as_raw_handle(),
             0,
-            u32::MAX,
-            u32::MAX,
+            1,
+            0,
             &mut overlapped,
         );
     }
@@ -1817,6 +1830,34 @@ fn owned_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn active_files_remain_readable_without_releasing_their_leases() {
+        let root = tempfile::tempdir().unwrap();
+        let context = Context {
+            boot_id: ulid::Ulid::new().to_string(),
+            started: Instant::now(),
+            sequence: AtomicU64::new(1),
+        };
+        let mut sink = Sink::open(root.path(), &context.boot_id, Limits::default()).unwrap();
+        sink.begin_run().unwrap();
+        sink.write(&context.record(Event::Ready, Fields::default())).unwrap();
+        sink.flush().unwrap();
+        let emergency = sink.prepare_emergency().unwrap().unwrap();
+        let name = format!("aibo-{}-{}-{:04}.jsonl", sink.date, context.boot_id, sink.shard - 1);
+        let competing = sink.directory.open_file(&name, false).unwrap();
+        assert!(lock(&competing, true).is_err(), "an active file retains its exclusive lease");
+        assert_eq!(records(root.path())[0]["event"], "app.ready");
+        let run: Value = serde_json::from_str(&std::fs::read_to_string(
+            root.path().join("logs").join(format!("aibo-{}.run", context.boot_id)),
+        ).unwrap()).unwrap();
+        assert_eq!(run["state"], "running");
+        sink.cleanup(0).unwrap();
+        assert_eq!(records(root.path())[0]["event"], "app.ready");
+        drop(emergency);
+        drop(sink);
+        lock(&competing, true).unwrap();
+        unlock(&competing);
+    }
     fn records(path: &Path) -> Vec<Value> {
         let mut rows: Vec<Value> = Vec::new();
         for entry in std::fs::read_dir(path.join("logs")).unwrap() {
