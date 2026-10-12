@@ -17,7 +17,14 @@ function Read-Rows([switch]$AllowIncompleteTail) {
     $rows = @()
     if (Test-Path -LiteralPath $logs) {
         foreach ($file in Get-ChildItem -LiteralPath $logs -Filter '*.jsonl') {
-            $text = [IO.File]::ReadAllText($file.FullName)
+            # ReadAllText uses FileShare.Read and conflicts with the live writer.
+            # A polling reader must permit its existing write handle to stay open.
+            $stream = [IO.File]::Open($file.FullName, [IO.FileMode]::Open,
+                [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            try {
+                $reader = [IO.StreamReader]::new($stream)
+                try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            } finally { $stream.Dispose() }
             $lines = @($text -split "`n")
             if ($AllowIncompleteTail -and $text.Length -and -not $text.EndsWith("`n")) {
                 $lines = @($lines | Select-Object -SkipLast 1)

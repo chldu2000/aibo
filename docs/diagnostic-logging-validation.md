@@ -99,6 +99,8 @@ Windows 待执行命令：
 
 [1256e55 / Windows job](https://github.com/chldu2000/aibo/actions/runs/38288810474) 证实上述原因：原程序 `--list` 返回 `-1073741511`，`mt.exe` 报没有资源段，补入 manifest 后 `--list` 成功枚举 363 个测试。诊断组实际执行 28 项，15 通过（含 junction），13 因 Windows 错误 33 无法读取仍持有租约的日志文件而失败。Windows 的整文件独占字节锁会拒绝读者读取，与 Unix `flock` 不同。后续修复将同一租约范围移到 4 GiB 处的单个字节，位于受限日志和元数据内容之外；所有持有者和清理竞争者仍锁同一位置。新增回归用例同时检查活动 JSONL / run 元数据可读、租约竞争仍失败和释放后可重新取得租约。Windows 最终结果仍以该修复的实际 run 为准。
 
+[1cc7669 / Windows job](https://github.com/chldu2000/aibo/actions/runs/38289916936) 的诊断 29 项、IPC 2 项全部通过，含活动文件可读、租约互斥、真实并发进程和 junction 检查。NSIS 正式包也成功构建并安装。运行探针在轮询 JSONL 时因 `.NET ReadAllText` 默认 `FileShare.Read` 与活动写入句柄冲突而失败；探针现改用显式 `FileShare.ReadWrite`，没有忽略共享错误或放宽 JSONL 断言。无控制台及正常退出证据仍须等待此修复的实际运行。
+
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml --lib diagnostics::tests -- --test-threads=1
 pwsh -NoProfile -File probes/diagnostic-logging-windows-release.ps1
