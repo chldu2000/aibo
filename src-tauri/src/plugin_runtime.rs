@@ -24,6 +24,17 @@ pub(crate) const PLUGIN_ENVIRONMENT: [&str; 11] = [
 ];
 type Reply = oneshot::Sender<Result<Value, String>>;
 
+#[derive(Clone)]
+pub(crate) struct DiagnosticIdentity {
+    pub installation_id: String, pub plugin_id: String, pub plugin_version: String, pub contribution_id: String,
+}
+impl DiagnosticIdentity {
+    pub(crate) fn fields(&self, generation: &str) -> crate::diagnostics::Fields {
+        crate::diagnostics::Fields { installation_id: Some(self.installation_id.clone()), plugin_id: Some(self.plugin_id.clone()), plugin_version: Some(self.plugin_version.clone()),
+            contribution_id: Some(self.contribution_id.clone()), generation_id: Some(generation.into()), ..Default::default() }
+    }
+}
+
 fn process_argument(value: &str) -> Cow<'_, str> {
     #[cfg(windows)]
     {
@@ -55,18 +66,30 @@ pub(crate) struct PluginRuntime {
     stop_requested: Arc<AtomicBool>,
     exited: Arc<AtomicBool>,
     cleanup_complete: Arc<AtomicBool>,
+    expected_stop: Arc<AtomicBool>,
+    diagnostic_identity: Option<DiagnosticIdentity>,
+    diagnostic_ready: Arc<AtomicBool>,
+    diagnostic_protocol: &'static str,
 }
 
 impl PluginRuntime {
     pub fn spawn_capability(executable: &Path, args: &[String], directory: &Path) -> Result<Self, String> {
-        Self::spawn_transport(executable, args, directory, None, false)
+        Self::spawn_transport(executable, args, directory, None, false, None)
     }
 
     pub fn spawn_interactive(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>) -> Result<Self, String> {
-        Self::spawn_transport(executable, args, directory, sdk_module, true)
+        Self::spawn_transport(executable, args, directory, sdk_module, true, None)
     }
 
-    fn spawn_transport(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>, interactive: bool) -> Result<Self, String> {
+    pub(crate) fn spawn_confirmed(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>, interactive: bool, identity: DiagnosticIdentity) -> Result<Self, String> {
+        Self::spawn_transport(executable, args, directory, sdk_module, interactive, Some(identity))
+    }
+
+    fn spawn_transport(executable: &Path, args: &[String], directory: &Path, sdk_module: Option<&Path>, interactive: bool, diagnostic_identity: Option<DiagnosticIdentity>) -> Result<Self, String> {
+        use crate::diagnostics::{self, Event};
+        let generation_id = ulid::Ulid::new().to_string();
+        let started = std::time::Instant::now();
+        if let Some(identity) = &diagnostic_identity { diagnostics::emit(Event::PluginStarting, identity.fields(&generation_id)); }
         let executable = process_path(executable);
         let directory = process_path(directory);
         let mut command = Command::new(executable.as_ref());
@@ -92,14 +115,23 @@ impl PluginRuntime {
             use std::os::unix::process::CommandExt;
             command.as_std_mut().process_group(0);
         }
-        let mut child = command.spawn().map_err(|_| "dependency_missing: plugin entrypoint could not start".to_string())?;
+        let mut child = command.spawn().map_err(|_| {
+            if let Some(identity) = &diagnostic_identity {
+                let mut fields = identity.fields(&generation_id); fields.stage = Some("plugin.spawn"); fields.error_code = Some("unclassified"); fields.duration_ms = Some(started.elapsed().as_millis() as u64);
+                diagnostics::emit(Event::PluginStartFailed, fields);
+            }
+            "dependency_missing: plugin entrypoint could not start".to_string()
+        })?;
         let mut stdin = child.stdin.take().ok_or("internal: missing stdin")?;
         let mut stdout = child.stdout.take().ok_or("internal: missing stdout")?;
         let mut stderr = child.stderr.take().ok_or("internal: missing stderr")?;
         let (commands, mut command_rx) = mpsc::channel::<CommandMessage>(MAX_PENDING);
         let (notification_tx, notifications) = mpsc::channel(256);
-        let generation_id = ulid::Ulid::new().to_string();
         let stop_requested = Arc::new(AtomicBool::new(false));
+        let expected_stop = Arc::new(AtomicBool::new(false));
+        let expected_exit = expected_stop.clone();
+        let process_identity = diagnostic_identity.clone();
+        let process_generation = generation_id.clone();
         // Drain without retaining or broadcasting untrusted diagnostics or credentials.
         let stderr_task = tokio::spawn(async move {
             let mut bytes = [0u8; 4096];
@@ -198,24 +230,58 @@ impl PluginRuntime {
                 }
             };
             process_exited.store(true, Ordering::Release);
+            if reason.starts_with("invalid_request:") || reason.starts_with("protocol_incompatible:") {
+                if let Some(identity) = &process_identity {
+                    let mut fields = identity.fields(&process_generation); fields.error_code = Some("invalid_response");
+                    diagnostics::emit(Event::PluginProtocolRejected, fields);
+                }
+            }
             #[cfg(unix)]
             {
                 if let Some(pid) = child.id() { unsafe { libc::kill(-(pid as i32),libc::SIGKILL); } }
             }
             let _ = child.kill().await;
-            let _ = child.wait().await;
+            let status = child.wait().await.ok();
             stderr_task.abort();
             cleaned.store(true, Ordering::Release);
+            if let Some(identity) = &process_identity {
+                let mut fields = identity.fields(&process_generation);
+                fields.duration_ms = Some(started.elapsed().as_millis() as u64);
+                fields.exit_code = status.as_ref().and_then(std::process::ExitStatus::code);
+                #[cfg(unix)] { use std::os::unix::process::ExitStatusExt; fields.signal = status.as_ref().and_then(|status| status.signal()).map(|signal| signal as u32); }
+                let expected = expected_exit.load(Ordering::Acquire);
+                if expected { fields.outcome = Some("expected_stop"); }
+                else { fields.error_code = Some(crate::diagnostics::classify_error(reason)); }
+                diagnostics::emit(if expected { Event::PluginStopped } else { Event::PluginExited }, fields);
+            }
             for (_, reply) in pending { let _ = reply.send(Err(reason.into())); }
         });
-        Ok(Self { commands, generation_id, notifications: Arc::new(Mutex::new(notifications)), stop_requested, exited, cleanup_complete })
+        Ok(Self { commands, generation_id, notifications: Arc::new(Mutex::new(notifications)), stop_requested, exited, cleanup_complete,
+            expected_stop, diagnostic_identity, diagnostic_ready: Arc::new(AtomicBool::new(false)), diagnostic_protocol: if interactive { "2.1" } else { "2.0" } })
+    }
+
+    pub(crate) fn mark_diagnostic_ready(&self) {
+        if !self.diagnostic_ready.swap(true, Ordering::AcqRel) {
+            if let Some(identity) = &self.diagnostic_identity { crate::diagnostics::emit(crate::diagnostics::Event::PluginReady, identity.fields(&self.generation_id)); }
+        }
+    }
+    pub(crate) fn diagnostic_handshake_failed(&self, code: &'static str) {
+        if let Some(identity) = &self.diagnostic_identity {
+            if code == "contract_mismatch" {
+                let mut fields = identity.fields(&self.generation_id); fields.error_code = Some(code); fields.contract_version = Some(self.diagnostic_protocol);
+                crate::diagnostics::emit(crate::diagnostics::Event::PluginProtocolRejected, fields);
+            }
+            let mut fields = identity.fields(&self.generation_id); fields.stage = Some("plugin.handshake"); fields.error_code = Some(code);
+            if !self.diagnostic_ready.load(Ordering::Acquire) { crate::diagnostics::emit(crate::diagnostics::Event::PluginStartFailed, fields); }
+        }
     }
 
     pub async fn request(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
+        let started = std::time::Instant::now();
+        let request_id = ulid::Ulid::new().to_string();
         let (reply, response) = oneshot::channel();
-        let command = CommandMessage::Request { id: ulid::Ulid::new().to_string(), method: method.into(), params, reply };
-        self.commands.try_send(command).map_err(|_| "busy: plugin unavailable".to_string())?;
-        match tokio::time::timeout(timeout, response).await {
+        let command = CommandMessage::Request { id: request_id.clone(), method: method.into(), params, reply };
+        let result = if self.commands.try_send(command).is_err() { Err("busy: plugin unavailable".to_string()) } else { match tokio::time::timeout(timeout, response).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err("internal: plugin exited".into()),
             Err(_) => {
@@ -223,7 +289,17 @@ impl PluginRuntime {
                 let _ = self.commands.send(CommandMessage::Stop).await;
                 Err("timeout: plugin request expired".into())
             }
+        }};
+        if let Err(error) = &result {
+            if let Some(identity) = &self.diagnostic_identity {
+                let mut fields = identity.fields(&self.generation_id); fields.request_id = Some(request_id);
+                fields.operation = Some(match method { "capability.initialize" => "plugin.handshake", "capability.control" => "plugin.control", _ => "plugin.invoke" });
+                fields.duration_ms = Some(started.elapsed().as_millis() as u64); fields.error_code = Some(crate::diagnostics::classify_error(error));
+                fields.contract_version = Some(self.diagnostic_protocol);
+                crate::diagnostics::emit(crate::diagnostics::Event::PluginRequestFailed, fields);
+            }
         }
+        result
     }
 
     pub async fn reply(&self, id: Value, result: Result<Value, String>) -> Result<(), String> {
@@ -252,6 +328,7 @@ impl PluginRuntime {
     }
 
     pub async fn stop(&self) {
+        self.expected_stop.store(true, Ordering::Release);
         self.stop_requested.store(true, Ordering::Release);
         let _ = self.commands.send(CommandMessage::Stop).await;
     }
@@ -260,6 +337,44 @@ impl PluginRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn diagnostic_lifecycle_child() {
+        let Some(data) = std::env::var_os("AIBO_PLUGIN_DIAGNOSTIC_TEST") else { return; };
+        crate::diagnostics::initialize_global(data.into());
+        let identity = || DiagnosticIdentity { installation_id: "host-installation".into(), plugin_id: "dev.test.diagnostic".into(), plugin_version: "1.2.3".into(), contribution_id: "dev.test.diagnostic.provider".into() };
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let script = "const r=require('readline').createInterface({input:process.stdin});process.stderr.write('stderr-secret-canary');r.on('line',line=>{const {id}=JSON.parse(line);process.stdout.write(JSON.stringify({jsonrpc:'2.0',id,result:{protocol:'2.0',output:{secret:'response-secret-canary'}}})+'\\n');});";
+        let runtime = PluginRuntime::spawn_confirmed(Path::new("node"), &["-e".into(), script.into()], root, None, false, identity()).unwrap();
+        assert_eq!(runtime.request("capability.initialize", json!({"secret":"request-secret-canary"}), Duration::from_secs(5)).await.unwrap()["protocol"], "2.0");
+        runtime.mark_diagnostic_ready();
+        assert_eq!(runtime.request("capability.invoke", json!({"text":"chat-secret-canary"}), Duration::from_secs(5)).await.unwrap()["output"]["secret"], "response-secret-canary");
+        assert!(runtime.stop_and_wait().await);
+        let malformed = PluginRuntime::spawn_confirmed(Path::new("node"), &["-e".into(), "process.stdin.once('data',()=>process.stdout.write('protocol-secret-canary\\n'));".into()], root, None, false, identity()).unwrap();
+        assert!(malformed.request("capability.initialize", json!({}), Duration::from_secs(5)).await.is_err());
+        assert!(malformed.stop_and_wait().await);
+        assert!(PluginRuntime::spawn_confirmed(Path::new("/nonexistent/path-secret-canary"), &[], root, None, false, identity()).is_err());
+        assert!(crate::diagnostics::global().unwrap().shutdown());
+    }
+    #[test]
+    fn diagnostic_lifecycle_subprocess_preserves_business_response_and_excludes_content() {
+        let root = tempfile::tempdir().unwrap();
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "plugin_runtime::tests::diagnostic_lifecycle_child"])
+            .env("AIBO_PLUGIN_DIAGNOSTIC_TEST", root.path()).output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stdout));
+        let mut rows = Vec::<Value>::new();
+        for entry in std::fs::read_dir(root.path().join("logs")).unwrap() {
+            let path = entry.unwrap().path(); let bytes = std::fs::read(&path).unwrap();
+            assert!(!String::from_utf8_lossy(&bytes).contains("secret-canary"));
+            if path.extension().is_some_and(|extension| extension == "jsonl") { for line in String::from_utf8(bytes).unwrap().lines() { rows.push(serde_json::from_str(line).unwrap()); } }
+        }
+        for event in ["plugin.starting", "plugin.ready", "plugin.stopped", "plugin.start_failed", "plugin.exited_unexpectedly", "plugin.request_failed", "plugin.protocol_rejected"] {
+            assert!(rows.iter().any(|row| row["event"] == event), "{event}");
+        }
+        assert!(rows.iter().any(|row| row["event"] == "plugin.stopped" && row["outcome"] == "expected_stop"));
+        assert!(rows.iter().filter(|row| row["event"] == "plugin.starting").all(|row| row["plugin_version"] == "1.2.3"));
+    }
 
     #[cfg(windows)]
     #[tokio::test]

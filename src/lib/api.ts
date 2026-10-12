@@ -63,6 +63,13 @@ const workspaceWrites = createWorkspaceWriteController({
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+const diagnosticAccess = () => ({ headers: { 'Aibo-Diagnostic-Access': (window as Window & { __AIBO_DIAGNOSTIC_ACCESS__?: string }).__AIBO_DIAGNOSTIC_ACCESS__ ?? '' } });
+export const readDiagnosticLogStatus = (): Promise<import('./app/diagnostic-logs-controller').DiagnosticLogStatus> => invoke('get_diagnostic_log_status', {}, diagnosticAccess());
+export const openDiagnosticLogDirectory = (): Promise<void> => invoke('open_diagnostic_log_directory', {}, diagnosticAccess());
+export const diagnosticFrontendReady = (): Promise<void> => invoke('diagnostic_frontend_ready', {}, diagnosticAccess());
+export const diagnosticFrontendFailed = (): Promise<void> => invoke('diagnostic_frontend_failed', {}, diagnosticAccess());
+export const reportFrontendDiagnostic = (diagnostic: import('./frontend-diagnostics').FrontendDiagnostic): Promise<boolean> => invoke('report_frontend_diagnostic', { diagnostic }, diagnosticAccess());
+
 export const readLinkedFile = (sessionId:string,path:string,line:number|null): Promise<import('./app/file-preview-controller').FilePreview> =>
   invoke('read_linked_file', {sessionId,path,line});
 

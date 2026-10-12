@@ -1,6 +1,50 @@
 use super::*;
 use std::fs;
 
+#[tokio::test]
+async fn diagnostic_session_child() {
+    let Some(data) = std::env::var_os("AIBO_SESSION_DIAGNOSTIC_TEST") else { return; };
+    crate::diagnostics::initialize_global(data.into());
+    let (root, db, broker, host, session) = concurrent_session_fixture().await;
+    host.send_from("main", &session.id, "session-content-secret-canary", None).await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    let before = host.saved_binding(&session.id).await.unwrap().unwrap();
+    broker.stop_session(&session.id).await.unwrap();
+    host.resume_from("main", &session.id).await.unwrap();
+    let after = host.saved_binding(&session.id).await.unwrap().unwrap();
+    assert_eq!(before["nativeSessionId"], after["nativeSessionId"]);
+    assert!(host.send_from("main", &session.id, "", None).await.is_err());
+    host.send_from("main", &session.id, "cancel-content-secret-canary", None).await.unwrap();
+    host.cancel_from("main", &session.id).await.unwrap();
+    wait_for_turn(&host, &session.id).await;
+    host.close_from("main", &session.id).await.unwrap();
+    assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "closed");
+    let second = host.create_with_profile_from("main", "w", session.plugin_installation_id.as_ref().unwrap(), &session.agent, None).await.unwrap();
+    host.send_from("main", &second.id, "shutdown-content-secret-canary", None).await.unwrap();
+    assert!(host.shutdown().await);
+    assert!(host.live.lock().await.is_empty());
+    assert!(host.resume_from("main", &second.id).await.is_err(), "exit must prevent new runtime admission");
+    broker.stop_session(&session.id).await.unwrap(); db.close().await; fs::remove_dir_all(root).unwrap();
+    assert!(crate::diagnostics::global().unwrap().shutdown());
+}
+#[test]
+fn diagnostic_session_subprocess_observes_actual_operations_without_chat_content() {
+    let root = tempfile::tempdir().unwrap();
+    let result = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "session_host::tests::diagnostic_session_child"])
+        .env("AIBO_SESSION_DIAGNOSTIC_TEST", root.path()).output().unwrap();
+    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stdout));
+    let mut rows = Vec::<Value>::new();
+    for entry in fs::read_dir(root.path().join("logs")).unwrap() {
+        let path = entry.unwrap().path(); let bytes = fs::read(&path).unwrap();
+        assert!(!String::from_utf8_lossy(&bytes).contains("secret-canary"));
+        if path.extension().is_some_and(|ext| ext == "jsonl") { for line in String::from_utf8(bytes).unwrap().lines() { rows.push(serde_json::from_str(line).unwrap()); } }
+    }
+    for event in ["plugin.starting", "plugin.ready", "plugin.stopped", "session.operation_completed", "session.operation_failed", "session.recovery_completed"] { assert!(rows.iter().any(|row| row["event"] == event), "{event}"); }
+    for operation in ["session.create", "session.send", "session.cancel", "session.close"] { assert!(rows.iter().any(|row| row["operation"] == operation), "{operation}"); }
+    assert!(rows.iter().filter(|row| row["operation"] == "session.send" && row["event"] == "session.operation_completed").all(|row| ["requested", "request_completed", "turn_completed"].iter().any(|outcome| row["outcome"] == *outcome)));
+}
+
 fn replacement_package(root:&Path, version:&str) {
     let path=root.join("package/plugin.json");
     let mut manifest:Value=serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -530,6 +574,7 @@ async fn retired_agent_packages_and_unbound_history_cannot_start_execution() {
     let package = root.join("retired-package");
     fs::create_dir_all(&package).unwrap();
     let mut manifest: Value = serde_json::from_str(include_str!("../../fixtures/plugins/echo-agent/plugin.json")).unwrap();
+    manifest["platforms"] = json!([plugin_registry::platform()]);
     manifest["entrypoint"] = json!({"executable":"worker.mjs"});
     manifest["dependencies"] = json!([]);
     manifest["resources"] = json!([]);
@@ -1754,6 +1799,7 @@ async fn acp_echo_initial_session(without_ask: bool) -> (PathBuf, SqlitePool, Br
         fs::copy(fixtures.join("plugins/acp-echo").join(name), package.join(name)).unwrap();
     }
     let mut manifest: Value = serde_json::from_str(&fs::read_to_string(package.join("plugin.json")).unwrap()).unwrap();
+    manifest["platforms"] = json!([plugin_registry::platform()]);
     manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true},{"kind":"executable","name":"node","required":true}]);
     if without_ask {
         let controls = manifest["contributions"][0]["sessionControls"].as_array_mut().unwrap();

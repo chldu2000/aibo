@@ -27,6 +27,10 @@ struct Instance {
     input: ChildStdin,
     output: BufReader<ChildStdout>,
     failed: bool,
+    diagnostic: Option<crate::plugin_runtime::DiagnosticIdentity>,
+    started: std::time::Instant,
+    expected_stop: bool,
+    exit_reported: bool,
 }
 type Document = (String, String);
 static DOCUMENTS: OnceLock<std::sync::Mutex<HashMap<String, Document>>> = OnceLock::new();
@@ -71,7 +75,15 @@ fn package_file(root: &Path, relative: &str) -> Result<PathBuf, String> {
     Ok(file)
 }
 impl Instance {
+    fn diagnostic(&self, event: crate::diagnostics::Event, change: impl FnOnce(&mut crate::diagnostics::Fields)) {
+        if let Some(identity) = &self.diagnostic {
+            let mut fields = identity.fields(&self.id); fields.duration_ms = Some(self.started.elapsed().as_millis() as u64); change(&mut fields);
+            crate::diagnostics::emit(event, fields);
+        }
+    }
     async fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        let started = std::time::Instant::now();
+        let request_id = ulid::Ulid::new().to_string();
         if self.failed {
             return Err(
                 "Tool backend stopped. Close this tool and reopen it to start a new instance."
@@ -131,23 +143,45 @@ impl Instance {
         match result {
             Ok(response) => {
                 if let Some(error) = response["error"].as_str() {
+                    self.diagnostic(crate::diagnostics::Event::PluginRequestFailed, |fields| { fields.request_id = Some(request_id.clone()); fields.operation = Some("plugin.tool.request"); fields.error_code = Some("unclassified"); fields.duration_ms = Some(started.elapsed().as_millis() as u64); });
                     Err(error.chars().take(2048).collect())
                 } else {
                     Ok(response["result"].clone())
                 }
             }
             Err(error) => {
+                let code = match error.as_str() { "Tool backend timed out" => "timeout", "Tool backend exited" => "disconnected", "tool protocol mismatch" | "invalid tool response envelope" => "invalid_response", _ => "unclassified" };
+                self.diagnostic(crate::diagnostics::Event::PluginRequestFailed, |fields| { fields.request_id = Some(request_id); fields.operation = Some(match method { "initialize" => "plugin.handshake", "shutdown" => "plugin.tool.shutdown", _ => "plugin.tool.request" }); fields.error_code = Some(code); fields.duration_ms = Some(started.elapsed().as_millis() as u64); });
+                if code == "invalid_response" { self.diagnostic(crate::diagnostics::Event::PluginProtocolRejected, |fields| { fields.error_code = Some(code); }); }
                 self.failed = true;
                 let _ = self.child.start_kill();
+                if !self.expected_stop && !self.exit_reported {
+                    if let Ok(Some(status)) = self.child.try_wait() {
+                        self.exit_reported = true;
+                        self.diagnostic(crate::diagnostics::Event::PluginExited, |fields| { fields.error_code = Some(code); fields.exit_code = status.code();
+                            #[cfg(unix)] { use std::os::unix::process::ExitStatusExt; fields.signal = status.signal().map(|signal| signal as u32); }
+                        });
+                    }
+                }
                 Err(error)
             }
         }
     }
     async fn stop(&mut self) {
+        let unexpected = self.failed && !self.expected_stop;
+        self.expected_stop = true;
         let _ =
             tokio::time::timeout(Duration::from_secs(2), self.call("shutdown", Value::Null)).await;
         let _ = self.child.start_kill();
-        let _ = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await;
+        let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await.ok().and_then(Result::ok);
+        if !self.exit_reported && status.is_some() {
+            self.exit_reported = true;
+            self.diagnostic(if unexpected { crate::diagnostics::Event::PluginExited } else { crate::diagnostics::Event::PluginStopped }, |fields| {
+                if unexpected { fields.error_code = Some("disconnected"); } else { fields.outcome = Some("expected_stop"); }
+                fields.exit_code = status.as_ref().and_then(std::process::ExitStatus::code);
+                #[cfg(unix)] { use std::os::unix::process::ExitStatusExt; fields.signal = status.as_ref().and_then(|status| status.signal()).map(|signal| signal as u32); }
+            });
+        }
     }
 }
 
@@ -229,8 +263,10 @@ pub(crate) async fn open_tool_view(
             .kill_on_drop(true);
         crate::isolate_process_tree(&mut command);
         #[cfg(windows)] command.creation_flags(0x08000000);
-        let mut child = command.spawn().map_err(|e| e.to_string())?;
         let id = ulid::Ulid::new().to_string();
+        let diagnostic = crate::plugin_runtime::DiagnosticIdentity { installation_id: installation_id.clone(), plugin_id: manifest["pluginId"].as_str().unwrap_or("").into(), plugin_version: manifest["version"].as_str().unwrap_or("").into(), contribution_id: contribution_id.clone() };
+        crate::diagnostics::emit(crate::diagnostics::Event::PluginStarting, diagnostic.fields(&id));
+        let mut child = command.spawn().map_err(|e| { let mut fields = diagnostic.fields(&id); fields.stage = Some("plugin.spawn"); fields.error_code = Some("unclassified"); crate::diagnostics::emit(crate::diagnostics::Event::PluginStartFailed, fields); e.to_string() })?;
         let mut instance = Instance {
             label: format!(
                 "{} · {} ({})",
@@ -246,12 +282,16 @@ pub(crate) async fn open_tool_view(
             output: BufReader::new(child.stdout.take().unwrap()),
             child,
             failed: false,
+            diagnostic: Some(diagnostic), started: std::time::Instant::now(), expected_stop: false, exit_reported: false,
         };
-        let ready = instance.call("initialize",json!({"workspacePath":workspace.path,"workspaceId":workspace_id,"windowId":window.label()})).await?;
+        let ready = instance.call("initialize",json!({"workspacePath":workspace.path,"workspaceId":workspace_id,"windowId":window.label()})).await.map_err(|error| { instance.diagnostic(crate::diagnostics::Event::PluginStartFailed, |fields| { fields.stage = Some("plugin.handshake"); fields.error_code = Some("unclassified"); }); error })?;
         if ready["protocol"] != "aibo.tool-view/1" {
+            instance.diagnostic(crate::diagnostics::Event::PluginProtocolRejected, |fields| { fields.error_code = Some("contract_mismatch"); fields.contract_version = Some("aibo.tool-view/1"); });
+            instance.diagnostic(crate::diagnostics::Event::PluginStartFailed, |fields| { fields.stage = Some("plugin.handshake"); fields.error_code = Some("contract_mismatch"); });
             instance.stop().await;
             return Err("unsupported tool backend protocol".into());
         }
+        instance.diagnostic(crate::diagnostics::Event::PluginReady, |_| {});
         running.insert(key.clone(), instance);
     }
     let id = &running[&key].id;
@@ -381,6 +421,36 @@ pub(crate) async fn close_tool_view(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn diagnostic_terminal_child() {
+        let Some(data) = std::env::var_os("AIBO_TOOL_DIAGNOSTIC_TEST") else { return; };
+        crate::diagnostics::initialize_global(data.into());
+        let script = r#"node -e 'const r=require("readline").createInterface({input:process.stdin});r.on("line",line=>{JSON.parse(line);console.log(JSON.stringify({protocol:"aibo.tool-view/1",result:{protocol:"aibo.tool-view/1",output:"terminal-output-secret-canary"}}));});'"#;
+        let mut instance = fixture(script).await;
+        instance.diagnostic = Some(crate::plugin_runtime::DiagnosticIdentity { installation_id: "host-tool-installation".into(), plugin_id: "dev.test.tool".into(), plugin_version: "1.0.0".into(), contribution_id: "dev.test.tool.view".into() });
+        instance.diagnostic(crate::diagnostics::Event::PluginStarting, |_| {});
+        instance.call("initialize", json!({})).await.unwrap();
+        instance.diagnostic(crate::diagnostics::Event::PluginReady, |_| {});
+        assert_eq!(instance.call("request", json!({"command":"terminal-input-secret-canary"})).await.unwrap()["output"], "terminal-output-secret-canary");
+        instance.stop().await;
+        assert!(crate::diagnostics::global().unwrap().shutdown());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn diagnostic_terminal_subprocess_keeps_terminal_content_out_of_files() {
+        let root = tempfile::tempdir().unwrap();
+        let result = std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact", "tool_views::tests::diagnostic_terminal_child"])
+            .env("AIBO_TOOL_DIAGNOSTIC_TEST", root.path()).output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stdout));
+        let mut events = Vec::new();
+        for entry in std::fs::read_dir(root.path().join("logs")).unwrap() {
+            let path = entry.unwrap().path(); let data = std::fs::read_to_string(&path).unwrap();
+            assert!(!data.contains("secret-canary"));
+            if path.extension().is_some_and(|extension| extension == "jsonl") { for line in data.lines() { let row: Value = serde_json::from_str(line).unwrap(); events.push(row["event"].as_str().unwrap().to_owned()); } }
+        }
+        for event in ["plugin.starting", "plugin.ready", "plugin.stopped"] { assert!(events.iter().any(|actual| actual == event)); }
+    }
     use super::*;
     #[test]
     fn ownership_is_unambiguous_and_window_local() {
@@ -421,7 +491,7 @@ mod tests {
         let mut command = Command::new("/bin/sh");
         command.args(["-c",script]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
         let mut child = command.spawn().unwrap();
-        Instance {label:"test".into(),id:"test".into(),owner:"window".into(),workspace:"workspace".into(),installation:"installation".into(),input:child.stdin.take().unwrap(),output:BufReader::new(child.stdout.take().unwrap()),child,failed:false}
+        Instance {label:"test".into(),id:"test".into(),owner:"window".into(),workspace:"workspace".into(),installation:"installation".into(),input:child.stdin.take().unwrap(),output:BufReader::new(child.stdout.take().unwrap()),child,failed:false,diagnostic:None,started:std::time::Instant::now(),expected_stop:false,exit_reported:false}
     }
 
     #[cfg(unix)]

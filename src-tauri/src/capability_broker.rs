@@ -16,7 +16,8 @@ use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::{Duration, Instant}};
 #[cfg(test)]
-use std::sync::atomic::{AtomicBool,Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use tokio::sync::{watch, Mutex, Semaphore};
 
 const MAX_INSTANCES: usize = 32;
@@ -143,10 +144,11 @@ pub(crate) struct Broker {
     mutations: Arc<Mutex<()>>,
     slots: Arc<Mutex<HashMap<RuntimeKey, Arc<Slot>>>>,
     flights: Arc<Mutex<HashMap<(String, String), Flight>>>,
+    shutting_down: Arc<std::sync::atomic::AtomicBool>,
     #[cfg(test)] fail_next_dynamic_binding:Arc<AtomicBool>,
 }
 impl Broker {
-    pub fn new(db: SqlitePool) -> Self { Self { db, sdk_module:None, mutations: Default::default(), slots: Default::default(), flights: Default::default(), #[cfg(test)] fail_next_dynamic_binding:Default::default() } }
+    pub fn new(db: SqlitePool) -> Self { Self { db, sdk_module:None, mutations: Default::default(), slots: Default::default(), flights: Default::default(), shutting_down: Default::default(), #[cfg(test)] fail_next_dynamic_binding:Default::default() } }
     #[cfg(test)]
     pub(crate) async fn hold_admission_for_test(&self) -> impl Drop {
         self.slots.clone().lock_owned().await
@@ -172,6 +174,24 @@ impl Broker {
         let retired:Vec<_>=keys.into_iter().filter_map(|key|slots.remove(&key)).collect();drop(slots);
         for slot in retired {if let Some(runtime)=slot.runtime.lock().await.clone() {if !runtime.stop_and_wait().await {return Err(fail_display("outcome_unknown", "Session process cleanup did not finish", "native.broker.sessionCleanup"));}}}
         Ok(())
+    }
+    /// Application exit stops every host-owned runtime as an expected stop.
+    /// It uses existing cancellation signals; bindings and recovery stay intact.
+    pub(crate) async fn shutdown_all(&self) -> bool {
+        self.shutting_down.store(true, Ordering::Release);
+        tokio::time::timeout(Duration::from_secs(6), async {
+            for flight in self.flights.lock().await.values() { let _ = flight.cancel.send(true); }
+            let retired: Vec<_> = self.slots.lock().await.drain().map(|(_, slot)| slot).collect();
+            let mut cleanup = tokio::task::JoinSet::new();
+            for slot in retired { cleanup.spawn(async move {
+                let runtime = slot.runtime.lock().await.clone();
+                match runtime { Some(runtime) => runtime.stop_and_wait().await, None => true }
+            }); }
+            let mut complete = true;
+            while let Some(result) = cleanup.join_next().await { complete &= result.unwrap_or(false); }
+            while !self.flights.lock().await.is_empty() { tokio::time::sleep(Duration::from_millis(10)).await; }
+            complete
+        }).await.unwrap_or(false)
     }
     // Serialize desktop lifecycle mutations so re-enable cannot race with drain/uninstall.
     pub async fn mutation_guard(&self) -> tokio::sync::OwnedMutexGuard<()> { self.mutations.clone().lock_owned().await }
@@ -365,6 +385,7 @@ impl Broker {
     async fn slot(&self, provider: &Provider, scope: &Scope) -> Result<Arc<Slot>, Failure> {
         let key = (provider.installation_id.clone(),provider.contribution_id.clone(),scope.clone());
         let mut slots = self.slots.lock().await;
+        if self.shutting_down.load(Ordering::Acquire) { return Err(fail_display("cancelled", "Invocation was cancelled", "native.broker.cancelled")); }
         let mut expired = vec![];
         for (key,slot) in slots.iter() {
             if slot.permit.available_permits() == 1 && slot.touched.lock().await.elapsed() > IDLE_TTL { expired.push(key.clone()); }
@@ -391,6 +412,7 @@ impl Broker {
     }
     fn invoke_selected_observed<'a>(&'a self, caller: &'a str, request: Request, provider: Provider, parent: Option<Chain>, write: Option<writes::WriteContext>, observer: Option<EventObserver>) -> std::pin::Pin<Box<dyn std::future::Future<Output=Result<Response,Failure>> + Send + 'a>> {
         Box::pin(async move {
+        if self.shutting_down.load(Ordering::Acquire) { return Err(fail_display("cancelled", "Invocation was cancelled", "native.broker.cancelled")); }
         if provider.operation["effect"] != "read" && write.is_none() { return Err(fail_display("permission_denied", "Write operation requires host approval", "native.broker.writeApproval")); }
         let workspace = self.workspace(&request.scope).await?;
         self.validate_turn(&request).await?;
@@ -425,6 +447,7 @@ impl Broker {
                 }
             }
             if flights.len() >= MAX_ACTIVE || flights.contains_key(&key) { return Err(fail_display("busy", "Invocation limit or duplicate request ID", "native.broker.invocationLimit")); }
+            if self.shutting_down.load(Ordering::Acquire) { return Err(fail_display("cancelled", "Invocation was cancelled", "native.broker.cancelled")); }
             flights.insert(key.clone(),Flight { cancel, installation_id: provider.installation_id.clone(), contribution_id: provider.contribution_id.clone(), workspace_id: workspace.as_ref().map(|workspace|workspace.id.clone()), scope:request.scope.clone(), interaction:None });
         }
         let id = ulid::Ulid::new().to_string();
@@ -471,7 +494,12 @@ impl Broker {
     }
     async fn execute(&self, id: &str, request: &Request, provider: &Provider, slot: &Slot, workspace: Option<&crate::Workspace>, chain: &Chain, observer: Option<&EventObserver>) -> Result<Response, Failure> {
         let protocol = provider.manifest["protocols"]["runtime"]["min"].as_str().unwrap();
-        self.check_executables(&provider.manifest, chain).await?;
+        self.check_executables(&provider.manifest, chain).await.map_err(|error| {
+            crate::diagnostics::emit(crate::diagnostics::Event::PluginStartFailed, crate::diagnostics::Fields {
+                installation_id: Some(provider.installation_id.clone()), plugin_id: Some(provider.plugin_id.clone()), plugin_version: provider.manifest["version"].as_str().map(str::to_owned), contribution_id: Some(provider.contribution_id.clone()),
+                stage: Some("plugin.prepare"), error_code: Some("provider_unavailable"), ..Default::default()
+            }); error
+        })?;
         let prepare = async {
         let current: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plugin_installations WHERE id=? AND enabled=1 AND installed=1").bind(&provider.installation_id).fetch_one(&self.db).await.map_err(database)?;
         if current != 1 { return Err(fail_display("provider_unavailable", "Provider was disabled", "native.broker.disabled")); }
@@ -497,10 +525,13 @@ impl Broker {
                     let url = tauri::Url::from_file_path(preload).map_err(|_|fail_display("provider_unavailable", "Host SDK path is invalid", "native.broker.sdkPath"))?;
                     args.splice(0..0, ["--import".into(), url.to_string()]);
                 }
-                crate::node_runtime::for_manifest(&provider.manifest).ok_or_else(||fail_display("provider_unavailable", "Compatible Node is unavailable; open Settings → Runtime to download or select Node","native.broker.nodeUnavailable"))?
+                crate::node_runtime::for_manifest(&provider.manifest).ok_or_else(|| {
+                    crate::diagnostics::emit(crate::diagnostics::Event::PluginStartFailed, crate::diagnostics::Fields { installation_id: Some(provider.installation_id.clone()), plugin_id: Some(provider.plugin_id.clone()), plugin_version: provider.manifest["version"].as_str().map(str::to_owned), contribution_id: Some(provider.contribution_id.clone()), stage: Some("plugin.prepare"), error_code: Some("provider_unavailable"), ..Default::default() });
+                    fail_display("provider_unavailable", "Compatible Node is unavailable; open Settings → Runtime to download or select Node","native.broker.nodeUnavailable")
+                })?
             } else { entrypoint };
-            let runtime = if protocol == "2.1" { PluginRuntime::spawn_interactive(&executable,&args,&provider.directory,self.sdk_module.as_deref()) }
-                else { PluginRuntime::spawn_capability(&executable,&args,&provider.directory) }
+            let runtime = PluginRuntime::spawn_confirmed(&executable,&args,&provider.directory,self.sdk_module.as_deref(),protocol == "2.1",
+                crate::plugin_runtime::DiagnosticIdentity { installation_id: provider.installation_id.clone(), plugin_id: provider.plugin_id.clone(), plugin_version: provider.manifest["version"].as_str().unwrap_or("").into(), contribution_id: provider.contribution_id.clone() })
                 .map_err(|_|fail_display("provider_unavailable", "Capability process could not start", "native.broker.processStart"))?;
             *active = Some(runtime);
         }
@@ -509,11 +540,13 @@ impl Broker {
         // Handshake is idempotent for an existing generation, and every invocation
         // checks the exact contribution/contract/operation instead of trusting a capability name.
         let private_data = crate::plugin_storage::directory(&provider.directory,&provider.plugin_id,&provider.installation_id,&slot.id).map_err(database)?;
-        let handshake = runtime.request("capability.initialize",json!({"protocol":protocol,"instanceId":slot.id,"privateData":{"path":private_data,"formatVersion":1},"generationId":runtime.generation_id,"installationId":provider.installation_id,"pluginId":provider.plugin_id,"pluginVersion":provider.manifest["version"],"contributionId":provider.contribution_id}),Duration::from_secs(5)).await.map_err(transport)?;
+        let handshake = runtime.request("capability.initialize",json!({"protocol":protocol,"instanceId":slot.id,"privateData":{"path":private_data,"formatVersion":1},"generationId":runtime.generation_id,"installationId":provider.installation_id,"pluginId":provider.plugin_id,"pluginVersion":provider.manifest["version"],"contributionId":provider.contribution_id}),Duration::from_secs(5)).await.map_err(|error| { runtime.diagnostic_handshake_failed(crate::diagnostics::classify_error(&error)); transport(error) })?;
         let expected = json!({"capability":request.capability,"version":request.version,"operationId":provider.operation["id"]});
         if handshake["protocol"] != protocol || handshake["pluginId"] != provider.plugin_id || handshake["pluginVersion"] != provider.manifest["version"] || handshake["generationId"] != runtime.generation_id || !handshake["operations"].as_array().is_some_and(|operations|operations.contains(&expected)) {
+            runtime.diagnostic_handshake_failed("contract_mismatch");
             return Err(fail_display("incompatible_version", "Runtime did not negotiate the declared operation", "native.broker.operationNegotiation"));
         }
+        runtime.mark_diagnostic_ready();
         sqlx::query("UPDATE capability_invocations SET generation_id=? WHERE id=?").bind(&runtime.generation_id).bind(id).execute(&self.db).await.map_err(database)?;
         Ok::<_,Failure>((runtime, handshake["operations"].clone()))
         };

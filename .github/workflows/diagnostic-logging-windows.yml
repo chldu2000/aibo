@@ -1,0 +1,62 @@
+name: Windows diagnostic logging acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'diagnostic-logging-windows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  native-diagnostics:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout the selected source revision
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up native MSVC Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies and build frontend resources
+        run: |
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test actual Windows diagnostic files and junction rejection
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          cargo test --manifest-path src-tauri/Cargo.toml --lib diagnostics::tests -- --test-threads=1 *> artifacts/diagnostics-rust.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path src-tauri/Cargo.toml --lib diagnostics_ipc::tests -- --test-threads=1 *> artifacts/diagnostics-ipc-rust.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run the installed no-console release application
+        run: |
+          & ./probes/diagnostic-logging-windows-release.ps1 -EvidencePath (Join-Path $PWD 'artifacts/windows-release.json') *> artifacts/windows-release.log
+
+      - name: Save evidence for this revision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-diagnostic-logging-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error

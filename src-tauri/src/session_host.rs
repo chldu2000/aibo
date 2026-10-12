@@ -86,6 +86,14 @@ pub(crate) struct SessionHost {
     turn_baselines:Arc<Mutex<HashMap<String,Option<WorkspaceSnapshot>>>>,app:Option<tauri::AppHandle>,
 }
 impl SessionHost {
+    pub(crate) async fn shutdown(&self) -> bool {
+        tokio::time::timeout(Duration::from_secs(6), async {
+            for run in self.live.lock().await.values() { run.cancel.store(true, Ordering::Release); }
+            let complete = self.broker.shutdown_all().await;
+            while !self.live.lock().await.is_empty() { tokio::time::sleep(Duration::from_millis(10)).await; }
+            complete
+        }).await.unwrap_or(false)
+    }
     pub fn new(db:SqlitePool,broker:Broker)->Self {Self {db,broker,history_reader:Default::default(),operations:Default::default(),database_writes:Default::default(),live:Default::default(),pending_tools:Default::default(),turn_baselines:Default::default(),app:None}}
     // Serialize each session's open + operation + recovery persistence, not the
     // whole host. Weak entries disappear once callers and waiters have left.
@@ -143,6 +151,7 @@ impl SessionHost {
         self.prepare_with_profile_display(workspace_id,installation_id,contribution_id,profile).await.map_err(|error|error.diagnostic)
     }
     pub async fn prepare_with_profile_display(&self,workspace_id:&str,installation_id:&str,contribution_id:&str,profile:Option<execution_profile::ResolvedExecutionProfile>)->Result<Session,HostMessage> {
+        let mut diagnostic = crate::diagnostics::Operation::begin("session.create");
         let workspace=crate::workspace_by_id(&self.db,workspace_id).await.map_err(crate::ui_i18n::core_message)?;
         if workspace.trust!="trusted" {return Err(session_error("native.session.prepareTrust","permission_denied: workspace trust required"));}
         let raw:Option<String>=sqlx::query_scalar("SELECT manifest_json FROM plugin_installations WHERE id=? AND enabled=1 AND installed=1")
@@ -152,6 +161,7 @@ impl SessionHost {
             return Err(session_error("native.session.contributionMissing","provider_unavailable: session contribution is missing"));
         }
         let id=ulid::Ulid::new().to_string();let now=crate::now_iso();
+        diagnostic.fields.session_id = Some(id.clone());
         let _guard=self.session_operation(&id).await;
         let backend = execution_profile::installation_backend(&self.db, installation_id, contribution_id).await?;
         let use_default = profile.is_none();
@@ -163,7 +173,9 @@ impl SessionHost {
         sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES(?,?,?,?,'starting',?,?,?)")
             .bind(&id).bind(workspace_id).bind(contribution_id).bind(crate::DEFAULT_CAPABILITY_SESSION_LABEL).bind(&now).bind(&now).bind(installation_id).execute(&self.db).await.map_err(|e|e.to_string())?;
         execution_profile::save_for_session(&self.db,&id,&profile).await.map_err(|e|e.to_string())?;
-        crate::session_by_id(&self.db,&id).await.map_err(crate::ui_i18n::core_message)
+        let session = crate::session_by_id(&self.db,&id).await.map_err(crate::ui_i18n::core_message)?;
+        diagnostic.completed("host_created");
+        Ok(session)
     }
     pub async fn resume_from(&self,caller:&str,session_id:&str)->Result<(),String> {
         self.resume_from_display(caller,session_id).await.map_err(|error|error.diagnostic)
@@ -179,8 +191,13 @@ impl SessionHost {
         result
     }
     async fn open_display(&self,caller:&str,session_id:&str)->Result<(),HostMessage> {
-        let (session,manifest)=self.metadata_display(session_id).await?;
-        if session.archived || session.state=="closed" {return Err(session_error("native.session.closed","invalid_session: session is closed"));}
+        let (session,manifest)=self.metadata_display(session_id).await.map_err(|error| {
+            crate::diagnostics::emit(crate::diagnostics::Event::SessionFailed, crate::diagnostics::Fields { operation: Some("session.resume"), error_code: Some(crate::diagnostics::classify_error(&error.diagnostic)), ..Default::default() }); error
+        })?;
+        if session.archived || session.state=="closed" {
+            crate::diagnostics::emit(crate::diagnostics::Event::SessionFailed, crate::diagnostics::Fields { operation: Some("session.resume"), session_id: Some(session.id.clone()), error_code: Some("invalid_session"), ..Default::default() });
+            return Err(session_error("native.session.closed","invalid_session: session is closed"));
+        }
         let previous=self.saved_binding_display(session_id).await?;
         if previous.is_some() {
             let saved_generation:String=sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
@@ -188,10 +205,14 @@ impl SessionHost {
             let installation=session.plugin_installation_id.as_deref().ok_or_else(||session_error("native.session.newCapabilitySession","history_only"))?;
             if self.broker.session_runtime_generation(installation,&session.agent,session_id).await.as_deref()==Some(saved_generation.as_str()) {return Ok(());}
         }
+        let mut diagnostic = crate::diagnostics::Operation::begin(if previous.is_some() { "session.resume" } else { "session.create" });
+        diagnostic.fields.session_id = Some(session.id.clone());
         let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(crate::ui_i18n::core_message)?.profile;
         let binding=Self::binding(&session,"aibo.session.open")?;
         let request=Request {scope:binding.scope.clone(),capability:binding.capability.clone(),version:binding.version.clone(),request_id:ulid::Ulid::new().to_string(),turn_id:None,input:json!({"mode":if previous.is_some(){"resume"}else{"create"},"executionProfile":profile.enforced,"recovery":previous.as_ref().map(|b|&b["recovery"])})};
-        let result=self.broker.invoke_bound(caller,request,&binding).await.map_err(crate::capability_broker::Failure::into_host_message)?;
+        diagnostic.fields.request_id = Some(request.request_id.clone());
+        let result=self.broker.invoke_bound(caller,request,&binding).await.map_err(|error| { diagnostic.fields.error_code = Some(crate::diagnostics::classify_error(&format!("{}:", error.code))); error.into_host_message() })?;
+        diagnostic.fields.generation_id = Some(result.generation_id.clone());
         let negotiated = crate::session_contract::negotiate(&manifest, &session.agent, &result.output["capabilities"], &result.negotiated_operations);
         let now=crate::now_iso();
         let document=json!({"schema":"aibo.session-binding/v2","sessionId":session_id,"pluginInstallationId":session.plugin_installation_id,"pluginId":manifest["pluginId"],"pluginVersion":manifest["version"],"agentId":session.agent,"nativeSessionId":result.output["nativeSessionId"],"runtimeProtocolVersion":"2.1","recovery":result.output["recovery"],"createdAt":previous.as_ref().map(|b|b["createdAt"].clone()).unwrap_or(json!(now)),"updatedAt":now});
@@ -201,7 +222,9 @@ impl SessionHost {
             .bind(session_id).bind(result.output["nativeSessionId"].as_str()).bind(&result.generation_id).bind(&now).bind(document.to_string()).bind(json!(negotiated).to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         sqlx::query("UPDATE sessions SET state='idle',updated_at=? WHERE id=?").bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         if previous.is_some() { Self::note_context_resets(&mut tx, session_id, &result.generation_id, &now).await?; }
-        tx.commit().await.map_err(|e|e.to_string())?;Ok(())
+        tx.commit().await.map_err(|e|e.to_string())?;
+        if previous.is_some() { diagnostic.recovered(); } else { diagnostic.completed("request_completed"); }
+        Ok(())
     }
     /// A context reset keeps the native session binding, so a resume in a new runtime restores
     /// whatever the agent stored under it. The first resume after each reset says so once.
@@ -267,10 +290,12 @@ impl SessionHost {
         self.run_admitted(caller, session_id, text, approval, false, None).await.map_err(|error|error.diagnostic)
     }
     async fn run_admitted(&self,caller:&str,session_id:&str,text:&str,approval:Option<crate::workspace_write_runs::Request>,goal_resume:bool,queue_id:Option<&str>)->Result<(),crate::ui_i18n::HostMessage> {
+        let mut diagnostic = crate::diagnostics::Operation::begin("session.send");
         if text.trim().is_empty() || text.len()>200_000 {return Err(session_error("native.session.promptLength","invalid_input: prompt length"));}
         if self.live.lock().await.contains_key(session_id) {return Err(session_error("native.session.activeInvocation","busy: session has an active invocation"));}
         self.open_display(caller,session_id).await?;
         let (session,manifest)=self.metadata_display(session_id).await?;
+        diagnostic.fields.session_id = Some(session.id.clone());
         if goal_resume && !session.capabilities.iter().any(|capability| capability == "goal.resume") {return Err(HostMessage::with_diagnostic("native.session.unsupportedCapability",json!({"capability":"goal.resume"}),"capability_unsupported: goal.resume"));}
         let saved=self.saved_binding_display(session_id).await?.ok_or_else(||session_error("native.session.nativeBindingMissing","invalid_session: no native binding"))?;
         let profile=crate::session_execution_profile(&self.db,session_id).await.map_err(crate::ui_i18n::core_message)?.profile.enforced;
@@ -293,6 +318,7 @@ impl SessionHost {
             Some(Arc::new(crate::session_snapshot_timeline(&response.output, session_id)))
         } else { None };
         let turn=ulid::Ulid::new().to_string();let message=ulid::Ulid::new().to_string();let now=crate::now_iso();
+        diagnostic.fields.turn_id = Some(turn.clone()); diagnostic.fields.request_id = Some(turn.clone());
         let workspace=crate::workspace_by_id(&self.db,&session.workspace_id).await.map_err(crate::ui_i18n::core_message)?;
         let baseline=capture_workspace(Path::new(&workspace.path)).await.ok();
         let mut live=self.live.lock().await;
@@ -325,6 +351,8 @@ impl SessionHost {
         let observer=self.observer(session.clone(),saved.clone(),caller.into(),turn.clone(),Some(turn.clone()),write);
         let host=self.clone();let caller=caller.to_owned();
         tokio::spawn(async move {
+            let mut diagnostic = crate::diagnostics::Operation::begin("session.send");
+            diagnostic.fields.session_id = Some(session.id.clone()); diagnostic.fields.turn_id = Some(turn.clone()); diagnostic.fields.request_id = Some(turn.clone());
             let execution=async {
                 if run.cancel.load(Ordering::Acquire) {return Err(session_error("native.session.cancelledBeforeDispatch","cancelled: turn cancelled before dispatch"));}
                 let result=if let Some(approval)=approval.filter(|_|write) {
@@ -342,11 +370,14 @@ impl SessionHost {
             tokio::pin!(execution);
             let cancel=async {loop {if run.cancel.load(Ordering::Acquire) && host.broker.cancel(&caller,&turn).await {break;}tokio::time::sleep(Duration::from_millis(10)).await;}};
             let result=tokio::select! {result=&mut execution=>result,_=cancel=>execution.await};
+            if let Ok(response) = &result { diagnostic.fields.generation_id = Some(response.generation_id.clone()); }
+            if let Err(error) = &result { diagnostic.fields.error_code = Some(crate::diagnostics::classify_error(&error.diagnostic)); }
             run.phase.send_replace(TurnPhase::Settling);
             let result = match result {
                 Ok(response) => host.save_recovery_display(&session.id, &response).await,
                 Err(error) => Err(error),
             };
+            if result.is_ok() { diagnostic.completed("request_completed"); } else { drop(diagnostic); }
             if let Err(error) = result {
                 let failure = async {
                     let generation: String = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
@@ -370,6 +401,7 @@ impl SessionHost {
             run.phase.send_replace(TurnPhase::Finished);
             host.schedule_queue(session.id.clone());
         });
+        diagnostic.completed("requested");
         Ok(())
     }
     async fn save_recovery_display(&self,session_id:&str,response:&Response)->Result<(),HostMessage> {
@@ -502,12 +534,16 @@ impl SessionHost {
         self.cancel_admitted(caller, session_id).await
     }
     async fn cancel_admitted(&self,caller:&str,session_id:&str)->Result<(),HostMessage> {
+        let mut diagnostic = crate::diagnostics::Operation::begin("session.cancel");
+        let mut confirmed = false;
         if let Some(run)=self.live.lock().await.get(session_id).cloned() {
+            diagnostic.fields.session_id = Some(session_id.into()); diagnostic.fields.turn_id = Some(run.request_id.clone()); diagnostic.fields.request_id = Some(run.request_id.clone());
             if run.caller!=caller {return Err(session_error("native.session.otherWindow","permission_denied: invocation belongs to another window"));}
             self.pause_queue(session_id).await?;
-            run.cancel.store(true,Ordering::Release);self.broker.cancel(caller,&run.request_id).await;
+            run.cancel.store(true,Ordering::Release);confirmed = self.broker.cancel(caller,&run.request_id).await;
         }
         self.pause_queue(session_id).await?;
+        diagnostic.completed(if confirmed { "requested" } else { "unknown" });
         Ok(())
     }
     pub async fn close_from(&self,caller:&str,session_id:&str)->Result<(),String> {
@@ -519,12 +555,16 @@ impl SessionHost {
         self.close_admitted(caller, session_id).await
     }
     pub(crate) async fn close_admitted(&self,caller:&str,session_id:&str)->Result<(),HostMessage> {
+        let mut diagnostic = crate::diagnostics::Operation::begin("session.close");
         // Recheck after admission: a queued send may have started in between.
         self.cancel_admitted(caller,session_id).await?;
         tokio::time::timeout(Duration::from_secs(7),async {while self.live.lock().await.contains_key(session_id) {tokio::time::sleep(Duration::from_millis(10)).await;}}).await.map_err(|_|session_error("native.session.stillStopping","busy: session is still stopping"))?;
         self.broker.stop_session(session_id).await.map_err(crate::capability_broker::Failure::into_host_message)?;
         sqlx::query("UPDATE session_bindings SET generation_id=NULL WHERE session_id=?").bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
-        sqlx::query("UPDATE sessions SET state='closed',updated_at=? WHERE id=?").bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;Ok(())
+        let result = sqlx::query("UPDATE sessions SET state='closed',updated_at=? WHERE id=?").bind(crate::now_iso()).bind(session_id).execute(&self.db).await.map_err(|e|e.to_string())?;
+        if result.rows_affected() > 0 { diagnostic.fields.session_id = Some(session_id.into()); }
+        diagnostic.completed("request_completed");
+        Ok(())
     }
     pub async fn archive_from(&self,caller:&str,session_id:&str)->Result<Session,String> {
         self.archive_from_display(caller,session_id).await.map_err(|error|error.diagnostic)

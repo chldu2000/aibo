@@ -199,6 +199,18 @@ impl SessionHost {
             sqlx::query("INSERT INTO agent_events(event_id,session_id,generation_id,sequence,occurred_at,event_type,turn_id,payload_json,schema_version) VALUES(?,?,?,?,?,?,?,?,'2.0')")
                 .bind(event_id).bind(session_id).bind(generation).bind(sequence).bind(now).bind(kind).bind(turn_id).bind(event.to_string()).execute(&mut *tx).await.map_err(|e|e.to_string())?;
         tx.commit().await.map_err(|e|e.to_string())?;
+        if matches!(kind, "turn.completed" | "turn.failed") {
+            let status = if kind == "turn.failed" { "failed" } else { p["payload"]["status"].as_str().unwrap_or("unknown") };
+            let fields = || crate::diagnostics::Fields { session_id: Some(session_id.into()), turn_id: turn_id.map(str::to_owned),
+                request_id: turn_id.map(str::to_owned), generation_id: Some(generation.into()), ..Default::default() };
+            if status == "failed" {
+                crate::diagnostics::emit(crate::diagnostics::Event::SessionFailed, crate::diagnostics::Fields { operation: Some("session.send"), outcome: Some("turn_failed"), error_code: Some("unclassified"), ..fields() });
+            } else if status == "completed" {
+                crate::diagnostics::emit(crate::diagnostics::Event::SessionCompleted, crate::diagnostics::Fields { operation: Some("session.send"), outcome: Some("turn_completed"), ..fields() });
+            } else if status == "interrupted" && self.live.lock().await.get(session_id).is_some_and(|run| run.cancel.load(Ordering::Acquire)) {
+                crate::diagnostics::emit(crate::diagnostics::Event::SessionCompleted, crate::diagnostics::Fields { operation: Some("session.cancel"), outcome: Some("confirmed"), ..fields() });
+            }
+        }
         if let Some(app) = &self.app {
             let event=emitted_event;
             let _ = app.emit("agent-event", event);
