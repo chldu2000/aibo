@@ -276,10 +276,10 @@
     onComposerInput(text);
   }
 
-  function showSessionMenu(menu: HTMLDivElement) {
-    const trigger = menu.parentElement?.querySelector<HTMLButtonElement>('.composer-access-control');
+  function showComposerMenu(menu: HTMLDivElement, kind: 'session' | 'model') {
+    const trigger = menu.parentElement?.querySelector<HTMLButtonElement>(kind === 'model' ? '.composer-model-control' : '.composer-access-control');
     if (!trigger) return;
-    const close = () => { sessionMenuOpen = false; };
+    const close = () => { if (kind === 'model') modelMenuOpen = false; else sessionMenuOpen = false; };
     const position = () => {
       const anchor = trigger.getBoundingClientRect();
       const bounds = menu.getBoundingClientRect();
@@ -299,9 +299,12 @@
     const initialOption = menu.querySelector<HTMLButtonElement>('[aria-checked="true"]:not(:disabled)')
       ?? menu.querySelector<HTMLButtonElement>('button:not(:disabled)');
     initialOption?.focus({ preventScroll: true });
+    const observer = new ResizeObserver(position);
+    observer.observe(menu);
     window.addEventListener('resize', close);
     window.addEventListener('scroll', onScroll, true);
     return { destroy() {
+      observer.disconnect();
       menu.removeEventListener('toggle', onToggle);
       window.removeEventListener('resize', close);
       window.removeEventListener('scroll', onScroll, true);
@@ -574,7 +577,7 @@
             {/each}
           </Button>
           {#if sessionMenuOpen}
-            <div use:showSessionMenu popover="auto" class="composer-menu composer-profile-menu" role="menu" aria-label={$t('composer.sessionSettings')}>
+            <div use:showComposerMenu={'session'} popover="auto" class="composer-menu composer-profile-menu" role="menu" aria-label={$t('composer.sessionSettings')}>
               <div class="composer-menu-heading">{$t('composer.sessionSettings')}</div>
               <div class="composer-menu-detail">{accessDetail}</div>
               {#each accessGroups as group (group.kind)}
@@ -632,7 +635,7 @@
             <Icon name="chevron-down" size={15} />
           </Button>
           {#if modelMenuOpen}
-            <div class="composer-menu composer-model-menu" role="menu" aria-label={$t('composer.modelSettings')}>
+            <div use:showComposerMenu={'model'} popover="auto" class="composer-menu composer-model-menu" role="menu" aria-label={$t('composer.modelSettings')}>
               <div class="composer-model-header">
                 <div class="composer-model-header-labels">
                   <div class="composer-menu-heading">{$t('composer.modelReasoning')}</div>

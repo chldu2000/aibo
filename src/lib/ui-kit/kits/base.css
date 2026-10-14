@@ -210,24 +210,26 @@ h1, h2, h3, p { margin: 0; }
 .composer-command-description { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-suggestions button > small { flex: none; margin-left: auto; }
 .composer-command-prefix { flex: none; }
-.composer-toolbar { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; }
+.composer-toolbar { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; }
 .composer-toolbar-group { display: flex; min-width: 0; align-items: center; gap: 4px; }
-.composer-toolbar-start { flex: 1; }
-.composer-toolbar-end { flex: none; }
-.composer-menu-anchor { position: relative; }
+.composer-toolbar-start { flex: 1 1 180px; max-width: 100%; }
+.composer-toolbar-end { flex: 1 1 220px; max-width: 100%; justify-content: flex-end; }
+.composer-menu-anchor { position: relative; min-width: 0; max-width: 100%; }
+.composer-toolbar-start > .composer-menu-anchor:first-child { flex: none; }
+.composer-access-control { max-width: 100%; overflow: hidden; }
 .composer-toolbar-icon { width: 34px !important; height: 34px !important; }
 .composer-toolbar-control { min-width: 0; }
 .composer-action { flex: none; }
 .composer-access-selection { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
 .composer-access-selection > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .composer-profile-menu .composer-access-options button { gap: 9px; align-items: center; padding-block: 8px; }
-.composer-model-control { max-width: min(280px, 38vw); }
+.composer-model-control { max-width: min(280px, 100%); }
 .composer-model-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-menu { position: absolute; z-index: 35; bottom: calc(100% + 8px); display: grid; width: min(240px, calc(100vw - 32px)); min-width: 0; gap: 3px; padding: 5px; }
 .composer-attachment-menu { left: 0; }
 .composer-model-menu { right: 0; }
-.composer-profile-menu[popover] { position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; }
-.composer-profile-menu[popover]:not(:popover-open) { display: none; }
+.composer-menu[popover] { position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; }
+.composer-menu[popover]:not(:popover-open) { display: none; }
 .composer-model-menu { width: min(540px, calc(100vw - 32px)); }
 .composer-menu-heading { padding: 6px 8px 3px; }
 .composer-menu-detail { overflow-wrap: anywhere; padding: 0 8px 6px; }
