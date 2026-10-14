@@ -3,17 +3,23 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { buildPresentationSkins } from './lib/build-presentation-skins.mjs';
 const skins = await buildPresentationSkins();
+const logDirectory = 'C:\\Users\\Aibo-user\\AppData\\Roaming\\' + 'isolated-diagnostic-profile-'.repeat(8) + '\\development\\logs';
 const server = await createServer({ server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
 await server.listen();
 const browser = await chromium.launch({ headless: true });
 try {
   const cases = ['material3', 'ak-ui'].flatMap(kit => ['light', 'dark'].map(theme => ({ kit, theme, pkg: null })));
   for (const pkg of skins.packages) cases.push({ kit: 'material3', theme: 'light', pkg });
+  cases.push(...cases.map(config => ({ ...config, listenerFailure: true })));
   for (const config of cases) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     page.setDefaultTimeout(20000);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(({ kit, theme, pkg }) => {
+    await page.addInitScript(({ kit, theme, pkg, logDirectory, listenerFailure }) => {
+      if (window.Worker) {
+        const NativeWorker = window.Worker; window.diagnosticWorkers = [];
+        window.Worker = class extends NativeWorker { constructor(...args) { super(...args); window.diagnosticWorkers.push(this); } };
+      }
       if (window !== window.top) return;
       localStorage.setItem('aibo.appearance.v1', JSON.stringify({ kitId: kit, themeId: theme }));
       localStorage.setItem('aibo.language.v1', 'zh-CN');
@@ -28,6 +34,7 @@ try {
       let callback = 0;
       window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } }, transformCallback(fn) { const id = ++callback; window['_' + id] = fn; return id; }, unregisterCallback(id) { delete window['_' + id]; }, async invoke(command, args = {}) {
         window.diagnosticCalls.push({ command, args });
+        if (listenerFailure && command === 'plugin:event|listen' && args.event === 'agent-event') throw Error('Listener registration fixture');
         if (command.startsWith('plugin:event|')) return 1;
         if (command === 'get_app_snapshot') return { platform: 'macos', appVersion: 'probe', workspaceCount: 0, diagnostics: [{ agent: 'codex', status: 'missing', capabilities: [] }] };
         if (command === 'list_plugin_installations') { if (window.diagnosticFail) throw Error('offline fixture'); return structuredClone(window.diagnosticPlugins); }
@@ -38,16 +45,41 @@ try {
         if (command === 'list_presentation_packages') return pkg ? [pkg.release] : [];
         if (command === 'read_presentation_package') return pkg;
         if (command === 'get_node_runtime') return { selected: { path: '/node', version: '24.18.0', source: 'system' }, manualPath: null, hostRequirement: '>=22', downloadVersion: '24.18.0', downloadSupported: true, issues: [] };
+        if (command === 'get_diagnostic_log_status') return { directory: logDirectory, state: 'healthy', error_code: null, dropped: 3, shutdown_complete: false };
         if (command === 'get_turn_change_set') return null;
         return [];
       } };
-    }, config);
+    }, { ...config, logDirectory });
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
+    if (config.listenerFailure) {
+      await page.waitForFunction(() => window.diagnosticCalls.some(call => call.command === 'diagnostic_frontend_failed'));
+      await page.locator('.toast-region').getByText('Listener registration fixture', { exact: true }).waitFor();
+      const diagnostics = await page.evaluate(() => window.diagnosticCalls.filter(call => call.command.startsWith('diagnostic_frontend_')));
+      assert.deepEqual(diagnostics.map(call => call.command), ['diagnostic_frontend_failed']);
+      assert(!JSON.stringify(diagnostics).includes('Listener registration fixture'), 'startup reporting excludes error text');
+      assert.deepEqual(errors, [], 'initialization failure is handled without an unhandled rejection');
+      await page.close();
+      console.log(`${config.pkg?.release.digest.slice(0, 8) ?? `${config.kit}-${config.theme}`}: listener failure reported, displayed and never marked ready`);
+      continue;
+    }
     if (config.pkg) await page.locator('.presentation-external iframe').first().waitFor();
     await page.locator('[data-host-navigation="management"]').click();
     const dialog = page.getByRole('dialog');
     const runtime = () => dialog.getByRole('tab', { name: '运行与诊断', exact: true }).click();
     await runtime();
+    const logs = dialog.locator('[aria-labelledby="diagnostic-logs-title"]');
+    await logs.getByText(logDirectory, { exact: true }).waitFor();
+    await logs.getByRole('button', { name: '打开日志文件夹' }).focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => window.diagnosticCalls.filter(call => call.command === 'open_diagnostic_log_directory').length), 1);
+    await page.evaluate(() => {
+      dispatchEvent(new ErrorEvent('error', { message: 'exception-canary', filename: location.origin + '/src/main.ts?url-canary', lineno: 5, colno: 8 }));
+      dispatchEvent(new PromiseRejectionEvent('unhandledrejection', { promise: Promise.resolve(), reason: { password: 'rejection-canary' } }));
+    });
+    await page.waitForFunction(() => window.diagnosticCalls.filter(call => call.command === 'report_frontend_diagnostic').length >= 2);
+    const reports = await page.evaluate(() => window.diagnosticCalls.filter(call => call.command === 'report_frontend_diagnostic').map(call => call.args));
+    assert(!JSON.stringify(reports).includes('canary'));
+    assert(reports.some(report => report.diagnostic.kind === 'exception' && report.diagnostic.resource === 'src/main.ts'));
     const panel = dialog.locator('[aria-labelledby="runtime-diagnostics-title"]');
     await panel.getByText('1 个插件需要处理', { exact: true }).waitFor();
     assert.equal(await panel.getByText('Disabled', { exact: true }).isVisible(), false);
@@ -88,6 +120,16 @@ try {
     await dialog.getByRole('button', { name: '刷新诊断', exact: true }).click();
     await panel.getByText('没有已安装的能力插件。', { exact: true }).waitFor();
     assert.equal(await panel.getByRole('alert').count(), 0);
+    if (config.pkg) {
+      const frame = page.frames().find(frame => frame.url().includes('aibo-presentation-sandbox.html'));
+      assert(frame, 'active external workbench frame');
+      await frame.evaluate(() => { if (!window.diagnosticWorkers.length) throw Error('Missing real Worker'); window.diagnosticWorkers[0].dispatchEvent(new ErrorEvent('error', { message: 'presentation-fault-canary' })); });
+      await page.waitForFunction(() => window.diagnosticCalls.some(call => call.command === 'report_frontend_diagnostic' && call.args.diagnostic.kind === 'presentation_failed'));
+      await page.locator('.presentation-external iframe').first().waitFor({ state: 'detached' });
+      await logs.getByRole('button', { name: '打开日志文件夹' }).click();
+      assert.equal(await page.evaluate(() => window.diagnosticCalls.filter(call => call.command === 'open_diagnostic_log_directory').length), 2);
+      assert(!JSON.stringify(await page.evaluate(() => window.diagnosticCalls.filter(call => call.command === 'report_frontend_diagnostic'))).includes('presentation-fault-canary'));
+    }
     assert.deepEqual(errors, []);
     await page.close();
     console.log(`${shot}: shared results, exact navigation, auth scope, failure recovery and empty state passed`);

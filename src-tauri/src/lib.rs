@@ -5,6 +5,8 @@ mod workspace_diff;
 mod turn_changes;
 mod node_runtime;
 mod app_storage;
+mod diagnostics;
+mod diagnostics_ipc;
 mod session_history_tools;
 mod session_reference_preferences;
 mod agent_settings;
@@ -739,6 +741,7 @@ async fn save_composer_draft(
 }
 
 async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
+    let opening = diagnostics::StartupStage::begin("database.open");
     let parent = path.parent().ok_or_else(|| {
         crate::ui_i18n::initialization_message(crate::ui_i18n::HostMessage::with_diagnostic("native.database.parent",serde_json::json!({}),"database path has no parent directory"))
     })?;
@@ -757,11 +760,14 @@ async fn open_database(path: &Path) -> Result<SqlitePool, CoreError> {
     // SQLite table rebuilds must not cascade-delete history. This connection is
     // never exposed to application queries; each migration remains transactional.
     let mut migration_connection = sqlx::SqliteConnection::connect_with(&options.clone().foreign_keys(false)).await?;
-    database_migrations::run(&mut migration_connection).await?;
+    opening.complete();
+    let mut migration = diagnostics::StartupStage::begin("database.migrate");
+    database_migrations::run(&mut migration_connection).await.map_err(|error| { migration.migration_failed(&error); error })?;
     let violations = sqlx::query("PRAGMA foreign_key_check").fetch_all(&mut migration_connection).await?;
     if !violations.is_empty() { return Err(crate::ui_i18n::database_message(crate::ui_i18n::HostMessage::with_diagnostic("native.database.foreignKeys",serde_json::json!({}),"migration foreign key check failed"))); }
     migration_connection.close().await?;
     let pool = SqlitePoolOptions::new().max_connections(5).connect_with(options).await?;
+    migration.complete();
     Ok(pool)
 }
 
@@ -3074,6 +3080,9 @@ async fn validate_session_attachments(
 }
 
 pub fn run() {
+    diagnostics::initialize_boot();
+    let context = tauri::generate_context!();
+    let diagnostic_script = diagnostics_ipc::initialization_script(context.config().build.dev_url.as_ref().map(|url| url.origin().ascii_serialization()));
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -3083,6 +3092,7 @@ pub fn run() {
         .try_init();
 
     tauri::Builder::default()
+        .append_invoke_initialization_script(diagnostic_script)
         .register_uri_scheme_protocol("aibo-tool", |context, request| tool_views::document(context.webview_label(),request.uri().path()))
         .manage(ui_i18n::WindowLanguages::default())
         .on_window_event(|window, event| {
@@ -3098,40 +3108,61 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         .setup(|app| {
+            let startup_log_guard = diagnostics::StartupGuard::new();
             let data_dir = app.path().app_data_dir().map_err(|error| {
+                diagnostics::safe_stderr("Aibo diagnostics data directory unavailable");
                 Box::new(CoreError::Initialization(format!(
                     "resolve app data directory: {error}"
                 ))) as Box<dyn Error>
             })?;
             let data_dir = app_storage::data_dir(data_dir);
+            diagnostics::initialize_global(data_dir.clone());
             node_runtime::initialize(data_dir.clone());
             let db_path = data_dir.join("aibo.sqlite3");
             let db = tauri::async_runtime::block_on(open_database(&db_path))
                 .map_err(|error| Box::new(error) as Box<dyn Error>)?;
+            let stage = diagnostics::StartupStage::begin("plugin.recover");
             tauri::async_runtime::block_on(plugin_replacement::recover(&db,&data_dir))
                 .map_err(|error| Box::new(ui_i18n::initialization_message(error)) as Box<dyn Error>)?;
+            stage.complete();
+            let stage = diagnostics::StartupStage::begin("plugin.register");
             tauri::async_runtime::block_on(plugin_registry::install_builtins(&db, &data_dir))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("install built-in plugins: {error}"))) as Box<dyn Error>)?;
+            stage.complete();
+            let stage = diagnostics::StartupStage::begin("presentation.register");
             tauri::async_runtime::block_on(presentation_packages::register_builtins(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("register built-in presentations: {error}"))) as Box<dyn Error>)?;
+            stage.complete();
             if let Err(error)=tauri::async_runtime::block_on(presentation_packages::collect_removed(&db,&data_dir)) {
                 warn!(%error,"presentation resource cleanup deferred");
             }
+            let stage = diagnostics::StartupStage::begin("session.recover");
             let recovery = tauri::async_runtime::block_on(session_recovery::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
+            stage.complete();
+            if recovery.sessions > 0 { diagnostics::emit(diagnostics::Event::SessionRecovered, diagnostics::Fields { operation: Some("session.recover"), outcome: Some("recovered"), ..Default::default() }); }
             info!(sessions = recovery.sessions, change_sets = recovery.change_sets, "interrupted session recovery complete");
+            let stage = diagnostics::StartupStage::begin("project.recover");
             tauri::async_runtime::block_on(project_actions::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("recover project tasks: {error}"))) as Box<dyn Error>)?;
+            stage.complete();
+            let stage = diagnostics::StartupStage::begin("workspace.recover");
             tauri::async_runtime::block_on(workspace_write_runs::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(format!("recover workspace writes: {error}"))) as Box<dyn Error>)?;
+            stage.complete();
+            let stage = diagnostics::StartupStage::begin("broker.recover");
             tauri::async_runtime::block_on(capability_broker::Broker::recover(&db))
                 .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
+            stage.complete();
+            let stage = diagnostics::StartupStage::begin("plugin.candidates");
             tauri::async_runtime::block_on(plugin_lifecycle::recover_candidates(&db,&data_dir))
                 .map_err(|error| Box::new(CoreError::Initialization(error)) as Box<dyn Error>)?;
+            stage.complete();
             if let Err(error) = tauri::async_runtime::block_on(plugin_registry::collect_retired(&db, &data_dir)) {
                 warn!(%error, "retired plugin collection deferred");
             }
             info!(path = %db_path.display(), "aibo core initialized");
+            let stage = diagnostics::StartupStage::begin("host.assemble");
             let sdk_module=[app.path().resource_dir().ok().map(|dir|dir.join("pi-sdk-bundle/index.js")),Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../node_modules/@earendil-works/pi-coding-agent/dist/bundle/index.js"))].into_iter().flatten().find(|path|path.is_file());
             let broker=capability_broker::Broker::new(db.clone()).with_sdk_module(sdk_module);
             app.manage(AppState {
@@ -3142,9 +3173,16 @@ pub fn run() {
                 db,
                 data_dir,
             });
+            stage.complete();
+            startup_log_guard.complete();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            diagnostics_ipc::report_frontend_diagnostic,
+            diagnostics_ipc::diagnostic_frontend_ready,
+            diagnostics_ipc::diagnostic_frontend_failed,
+            diagnostics_ipc::get_diagnostic_log_status,
+            diagnostics_ipc::open_diagnostic_log_directory,
             ui_i18n::set_window_locale,
             semantic_plugins::cancel_semantic_open,
             semantic_plugins::list_semantic_contributions,
@@ -3280,9 +3318,18 @@ pub fn run() {
             get_pi_session_tree,
             navigate_pi_session_tree,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building Aibo")
+        .build(context)
+        .unwrap_or_else(|_| {
+            if let Some(log) = diagnostics::global() { log.startup_failed(); }
+            panic!("Aibo initialization failed");
+        })
         .run(|app, event| {
+            static EXIT_CLEAN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+            if matches!(event, tauri::RunEvent::Exit) {
+                if let Some(log) = diagnostics::global() {
+                    if EXIT_CLEAN.load(std::sync::atomic::Ordering::Acquire) { log.shutdown(); } else { log.startup_failed(); }
+                }
+            }
             static EXIT_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 if EXIT_READY.load(std::sync::atomic::Ordering::SeqCst) { return; }
@@ -3290,6 +3337,7 @@ pub fn run() {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     if tool_views::close_matching(&app,None,None,None,None,true).await.unwrap_or(false) {
+                        if let Some(state) = app.try_state::<AppState>() { EXIT_CLEAN.store(state.plugins.shutdown().await, std::sync::atomic::Ordering::Release); }
                         EXIT_READY.store(true,std::sync::atomic::Ordering::SeqCst); app.exit(0);
                     }
                 });

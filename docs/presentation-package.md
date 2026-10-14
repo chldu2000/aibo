@@ -134,6 +134,8 @@ locale 只用于显示，不属于 intent.context，不改变动作、身份、�
 图片使用 `resource` 指向包内 PNG/WebP；SVG 图标使用受限 svg/path 等节点。
 CSS 字体或图片地址可写 `url("aibo-resource:font.woff2")`，宿主只替换已验证资源。
 
+使用 opaque origin 的可信桥文档以固定脚本 SHA-256 授权启动代码，不依赖 `script-src 'self'` 的引擎处理；Vite 启动和构建时从 `public/aibo-presentation-sandbox.js` 生成文档与对应哈希。包 Worker 仍禁止网络、eval 和导入脚本，不获得宿主窗口身份或诊断凭据。
+
 候选 iframe 在首棵有效树绘制前隐藏，activate 前禁止 intent。初始化与更新
 具有超时，Worker 心跳发现运行中失控后终止 Worker 并移除 frame。宿主销毁旧
 实例时关闭 MessagePort、移除文档并释放 Worker URL。输入 revision 必须递增，

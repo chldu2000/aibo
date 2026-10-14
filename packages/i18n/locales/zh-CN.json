@@ -2390,5 +2390,21 @@
   "diagnostics.authNotDeclared": "插件未声明登录检查；登录状态未知。",
   "diagnostics.authUnchecked": "尚未检查登录状态。",
   "diagnostics.authCheckFailed": "登录操作或检查失败，请到插件详情处理。",
-  "diagnostics.authLastPassed": "最近一次登录检查通过。"
+  "diagnostics.authLastPassed": "最近一次登录检查通过。",
+  "diagnostics.logs.title": "应用日志",
+  "diagnostics.logs.description": "诊断日志仅保存在本地，有容量限制，不会自动上传。",
+  "diagnostics.logs.healthy": "正常保存",
+  "diagnostics.logs.degraded": "日志保存降级",
+  "diagnostics.logs.initializing": "正在初始化",
+  "diagnostics.logs.directory": "当前配置的保存位置",
+  "diagnostics.logs.dropped": "累计丢弃条数",
+  "diagnostics.logs.lastFailure": "最近写入失败：{reason}",
+  "diagnostics.logs.open": "打开日志文件夹",
+  "diagnostics.logs.unavailable": "日志目录不可用或访问被拒绝。",
+  "diagnostics.logs.permissionDenied": "没有写入权限",
+  "diagnostics.logs.storageFull": "磁盘空间不足",
+  "diagnostics.logs.quotaExhausted": "日志容量已达上限，活动日志受到保护",
+  "diagnostics.logs.unsafeDirectory": "目录不安全或存在符号链接",
+  "diagnostics.logs.shutdownTimeout": "日志收尾未在两秒内完成",
+  "diagnostics.logs.ioError": "无法写入诊断日志"
 }

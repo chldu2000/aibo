@@ -1,4 +1,15 @@
 <script lang="ts">
+  import DiagnosticLogsPanel from '$lib/components/app/DiagnosticLogsPanel.svelte';
+  import { createDiagnosticLogsController, emptyDiagnosticLogs } from '$lib/app/diagnostic-logs-controller';
+  import { readDiagnosticLogStatus, openDiagnosticLogDirectory, diagnosticFrontendReady, diagnosticFrontendFailed, reportFrontendDiagnostic } from '$lib/api';
+  let diagnosticLogs = $state(emptyDiagnosticLogs());
+  const diagnosticLogsController = createDiagnosticLogsController({ read: readDiagnosticLogStatus, open: openDiagnosticLogDirectory, publish: value => { diagnosticLogs = value; } });
+  $effect(() => {
+    if (!desktop || !settingsOpen || managementSection !== 'runtime') return;
+    untrack(() => { void diagnosticLogsController.load(); });
+    const timer = window.setInterval(() => { void diagnosticLogsController.load(); }, 2000);
+    return () => window.clearInterval(timer);
+  });
   import { openExternalLink, readLinkedFile, setWindowLocale } from '$lib/api';
   import {linkTarget} from '../packages/presentation-workbench/links.js';
   import {createFilePreviewController,emptyFilePreview} from '$lib/app/file-preview-controller';
@@ -204,7 +215,13 @@
         try {
           // Preflight needs the current history even before the candidate becomes active.
           await tick();
-          return await presentationHost.prepare(value, theme, failure, signal);
+          return await presentationHost.prepare(value, theme, error => {
+            if (isTauri()) void reportFrontendDiagnostic({ kind: 'presentation_failed' }).catch(() => {});
+            failure(error);
+          }, signal);
+        } catch (error) {
+          if (!signal?.aborted && isTauri()) void reportFrontendDiagnostic({ kind: 'presentation_failed' }).catch(() => {});
+          throw error;
         } finally {
           if (needsWorkbench) preparingExternalWorkbench -= 1;
         }
@@ -2219,18 +2236,23 @@
       }
 
       restoringSelection = true;
-      persistedSelection = readPersistedSelection();
       desktop = true;
 
-      const unlisten = await listenToAgentEvents(handleAgentEvent);
-      if (disposed) {
-        unlisten();
-        restoringSelection = false;
-        return;
-      }
-      stopListening = unlisten;
       try {
+        persistedSelection = readPersistedSelection();
+        const unlisten = await listenToAgentEvents(handleAgentEvent);
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        stopListening = unlisten;
         await refresh();
+        if (!disposed) void diagnosticFrontendReady().catch(() => {});
+      } catch (error) {
+        if (!disposed) {
+          void diagnosticFrontendFailed().catch(() => {});
+          errorMessage = toErrorText(error);
+        }
       } finally {
         restoringSelection = false;
       }
@@ -3539,6 +3561,7 @@
 {/snippet}
 
 {#snippet runtimeStatus()}
+  <DiagnosticLogsPanel state={diagnosticLogs} {desktop} onOpen={() => void diagnosticLogsController.open()} />
   <DiagnosticsPanel
     open={true}
     embedded={true}

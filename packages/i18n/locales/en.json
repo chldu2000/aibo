@@ -2489,5 +2489,21 @@
   "diagnostics.authNotDeclared": "The plugin does not declare an authentication check; authentication status is unknown.",
   "diagnostics.authUnchecked": "Authentication has not been checked.",
   "diagnostics.authCheckFailed": "Authentication action or check failed. Open plugin details.",
-  "diagnostics.authLastPassed": "The last authentication check passed."
+  "diagnostics.authLastPassed": "The last authentication check passed.",
+  "diagnostics.logs.title": "Application logs",
+  "diagnostics.logs.description": "Local diagnostics have bounded storage and are never uploaded automatically.",
+  "diagnostics.logs.healthy": "Saving normally",
+  "diagnostics.logs.degraded": "Logging degraded",
+  "diagnostics.logs.initializing": "Initializing",
+  "diagnostics.logs.directory": "Current profile directory",
+  "diagnostics.logs.dropped": "Dropped records",
+  "diagnostics.logs.lastFailure": "Most recent write failure: {reason}",
+  "diagnostics.logs.open": "Open log folder",
+  "diagnostics.logs.unavailable": "Log folder is unavailable or access was denied.",
+  "diagnostics.logs.permissionDenied": "Permission denied",
+  "diagnostics.logs.storageFull": "Disk full",
+  "diagnostics.logs.quotaExhausted": "Log storage limit reached; active logs are protected",
+  "diagnostics.logs.unsafeDirectory": "Unsafe directory or symbolic link",
+  "diagnostics.logs.shutdownTimeout": "Log shutdown did not finish within two seconds",
+  "diagnostics.logs.ioError": "Unable to write diagnostic logs"
 }
