@@ -495,9 +495,12 @@ async fn capability_session_projects_tools_and_recovers_after_process_restart() 
     host.cancel_from("main", &session.id).await.unwrap();
     wait_for_turn(&host, &session.id).await;
     assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "interrupted");
-    let failure: String = sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=? AND event_type='adapter.crashed' ORDER BY occurred_at DESC LIMIT 1").bind(&session.id).fetch_one(&db).await.unwrap();
+    let failure: String = sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=? AND event_type='turn.completed' ORDER BY occurred_at DESC LIMIT 1").bind(&session.id).fetch_one(&db).await.unwrap();
     let failure: Value = serde_json::from_str(&failure).unwrap();
     assert_eq!(failure["payload"]["status"], "interrupted");
+    let turn_status:String=sqlx::query_scalar("SELECT status FROM turns WHERE id=?")
+        .bind(failure["turnId"].as_str().unwrap()).fetch_one(&db).await.unwrap();
+    assert_eq!(turn_status,"interrupted");
     assert!(failure["eventId"].is_string());
     let display=&failure["payload"]["localizedReason"];
     assert_eq!(display["schema"],"aibo.host-message/v1");
@@ -505,7 +508,7 @@ async fn capability_session_projects_tools_and_recovers_after_process_restart() 
     assert_eq!(display["params"]["code"],"cancelled");
     assert_eq!(crate::ui_i18n::render(crate::ui_i18n::Locale::En,display),failure["payload"]["reason"].as_str().unwrap());
     assert_ne!(crate::ui_i18n::render(crate::ui_i18n::Locale::ZhCn,display),failure["payload"]["reason"].as_str().unwrap());
-    let terminal_count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id=? AND turn_id=? AND event_type='adapter.crashed'")
+    let terminal_count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id=? AND turn_id=? AND event_type IN ('turn.completed','turn.failed','adapter.crashed')")
         .bind(&session.id).bind(failure["turnId"].as_str().unwrap()).fetch_one(&db).await.unwrap();
     assert_eq!(terminal_count,1);
     broker.stop_session(&session.id).await.unwrap();
@@ -1219,7 +1222,7 @@ async fn selected_session_permissions_survive_restart_without_secondary_consent(
         host.send_configured_from("main", &session.id, "selected broad-mode message").await.unwrap();
         wait_for_turn(&host, &session.id).await;
         assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
-        let failures: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id=? AND event_type='adapter.crashed' AND json_extract(payload_json,'$.payload.reason')='Capability storage is unavailable'")
+        let failures: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id=? AND event_type IN ('turn.failed','adapter.crashed') AND json_extract(payload_json,'$.payload.reason')='Capability storage is unavailable'")
             .bind(&session.id).fetch_one(&db).await.unwrap();
         assert_eq!(failures, 0, "Approve for me must not fail in host capability storage");
     }
@@ -2225,4 +2228,52 @@ async fn saved_profile_parse_errors_preserve_display_and_never_dispatch_or_rewri
     host.send_configured_from("main",&session.id,"valid after parse rejection").await.unwrap();wait_for_turn(&host,&session.id).await;
     assert_eq!(crate::session_by_id(&db,&session.id).await.unwrap().state,"idle");
     broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn workspace_busy_turn_fails_without_dispatch_and_can_be_retried() {
+    for external in [false, true] {
+        let (root, db, broker, host, session) = session_queue_fixture(external).await;
+        let mut profile = crate::session_execution_profile(&db, &session.id).await.unwrap().profile;
+        profile.enforced.interaction_mode = "edit".into();
+        profile.enforced.filesystem_policy = "workspace-write".into();
+        profile.enforced.command_policy = "trusted".into();
+        profile.requested = profile.enforced.clone();
+        execution_profile::save_for_session(&db, &session.id, &profile).await.unwrap();
+        let guard = crate::workspace_writes::acquire(&db, "w", &root.join("workspace")).await.unwrap();
+        for _ in 0..2 {
+            host.send_configured_from("main", &session.id, "busy regression").await.unwrap();
+            wait_for_turn(&host, &session.id).await;
+            assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "failed");
+            let (turn, status, delivery):(String,String,String) = sqlx::query_as("SELECT t.id,t.status,d.state FROM turns t JOIN turn_delivery d ON d.turn_id=t.id WHERE t.session_id=? ORDER BY t.started_at DESC LIMIT 1")
+                .bind(&session.id).fetch_one(&db).await.unwrap();
+            assert_eq!(status, "failed"); assert_eq!(delivery, "not_sent");
+            let events:Vec<String> = sqlx::query_scalar("SELECT payload_json FROM agent_events WHERE session_id=? AND turn_id=?")
+                .bind(&session.id).bind(&turn).fetch_all(&db).await.unwrap();
+            assert_eq!(events.len(), 1, "no provider turn events may be emitted before admission");
+            let event:Value = serde_json::from_str(&events[0]).unwrap();
+            assert_eq!(event["type"], "turn.failed");
+            assert_eq!(event["payload"]["error"]["code"], "busy");
+            assert_eq!(event["payload"]["localizedReason"]["params"]["error"]["key"], "native.error.workspaceWriteBusy");
+            assert!(crate::workspace_writes::acquire(&db, "w", &root.join("workspace")).await.is_err(), "a failed caller cannot release another writer's guard");
+        }
+        drop(guard);
+        host.send_configured_from("main", &session.id, "manual retry").await.unwrap();
+        wait_for_turn(&host, &session.id).await;
+        assert_eq!(crate::session_by_id(&db, &session.id).await.unwrap().state, "idle");
+        let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM turns WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(count, 3, "no automatic retry");
+        let binding=host.saved_binding(&session.id).await.unwrap().unwrap();
+        let generation:String=sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+        let old_turn:String=sqlx::query_scalar("SELECT id FROM turns WHERE session_id=? AND status='failed' ORDER BY started_at LIMIT 1").bind(&session.id).fetch_one(&db).await.unwrap();
+        let before:i64=sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+        for kind in ["turn.failed", "adapter.crashed"] {
+            host.project_event(&session.id,&session.workspace_id,&generation,&binding,
+                json!({"nativeSessionId":binding["nativeSessionId"],"turnId":old_turn,"type":kind,"correlation":null,"payload":{"status":"failed","reason":"late error"}}),EventOrigin::Host).await.unwrap();
+        }
+        let after:i64=sqlx::query_scalar("SELECT COUNT(*) FROM agent_events WHERE session_id=?").bind(&session.id).fetch_one(&db).await.unwrap();
+        assert_eq!(before,after,"late host failures are idempotent");
+        assert_eq!(crate::session_by_id(&db,&session.id).await.unwrap().state,"idle");
+        broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+    }
 }

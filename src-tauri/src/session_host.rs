@@ -354,7 +354,7 @@ impl SessionHost {
             let mut diagnostic = crate::diagnostics::Operation::begin("session.send");
             diagnostic.fields.session_id = Some(session.id.clone()); diagnostic.fields.turn_id = Some(turn.clone()); diagnostic.fields.request_id = Some(turn.clone());
             let execution=async {
-                if run.cancel.load(Ordering::Acquire) {return Err(session_error("native.session.cancelledBeforeDispatch","cancelled: turn cancelled before dispatch"));}
+                if run.cancel.load(Ordering::Acquire) {return Err(("cancelled".to_owned(), session_error("native.session.cancelledBeforeDispatch","cancelled: turn cancelled before dispatch")));}
                 let result=if let Some(approval)=approval.filter(|_|write) {
                     host.broker.invoke_bound_authorized_observed(&caller,request,&binding,&approval.child(turn.clone()),Some(observer)).await
                 } else {
@@ -364,27 +364,28 @@ impl SessionHost {
                     let diagnostic=format!("{}: {}",error.code,error.message);
                     let localized=error.localized.map(|reason|crate::ui_i18n::display_descriptor(
                         "native.session.invocationFailure",json!({"code":error.code,"error":reason})));
-                    HostMessage {diagnostic,localized}
+                    (error.code, HostMessage {diagnostic,localized})
                 })
             };
             tokio::pin!(execution);
             let cancel=async {loop {if run.cancel.load(Ordering::Acquire) && host.broker.cancel(&caller,&turn).await {break;}tokio::time::sleep(Duration::from_millis(10)).await;}};
             let result=tokio::select! {result=&mut execution=>result,_=cancel=>execution.await};
             if let Ok(response) = &result { diagnostic.fields.generation_id = Some(response.generation_id.clone()); }
-            if let Err(error) = &result { diagnostic.fields.error_code = Some(crate::diagnostics::classify_error(&error.diagnostic)); }
+            if let Err((_, error)) = &result { diagnostic.fields.error_code = Some(crate::diagnostics::classify_error(&error.diagnostic)); }
             run.phase.send_replace(TurnPhase::Settling);
             let result = match result {
-                Ok(response) => host.save_recovery_display(&session.id, &response).await,
+                Ok(response) => host.save_recovery_display(&session.id, &response).await.map_err(|error| ("invalid_recovery".to_owned(), error)),
                 Err(error) => Err(error),
             };
             if result.is_ok() { diagnostic.completed("request_completed"); } else { drop(diagnostic); }
-            if let Err(error) = result {
+            if let Err((code, error)) = result {
+                let interrupted = run.cancel.load(Ordering::Acquire) || code == "cancelled";
                 let failure = async {
                     let generation: String = sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?")
                         .bind(&session.id).fetch_one(&host.db).await.map_err(|e| e.to_string())?;
                     host.project_event(&session.id, &session.workspace_id, &generation, &saved,
-                        json!({"nativeSessionId":saved["nativeSessionId"],"turnId":turn,"type":"adapter.crashed","correlation":null,
-                            "payload":{"reason":error.diagnostic,"localizedReason":error.localized,"status":if run.cancel.load(Ordering::Acquire) || error.diagnostic.starts_with("cancelled:") {"interrupted"} else {"failed"}}}),
+                        json!({"nativeSessionId":saved["nativeSessionId"],"turnId":turn,"type":if interrupted {"turn.completed"} else {"turn.failed"},"correlation":null,
+                            "payload":{"error":{"code":code,"message":error.diagnostic},"reason":error.diagnostic,"localizedReason":error.localized,"status":if interrupted {"interrupted"} else {"failed"}}}),
                         EventOrigin::Host).await
                 }.await;
                 if let Err(error) = failure { eprintln!("session failure persistence failed: {error}"); }

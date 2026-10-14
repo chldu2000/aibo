@@ -20,6 +20,7 @@ export type MessageControllerContext = {
   getSelectedSession: () => Session | null;
   getSelectedSessionArchiving: () => boolean;
   getSessionRunning: () => boolean;
+  getSessionStateRevision?: (sessionId: string) => number;
   getComposerText: () => string;
   setComposerText: (value: string) => void;
   consumeDraft: (sessionId: string, submitted: string) => void;
@@ -139,7 +140,15 @@ export function createMessageController(context: MessageControllerContext) {
         context.setWorkspaceSessionMap(upsertSession(context.getWorkspaceSessionMap(), session));
         if (context.getSelectedWorkspace()?.id === workspace.id && !context.getSelectedSession()) context.setSelectedSessionId(session.id);
       }
+      const stateRevision = context.getSessionStateRevision?.(session.id);
       session = await context.api.sendAgentPrompt(session.id, requestInput);
+      // A fast terminal event can arrive before the send acknowledgement.
+      // Keep that event's state rather than restoring the response's running snapshot.
+      if (stateRevision !== context.getSessionStateRevision?.(session.id)) {
+        const sessionId = session.id;
+        const current = context.getWorkspaceSessionMap()[session.workspaceId]?.find(item => item.id === sessionId);
+        if (current) session = {...session, state:current.state};
+      }
       acceptedSession = session;
       context.consumeDraft(session.id, draftText);
       context.setComposerDraftStatus?.(session.id, false);

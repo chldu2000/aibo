@@ -1251,10 +1251,10 @@
   "event.controlChanged": "Switched to {label}.",
   "event.contextReset": "Context cleared and switched to {label}.",
   "event.crashedApprovals": {
-    "one": "The {agent} process exited and {count} pending approval was cleared. Send your message again.",
-    "other": "The {agent} process exited and {count} pending approvals were cleared. Send your message again."
+    "one": "The {agent} session ended and {count} pending approval was cleared.",
+    "other": "The {agent} session ended and {count} pending approvals were cleared."
   },
-  "event.crashed": "The {agent} process exited and the session was interrupted. Send your message again to resume.",
+  "event.crashed": "The {agent} session ended. Review the error before retrying.",
   "changes.untracked": "Untracked",
   "changes.partiallyStaged": "Partially staged",
   "changes.unstaged": "Unstaged",
@@ -1588,7 +1588,7 @@
   "search.source.files": "Files",
   "search.source.catalog": "Catalog",
   "search.source.history": "History",
-  "event.retryCrashed": "The Agent process exited unexpectedly",
+  "event.retryCrashed": "The Agent session failed",
   "event.retryFailed": "This turn failed",
   "app.remoteSessionNotice": "{label} · {remote}",
   "installed.permissionDenied": "Check that the workspace is trusted and the selected file is inside it.",

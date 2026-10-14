@@ -92,8 +92,11 @@ impl SessionHost {
             }
             if let Some(turn) = turn_id {
                 let state: Option<String> = sqlx::query_scalar("SELECT status FROM turns WHERE id=? AND session_id=?").bind(turn).bind(session_id).fetch_optional(&mut *tx).await.map_err(|e|e.to_string())?;
-                // Host records may land after a fast turn ends: a crash report, or the control an answer already committed.
-                if state.as_deref() != Some("running") && !(origin == EventOrigin::Host && matches!(kind, "adapter.crashed" | "session.control_changed") && state.is_some()) { return Err(session_error("native.event.inactiveTurn","invalid_session: event for inactive turn")); }
+                // A late invocation result must not replace the provider's committed terminal event.
+                if origin == EventOrigin::Host && matches!(kind, "adapter.crashed" | "turn.failed" | "turn.completed")
+                    && state.as_deref().is_some_and(|state| state != "running") { return Ok(()); }
+                // A control answer may commit just after its turn ends.
+                if state.as_deref() != Some("running") && !(origin == EventOrigin::Host && kind == "session.control_changed" && state.is_some()) { return Err(session_error("native.event.inactiveTurn","invalid_session: event for inactive turn")); }
                 if kind == "turn.started" {
                     if let Some(native_turn) = p["payload"]["nativeTurnId"].as_str().filter(|id| !id.is_empty()) {
                         sqlx::query("UPDATE turns SET external_turn_id=? WHERE id=? AND session_id=?")
@@ -194,6 +197,10 @@ impl SessionHost {
                         _ => return Err(session_error("native.event.terminalStatus","invalid_request: terminal status")),
                     };
                     sqlx::query("UPDATE sessions SET state=?,updated_at=? WHERE id=?").bind(session_state).bind(&now).bind(session_id).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+                    // Message rows have no interrupted status; retain the existing failed-row
+                    // representation while the owning turn and session retain interrupted.
+                    sqlx::query("UPDATE messages SET status=?,updated_at=? WHERE turn_id=? AND status='streaming'")
+                        .bind(if status == "interrupted" { "failed" } else { status }).bind(&now).bind(turn).execute(&mut *tx).await.map_err(|e|e.to_string())?;
                 }
             }
             sqlx::query("INSERT INTO agent_events(event_id,session_id,generation_id,sequence,occurred_at,event_type,turn_id,payload_json,schema_version) VALUES(?,?,?,?,?,?,?,?,'2.0')")

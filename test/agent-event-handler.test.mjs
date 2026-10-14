@@ -3,6 +3,55 @@ import test from 'node:test';
 import { translateMessage } from '../packages/i18n/index.js';
 import { createServer } from 'vite';
 
+test('event subscription ignores duplicates, older sequences and retired runtime generations', async () => {
+  const server = await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+  try {
+    const {createAgentEventGate} = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
+    const {accept} = createAgentEventGate();
+    const event = {sessionId:'s',generationId:'g1',sequence:0,occurredAt:'2026-10-14T00:00:00Z'};
+    assert.equal(accept(event),true);
+    assert.equal(accept(event),false);
+    assert.equal(accept({...event,sequence:2}),true);
+    assert.equal(accept({...event,sequence:1}),false);
+    assert.equal(accept({...event,generationId:'g2',occurredAt:'2026-10-14T00:01:00Z'}),true);
+    assert.equal(accept({...event,sequence:99,occurredAt:'2026-10-14T00:02:00Z'}),false);
+    assert.equal(accept({...event,generationId:'unseen-old'}),false);
+    assert.equal(accept({...event,sessionId:'background'}),true);
+  } finally {await server.close();}
+});
+
+test('failure events end running state immediately even when refresh never settles', async () => {
+  const server = await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+  try {
+    const {handleAgentEvent} = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
+    const {reconcileSessionRefresh} = await server.ssrLoadModule('/src/lib/app/session-transitions.ts');
+    for (const selected of [true, false]) for (const [type, payload, expected] of [
+      ['adapter.crashed', {}, 'failed'],
+      ['adapter.crashed', {status:'failed'}, 'failed'],
+      ['adapter.crashed', {status:'interrupted'}, 'interrupted'],
+      ['turn.failed', {error:{code:'busy',message:'workspace busy'},localizedReason:{schema:'aibo.host-message/v1',key:'native.error.workspaceWriteBusy',params:{}}}, 'failed'],
+    ]) {
+      const baseline = [{id:'s',state:'running',createdAt:'2026-10-14',updatedAt:'2026-10-14'}];
+      let sessions = baseline, activity = true, refreshes = 0, notice, retry;
+      const context = {selectedSessionId:selected?'s':'other',selectedAgent:'Provider',timeline:[],pendingApprovals:[],pendingUserInputs:[],lastSubmittedPrompt:'original',
+        setAgentActivity(_,active){activity=active;},updateWorkspaceSessions(_,update){sessions=update(sessions);},
+        setPendingApprovals(){},setPendingUserInputs(){},setUsageSnapshot(){},setTimeline(){},
+        setRetry(prompt,reason){retry={prompt,reason};},setNotice(message){notice=message;},
+        refreshSessions(){refreshes++;return new Promise(()=>{});}};
+      handleAgentEvent({sessionId:'s',workspaceId:'w',turnId:'t',type,payload,occurredAt:'2026-10-14',source:{}},context);
+      assert.equal(sessions[0].state,expected);
+      assert.equal(activity,false);
+      assert.equal(refreshes,1);
+      assert.equal(reconcileSessionRefresh(baseline,sessions,baseline)[0].state,expected,'a pending old read cannot restore running');
+      if (!selected) { assert.equal(notice,undefined); assert.equal(retry,undefined); }
+      else if (type==='turn.failed') {
+        assert.equal(translateMessage('zh-CN',retry.reason),'工作区有尚未结束的写入，请等待完成后再操作。');
+        assert.equal(translateMessage('zh-CN',notice),translateMessage('zh-CN',retry.reason));
+      } else if (notice) assert.doesNotMatch(translateMessage('zh-CN',notice),/进程.*退出/);
+    }
+  } finally {await server.close();}
+});
+
 test('a terminal plugin turn immediately makes the conversation composer editable', async () => {
   const server = await createServer({ server: { middlewareMode: true, ws: false, watch: null }, appType: 'custom' });
   try {
@@ -129,7 +178,7 @@ test('a host-committed control change refreshes the selected session profile and
     assert.equal(calls.at(-1)[2], 'warning', 'recovered thread reports a warning instead of success');
     calls.length = 0;
     handleAgentEvent({ ...event, type: 'adapter.crashed', payload: { reason: 'process exited' } }, context);
-    assert.equal(calls.at(-1)[2], 'error', 'an exited agent is an error notification');
+    assert.equal(calls.find(call => call[0] === 'notice')[2], 'error', 'an exited agent is an error notification');
   } finally {
     await server.close();
   }
@@ -190,7 +239,7 @@ test('retry defaults remain translatable while prompts, provider reasons and too
    setAgentActivity(){},updateWorkspaceSessions(){},setPendingApprovals(){},setPendingUserInputs(){},setUsageSnapshot(){},setQueueSnapshot(){},
    setTimeline(value){timeline=value;context.timeline=value;},setRetry(prompt,reason){retry={prompt,reason};},setNotice(){},refreshSessions(){}};
   const emit=(type,payload={},sessionId='s')=>handleAgentEvent({eventId:type,workspaceId:'w',sessionId,turnId:'t',type,occurredAt:'2026-10-09',source:{},correlation:null,payload},context);
-  emit('adapter.crashed');assert.equal(retry.prompt,'用户原始问题');assert.equal(translateMessage('en',retry.reason),'The Agent process exited unexpectedly');assert.equal(translateMessage('zh-CN',retry.reason),'Agent 进程异常退出');
+  emit('adapter.crashed');assert.equal(retry.prompt,'用户原始问题');assert.equal(translateMessage('en',retry.reason),'The Agent session failed');assert.equal(translateMessage('zh-CN',retry.reason),'Agent 会话失败');
   const localizedReason={schema:'aibo.host-message/v1',key:'native.session.invocationFailure',params:{code:'cancelled',error:{key:'native.broker.cancelled',params:{}}}};
   const rawReason='cancelled: Invocation was cancelled';
   const failure={reason:rawReason,localizedReason};const before=structuredClone(failure);

@@ -861,7 +861,7 @@
   } from '$lib/app/selection-storage';
   import { normalizeAgentGoal, goalCanResume } from '$lib/app/session-goal';
   import { watchBackgroundTasks, reconcileBackgroundTasks } from '$lib/app/background-task-controller';
-  import { handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
+  import { createAgentEventGate, handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
   import { createExecutionHistoryController, emptyExecutionHistory } from '$lib/app/execution-history-controller';
   import { createSessionHistoryController, emptySessionHistory, sessionHistoryPresentation } from '$lib/app/session-history-controller';
   import { createCapabilityHistoryController, emptyCapabilityHistory } from '$lib/app/capability-history-controller';
@@ -2561,7 +2561,9 @@
     if (target.scrollTop < 48 && timeline.length > timelineVisibleCount) loadOlderTimeline();
   }
 
+  const agentEventGate = createAgentEventGate();
   function handleAgentEvent(event: AgentEvent) {
+    if (!agentEventGate.accept(event)) return;
     if (event.type === 'subagent.message' && event.sessionId === subagentSelection?.sessionId && event.payload.agentId === subagentSelection.id) {
       const entry = event.payload.entry as SubagentEntry;
       if (entry && typeof entry.id === 'string' && typeof entry.content === 'string') {
@@ -3392,6 +3394,7 @@
   });
 
   const messageController = createMessageController({
+    getSessionStateRevision: agentEventGate.stateRevision,
     api: {
       createDefaultSession: async (workspaceId) => {
         const providers = readySessionProviders(pluginInstallations);

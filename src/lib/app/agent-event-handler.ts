@@ -49,6 +49,30 @@ export function eventTimelineItemId(event: Pick<AgentEvent, 'turnId'>, itemId: s
   return event.turnId ? `${event.turnId}:${itemId}` : itemId;
 }
 
+/** One gate per app subscription; host sequences are monotonic within a runtime generation. */
+export function createAgentEventGate() {
+  const cursors = new Map<string, { generation: string; sequence: number; occurredAt: string; retired: Set<string> }>();
+  const stateRevisions = new Map<string, number>();
+  function accept(event: AgentEvent): boolean {
+    const previous = cursors.get(event.sessionId);
+    if (previous) {
+      if (previous.generation === event.generationId) {
+        if (event.sequence <= previous.sequence) return false;
+      } else {
+        if (previous.retired.has(event.generationId) || event.occurredAt < previous.occurredAt) return false;
+        previous.retired.add(previous.generation);
+      }
+    }
+    cursors.set(event.sessionId, {generation:event.generationId, sequence:event.sequence,
+      occurredAt:event.occurredAt, retired:previous?.retired ?? new Set()});
+    if (['turn.started', 'turn.completed', 'turn.failed', 'adapter.crashed', 'session.state_changed'].includes(event.type)) {
+      stateRevisions.set(event.sessionId, (stateRevisions.get(event.sessionId) ?? 0) + 1);
+    }
+    return true;
+  }
+  return {accept, stateRevision: (sessionId: string) => stateRevisions.get(sessionId) ?? 0};
+}
+
 export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerContext): void {
   const selectedSessionId = context.selectedSessionId;
   if (event.type === 'compaction.started') context.setContextCompacting?.(event.sessionId, true);
@@ -90,8 +114,8 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
 
   const state = event.type === 'turn.started' ? 'running' : event.type === 'session.state_changed'
     ? event.payload.state
-    : event.type === 'turn.failed'
-      ? 'failed'
+    : event.type === 'turn.failed' || event.type === 'adapter.crashed'
+      ? event.type === 'adapter.crashed' && event.payload.status === 'interrupted' ? 'interrupted' : 'failed'
       : event.type === 'turn.completed'
         ? event.payload.status === 'interrupted'
           ? 'interrupted'
@@ -289,9 +313,10 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
         : 0;
     const agentLabel = context.selectedAgent ?? 'Agent';
     context.setNotice(
+      readNativeMessage(event.payload.localizedReason) ?? stringPayload(event.payload.reason) ?? (
       discarded > 0
         ? localizedMessage('event.crashedApprovals', {agent: agentLabel, count: discarded})
-        : localizedMessage('event.crashed', {agent: agentLabel}), 'error',
+        : localizedMessage('event.crashed', {agent: agentLabel})), state === 'interrupted' ? 'warning' : 'error',
     );
     context.setRetry(
       latestUserPrompt(context.timeline, context.lastSubmittedPrompt, event.turnId),
@@ -428,13 +453,16 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   }
 
   if (event.sessionId === selectedSessionId && event.type === 'turn.failed') {
+    const reason = readNativeMessage(event.payload.localizedReason) ?? errorPayload(event.payload.error)
+      ?? localizedMessage('event.retryFailed');
     context.setRetry(
       latestUserPrompt(context.timeline, context.lastSubmittedPrompt, event.turnId),
-      errorPayload(event.payload.error) ?? localizedMessage('event.retryFailed'),
+      reason,
     );
+    context.setNotice(reason, 'error');
   }
 
-  if (event.type === 'message.completed' || event.type === 'turn.completed' || event.type === 'turn.failed') {
+  if (event.type === 'message.completed' || event.type === 'turn.completed' || event.type === 'turn.failed' || event.type === 'adapter.crashed') {
     if (
       event.type === 'turn.completed' &&
       event.payload.status !== 'failed' &&

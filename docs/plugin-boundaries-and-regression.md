@@ -163,9 +163,15 @@
 真实 recovery、包内容、引用、归档或草稿变化继续要求重新预览，安装确认校验不能跳过。
 回归见 `session_host_tests.rs` 的 `plugin_replacement_confirmation_*`。
 
-宿主 `adapter.crashed` 的 payload 可附带 `localizedReason`，作为可选的内部显示描述。
+宿主回合终态事件的 payload 可附带 `localizedReason`，作为可选的内部显示描述。
 SessionHost 保留诊断 `reason`，事件投影在写入和发送前移除插件提交的同名显示字段；
 它不属于提供者事件授权，也不参与回合状态或投递判断。无描述的旧记录继续使用原始诊断。
+
+调用拒绝或执行错误使用 `turn.failed`，并保留 `error.code` 和诊断 `error.message`；
+取消使用 `turn.completed` 的 `status=interrupted`。工作区忙不表示适配器退出，
+投递前拒绝继续保留 `not_sent`，不得自动重发。宿主迟到的调用结果不得覆盖已提交终态。
+前端收到终态先同步会话和活动状态，再异步刷新校准；旧 `adapter.crashed` 仍须立即收敛，
+不能根据事件名称推断进程退出。详见[会话失败目标规格](session-failure-convergence-spec.md)。
 
 ### 独立工具应用例外
 
