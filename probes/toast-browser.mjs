@@ -97,6 +97,31 @@ try {
       await page.locator('.success-toast').waitFor();
       await page.locator('.error-toast').waitFor();
       assert.equal(await page.locator('.toast').count(), 2);
+      // Both notification channels must stay compact even with huge runtime errors.
+      await page.setViewportSize({ width: 800, height: 480 });
+      for (const message of ['错误堆栈\n'.repeat(2000), 'x'.repeat(20000)]) {
+        await page.evaluate(message => {
+          window.__toastProbe.notify(message, 'warning');
+          window.__toastProbe.error(message);
+        }, message);
+        const bounds = await page.locator('.toast-copy > span').evaluateAll(nodes => nodes.map(node => {
+          const rect = node.getBoundingClientRect();
+          const lineHeight = parseFloat(getComputedStyle(node).lineHeight);
+          return { height: rect.height, limit: Math.min(4 * lineHeight, innerHeight * .2),
+            clipped: node.scrollHeight > node.clientHeight, text: node.textContent,
+            fits: rect.left >= 0 && rect.right <= innerWidth };
+        }));
+        assert.equal(bounds.length, 2);
+        for (const bound of bounds) {
+          assert(bound.height <= bound.limit + 1, 'long message is capped at four lines and 20% of viewport height');
+          assert(bound.clipped, 'overflowing message is visually truncated');
+          assert(bound.fits, 'unbroken error text stays within the viewport');
+          assert.equal(bound.text, message, 'full error remains available in the accessible text');
+        }
+        assert(await page.locator('.toast-region').evaluate(node => node.getBoundingClientRect().height < innerHeight * .6),
+          'two long notifications do not cover the window');
+      }
+      await page.setViewportSize({ width: 1280, height: 900 });
       await page.evaluate(() => { window.__toastProbe.notify(null); window.__toastProbe.error(null); });
       await page.waitForFunction(() => !document.querySelector('.toast'));
       console.log(`PASS ${kit}/${theme}: four types, icons, labels, semantics, narrow layout and reduced motion`);
