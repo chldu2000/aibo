@@ -10,11 +10,12 @@ const browser = await chromium.launch({ headless: true });
 try {
   const cases = ['material3', 'ak-ui'].flatMap(kit => ['light', 'dark'].map(theme => ({ kit, theme, pkg: null })));
   for (const pkg of skins.packages) cases.push({ kit: 'material3', theme: 'light', pkg });
+  cases.push(...cases.map(config => ({ ...config, listenerFailure: true })));
   for (const config of cases) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     page.setDefaultTimeout(20000);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(({ kit, theme, pkg, logDirectory }) => {
+    await page.addInitScript(({ kit, theme, pkg, logDirectory, listenerFailure }) => {
       if (window.Worker) {
         const NativeWorker = window.Worker; window.diagnosticWorkers = [];
         window.Worker = class extends NativeWorker { constructor(...args) { super(...args); window.diagnosticWorkers.push(this); } };
@@ -33,6 +34,7 @@ try {
       let callback = 0;
       window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } }, transformCallback(fn) { const id = ++callback; window['_' + id] = fn; return id; }, unregisterCallback(id) { delete window['_' + id]; }, async invoke(command, args = {}) {
         window.diagnosticCalls.push({ command, args });
+        if (listenerFailure && command === 'plugin:event|listen' && args.event === 'agent-event') throw Error('Listener registration fixture');
         if (command.startsWith('plugin:event|')) return 1;
         if (command === 'get_app_snapshot') return { platform: 'macos', appVersion: 'probe', workspaceCount: 0, diagnostics: [{ agent: 'codex', status: 'missing', capabilities: [] }] };
         if (command === 'list_plugin_installations') { if (window.diagnosticFail) throw Error('offline fixture'); return structuredClone(window.diagnosticPlugins); }
@@ -49,6 +51,17 @@ try {
       } };
     }, { ...config, logDirectory });
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
+    if (config.listenerFailure) {
+      await page.waitForFunction(() => window.diagnosticCalls.some(call => call.command === 'diagnostic_frontend_failed'));
+      await page.locator('.toast-region').getByText('Listener registration fixture', { exact: true }).waitFor();
+      const diagnostics = await page.evaluate(() => window.diagnosticCalls.filter(call => call.command.startsWith('diagnostic_frontend_')));
+      assert.deepEqual(diagnostics.map(call => call.command), ['diagnostic_frontend_failed']);
+      assert(!JSON.stringify(diagnostics).includes('Listener registration fixture'), 'startup reporting excludes error text');
+      assert.deepEqual(errors, [], 'initialization failure is handled without an unhandled rejection');
+      await page.close();
+      console.log(`${config.pkg?.release.digest.slice(0, 8) ?? `${config.kit}-${config.theme}`}: listener failure reported, displayed and never marked ready`);
+      continue;
+    }
     if (config.pkg) await page.locator('.presentation-external iframe').first().waitFor();
     await page.locator('[data-host-navigation="management"]').click();
     const dialog = page.getByRole('dialog');

@@ -1,7 +1,7 @@
 <script lang="ts">
   import DiagnosticLogsPanel from '$lib/components/app/DiagnosticLogsPanel.svelte';
   import { createDiagnosticLogsController, emptyDiagnosticLogs } from '$lib/app/diagnostic-logs-controller';
-  import { readDiagnosticLogStatus, openDiagnosticLogDirectory, diagnosticFrontendReady, reportFrontendDiagnostic } from '$lib/api';
+  import { readDiagnosticLogStatus, openDiagnosticLogDirectory, diagnosticFrontendReady, diagnosticFrontendFailed, reportFrontendDiagnostic } from '$lib/api';
   let diagnosticLogs = $state(emptyDiagnosticLogs());
   const diagnosticLogsController = createDiagnosticLogsController({ read: readDiagnosticLogStatus, open: openDiagnosticLogDirectory, publish: value => { diagnosticLogs = value; } });
   $effect(() => {
@@ -2236,19 +2236,23 @@
       }
 
       restoringSelection = true;
-      persistedSelection = readPersistedSelection();
       desktop = true;
 
-      const unlisten = await listenToAgentEvents(handleAgentEvent);
-      if (disposed) {
-        unlisten();
-        restoringSelection = false;
-        return;
-      }
-      stopListening = unlisten;
       try {
+        persistedSelection = readPersistedSelection();
+        const unlisten = await listenToAgentEvents(handleAgentEvent);
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        stopListening = unlisten;
         await refresh();
         if (!disposed) void diagnosticFrontendReady().catch(() => {});
+      } catch (error) {
+        if (!disposed) {
+          void diagnosticFrontendFailed().catch(() => {});
+          errorMessage = toErrorText(error);
+        }
       } finally {
         restoringSelection = false;
       }
