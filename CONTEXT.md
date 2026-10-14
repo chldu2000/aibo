@@ -33,6 +33,15 @@ A capability provider supplying the session lifecycle and any supported session 
 **Native Adapter**:
 The plugin-side implementation that translates a provider's contracts into a vendor's native protocol, events, and recovery data. An adapter is an implementation role, not an installable plugin identity.
 
+### Plugin management
+
+**Management Panel**:
+A plugin-owned management entry containing configuration and operational information for one or more of its contributions, presented within the host's management area.
+_Avoid_: Treating a management panel as a Session Provider or a Presentation Plugin.
+
+**Management Target**:
+A plugin-identified native configuration or account environment addressed by management operations. A target is distinct from capability scope: multiple workspaces may share one target, and one plugin may expose multiple targets.
+
 ### Capabilities and execution
 
 **Capability**:

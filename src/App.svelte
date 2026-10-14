@@ -110,9 +110,35 @@
   import { readAgentSettings, saveAgentSettings } from './lib/api';
   import { createAgentSettingsController, type AgentSettingsState } from './lib/app/agent-settings-controller';
   import type { CapabilityScope } from '../packages/plugin-protocol/src/capability';
+  import type { AgentSettingsTarget } from '../packages/plugin-protocol/src/settings';
+  import ManagementPanel from './lib/components/app/ManagementPanel.svelte';
+  import { managementPanels, managementSettingsTargets, createManagementSettingsStore, settingsTargetKey } from './lib/app/management-panels';
+  const pluginPanels = $derived(managementPanels(pluginInstallations));
+  const activePluginPanel = $derived(pluginPanels.find(panel => panel.id === managementSection));
+  let panelSectionId = $state('');
+  let panelScope = $state<CapabilityScope['kind']>('application');
+  let panelSettings = $state<Record<string, AgentSettingsState>>({});
+  const panelSettingsStore = createManagementSettingsStore({read:readAgentSettings,save:saveAgentSettings,changed:states => {panelSettings = states;}});
+  const activePanelSection = $derived(activePluginPanel?.declaration.sections.find(section => section.id === panelSectionId) ?? activePluginPanel?.declaration.sections[0]);
+  const panelTargets = $derived(managementSettingsTargets(activePluginPanel,panelSectionId,panelScope,selectedWorkspaceId,selectedSession));
+  $effect(() => {
+    const targets = panelTargets;
+    if (!settingsOpen || !desktop) return;
+    untrack(() => { for (const target of targets) void panelSettingsStore.controller(target).select(target); });
+  });
+  $effect(() => {
+    const ids = pluginInstallations.filter(item => item.installed).map(item => item.id);
+    untrack(() => panelSettingsStore.retain(ids));
+    if (managementSection.startsWith('plugin:') && !activePluginPanel) managementSection = 'extensions';
+  });
   let agentSettings = $state<AgentSettingsState>({target:null,snapshot:null,draft:{},loading:false,saving:false,error:null,notice:null});
   const agentSettingsController = createAgentSettingsController({read:readAgentSettings,save:saveAgentSettings,changed:state => { agentSettings = state; }});
   function configureAgent(installationId: string, contributionId: string) {
+    const panel = pluginPanels.find(panel => panel.installationId === installationId && (panel.declaration.id === contributionId || panel.declaration.sections.some(section => section.settingsReferences.some(ref => ref.contributionId === contributionId))));
+    if (panel) {
+      panelSectionId = (panel.declaration.sections.find(section => section.settingsReferences.some(ref => ref.contributionId === contributionId)) ?? panel.declaration.sections[0]).id;
+      panelScope = 'application'; openManagementCenter(panel.id); return;
+    }
     const entry = pluginInstallations.find(item => item.id === installationId)?.contributions?.find(item => item.id === contributionId);
     const scopes = (entry?.metadata.settings as {scopes?: string[]} | undefined)?.scopes ?? [];
     const scope: CapabilityScope | null = scopes.includes('application') ? {kind:'application'}
@@ -3563,6 +3589,20 @@
   {#if pluginError}<p role="alert">{translateMessage($locale, pluginError)}</p>{/if}
 {/snippet}
 
+{#snippet pluginManagementContent()}
+  {#if activePluginPanel && activePanelSection}
+    <ManagementPanel panel={activePluginPanel} sectionId={activePanelSection.id}
+      scope={activePanelSection.scopes.includes(panelScope) ? panelScope : activePanelSection.scopes[0]}
+      forms={panelTargets.map(target => ({key:settingsTargetKey(target),target,state:panelSettings[settingsTargetKey(target)]}))}
+      workspaceId={selectedWorkspaceId} session={selectedSession}
+      onSection={id => {panelSectionId = id;}} onScope={scope => {panelScope = scope;}}
+      onChange={(target,key,value) => panelSettingsStore.controller(target).change(key,value)}
+      onSave={target => {void panelSettingsStore.controller(target).save();}}
+      onReset={target => panelSettingsStore.controller(target).reset()}
+      onReload={target => {void panelSettingsStore.controller(target).reload();}} />
+  {/if}
+{/snippet}
+
 {#snippet runtimeStatus()}
   <DiagnosticLogsPanel state={diagnosticLogs} {desktop} onOpen={() => void diagnosticLogsController.open()} />
   <DiagnosticsPanel
@@ -3652,6 +3692,8 @@
     onClose={closeAppWindow}
   />
   <SettingsPanel
+    pluginPanels={pluginPanels.map(panel => ({id:panel.id,label:panel.declaration.title,description:$t('management.panelDescription')}))}
+    pluginPanel={pluginManagementContent}
     languagePreference={$language.preference}
     onSelectLanguage={value => { languageController.select(value); }}
     {workspaceSettings}

@@ -172,6 +172,7 @@ pub(crate) fn normalize_display(manifest: &Value) -> Result<ManifestModel, HostM
         }
         contributions.push(Contribution { id: id.into(), kind: kind.into(), scope: entry["scope"].as_str().unwrap().into(), required: entry["required"].as_bool().unwrap(), metadata });
     }
+    validate_management_panels(&contributions)?;
     let mut dependencies = HashSet::new();
     for dependency in manifest["packageDependencies"].as_array().into_iter().flatten() {
         let dependency_id = dependency["pluginId"].as_str().unwrap();
@@ -196,6 +197,7 @@ pub(crate) fn semantic_supported(metadata: &Value, manifest: &Value) -> bool {
 
 pub(crate) fn contribution_supported(entry: &Contribution, manifest: &Value) -> bool {
     match entry.kind.as_str() {
+        "managementPanel" => entry.metadata["contractVersion"] == "1.0.0",
         "toolView" => entry.metadata["contractVersion"] == "1.0.0" && entry.scope == "workspace",
         "semanticView" => semantic_supported(&entry.metadata,manifest),
         "capabilityProvider" => matches!(manifest["protocols"]["runtime"]["min"].as_str(),Some("2.0" | "2.1")) && manifest["protocols"]["runtime"]["max"] == manifest["protocols"]["runtime"]["min"]
@@ -208,6 +210,27 @@ pub(crate) fn contribution_supported(entry: &Contribution, manifest: &Value) -> 
             }),
         _ => false,
     }
+}
+
+fn validate_management_panels(entries: &[Contribution]) -> Result<(), HostMessage> {
+    for panel in entries.iter().filter(|entry| entry.kind == "managementPanel") {
+        let fail = || invalid("native.manifest.schemaValidation", "invalid management panel reference or duplicate key");
+        for related in panel.metadata["relatedContributions"].as_array().unwrap() {
+            if !entries.iter().any(|entry| entry.kind == "capabilityProvider" && entry.id == related.as_str().unwrap()) { return Err(fail()); }
+        }
+        let mut sections = HashSet::new();
+        for section in panel.metadata["sections"].as_array().unwrap() {
+            if !sections.insert(section["id"].as_str().unwrap()) { return Err(fail()); }
+            let mut keys = HashSet::new();
+            for reference in section["settingsReferences"].as_array().unwrap() {
+                if !keys.insert(reference["key"].as_str().unwrap()) { return Err(fail()); }
+                let provider = entries.iter().find(|entry| entry.kind == "capabilityProvider" && entry.id == reference["contributionId"].as_str().unwrap()).ok_or_else(fail)?;
+                let scopes = provider.metadata["settings"]["scopes"].as_array().ok_or_else(fail)?;
+                if reference["scopes"].as_array().unwrap().iter().any(|scope| !scopes.contains(scope) || !section["scopes"].as_array().unwrap().contains(scope)) { return Err(fail()); }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Installation is distinct from activation. Never launch v2 through the v1 runtime.
@@ -251,6 +274,25 @@ mod tests {
     use super::*;
     fn view() -> Value { serde_json::from_str(include_str!("../../fixtures/plugins/platform-v2/declarative.json")).unwrap() }
     fn provider() -> Value { serde_json::from_str(include_str!("../../fixtures/plugins/platform-v2/provider.json")).unwrap() }
+
+    #[test]
+    fn management_panel_references_are_local_unique_and_scope_checked() {
+        let fixture: Value = serde_json::from_str(include_str!("../../fixtures/plugins/management-panel/manifest.json")).unwrap();
+        let model = normalize(&fixture).unwrap();
+        assert!(contribution_supported(model.contributions.last().unwrap(), &fixture));
+        for mode in 0..5 {
+            let mut changed = fixture.clone();
+            let panel = &mut changed["contributions"][2];
+            match mode {
+                0 => panel["sections"][0]["settingsReferences"][0]["contributionId"] = json!("foreign.agent"),
+                1 => panel["sections"][0]["settingsReferences"][1]["key"] = json!("instructions"),
+                2 => panel["sections"][0]["scopes"] = json!(["application"]),
+                3 => panel["relatedContributions"] = json!(["foreign.agent"]),
+                _ => { let section = panel["sections"][0].clone(); panel["sections"].as_array_mut().unwrap().push(section); }
+            }
+            assert!(normalize(&changed).is_err(), "case {mode}");
+        }
+    }
 
     #[test]
     fn manifest_validation_preserves_legacy_diagnostics_and_rejects_the_same_declarations() {

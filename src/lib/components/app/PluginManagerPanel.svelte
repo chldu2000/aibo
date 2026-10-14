@@ -154,7 +154,7 @@
           {#each installedPlugins as installation (installation.id)}
             {#if selected?.id === installation.id}
             {@const blocked = !installation.enabled && !installation.runnable}
-            {@const settingsEntries = installation.contributions?.filter(entry => entry.metadata.settings) ?? []}
+            {@const settingsEntries = installation.contributions?.filter(entry => entry.metadata.settings || entry.metadata.kind === 'managementPanel') ?? []}
             {@const packageDependencies = installation.packageDependencies?.dependencies ?? []}
             <Card aria-label={installation.manifest.displayName}>
               <CardHeader class="settings-card-header">
@@ -232,7 +232,7 @@
                     <h4 class="settings-rows-title">{$t('plugins.contributionsTitle')}</h4>
                     <div class="settings-rows" data-density="compact">
                       {#each settingsEntries as entry (entry.id)}
-                        {@const name = String(entry.metadata.displayName ?? entry.id)}
+                        {@const name = String(entry.metadata.title ?? entry.metadata.displayName ?? entry.id)}
                         <div class="settings-row">
                           <div class="settings-copy"><span class="settings-row-title">{name}</span></div>
                           <div class="settings-row-actions">

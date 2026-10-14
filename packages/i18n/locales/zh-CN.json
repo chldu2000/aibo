@@ -2406,5 +2406,10 @@
   "diagnostics.logs.quotaExhausted": "日志容量已达上限，活动日志受到保护",
   "diagnostics.logs.unsafeDirectory": "目录不安全或存在符号链接",
   "diagnostics.logs.shutdownTimeout": "日志收尾未在两秒内完成",
-  "diagnostics.logs.ioError": "无法写入诊断日志"
+  "diagnostics.logs.ioError": "无法写入诊断日志",
+  "management.sections": "管理分区",
+  "management.scope": "配置作用域",
+  "management.noScope": "请选择可用的作用域以编辑设置。",
+  "management.panelDescription": "插件设置",
+  "management.open": "打开管理面板"
 }

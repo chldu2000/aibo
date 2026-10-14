@@ -1,5 +1,5 @@
 {
-  "version": "0.1.12",
+  "version": "0.1.13",
   "exports": {
     "@aibolabs/capability-runtime": "capability-runtime/runtime.mjs",
     "@aibo/capability-runtime": "capability-runtime/runtime.mjs",
@@ -42,6 +42,7 @@
     "plugin-protocol/dist/agent-icon.js": "export function readAgentIcon(value) {\n    if (!value || typeof value !== 'object' || Array.isArray(value))\n        return undefined;\n    const icon = value;\n    if (Object.keys(icon).length !== 1 || typeof icon.path !== 'string')\n        return undefined;\n    if (icon.path.length > 8192 || !/^[Mm][0-9MmZzLlHhVvCcSsQqTtAaEe.,+\\s-]+$/.test(icon.path))\n        return undefined;\n    return { path: icon.path };\n}\n",
     "plugin-protocol/dist/capability.js": "export const CAPABILITY_RUNTIME_PROTOCOL = '2.0';\n/** Explicit opt-in for invocation streams and controls; 2.0 keeps its original meaning. */\nexport const CAPABILITY_INTERACTIVE_PROTOCOL = '2.1';\n",
     "plugin-protocol/dist/index.js": "export * from './semantic.js';\nexport * from './presentation.js';\nexport * from './renderer.js';\nexport * from './capability.js';\nexport * from './session.js';\nexport * from './presentation-package.js';\nexport * from './presentation-runtime.js';\nexport * from './presentation-controls.js';\nexport * from './agent-icon.js';\n",
+    "plugin-protocol/dist/management.js": "export {};\n",
     "plugin-protocol/dist/presentation-capability.js": "export {};\n",
     "plugin-protocol/dist/presentation-controls.js": "export {};\n",
     "plugin-protocol/dist/presentation-conversation.js": "export {};\n",

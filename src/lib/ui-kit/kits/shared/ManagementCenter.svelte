@@ -4,7 +4,7 @@
   import type { UiManagementCenterProps, UiManagementSection } from '../../contract';
   import Button from './Button.svelte';
   import Icon from '../../runtime/Icon.svelte';
-  let { title, restoreTriggerFocus = true, activeSection, onSelectSection, onClose, appearance, layout, workspace, extensions, runtime, footer }: UiManagementCenterProps = $props();
+  let { title, restoreTriggerFocus = true, activeSection, onSelectSection, onClose, appearance, layout, workspace, extensions, runtime, pluginPanels = [], pluginPanel, footer }: UiManagementCenterProps = $props();
   let dialog: HTMLDialogElement;
   // Capture before the sibling workbench becomes inert in this render.
   const previous = typeof document === 'undefined' ? null : document.activeElement;
@@ -15,6 +15,7 @@
     { id: 'workspace', label: $t('settings.workspace'), description: $t('settings.workspace.description') },
     { id: 'extensions', label: $t('settings.extensions'), description: $t('settings.extensions.description') },
     { id: 'runtime', label: $t('settings.runtime'), description: $t('settings.runtime.description') },
+    ...pluginPanels,
   ]);
   $effect(() => {
     activeSection;
@@ -51,7 +52,7 @@
     else if (event.key === 'End') next = sections.length - 1;
     else return;
     event.preventDefault(); onSelectSection(sections[next].id);
-    dialog.querySelector<HTMLButtonElement>(`#management-tab-${sections[next].id}`)?.focus();
+    dialog.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
   }
 </script>
 <dialog bind:this={dialog} class="ui-management management-shell" aria-labelledby="management-title" oncancel={event => { event.preventDefault(); onClose(); }} onclick={event => {
@@ -67,7 +68,7 @@
       {/each}
     </div>
     <div class="management-content" id="management-content" role="tabpanel" aria-labelledby={`management-tab-${activeSection}`} tabindex="0">
-      {#if activeSection === 'appearance'}{@render appearance()}{:else if activeSection === 'layout'}{@render layout()}{:else if activeSection === 'workspace'}{@render workspace()}{:else if activeSection === 'extensions'}{@render extensions()}{:else}{@render runtime()}{/if}
+      {#if activeSection === 'appearance'}{@render appearance()}{:else if activeSection === 'layout'}{@render layout()}{:else if activeSection === 'workspace'}{@render workspace()}{:else if activeSection === 'extensions'}{@render extensions()}{:else if activeSection === 'runtime'}{@render runtime()}{:else}{@render pluginPanel?.()}{/if}
     </div>
   </div>
   {#if footer}<footer class="management-footer">{@render footer()}</footer>{/if}

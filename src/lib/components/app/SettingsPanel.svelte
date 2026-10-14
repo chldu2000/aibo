@@ -16,6 +16,8 @@
     packageManagement?: Snippet;
     extensions?: Snippet;
     runtime?: Snippet;
+    pluginPanels?: readonly { id: `plugin:${string}`; label: string; description: string }[];
+    pluginPanel?: Snippet;
     open: boolean;
     activeSection: UiManagementSection;
     uiKits: readonly UiKitOption[];
@@ -27,7 +29,7 @@
     onClose: () => void;
   };
 
-  let { languagePreference, onSelectLanguage, layoutSettings, appearanceActions, appearanceError, appearanceBusy = false, workspaceSettings, packageManagement, extensions, runtime, open, activeSection, uiKits, activeUiKitName, activeThemeId, onSelectUiKit, onSelectTheme, onSelectSection, onClose }: SettingsPanelProps = $props();
+  let { languagePreference, onSelectLanguage, layoutSettings, appearanceActions, appearanceError, appearanceBusy = false, workspaceSettings, packageManagement, extensions, runtime, pluginPanels, pluginPanel, open, activeSection, uiKits, activeUiKitName, activeThemeId, onSelectUiKit, onSelectTheme, onSelectSection, onClose }: SettingsPanelProps = $props();
   let openedKit = $state<string | null>(null);
   let requestedKit = $state<string | null>(null);
   $effect.pre(() => { if (open) { openedKit = untrack(() => activeUiKitName); requestedKit = null; } });
@@ -126,5 +128,5 @@
 {#snippet runtimeContent()}<div class="settings-tab-panel">{@render runtime?.()}</div>{/snippet}
 
 {#if open}
-  <ManagementCenter title={$t('settings.title')} restoreTriggerFocus={openedKit === activeUiKitName && (requestedKit === null || requestedKit === openedKit)} {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} layout={layoutContent} workspace={workspaceContent} extensions={extensionContent} runtime={runtimeContent} />
+  <ManagementCenter {pluginPanels} {pluginPanel} title={$t('settings.title')} restoreTriggerFocus={openedKit === activeUiKitName && (requestedKit === null || requestedKit === openedKit)} {activeSection} {onSelectSection} {onClose} appearance={appearanceContent} layout={layoutContent} workspace={workspaceContent} extensions={extensionContent} runtime={runtimeContent} />
 {/if}

@@ -1,0 +1,583 @@
+{
+  "schema": "aibo.plugin-manifest/v2",
+  "pluginId": "dev.example.management",
+  "version": "2.0.19",
+  "displayName": "Example Agent",
+  "description": "Declaration-only fixture for two providers sharing static configuration.",
+  "hostSdk": {
+    "min": "0.1.13",
+    "maxExclusive": "0.2.0"
+  },
+  "host": {
+    "min": "0.1.0",
+    "maxExclusive": "0.2.0"
+  },
+  "platforms": [
+    "darwin-arm64",
+    "darwin-x64",
+    "windows-x64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "protocols": {
+    "runtime": {
+      "min": "2.1",
+      "max": "2.1"
+    }
+  },
+  "entrypoint": {
+    "executable": "worker.mjs"
+  },
+  "executableDependencies": [
+    {
+      "kind": "runtime",
+      "name": "node",
+      "versionRange": ">=22",
+      "required": true
+    },
+    {
+      "kind": "executable",
+      "name": "codex",
+      "required": true
+    }
+  ],
+  "contributions": [
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.example.management.agent",
+      "scope": "session",
+      "required": true,
+      "displayName": "First",
+      "settings": {
+        "schema": "aibo.agent-settings/v1",
+        "version": 1,
+        "title": "Agent 设置",
+        "description": "每次发送消息时应用；会话设置覆盖项目设置，项目设置覆盖全局设置。",
+        "scopes": [
+          "application",
+          "workspace",
+          "session"
+        ],
+        "fields": [
+          {
+            "key": "additionalInstructions",
+            "label": "附加指令",
+            "description": "在发送给 Agent 的每条消息前附加这些指令。留空表示不附加。",
+            "type": "multiline",
+            "default": "",
+            "maxLength": 8000
+          }
+        ]
+      },
+      "operations": [
+        {
+          "id": "dev.example.management.session.open",
+          "capability": {
+            "id": "aibo.session.open",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mode",
+              "executionProfile"
+            ],
+            "properties": {
+              "mode": {
+                "enum": [
+                  "create",
+                  "resume"
+                ]
+              },
+              "executionProfile": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "interactionMode": {
+                    "enum": [
+                      "ask",
+                      "plan",
+                      "edit"
+                    ]
+                  },
+                  "approvalPolicy": {
+                    "type": "string"
+                  },
+                  "approvalReviewer": {
+                    "enum": [
+                      "user",
+                      "auto-review",
+                      "none"
+                    ]
+                  },
+                  "filesystemPolicy": {
+                    "type": "string"
+                  },
+                  "commandPolicy": {
+                    "type": "string"
+                  },
+                  "networkPolicy": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reasoningEffort": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "nativeSessionId",
+              "recovery",
+              "capabilities"
+            ],
+            "properties": {
+              "nativeSessionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "recovery": {
+                "type": "object"
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.example.management.session.turn",
+          "capability": {
+            "id": "aibo.session.turn",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200000
+              },
+              "attachments": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "status",
+              "recovery"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "completed",
+                  "interrupted",
+                  "failed"
+                ]
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 43200000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.example.management.session.close",
+          "capability": {
+            "id": "aibo.session.close",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "accepted"
+            ],
+            "properties": {
+              "accepted": {
+                "const": true
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.example.management.session.cancel",
+          "capability": {
+            "id": "aibo.session.cancel",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "accepted"
+            ],
+            "properties": {
+              "accepted": {
+                "const": true
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        }
+      ]
+    },
+    {
+      "kind": "capabilityProvider",
+      "id": "dev.example.management.secondary.agent",
+      "scope": "session",
+      "required": true,
+      "displayName": "Second",
+      "settings": {
+        "schema": "aibo.agent-settings/v1",
+        "version": 1,
+        "title": "Agent 设置",
+        "description": "每次发送消息时应用；会话设置覆盖项目设置，项目设置覆盖全局设置。",
+        "scopes": [
+          "application",
+          "workspace",
+          "session"
+        ],
+        "fields": [
+          {
+            "key": "additionalInstructions",
+            "label": "附加指令",
+            "description": "在发送给 Agent 的每条消息前附加这些指令。留空表示不附加。",
+            "type": "multiline",
+            "default": "",
+            "maxLength": 8000
+          }
+        ]
+      },
+      "operations": [
+        {
+          "id": "dev.example.management.secondary.session.open",
+          "capability": {
+            "id": "aibo.session.open",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mode",
+              "executionProfile"
+            ],
+            "properties": {
+              "mode": {
+                "enum": [
+                  "create",
+                  "resume"
+                ]
+              },
+              "executionProfile": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "interactionMode": {
+                    "enum": [
+                      "ask",
+                      "plan",
+                      "edit"
+                    ]
+                  },
+                  "approvalPolicy": {
+                    "type": "string"
+                  },
+                  "approvalReviewer": {
+                    "enum": [
+                      "user",
+                      "auto-review",
+                      "none"
+                    ]
+                  },
+                  "filesystemPolicy": {
+                    "type": "string"
+                  },
+                  "commandPolicy": {
+                    "type": "string"
+                  },
+                  "networkPolicy": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reasoningEffort": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "nativeSessionId",
+              "recovery",
+              "capabilities"
+            ],
+            "properties": {
+              "nativeSessionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "recovery": {
+                "type": "object"
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.example.management.secondary.session.turn",
+          "capability": {
+            "id": "aibo.session.turn",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200000
+              },
+              "attachments": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "status",
+              "recovery"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "completed",
+                  "interrupted",
+                  "failed"
+                ]
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 43200000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.example.management.secondary.session.close",
+          "capability": {
+            "id": "aibo.session.close",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "accepted"
+            ],
+            "properties": {
+              "accepted": {
+                "const": true
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        },
+        {
+          "id": "dev.example.management.secondary.session.cancel",
+          "capability": {
+            "id": "aibo.session.cancel",
+            "version": "1.0.0"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "required": [
+              "accepted"
+            ],
+            "properties": {
+              "accepted": {
+                "const": true
+              }
+            }
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "idempotent": false
+        }
+      ]
+    },
+    {
+      "kind": "managementPanel",
+      "id": "dev.example.management.management",
+      "scope": "application",
+      "required": false,
+      "title": "Example Agent",
+      "contractVersion": "1.0.0",
+      "relatedContributions": [
+        "dev.example.management.agent",
+        "dev.example.management.secondary.agent"
+      ],
+      "sections": [
+        {
+          "id": "behavior",
+          "title": "Behavior",
+          "scopes": [
+            "application",
+            "workspace",
+            "session"
+          ],
+          "settingsReferences": [
+            {
+              "key": "instructions",
+              "contributionId": "dev.example.management.agent",
+              "scopes": [
+                "application",
+                "workspace",
+                "session"
+              ]
+            },
+            {
+              "key": "second",
+              "contributionId": "dev.example.management.secondary.agent",
+              "scopes": [
+                "application",
+                "workspace",
+                "session"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

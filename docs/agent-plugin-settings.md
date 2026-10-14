@@ -1,5 +1,50 @@
 # Agent 插件设置协议 v1
 
+账户、用量及原生扩展等组合管理能力的后续方案见[插件设置与管理面板设计](plugin-management-panels-design.md)。
+该方案的静态面板已接入，动态管理仍待实现；均不改变本文的 v1 配置存储合同。
+
+## 插件独立管理面板
+
+Host SDK **0.1.13** 的源码实现支持可选 `managementPanel` contribution。声明通过安装校验后，
+设置导航显示插件自己的入口；插件详情中的配置按钮也可直达该面板。禁用插件仍可编辑静态配置，
+打开面板不会启用插件或启动其进程。旧插件保留原表单入口。
+
+```json
+{
+  "kind": "managementPanel",
+  "id": "dev.example.agent.management",
+  "scope": "application",
+  "required": false,
+  "title": "Example Agent",
+  "contractVersion": "1.0.0",
+  "relatedContributions": ["dev.example.agent.session"],
+  "sections": [{
+    "id": "behavior",
+    "title": "行为",
+    "scopes": ["application", "workspace", "session"],
+    "settingsReferences": [{
+      "key": "instructions",
+      "contributionId": "dev.example.agent.session",
+      "scopes": ["application", "workspace", "session"]
+    }]
+  }]
+}
+```
+
+这是 manifest 内的局部声明，需要同包声明具有 settings 的 Session Provider。每个引用只能使用
+分区和 settings descriptor 都支持的 scope，分区 ID 与本分区引用 key 分别唯一。
+一页可含多个分区，一个分区可引用多个表单，各表单独立保存和处理冲突；同一真实 settings target
+复用草稿。会话作用域只允许编辑当前会话固定安装和提供者的配置，归档会话不可编辑。
+
+当前最多 16 个分区、每分区 32 个静态引用。动态 providers、动作与敏感输入尚未支持，安装时拒绝；
+不会把登录或安装伪装为配置保存。新包应声明 hostSdk.min 为 0.1.13；这是源码版本，不表示已发布。
+Schema 位于 [management-panel.v1.schema.json](../contracts/management-panel.v1.schema.json)，
+类型从 `@aibolabs/plugin-protocol` 导出。双 Agent 声明样本位于
+[management-panel fixture](../fixtures/plugins/management-panel/manifest.json)。
+
+验证：`node --test test/management-panels.test.mjs`、Rust `plugin_manifest` 测试，以及
+`node probes/management-panel-browser.mjs` 覆盖两套内置外观的导航、多表单、草稿、作用域与键盘行为。
+
 Agent 能力提供者可以在 Manifest v2 的 session `capabilityProvider` 上声明 `settings`。
 宿主在「工作台设置 → 插件与能力 → 插件 → 设置」提供表单，并将解析后的配置放进每次
 `capability.invoke` 的 `context.settings`。插件无需提供前端代码或申请 application 写权限。

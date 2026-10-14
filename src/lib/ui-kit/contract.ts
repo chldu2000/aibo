@@ -187,7 +187,7 @@ export type UiHostPanelProps = {
   actions?: Snippet;
 };
 
-export type UiManagementSection = 'appearance' | 'layout' | 'workspace' | 'extensions' | 'runtime';
+export type UiManagementSection = 'appearance' | 'layout' | 'workspace' | 'extensions' | 'runtime' | `plugin:${string}`;
 export type UiManagementCenterProps = {
   title: string;
   /** A changed presentation restores its own semantic focus after the dialog closes. */
@@ -200,6 +200,8 @@ export type UiManagementCenterProps = {
   workspace: Snippet;
   extensions: Snippet;
   runtime: Snippet;
+  pluginPanels?: readonly { id: `plugin:${string}`; label: string; description: string }[];
+  pluginPanel?: Snippet;
   footer?: Snippet;
 };
 export type UiWorkbenchChromeProps = {

@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.18';
+const pluginVersion = '2.0.19';
 const backgroundTasks = new CodexBackgroundTasks();
 
 export const capabilities = ['background-tasks.list', 'session.create', 'session.resume', 'session.close', 'turn.send', 'image.input', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
