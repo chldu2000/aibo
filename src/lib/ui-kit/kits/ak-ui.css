@@ -2850,3 +2850,23 @@
 .app-shell[data-ui-kit='ak-ui'] .sidebar-view-menu { background: var(--ak-surface-raised); color: var(--aibo-text); border: 1px solid var(--aibo-border); border-radius: 0; box-shadow: 0 8px 28px var(--aibo-border); }
 .app-shell[data-ui-kit='ak-ui'] .sidebar-view-menu .ui-button { text-align: left; border-radius: 0; font-size: var(--aibo-type-ui); }
 .app-shell[data-ui-kit='ak-ui'] .sidebar-menu-title, .app-shell[data-ui-kit='ak-ui'] .sidebar-dock-empty { color: var(--aibo-muted); font-size: var(--aibo-type-meta); }
+
+/* Expanded records share the summary inset and keep output clear of the card edge. */
+.app-shell[data-ui-kit='ak-ui'] .tool-record-content {
+  min-width: 0;
+  padding: 0 var(--ak-space-3) var(--ak-space-3);
+}
+.app-shell[data-ui-kit='ak-ui'] .tool-record-content > pre {
+  max-height: 280px;
+  overflow: auto;
+  margin: 0;
+  padding: var(--ak-space-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--aibo-surface-hover);
+  border: 1px solid var(--aibo-border);
+  border-radius: 0;
+  font: var(--aibo-type-meta)/1.8 var(--aibo-mono);
+}
+.app-shell[data-ui-kit='ak-ui'] .tool-record-content > pre.diff-content { color: var(--aibo-text); }
+.app-shell[data-ui-kit='ak-ui'] .tool-record-content > pre.diff-content::first-line { color: var(--aibo-warning-text); }

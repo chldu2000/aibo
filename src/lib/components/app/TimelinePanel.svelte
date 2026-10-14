@@ -367,7 +367,7 @@
                         <span class="tool-record-target" title={preview}>{preview}</span>
                         {#if timing.durationLabel !== '—'}<span class="tool-record-duration" title={timing.durationTitle}>{toolGroupDuration([tool])}</span>{/if}
                       </summary>
-                      <pre class:diff-content={isDiffContent(tool.content)}>{tool.content || '…'}</pre>
+                      <div class="tool-record-content"><pre class:diff-content={isDiffContent(tool.content)}>{tool.content || '…'}</pre></div>
                     </details>
                   {/each}
                 </div>
@@ -405,15 +405,36 @@
               <div data-presentation-message={'message:' + item.id}><BackgroundTaskCard task={backgroundTask} /></div>
             {:else if child}
               <div data-presentation-message={'message:' + item.id}><SubagentCard name={child.name} task={child.task} statusLabel={$t(`subagent.status.${child.status}`)} activity={child.activity} failed={['failed','unavailable'].includes(child.status)} onOpen={() => onOpenSubagent?.(child.id)} /></div>
+            {:else if item.role === 'tool' || (item.role === 'system' && item.toolName === 'reasoning')}
+              <Card as="article" data-presentation-message={'message:' + item.id} class={`timeline-entry tool-group-entry ${item.role === 'tool' ? 'tool-entry' : 'system-entry'}`}>
+                <details class="tool-group">
+                  <summary title={item.role === 'tool' ? (item.entryType === 'tool_call' ? $t('timeline.parameters') : isDiffContent(item.content) ? $t('timeline.viewDiff') : $t('subagent.viewTool')) : $t('timeline.reasoningDetails')}>
+                    <Icon name="chevron-down" class="disclosure-chevron" />
+                    <span class="tool-group-title">
+                      <Icon name={item.role === 'tool' ? 'terminal' : 'diagnostics'} />
+                      <span>{item.role === 'tool' ? toolLabel(item, $locale) : $t('timeline.thinking')}</span>
+                    </span>
+                    {#if item.status !== 'completed'}<Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>{/if}
+                    {#if toolGroupDuration([item])}<span class="tool-group-meta" title={$t('timeline.durationDescription')}>· {toolGroupDuration([item])}</span>{/if}
+                  </summary>
+                  <div class="tool-record-content">
+                    {#if item.role === 'tool'}
+                      <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
+                    {:else}
+                      <div class="entry-content"><MarkdownContent {onOpenLink} content={item.content} /></div>
+                    {/if}
+                  </div>
+                </details>
+              </Card>
             {:else}
             <Card
               as="article"
               data-presentation-message={'message:' + item.id}
-              class={`timeline-entry ${item.role === 'tool' || (item.role === 'system' && item.toolName === 'reasoning') ? 'compact-record' : ''} ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'tool' ? 'tool-entry' : item.role === 'system' ? 'system-entry' : ''}`}
+              class={`timeline-entry ${item.role === 'assistant' ? 'assistant-entry' : item.role === 'user' ? 'user-entry' : item.role === 'system' ? 'system-entry' : ''}`}
             >
               <div class="entry-meta">
                 {#if item.role === 'assistant'}<AgentStatusMark agent="plugin" icon={sessionProviderIcon} tone="idle" label={sessionProviderLabel ?? $t('role.assistant')} />{/if}
-                <span class="entry-author">{item.role === 'assistant' ? (sessionProviderLabel ?? session?.agent ?? $t('role.assistant')) : item.role === 'user' ? $t('timeline.you') : item.role === 'system' && item.toolName === 'reasoning' ? $t('timeline.thinking') : item.role === 'tool' ? $t('role.tool') : $t('role.system')}</span>
+                <span class="entry-author">{item.role === 'assistant' ? (sessionProviderLabel ?? session?.agent ?? $t('role.assistant')) : item.role === 'user' ? $t('timeline.you') : $t('role.system')}</span>
                 {#if timing.dateTime && (item.role === 'user' || item.role === 'assistant')}<time datetime={timing.dateTime} title={timing.dateTime}>{timing.timeLabel}</time>{/if}
                 <div class="entry-meta-actions">
                   {#if item.status !== 'completed'}<Badge variant={item.status === 'failed' ? 'destructive' : item.status === 'queued' ? 'secondary' : 'outline'}>{statusLabel(item.status)}</Badge>{/if}
@@ -424,53 +445,38 @@
                   {/if}
                 </div>
               </div>
-              {#if item.toolName === 'reasoning' && item.role === 'system'}
-                <details class="tool-output">
-                  <summary>{$t('timeline.reasoningDetails')}</summary>
-                  <div class="entry-content"><MarkdownContent {onOpenLink} content={item.content} /></div>
-                </details>
-              {:else if item.role === 'tool'}
-                <details class="tool-output">
+              {@const attached = item.role === 'user' ? splitMessageAttachments(item.content, attachments) : { body:item.content, attachments:[] }}
+              {@const message = item.role === 'user' ? splitSessionReferences(attached.body) : { body: item.content, references: [] }}
+              <div class="entry-content">{#if message.body}<MarkdownContent {onOpenLink} content={message.body} />{:else if !message.references.length && !attached.attachments.length}…{/if}</div>
+              <AttachmentList items={attached.attachments} previews={attachmentPreviews} />
+              {#each message.references as reference, index (`${reference.id}-${index}`)}
+                {@const scope = reference.mode === 'complete' ? (reference.messageLimit === null ? $t('timeline.referenceScopeAll') : $t('timeline.referenceScopeRecent', { count: reference.messageLimit })) : reference.mode === 'excerpts' ? $t('timeline.referenceScopeExcerpts') : $t('timeline.referenceScopeLegacy')}
+                <details class="session-reference">
                   <summary>
-                    <span class="tool-output-name">{toolLabel(item, $locale)}</span>
-                    <span class="tool-output-action">{item.entryType === 'tool_call' ? $t('timeline.parameters') : isDiffContent(item.content) ? $t('timeline.viewDiff') : $t('subagent.viewTool')}</span>
+                    <Icon name="chevron-down" class="disclosure-chevron" />
+                    <span class="session-reference-kicker">{$t('timeline.referenceKicker')}</span>
+                    <span class="session-reference-title" title={reference.title}>{reference.title}</span>
+                    <span class="session-reference-count">{$t('timeline.referenceCount', { count: reference.excerpts.length })}</span>
                   </summary>
-                  <pre class:diff-content={isDiffContent(item.content)}>{item.content || '…'}</pre>
+                  <p class="session-reference-meta" title={$t('timeline.referenceToolsHidden')}>
+                    {#if reference.agent}<span>{referenceAgentLabel(reference.agent)}</span>{/if}
+                    <span>{scope}</span>
+                    {#if reference.omitted}<span>{$t('timeline.referenceOmitted', { count: reference.omitted })}</span>{/if}
+                  </p>
+                  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                  <ol class="session-reference-excerpts" tabindex="0" aria-label={$t('timeline.referenceExcerpts')}>
+                    {#each reference.excerpts as excerpt, excerptIndex (excerptIndex)}
+                      <li class="session-reference-excerpt" data-role={excerpt.role}>
+                        <div class="session-reference-role">
+                          <span>{excerpt.role === 'user' ? $t('timeline.you') : referenceAgentLabel(reference.agent) || $t('role.assistant')}</span>
+                          {#if excerpt.truncated}<Badge variant="outline">{$t('timeline.referenceTruncated')}</Badge>{/if}
+                        </div>
+                        <div class="session-reference-text"><MarkdownContent {onOpenLink} content={excerpt.text} /></div>
+                      </li>
+                    {/each}
+                  </ol>
                 </details>
-              {:else}
-                {@const attached = item.role === 'user' ? splitMessageAttachments(item.content, attachments) : { body:item.content, attachments:[] }}
-                {@const message = item.role === 'user' ? splitSessionReferences(attached.body) : { body: item.content, references: [] }}
-                <div class="entry-content">{#if message.body}<MarkdownContent {onOpenLink} content={message.body} />{:else if !message.references.length && !attached.attachments.length}…{/if}</div>
-                <AttachmentList items={attached.attachments} previews={attachmentPreviews} />
-                {#each message.references as reference, index (`${reference.id}-${index}`)}
-                  {@const scope = reference.mode === 'complete' ? (reference.messageLimit === null ? $t('timeline.referenceScopeAll') : $t('timeline.referenceScopeRecent', { count: reference.messageLimit })) : reference.mode === 'excerpts' ? $t('timeline.referenceScopeExcerpts') : $t('timeline.referenceScopeLegacy')}
-                  <details class="session-reference">
-                    <summary>
-                      <Icon name="chevron-down" class="disclosure-chevron" />
-                      <span class="session-reference-kicker">{$t('timeline.referenceKicker')}</span>
-                      <span class="session-reference-title" title={reference.title}>{reference.title}</span>
-                      <span class="session-reference-count">{$t('timeline.referenceCount', { count: reference.excerpts.length })}</span>
-                    </summary>
-                    <p class="session-reference-meta" title={$t('timeline.referenceToolsHidden')}>
-                      {#if reference.agent}<span>{referenceAgentLabel(reference.agent)}</span>{/if}
-                      <span>{scope}</span>
-                      {#if reference.omitted}<span>{$t('timeline.referenceOmitted', { count: reference.omitted })}</span>{/if}
-                    </p>
-                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-                    <ol class="session-reference-excerpts" tabindex="0" aria-label={$t('timeline.referenceExcerpts')}>
-                      {#each reference.excerpts as excerpt, excerptIndex (excerptIndex)}
-                        <li class="session-reference-excerpt" data-role={excerpt.role}>
-                          <div class="session-reference-role">
-                            <span>{excerpt.role === 'user' ? $t('timeline.you') : referenceAgentLabel(reference.agent) || $t('role.assistant')}</span>
-                            {#if excerpt.truncated}<Badge variant="outline">{$t('timeline.referenceTruncated')}</Badge>{/if}
-                          </div>
-                          <div class="session-reference-text"><MarkdownContent {onOpenLink} content={excerpt.text} /></div>
-                        </li>
-                      {/each}
-                    </ol>
-                  </details>
-                {/each}
-              {/if}
+              {/each}
             </Card>
             {/if}
           {/if}
