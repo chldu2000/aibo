@@ -120,6 +120,16 @@
   let panelSettings = $state<Record<string, AgentSettingsState>>({});
   const panelSettingsStore = createManagementSettingsStore({read:readAgentSettings,save:saveAgentSettings,changed:states => {panelSettings = states;}});
   const activePanelSection = $derived(activePluginPanel?.declaration.sections.find(section => section.id === panelSectionId) ?? activePluginPanel?.declaration.sections[0]);
+  import { readManagementSection } from './lib/api';
+  import { createManagementDataController, emptyManagementData } from './lib/app/management-data-controller';
+  let panelData = $state(emptyManagementData());
+  const panelDataController = createManagementDataController({read:readManagementSection,changed:state => {panelData=state;}});
+  $effect(() => {
+    const target = desktop && settingsOpen && activePluginPanel?.enabled && activePanelSection?.providers?.application
+      && (activePanelSection.scopes.includes(panelScope) ? panelScope : activePanelSection.scopes[0]) === 'application'
+      ? {installationId:activePluginPanel.installationId,panelId:activePluginPanel.declaration.id,sectionId:activePanelSection.id} : null;
+    untrack(() => panelDataController.select(target));
+  });
   const panelTargets = $derived(managementSettingsTargets(activePluginPanel,panelSectionId,panelScope,selectedWorkspaceId,selectedSession));
   $effect(() => {
     const targets = panelTargets;
@@ -134,9 +144,9 @@
   let agentSettings = $state<AgentSettingsState>({target:null,snapshot:null,draft:{},loading:false,saving:false,error:null,notice:null});
   const agentSettingsController = createAgentSettingsController({read:readAgentSettings,save:saveAgentSettings,changed:state => { agentSettings = state; }});
   function configureAgent(installationId: string, contributionId: string) {
-    const panel = pluginPanels.find(panel => panel.installationId === installationId && (panel.declaration.id === contributionId || panel.declaration.sections.some(section => section.settingsReferences.some(ref => ref.contributionId === contributionId))));
+    const panel = pluginPanels.find(panel => panel.installationId === installationId && (panel.declaration.id === contributionId || panel.declaration.sections.some(section => (section.settingsReferences ?? []).some(ref => ref.contributionId === contributionId))));
     if (panel) {
-      panelSectionId = (panel.declaration.sections.find(section => section.settingsReferences.some(ref => ref.contributionId === contributionId)) ?? panel.declaration.sections[0]).id;
+      panelSectionId = (panel.declaration.sections.find(section => (section.settingsReferences ?? []).some(ref => ref.contributionId === contributionId)) ?? panel.declaration.sections[0]).id;
       panelScope = 'application'; openManagementCenter(panel.id); return;
     }
     const entry = pluginInstallations.find(item => item.id === installationId)?.contributions?.find(item => item.id === contributionId);
@@ -3591,7 +3601,7 @@
 
 {#snippet pluginManagementContent()}
   {#if activePluginPanel && activePanelSection}
-    <ManagementPanel panel={activePluginPanel} sectionId={activePanelSection.id}
+    <ManagementPanel panel={activePluginPanel} sectionId={activePanelSection.id} dataState={panelData} onRefresh={() => {void panelDataController.refresh();}}
       scope={activePanelSection.scopes.includes(panelScope) ? panelScope : activePanelSection.scopes[0]}
       forms={panelTargets.map(target => ({key:settingsTargetKey(target),target,state:panelSettings[settingsTargetKey(target)]}))}
       workspaceId={selectedWorkspaceId} session={selectedSession}

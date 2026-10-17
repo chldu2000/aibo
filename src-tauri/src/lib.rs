@@ -10,6 +10,7 @@ mod diagnostics_ipc;
 mod session_history_tools;
 mod session_reference_preferences;
 mod agent_settings;
+mod management;
 mod workspace_preferences;
 mod host_confirmation;
 mod ui_i18n;
@@ -2276,6 +2277,11 @@ async fn cancel_capability(request_id: String, window: tauri::WebviewWindow, sta
 }
 
 #[tauri::command]
+async fn read_management_section(target: management::Target, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<serde_json::Value, ui_i18n::HostMessage> {
+    management::read(&state.db, &state.capability_broker, window.label(), &target).await
+}
+
+#[tauri::command]
 async fn read_agent_settings(target: agent_settings::Target, state: State<'_, AppState>) -> Result<serde_json::Value, ui_i18n::HostMessage> {
     agent_settings::read(&state.db, &target).await
 }
@@ -3205,6 +3211,7 @@ pub fn run() {
             preview_plugin_removal,
             migrate_plugin_sessions,
             read_agent_settings,
+            read_management_section,
             save_agent_settings,
             list_presentation_packages,
             install_presentation_package,

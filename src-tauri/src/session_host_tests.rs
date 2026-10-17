@@ -164,6 +164,36 @@ async fn plugin_replacement_is_single_version_and_undo_restores_history_and_bind
 }
 
 #[tokio::test]
+async fn plugin_replacement_migrates_more_sessions_than_runtime_limit() {
+    let (root,db,broker,host,first)=concurrent_session_fixture().await;
+    let source=first.plugin_installation_id.clone().unwrap();
+    let mut sessions=vec![first.id.clone()];
+    broker.stop_session(&first.id).await.unwrap();
+    // More than the Broker's 32 runtime slots, with established recoverable history.
+    for _ in 1..34 {
+        let session=host.create_with_profile_from("main","w",&source,&first.agent,None).await.unwrap();
+        broker.stop_session(&session.id).await.unwrap();sessions.push(session.id);
+    }
+    replacement_history(&db).await;
+    let mut original=Vec::new();
+    for id in &sessions {original.push(host.saved_binding(id).await.unwrap().unwrap());}
+    replacement_package(&root,"99.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    let target=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false,false).await
+        .unwrap_or_else(|error|panic!("sequential migration must release completed validation runtimes: {error}"));
+    for (id,old) in sessions.iter().zip(&original) {
+        assert_eq!(crate::session_by_id(&db,id).await.unwrap().plugin_installation_id,Some(target.id.clone()));
+        assert_eq!(host.saved_binding(id).await.unwrap().unwrap()["nativeSessionId"],old["nativeSessionId"]);
+        assert!(broker.session_runtime_generation(&target.id,&first.agent,id).await.is_none());
+        let generation:Option<String>=sqlx::query_scalar("SELECT generation_id FROM session_bindings WHERE session_id=?").bind(id).fetch_one(&db).await.unwrap();
+        assert!(generation.is_none(),"migrated bindings must not advertise a stopped runtime");
+    }
+    host.resume_from("main",&first.id).await.unwrap();
+    assert!(broker.session_runtime_generation(&target.id,&first.agent,&first.id).await.is_some());
+    broker.stop_session(&first.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
 async fn plugin_replacement_partial_failure_restores_every_session_and_retries() {
     let (root,db,broker,host,first)=concurrent_session_fixture().await;
     let source=first.plugin_installation_id.clone().unwrap();
@@ -323,6 +353,59 @@ async fn plugin_replacement_host_edits_invalidate_undo_before_execution() {
         crate::plugin_replacement::collect(&db,&root.join("data")).await.unwrap();
         broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
     }
+}
+
+#[tokio::test]
+async fn plugin_replacement_empty_private_directories_do_not_conflict() {
+    replacement_private_storage_case(false,false).await;
+}
+#[tokio::test]
+async fn plugin_replacement_preserves_only_populated_private_directory_in_either_order() {
+    replacement_private_storage_case(false,true).await;
+    replacement_private_storage_case(true,false).await;
+}
+#[tokio::test]
+async fn plugin_replacement_real_private_data_conflict_rolls_back() {
+    replacement_private_storage_case(true,true).await;
+}
+async fn replacement_private_storage_case(first_payload: bool, second_payload: bool) {
+    let (root,db,broker,host,session)=concurrent_session_fixture().await;
+    let first=session.plugin_installation_id.clone().unwrap();
+    replacement_package(&root,"98.0.0");
+    let second=plugin_registry::install(&db,&root.join("data"),&root.join("package")).await.unwrap();
+    let mut originals=Vec::new();
+    for (source,payload) in [(&first,first_payload),(&second.id,second_payload)] {
+        let instance=ulid::Ulid::new().to_string();
+        sqlx::query("INSERT INTO capability_instances(id,installation_id,contribution_id,scope_kind,scope_id,created_at) VALUES(?,?,'catalog','workspace','w','now')")
+            .bind(&instance).bind(source).execute(&db).await.unwrap();
+        let directory=crate::plugin_storage::directory(&root.join("data/plugins").join(source),"dev.aibo.pi",source,&instance).unwrap();
+        if payload { fs::write(directory.join("cache"),source).unwrap(); }
+        originals.push((directory,source.clone(),payload));
+    }
+    replacement_history(&db).await;
+    replacement_package(&root,"99.0.0");
+    let preview=crate::plugin_replacement::preview(&db,&root.join("package")).await.unwrap();
+    let result=host.replace_plugin(&root.join("data"),&root.join("package"),Some(&preview.token),false,false).await;
+    if first_payload && second_payload {
+        assert_eq!(result.err().unwrap().localized.unwrap()["key"],"native.plugin.storageConflict");
+        assert_eq!(crate::session_by_id(&db,&session.id).await.unwrap().plugin_installation_id,Some(first.clone()));
+        let installed:i64=sqlx::query_scalar("SELECT count(*) FROM plugin_installations WHERE installed=1 AND plugin_id='dev.aibo.pi'").fetch_one(&db).await.unwrap();
+        assert_eq!(installed,2);
+    } else {
+        let target=result.unwrap_or_else(|error|panic!("owner-only directories must not conflict: {error:?}"));
+        let copied:Option<String>=sqlx::query_scalar("SELECT id FROM capability_instances WHERE installation_id=? AND contribution_id='catalog'").bind(&target.id).fetch_optional(&db).await.unwrap();
+        if first_payload || second_payload {
+            let directory=root.join("data/plugin-data/dev.aibo.pi").join(&target.id).join("v1").join(copied.unwrap());
+            assert_eq!(fs::read_to_string(directory.join("cache")).unwrap(),if first_payload {first.clone()} else {second.id.clone()});
+            let owner:Value=serde_json::from_slice(&fs::read(directory.join("owner.json")).unwrap()).unwrap();
+            assert_eq!(owner["installationId"],target.id);
+        } else { assert!(copied.is_none()); }
+    }
+    for (directory,source,payload) in originals {
+        assert!(directory.join("owner.json").exists());
+        if payload {assert_eq!(fs::read_to_string(directory.join("cache")).unwrap(),source);}
+    }
+    broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
 }
 
 #[tokio::test]
@@ -622,6 +705,8 @@ async fn codex_branch_uses_native_boundary_and_copies_host_history_and_profile()
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
         ("background-tasks.mjs",include_str!("../capability-plugins/codex/background-tasks.mjs")),
+        ("management.mjs",include_str!("../capability-plugins/codex/management.mjs")),
+        ("launcher.mjs",include_str!("../capability-plugins/codex/launcher.mjs")),
         ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
     ] {fs::write(package.join(name),source).unwrap();}
     let db = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
@@ -1276,6 +1361,8 @@ async fn goal_resume_and_pause_use_host_execution_ownership_and_policy() {
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
         ("background-tasks.mjs",include_str!("../capability-plugins/codex/background-tasks.mjs")),
+        ("management.mjs",include_str!("../capability-plugins/codex/management.mjs")),
+        ("launcher.mjs",include_str!("../capability-plugins/codex/launcher.mjs")),
         ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
         ("runtime.mjs",include_str!("../../packages/capability-runtime/runtime.mjs")),
         ("stdio.mjs",include_str!("../../packages/capability-runtime/stdio.mjs")),
@@ -1381,6 +1468,8 @@ async fn subagent_history_survives_restart_without_a_running_provider() {
         ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
         ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
         ("background-tasks.mjs",include_str!("../capability-plugins/codex/background-tasks.mjs")),
+        ("management.mjs",include_str!("../capability-plugins/codex/management.mjs")),
+        ("launcher.mjs",include_str!("../capability-plugins/codex/launcher.mjs")),
         ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
         ("runtime.mjs",include_str!("../../packages/capability-runtime/runtime.mjs")),
         ("stdio.mjs",include_str!("../../packages/capability-runtime/stdio.mjs")),

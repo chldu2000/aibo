@@ -6,10 +6,15 @@
   import type { AgentSettingsState } from '../src/lib/app/agent-settings-controller';
   import type { AgentSettingsTarget } from '../packages/plugin-protocol/src/settings';
   import fixture from '../fixtures/plugins/management-panel/manifest.json';
-  const panel = managementPanels([{id:'example',installed:true,enabled:false,contributions:fixture.contributions.map(metadata => ({kind:metadata.kind,metadata}))}])[0];
+  const panel = managementPanels([{id:'example',installed:true,enabled:true,contributions:structuredClone(fixture.contributions).map(metadata => ({kind:metadata.kind,metadata}))}])[0];
+  panel.declaration.sections.push({id:'account',title:'Account',scopes:['application'],providers:{application:{contributionId:'example.data',readOperationId:'example.read'}}});
+  let sectionId=$state('behavior');
+  let dataState=$state<import('../src/lib/app/management-data-controller').ManagementDataState>({target:null,data:null,loading:false,failed:false});
+  let reads=0;
+  function refresh() { reads++;dataState={target:{installationId:panel.installationId,panelId:panel.declaration.id,sectionId:'account'},loading:false,failed:reads===2,data:reads===2?null:{schema:'aibo.management-data/v1',target:{id:'default',label:'Example account'},state:'ready',message:'',observedAt:'2026-10-15',properties:[{key:'email',label:'Email',value:'person@example.test'}],metrics:[{key:'quota',label:'Quota',value:35,unit:'%'}]}}; }
   let active = $state<UiManagementSection>('appearance');
   let states = $state<Record<string,AgentSettingsState>>({});
-  const targets: AgentSettingsTarget[] = panel.declaration.sections[0].settingsReferences.map(ref => ({installationId:'example',contributionId:ref.contributionId,scope:{kind:'application'}}));
+  const targets: AgentSettingsTarget[] = panel.declaration.sections[0].settingsReferences!.map(ref => ({installationId:'example',contributionId:ref.contributionId,scope:{kind:'application'}}));
   const saves: unknown[] = [];
   const snapshot = (target: AgentSettingsTarget) => ({target,descriptor:{schema:'aibo.agent-settings/v1' as const,version:1,title:target.contributionId.endsWith('secondary.agent')?'Second':'First',scopes:['application' as const],fields:[{key:'text',label:target.contributionId.endsWith('secondary.agent')?'Second instructions':'First instructions',type:'multiline' as const,default:''}]},revision:0,values:{},effectiveValues:{text:''},inheritedValues:{text:''}});
   const store=createManagementSettingsStore({read:async target=>snapshot(target),save:async request=>{
@@ -20,9 +25,9 @@
 </script>
 {#snippet empty()}<p>Host settings</p>{/snippet}
 {#snippet content()}
-<ManagementPanel {panel} sectionId="behavior" scope="application" workspaceId={null} session={null}
-  forms={targets.map(target=>({key:settingsTargetKey(target),target,state:states[settingsTargetKey(target)]}))}
-  onSection={()=>{}} onScope={()=>{}} onChange={(target,key,value)=>store.controller(target).change(key,value)}
+<ManagementPanel {panel} {sectionId} {dataState} onRefresh={refresh} scope="application" workspaceId={null} session={null}
+  forms={(sectionId==='behavior'?targets:[]).map(target=>({key:settingsTargetKey(target),target,state:states[settingsTargetKey(target)]}))}
+  onSection={id=>{sectionId=id;if(id==='account')refresh();}} onScope={()=>{}} onChange={(target,key,value)=>store.controller(target).change(key,value)}
   onSave={target=>{void store.controller(target).save();}} onReset={target=>store.controller(target).reset()} onReload={target=>{void store.controller(target).reload();}} />
 {/snippet}
 <ManagementCenter title="Settings" activeSection={active} onSelectSection={section=>active=section} onClose={()=>{}}

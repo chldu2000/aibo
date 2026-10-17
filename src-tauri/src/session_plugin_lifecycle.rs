@@ -115,12 +115,16 @@ impl SessionHost {
             document["recovery"]=response.output["recovery"].clone();document["updatedAt"]=json!(crate::now_iso());
             if !crate::session_contract::binding_schema().is_valid(&document) { return Err(HostMessage::new("native.plugin.recoveryInvalid",json!({}))); }
             if document["recovery"].to_string().contains(old_root.to_string_lossy().as_ref()) { return Err(HostMessage::new("native.plugin.oldStorageDependency",json!({}))); }
+            // Resume validates recovery; it is not an interactive session lease. Release
+            // its runtime before committing so sequential migrations use bounded slots.
+            // Cleanup failure must leave the source binding authoritative.
+            self.broker.stop_session(id).await.map_err(crate::capability_broker::Failure::into_host_message)?;
             let mut tx=self.db.begin_with("BEGIN IMMEDIATE").await.map_err(error)?;
             let changed=sqlx::query("UPDATE sessions SET plugin_installation_id=?,updated_at=? WHERE id=? AND plugin_installation_id=? AND id NOT IN (SELECT session_id FROM plugin_session_retirements)")
                 .bind(target).bind(crate::now_iso()).bind(id).bind(source).execute(&mut *tx).await.map_err(error)?;
             if changed.rows_affected()!=1 { return Err(HostMessage::new("native.plugin.bindingChanged",json!({}))); }
-            sqlx::query("UPDATE session_bindings SET plugin_binding_json=?,plugin_capabilities_json=?,generation_id=?,bound_at=? WHERE session_id=?")
-                .bind(document.to_string()).bind(json!(capabilities).to_string()).bind(&response.generation_id).bind(crate::now_iso()).bind(id).execute(&mut *tx).await.map_err(error)?;
+            sqlx::query("UPDATE session_bindings SET plugin_binding_json=?,plugin_capabilities_json=?,generation_id=NULL,bound_at=? WHERE session_id=?")
+                .bind(document.to_string()).bind(json!(capabilities).to_string()).bind(crate::now_iso()).bind(id).execute(&mut *tx).await.map_err(error)?;
             // Generic capability choices for the old provider are reselected explicitly.
             sqlx::query("DELETE FROM capability_provider_bindings WHERE scope_kind='session' AND scope_id=? AND installation_id=?")
                 .bind(id).bind(source).execute(&mut *tx).await.map_err(error)?;

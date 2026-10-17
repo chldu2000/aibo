@@ -70,3 +70,16 @@ test('old controller responses cannot overwrite a new controller for the same in
   resolve({...snapshot(a),values:{text:'old result'}});await oldRead;
   assert.equal(states[settingsTargetKey(a)].draft.text,'new draft');
 });
+
+
+test('read-only 1.1 declarations share the manifest schema and reject write or control mappings',async()=>{
+  const schema=await read('contracts/plugin-manifest.v2.schema.json');
+  const {$schema,$id,...standalone}=await read('contracts/management-panel.v1.1.schema.json');
+  assert.deepEqual(schema.$defs.managementPanelRead,standalone);
+  const manifest=await read('src-tauri/capability-plugins/codex/plugin.json');
+  const ajv=new Ajv({strict:false});ajv.addFormat('uri',()=>true);const valid=ajv.compile(schema);
+  assert.equal(valid(manifest),true,JSON.stringify(valid.errors));
+  for(const field of ['actionOperationIds','statusOperationId','cancelOperationId']){
+    const changed=structuredClone(manifest);changed.contributions[2].sections[1].providers.application[field]=['write'];assert.equal(valid(changed),false);
+  }
+});

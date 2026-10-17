@@ -282,6 +282,10 @@ pub(crate) async fn install_reserved(db: &SqlitePool, data_dir: &Path, source: &
                     .bind(&id).bind(agent["agentId"].as_str().unwrap()).bind(agent.to_string()).execute(&mut *transaction).await.map_err(host_io_error)?;
             }
         }
+        if let Some((contribution,backend))=bundled_authority(&expected_digest) {
+            sqlx::query("INSERT OR REPLACE INTO session_execution_authorities(installation_id,contribution_id,backend) VALUES(?,?,?)")
+                .bind(&id).bind(contribution).bind(backend).execute(&mut *transaction).await.map_err(host_io_error)?;
+        }
         fs::rename(&staging, &destination).map_err(host_io_error)?;
         transaction.commit().await.map_err(host_io_error)?;
         Ok::<(), HostMessage>(())
@@ -299,14 +303,39 @@ pub(crate) async fn install_reserved(db: &SqlitePool, data_dir: &Path, source: &
         package_digest: expected_digest, enabled: false, installed: true, runnable, dependencies, contributions: normalized.contributions, activation_issues, localized_activation_issues, package_dependencies, manifest })
 }
 
+// Trust is attached to the complete artifact compiled into this host, never a public ID.
+struct BundledPackage {
+    directory: &'static str,
+    files: Vec<(&'static str, &'static [u8])>,
+    authority: Option<(&'static str, &'static str)>,
+}
+fn bundled_packages() -> Vec<BundledPackage> {
+    vec![
+        BundledPackage {directory:"codex-2.0.20",files:vec![("launcher.mjs", include_bytes!("../capability-plugins/codex/launcher.mjs").as_slice()),("management.mjs", include_bytes!("../capability-plugins/codex/management.mjs").as_slice()),("background-tasks.mjs", include_bytes!("../capability-plugins/codex/background-tasks.mjs").as_slice()),("NOTICE.md", include_bytes!("../capability-plugins/codex/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/codex/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/codex/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/codex/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())],authority:Some(("dev.aibo.codex.agent","codex-native"))},
+        BundledPackage {directory:"pi-2.0.11",files:vec![("NOTICE.md", include_bytes!("../capability-plugins/pi/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/pi/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/pi/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/pi/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())],authority:None},
+    ]
+}
+fn bundled_authority(package_digest: &str) -> Option<(&'static str, &'static str)> {
+    for mut package in bundled_packages() {
+        if package.authority.is_none() { continue; }
+        package.files.sort_by_key(|(name,_)|*name);
+        let mut digest=Sha256::new();
+        for (name,bytes) in package.files {
+            digest.update((name.len() as u64).to_le_bytes());digest.update(name.as_bytes());
+            digest.update((bytes.len() as u64).to_le_bytes());digest.update(bytes);
+        }
+        if format!("{:x}",digest.finalize())==package_digest { return package.authority; }
+    }
+    None
+}
+
 pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result<(), String> {
     // Keep retired package metadata for history, but never advertise it as enabled.
     sqlx::query("UPDATE plugin_installations SET enabled=0 WHERE json_extract(manifest_json,'$.schema')='aibo.plugin-manifest/v1'")
         .execute(db).await.map_err(io_error)?;
-    for (directory, files) in [
-        ("codex-2.0.18", vec![("background-tasks.mjs", include_bytes!("../capability-plugins/codex/background-tasks.mjs").as_slice()),("NOTICE.md", include_bytes!("../capability-plugins/codex/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/codex/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/codex/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/codex/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())]),
-        ("pi-2.0.11", vec![("NOTICE.md", include_bytes!("../capability-plugins/pi/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/pi/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/pi/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/pi/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())]),
-    ] {
+    for package in bundled_packages() {
+        let directory=package.directory;
+        let files=package.files;
         let source = data_dir.join("bundled-plugin-sources").join(directory);
         fs::create_dir_all(&source).map_err(io_error)?;
         let source = source.canonicalize().map_err(io_error)?;
@@ -325,13 +354,6 @@ pub(crate) async fn install_builtins(db: &SqlitePool, data_dir: &Path) -> Result
             .bind(manifest["pluginId"].as_str().unwrap()).bind(manifest["version"].as_str().unwrap()).bind(digest)
             .fetch_optional(db).await.map_err(io_error)?;
         let id = match existing { Some(id) => id, None => install(db, data_dir, &source).await.map_err(|error|error.diagnostic)?.id };
-        // Only this host-packaged native executor receives native enforcement.
-        // An installed plugin with the same public IDs does not inherit the grant.
-        if directory.starts_with("codex-") {
-            sqlx::query("INSERT OR REPLACE INTO session_execution_authorities(installation_id,contribution_id,backend) VALUES(?,?,'codex-native')")
-                .bind(&id).bind(manifest["contributions"][0]["id"].as_str().ok_or("invalid bundled contribution")?)
-                .execute(db).await.map_err(io_error)?;
-        }
         if let Err(error) = enable(db, &id, true).await {
             if error.diagnostic.starts_with("protocol_incompatible:") || error.diagnostic.starts_with("dependency_missing:") {
                 tracing::error!(plugin_id=manifest["pluginId"].as_str().unwrap_or("unknown"),installation_id=%id,%error,"bundled plugin was installed but could not be enabled");
@@ -860,6 +882,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn explicit_bundle_replacement_preserves_native_execution_backend() {
+        let root=tempfile::tempdir().unwrap();
+        let data=root.path().join("data");
+        let db=crate::open_database(&data.join("aibo.sqlite3")).await.unwrap();
+        let bundle=bundled_packages().into_iter().find(|p|p.authority.is_some()).unwrap();
+        let source=root.path().join("source");fs::create_dir_all(&source).unwrap();
+        for (name,bytes) in &bundle.files {fs::write(source.join(name),bytes).unwrap();}
+        let original=fs::read(source.join("plugin.json")).unwrap();
+        let mut older:Value=serde_json::from_slice(&original).unwrap();older["version"]=json!("2.0.19");
+        fs::write(source.join("plugin.json"),older.to_string()).unwrap();
+        let old=install(&db,&data,&source).await.unwrap();
+        // Model a previously host-granted release; the replacement must earn its own grant.
+        sqlx::query("INSERT INTO session_execution_authorities VALUES(?,'dev.aibo.codex.agent','codex-native')").bind(&old.id).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'test',1,'now','now')").bind(root.path().to_string_lossy().as_ref()).execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at,plugin_installation_id) VALUES('s','w','dev.aibo.codex.agent','test','idle','now','now',?)").bind(&old.id).execute(&db).await.unwrap();
+        let profile=crate::execution_profile::resolve_with_backend(crate::execution_profile::EnforcementBackend::CodexNative,None,"now".into()).unwrap();
+        crate::execution_profile::save_for_session(&db,"s",&profile).await.unwrap();
+        fs::write(source.join("plugin.json"),original).unwrap();
+        let broker=crate::capability_broker::Broker::new(db.clone());
+        let host=crate::session_host::SessionHost::new(db.clone(),broker);
+        let preview=crate::plugin_replacement::preview(&db,&source).await.unwrap();
+        let target=host.replace_plugin(&data,&source,Some(&preview.token),false,false).await.unwrap();
+        assert_eq!(crate::session_by_id(&db,"s").await.unwrap().plugin_installation_id,Some(target.id.clone()));
+        assert_eq!(crate::execution_profile::installation_backend(&db,&target.id,"dev.aibo.codex.agent").await.unwrap(),crate::execution_profile::EnforcementBackend::CodexNative);
+        let saved:String=sqlx::query_scalar("SELECT enforcement_backend FROM session_execution_profiles WHERE session_id='s'").fetch_one(&db).await.unwrap();
+        assert_eq!(saved,"\"codex-native\"");
+        db.close().await;
+    }
+
+    #[tokio::test]
+    async fn explicit_install_of_exact_host_bundle_receives_native_authority() {
+        let root=tempfile::tempdir().unwrap();
+        let bundled=root.path().join("bundled");
+        let bootstrap=crate::open_database(&bundled.join("aibo.sqlite3")).await.unwrap();
+        install_builtins(&bootstrap,&bundled).await.unwrap();
+        let current=list(&bootstrap).await.unwrap().into_iter().find(|p|p.plugin_id=="dev.aibo.codex").unwrap();
+        let source: String=sqlx::query_scalar("SELECT source FROM plugin_installations WHERE id=?").bind(&current.id).fetch_one(&bootstrap).await.unwrap();
+        let data=root.path().join("explicit");
+        let db=crate::open_database(&data.join("aibo.sqlite3")).await.unwrap();
+        let installed=install(&db,&data,Path::new(&source)).await.unwrap();
+        let backend=crate::execution_profile::installation_backend(&db,&installed.id,"dev.aibo.codex.agent").await.unwrap();
+        assert_eq!(backend,crate::execution_profile::EnforcementBackend::CodexNative,"explicit upgrade must recognize the same trusted artifact as bootstrap");
+        // Same IDs/version and an existing trusted release must not authorize changed bytes.
+        let source=Path::new(&source);
+        let engine=fs::read(source.join("engine.mjs")).unwrap();
+        for mode in 0..3 {
+            match mode {
+                0 => {let mut changed=engine.clone();changed.extend_from_slice(b"\n// changed artifact\n");fs::write(source.join("engine.mjs"),changed).unwrap();},
+                1 => fs::write(source.join("extra.mjs"),"export {}; ").unwrap(),
+                _ => fs::remove_file(source.join("engine.mjs")).unwrap(),
+            }
+            let changed=install(&db,&data,source).await.unwrap();
+            assert_ne!(changed.id,installed.id);
+            assert_eq!(crate::execution_profile::installation_backend(&db,&changed.id,"dev.aibo.codex.agent").await.unwrap(),crate::execution_profile::EnforcementBackend::Unnegotiated);
+            fs::write(source.join("engine.mjs"),&engine).unwrap();
+            if mode==1 {fs::remove_file(source.join("extra.mjs")).unwrap();}
+        }
+        bootstrap.close().await;db.close().await;
+    }
+
+    #[tokio::test]
     async fn bundled_codex_release_is_installed_enabled_and_idempotent() {
         let root = std::env::temp_dir().join(format!("aibo-builtin-plugin-{}", ulid::Ulid::new()));
         let db = crate::open_database(&root.join("aibo.sqlite3")).await.unwrap();
@@ -868,11 +951,11 @@ mod tests {
         let installed = list(&db).await.unwrap();
         assert_eq!(installed.len(), 2);
         assert_eq!(installed.iter().map(|plugin|plugin.plugin_id.as_str()).collect::<std::collections::HashSet<_>>(), std::collections::HashSet::from(["dev.aibo.codex", "dev.aibo.pi"]));
-        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.codex").unwrap().plugin_version, "2.0.18");
+        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.codex").unwrap().plugin_version, "2.0.20");
         assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.pi").unwrap().plugin_version, "2.0.11");
         assert!(installed.iter().all(|plugin|plugin.enabled && plugin.installed));
         for plugin in &installed {
-            assert_eq!(plugin.manifest["hostSdk"]["min"], if plugin.plugin_id == "dev.aibo.codex" { "0.1.9" } else { "0.1.8" });
+            assert_eq!(plugin.manifest["hostSdk"]["min"], if plugin.plugin_id == "dev.aibo.codex" { "0.1.13" } else { "0.1.8" });
             let directory = root.join("plugins").join(&plugin.id);
             assert!(!directory.join("runtime.mjs").exists());
             assert!(!directory.join("stdio.mjs").exists());

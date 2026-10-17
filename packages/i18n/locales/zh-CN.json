@@ -2411,5 +2411,10 @@
   "management.scope": "配置作用域",
   "management.noScope": "请选择可用的作用域以编辑设置。",
   "management.panelDescription": "插件设置",
-  "management.open": "打开管理面板"
+  "management.open": "打开管理面板",
+  "management.refresh": "刷新",
+  "management.enableToRead": "启用插件后可读取状态。",
+  "management.loading": "正在读取当前状态…",
+  "management.readUnavailable": "无法读取状态。请检查插件及其运行环境，然后刷新。",
+  "management.observedAt": "读取时间：{time}"
 }

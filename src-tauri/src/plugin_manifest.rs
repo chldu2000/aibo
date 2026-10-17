@@ -197,7 +197,7 @@ pub(crate) fn semantic_supported(metadata: &Value, manifest: &Value) -> bool {
 
 pub(crate) fn contribution_supported(entry: &Contribution, manifest: &Value) -> bool {
     match entry.kind.as_str() {
-        "managementPanel" => entry.metadata["contractVersion"] == "1.0.0",
+        "managementPanel" => matches!(entry.metadata["contractVersion"].as_str(), Some("1.0.0" | "1.1.0")),
         "toolView" => entry.metadata["contractVersion"] == "1.0.0" && entry.scope == "workspace",
         "semanticView" => semantic_supported(&entry.metadata,manifest),
         "capabilityProvider" => matches!(manifest["protocols"]["runtime"]["min"].as_str(),Some("2.0" | "2.1")) && manifest["protocols"]["runtime"]["max"] == manifest["protocols"]["runtime"]["min"]
@@ -222,11 +222,18 @@ fn validate_management_panels(entries: &[Contribution]) -> Result<(), HostMessag
         for section in panel.metadata["sections"].as_array().unwrap() {
             if !sections.insert(section["id"].as_str().unwrap()) { return Err(fail()); }
             let mut keys = HashSet::new();
-            for reference in section["settingsReferences"].as_array().unwrap() {
+            for reference in section["settingsReferences"].as_array().into_iter().flatten() {
                 if !keys.insert(reference["key"].as_str().unwrap()) { return Err(fail()); }
                 let provider = entries.iter().find(|entry| entry.kind == "capabilityProvider" && entry.id == reference["contributionId"].as_str().unwrap()).ok_or_else(fail)?;
                 let scopes = provider.metadata["settings"]["scopes"].as_array().ok_or_else(fail)?;
                 if reference["scopes"].as_array().unwrap().iter().any(|scope| !scopes.contains(scope) || !section["scopes"].as_array().unwrap().contains(scope)) { return Err(fail()); }
+            }
+            if let Some(reference) = section.get("providers").and_then(|p|p.get("application")) {
+                if !section["scopes"].as_array().unwrap().contains(&json!("application")) { return Err(fail()); }
+                let provider = entries.iter().find(|entry| entry.kind == "capabilityProvider" && entry.scope == "application" && entry.id == reference["contributionId"].as_str().unwrap()).ok_or_else(fail)?;
+                let operation = provider.metadata["operations"].as_array().unwrap().iter().find(|op|op["id"] == reference["readOperationId"]).ok_or_else(fail)?;
+                let contract: Value = serde_json::from_str(include_str!("../../contracts/management-read.v1.json")).unwrap();
+                if operation["effect"] != "read" || operation["permissions"] != json!([]) || operation["inputSchema"] != contract["inputSchema"] || operation["outputSchema"] != contract["outputSchema"] { return Err(fail()); }
             }
         }
     }
@@ -274,6 +281,24 @@ mod tests {
     use super::*;
     fn view() -> Value { serde_json::from_str(include_str!("../../fixtures/plugins/platform-v2/declarative.json")).unwrap() }
     fn provider() -> Value { serde_json::from_str(include_str!("../../fixtures/plugins/platform-v2/provider.json")).unwrap() }
+
+    #[test]
+    fn management_reads_require_local_application_read_and_canonical_schemas() {
+        let fixture: Value = serde_json::from_str(include_str!("../capability-plugins/codex/plugin.json")).unwrap();
+        normalize(&fixture).unwrap();
+        for mode in 0..6 {
+            let mut changed=fixture.clone();
+            match mode {
+                0 => changed["contributions"][2]["sections"][1]["providers"]["application"]["contributionId"]=json!("foreign.provider"),
+                1 => changed["contributions"][2]["sections"][1]["providers"]["application"]["readOperationId"]=json!("missing.operation"),
+                2 => changed["contributions"][3]["operations"][0]["effect"]=json!("write"),
+                3 => changed["contributions"][3]["operations"][0]["permissions"]=json!(["workspace.read"]),
+                4 => changed["contributions"][3]["operations"][0]["outputSchema"]=json!({"type":"object"}),
+                _ => changed["contributions"][3]["scope"]=json!("workspace"),
+            }
+            assert!(normalize(&changed).is_err(),"case {mode}");
+        }
+    }
 
     #[test]
     fn management_panel_references_are_local_unique_and_scope_checked() {

@@ -222,6 +222,16 @@ async fn copy_other_storage(
         if !from.exists() {
             continue;
         }
+        // Runtime startup creates owner.json even when the provider never writes data.
+        // Empty instances from historical releases must not compete for a target copy.
+        let mut has_payload = false;
+        for entry in std::fs::read_dir(&from).map_err(error)? {
+            if entry.map_err(error)?.file_name() != "owner.json" {
+                has_payload = true;
+                break;
+            }
+        }
+        if !has_payload { continue; }
         let id = ulid::Ulid::new().to_string();
         sqlx::query("INSERT INTO capability_instances(id,installation_id,contribution_id,scope_kind,scope_id,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(installation_id,contribution_id,scope_kind,scope_id) DO NOTHING")
             .bind(&id).bind(target).bind(row.get::<String,_>("contribution_id")).bind(row.get::<String,_>("scope_kind")).bind(row.get::<String,_>("scope_id")).bind(crate::now_iso()).execute(db).await.map_err(error)?;

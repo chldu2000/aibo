@@ -67,8 +67,10 @@
 宿主创建回合时原子写入 `not_sent`，Broker 在调用插件前持久化 `possibly_sent`，收到插件事件或有效响应后为 `responded`；旧回合不回填为未投递。插件私有 `hasPrompt` 不作为清除绑定依据。
 重建计划随确认快照一起校验；恢复草稿只在成功提交时写入。失败回滚恢复绑定，撤销升级保留已恢复的草稿。
 新版必须恢复相同原生会话身份、相同执行权限后端及原有基础能力；不继承原 release 的执行授权。
+显式安装与首次引导共用内置执行器的信任检查：候选包完整摘要与当前宿主编译内置包一致时，宿主为该安装独立授予内置后端权限。仅同名、同版本或沿用旧授权均不成立；增删或修改任何包文件都不匹配。
+会话恢复校验成功后，先确认停止该会话的校验运行实例，再保存新版绑定，并将运行代际清空；下一次用户操作按恢复数据重新打开。逐个迁移不会累积运行实例，清理失败不提交该会话的新绑定。
 所有会话和能力引用都通过才提交当前版本。任一失败整体恢复绑定，移除候选文件，保留业务历史。
-同一作用域实例在多个历史版本中存在冲突数据时拒绝自动合并。
+同一作用域实例在多个历史版本中存在冲突数据时拒绝自动合并。仅含宿主 `owner.json` 的实例目录不算插件数据，不占用目标迁移副本；只有一份目录含业务数据时保留该份数据，目标重新生成自己的所有权标记。多个非空目录仍拒绝自动合并并回滚。
 
 替换持有宿主变更锁和会话操作锁，并在 Broker 准入处阻止该插件的新业务调用。
 持久替换记录先于候选文件建立；启动在任何插件 runtime 运行前恢复未完成的替换。
@@ -138,6 +140,7 @@
 | 呈现/UiKit/共享工作台、动作桥 | 默认 Material 3 与 ak-ui 浅/深主题与受影响的外部呈现一致保留业务；未覆盖 surface 继承；core 降级、草稿/焦点/锚点、过期动作、故障回退后会话审批可达、恢复可达 | `test/renderer-negotiation.test.mjs`、`test/presentation-package-controller.test.mjs`、`test/presentation-view-state.test.mjs`、`test/presentation-conversation.test.mjs`；`probes/presentation-full-skins-browser.mjs`、受影响 surface 探针 |
 | 输入、附件、建议列表 | 纯文本/图片/引用、输入法与快捷键、长列表/长历史可用；草稿、队列、历史附件相互隔离 | `test/message-draft-ownership.test.mjs`、`test/clipboard-images.test.mjs`、`test/attachment-previews.test.mjs`、`test/presentation-suggestions.test.mjs`；`probes/composer-input-browser.mjs`、`probes/composer-paste-browser.mjs` |
 | 安装、SDK、打包、升级 | 启用/禁用/卸载、旧 release 绑定、失败候选回滚、缺依赖、损坏资源、桌面启动与宿主 SDK 装载 | `test/plugin-management.test.mjs`、`test/plugin-lifecycle-controller.test.mjs`、`test/host-sdk.test.mjs`、`test/external-plugin-build.test.mjs`、`test/presentation-build.test.mjs`；`session_host_tests.rs` 的 `plugin_replacement_*`；`probes/plugin-replacement-browser.mjs` 及相关安装/原生桌面探针 |
+| 插件管理面板、应用级只读数据 | 多 Agent 静态表单独立保存；只调用已启用安装的声明绑定；无工作区读取；视图关闭/切换丢弃过期账户数据；原生读取取消和截止时间；会话提供者保持独立 | `test/management-panels.test.mjs`、`test/management-data.test.mjs`；Rust `management`；`probes/management-panel-browser.mjs` |
 | Node 运行时查找、下载与手动选择 | 本机/手动/专用 Node 的选择顺序、无效选择不覆盖原设置、插件可用性刷新、已禁用插件不被启用 | `test/node-runtime-controller.test.mjs`、`cargo test … --lib node_runtime`；`probes/node-runtime-browser.mjs` |
 | ACP 适配器与通用 Worker | 能力按 initialize 收窄、审批选项、模式转换、elicitation、包内启动、宿主工具 MCP 接线、恢复与取消；Cursor/Claude Code 等现有插件行为 | `test/acp-adapter-*.test.mjs`、`test/acp-worker.test.mjs`、`test/acp-elicitation.test.mjs`、`test/acp-package-launch.test.mjs`；插件仓库 `pnpm run verify` |
 | 宿主工具与会话历史读取 | 读取授权、分页与快照一致性、未协商的 provider 不受影响、重启恢复 | `test/host-tools.test.mjs`、`session_history_tools` Rust 测试；`probes/host-tools-native.mjs` |

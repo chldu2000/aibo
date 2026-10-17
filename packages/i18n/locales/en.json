@@ -2510,5 +2510,10 @@
   "management.scope": "Configuration scope",
   "management.noScope": "Choose an available scope to edit these settings.",
   "management.panelDescription": "Plugin settings",
-  "management.open": "Open management panel"
+  "management.open": "Open management panel",
+  "management.refresh": "Refresh",
+  "management.enableToRead": "Enable this plugin to read its status.",
+  "management.loading": "Reading current status…",
+  "management.readUnavailable": "Status could not be read. Check that the plugin and its runtime are available, then refresh.",
+  "management.observedAt": "Observed: {time}"
 }

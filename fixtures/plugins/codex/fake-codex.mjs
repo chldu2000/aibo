@@ -55,6 +55,7 @@ input.on('line', (line) => {
   }
   const policy = {approvalPolicy:params.approvalPolicy,approvalsReviewer:params.approvalsReviewer,model:params.model,sandbox:{type:process.env.CODEX_FAKE_SANDBOX ?? ({'read-only':'readOnly','workspace-write':'workspaceWrite','danger-full-access':'dangerFullAccess'}[params.sandbox])}};
   if (method === 'initialize') write({ id, result: { userAgent: 'fake-codex/1.0.0' } });
+  else if (method === 'account/read') write({id,result:{account:{type:'chatgpt',email:'person@example.test',planType:'plus'},requiresOpenaiAuth:true}});
   else if (method === 'config/read') {
     const override = process.argv.find(arg => arg.startsWith('model_context_window='));
     write({id,result:{config:{model_context_window:override ? Number(override.split('=')[1]) : null,

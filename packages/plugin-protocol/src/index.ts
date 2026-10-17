@@ -7,7 +7,7 @@ export * from './presentation-package.js';
 export * from './presentation-runtime.js';
 export * from './presentation-controls.js';
 export * from './agent-icon.js';
-export type { ManagementPanelDeclaration, ManagementSection, ManagementSettingsReference } from './management.js';
+export type { ManagementPanelDeclaration, ManagementSection, ManagementSettingsReference, ManagementReadTarget, ManagementData } from './management.js';
 
 export type { PresentationNavigation, PresentationNavigationAction, PresentationNavigationOperation } from './presentation-navigation.js';
 

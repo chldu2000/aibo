@@ -23,10 +23,18 @@ try {
     assert.equal(await page.getByLabel('First instructions',{exact:true}).inputValue(),'First draft');
     await tab.focus();await page.keyboard.press('Home');assert.equal(await page.getByRole('tab',{name:/外观/}).getAttribute('aria-selected'),'true');
     await page.keyboard.press('End');assert.equal(await tab.getAttribute('aria-selected'),'true');
+    await page.getByRole('button',{name:'Account',exact:true}).click();
+    await page.getByText('person@example.test',{exact:true}).waitFor();
+    assert.equal(await page.getByText('35%',{exact:true}).count(),1);
+    await page.getByRole('button',{name:'刷新',exact:true}).click();
+    assert.match(await page.getByRole('alert').innerText(),/无法读取/);
+    assert.equal(await page.getByText('person@example.test',{exact:true}).count(),0);
+    await page.getByRole('button',{name:'刷新',exact:true}).click();
+    await page.getByText('person@example.test',{exact:true}).waitFor();
     await page.setViewportSize({width:700,height:850});
     assert.equal(await page.evaluate(()=>document.querySelector('dialog').scrollWidth<=document.querySelector('dialog').clientWidth+1),true);
     await page.screenshot({path:`/tmp/aibo-management-${kit}-${theme}.png`});
-    await page.setViewportSize({width:1100,height:850});console.log(`${kit}/${theme}: navigation, independent forms, drafts, scopes, keyboard and narrow layout passed`);
+    await page.setViewportSize({width:1100,height:850});console.log(`${kit}/${theme}: navigation, forms, drafts, scopes, dynamic data, failure/retry, keyboard and narrow layout passed`);
   }
   assert.deepEqual(errors,[]);
 } finally {await browser?.close();await server.close();}

@@ -17,7 +17,7 @@ type Installation = {
 /** Metadata has already passed the native manifest validator. No process is started. */
 export function managementPanels(installations: Installation[]): ManagementPanelEntry[] {
   return installations.filter(item => item.installed).flatMap(installation =>
-    (installation.contributions ?? []).filter(entry => entry.kind === 'managementPanel' && entry.metadata.contractVersion === '1.0.0').map(entry => {
+    (installation.contributions ?? []).filter(entry => entry.kind === 'managementPanel' && ['1.0.0', '1.1.0'].includes(String(entry.metadata.contractVersion))).map(entry => {
       const declaration = entry.metadata as unknown as ManagementPanelDeclaration;
       return { id: `plugin:${installation.id}:${declaration.id}` as const, installationId: installation.id, enabled: installation.enabled, declaration };
     }));
@@ -36,7 +36,7 @@ export function managementSettingsTargets(panel: ManagementPanelEntry | undefine
     : kind === 'workspace' && workspaceId ? {kind,id:workspaceId}
     : kind === 'session' && session && !session.archived && session.pluginInstallationId === panel.installationId ? {kind,id:session.id} : null;
   if (!scope) return [];
-  const targets = section.settingsReferences.filter(ref => ref.scopes.includes(kind) && (kind !== 'session' || ref.contributionId === session?.agent))
+  const targets = (section.settingsReferences ?? []).filter(ref => ref.scopes.includes(kind) && (kind !== 'session' || ref.contributionId === session?.agent))
     .map(ref => ({installationId:panel.installationId,contributionId:ref.contributionId,scope}));
   return [...new Map(targets.map(target => [settingsTargetKey(target),target])).values()];
 }

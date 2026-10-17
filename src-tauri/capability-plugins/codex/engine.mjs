@@ -1,13 +1,13 @@
+import {codexLauncher} from './launcher.mjs';
 import { CodexBackgroundTasks } from './background-tasks.mjs';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
-import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.19';
+const pluginVersion = '2.0.20';
 const backgroundTasks = new CodexBackgroundTasks();
 
 export const capabilities = ['background-tasks.list', 'session.create', 'session.resume', 'session.close', 'turn.send', 'image.input', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
@@ -529,22 +529,7 @@ function onCodex(message) {
     void finishNativeTurn(turn, p.turn.id, status);
   }
 }
-function codexLauncher() {
-  if (process.platform === 'win32') {
-    for (const directory of (process.env.PATH ?? '').split(path.delimiter)) {
-      if (!directory) continue;
-      const npmShim = path.join(directory, 'codex.cmd');
-      if (existsSync(npmShim)) {
-        const script = path.join(directory, 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-        if (existsSync(script)) return { command: process.execPath, prefix: [script], shell: false };
-        return { command: 'codex', prefix: [], shell: true };
-      }
-      const executable = path.join(directory, 'codex.exe');
-      if (existsSync(executable)) return { command: executable, prefix: [], shell: false };
-    }
-  }
-  return { command: 'codex', prefix: [], shell: process.platform === 'win32' };
-}
+
 async function startCodex(cwd, contextWindow = null) {
   const launcher = codexLauncher();
   child = spawn(launcher.command, [...launcher.prefix, 'app-server', '--stdio', ...(contextWindow ? ['-c', `model_context_window=${Number(contextWindow)}`, '-c', `model_auto_compact_token_limit=${Math.floor(Number(contextWindow) * 0.9)}`] : [])], { cwd, stdio: ['pipe', 'pipe', 'pipe'], shell: launcher.shell });

@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {serveCapabilities} from '@aibolabs/capability-runtime/stdio';
 import {sessionProvider} from './session-provider.mjs';
+import {readManagement} from './management.mjs';
 import * as engine from './engine.mjs';
 const manifest=JSON.parse(readFileSync(new URL('./plugin.json',import.meta.url),'utf8'));
 const contribution=manifest.contributions[0];
@@ -11,5 +12,8 @@ serveCapabilities([{protocol:'2.1',pluginId:manifest.pluginId,pluginVersion:mani
 },{protocol:'2.1',pluginId:manifest.pluginId,pluginVersion:manifest.version,contributionId:manifest.contributions[1].id,
   operations:manifest.contributions[1].operations.map(op=>({capability:op.capability.id,version:op.capability.version,operationId:op.id})),
   invoke:engine.listThreads,
+},{protocol:'2.1',pluginId:manifest.pluginId,pluginVersion:manifest.version,contributionId:manifest.contributions[3].id,
+  operations:manifest.contributions[3].operations.map(op=>({capability:op.capability.id,version:op.capability.version,operationId:op.id})),
+  invoke:readManagement,
 }]);
 process.stdin.on('end',()=>void provider.close());

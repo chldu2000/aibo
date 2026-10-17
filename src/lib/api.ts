@@ -663,3 +663,7 @@ export const openToolView = (workspaceId: string, installationId: string, contri
   invoke<{id:string}>('open_tool_view', {workspaceId, installationId, contributionId}).then(({id})=>({id,url:convertFileSrc(id,'aibo-tool')}));
 export const requestToolView = (id: string, request: unknown): Promise<unknown> => invoke('request_tool_view', {id, request});
 export const closeToolView = (id: string): Promise<boolean> => invoke('close_tool_view', {id});
+
+export async function readManagementSection(target: import('../../packages/plugin-protocol/src/management').ManagementReadTarget): Promise<import('../../packages/plugin-protocol/src/management').ManagementData> {
+  return invoke('read_management_section', {target});
+}
