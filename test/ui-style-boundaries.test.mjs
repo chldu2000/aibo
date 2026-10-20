@@ -162,12 +162,19 @@ test('shared skin code detects dialogs natively instead of by skin class name', 
   assert.doesNotMatch(source, /settings-overlay/, 'that class no longer exists, so the guard silently never matched');
 });
 
-test('ak-ui does not grow feature-named skin selectors', async () => {
-  // Panel information architecture: skins style headings/rows, not features. Lower this ceiling as selectors are consolidated.
-  const ceiling = 119;
-  const source = await readFile(path.join(root, 'src/lib/ui-kit/kits/ak-ui.css'), 'utf8');
-  const count = source.split('\n').filter((line) => /\.(?:git|changeset)-[a-z-]+/.test(line)).length;
-  assert.ok(count <= ceiling, `ak-ui.css has ${count} feature-named git/changeset lines (ceiling ${ceiling}); reuse heading/row structure`);
+test('kits do not grow feature-named skin selectors', async () => {
+  // Panel information architecture: skins style components, headings and rows, not features. Lower ceilings as selectors are consolidated.
+  const ceilings = { 'ak-ui': 119, material3: 130 };
+  // Parts of the ManagementCenter dialog itself; panel content uses ui-kit components instead.
+  const managementShell = new Set(['nav', 'content', 'tools-start', 'header', 'body', 'footer']);
+  for (const [kit, ceiling] of Object.entries(ceilings)) {
+    const source = await readFile(path.join(root, `src/lib/ui-kit/kits/${kit}.css`), 'utf8');
+    const count = source.split('\n').filter((line) => /\.(?:git|changeset)-[a-z-]+/.test(line)).length;
+    assert.ok(count <= ceiling, `${kit}.css has ${count} feature-named git/changeset lines (ceiling ${ceiling}); reuse heading/row structure`);
+    const panelSelectors = [...source.matchAll(/\.(management|plugin)-([a-z-]+)/g)]
+      .filter(([, prefix, part]) => prefix === 'plugin' || !managementShell.has(part)).map(([selector]) => selector);
+    assert.deepEqual([...new Set(panelSelectors)], [], `${kit}.css styles plugin panels by feature; add or reuse a ui-kit component`);
+  }
 });
 
 test('tool view host adds no permanent chrome and only forwards allowlisted tokens', async () => {

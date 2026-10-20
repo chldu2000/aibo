@@ -9,6 +9,9 @@ import SubagentCard from './shared/SubagentCard.svelte';
 import GoalBar from './shared/GoalBar.svelte';
 import AgentSettingsForm from './shared/AgentSettingsSurface.svelte';
 import SettingsSection from './shared/SettingsSection.svelte';
+import Tabs from './shared/Tabs.svelte';
+import SegmentedControl from './shared/SegmentedControl.svelte';
+import ManagementDataView from './shared/ManagementDataView.svelte';
 import HostPanel from './shared/HostPanel.svelte';
 import ManagementCenter from './shared/ManagementCenter.svelte';
 import WorkbenchChrome from './shared/WorkbenchChrome.svelte';
@@ -46,6 +49,9 @@ export const sharedControls: Omit<UiKitAdapter, 'Icon' | 'AgentStatusMark'> = {
   ManagementCenter,
   WorkbenchChrome,
   SettingsSection,
+  Tabs,
+  SegmentedControl,
+  ManagementDataView,
   AgentSettingsForm,
   SemanticView,
   AlertDialog: AlertDialogComponent,

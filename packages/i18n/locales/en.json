@@ -2515,5 +2515,6 @@
   "management.enableToRead": "Enable this plugin to read its status.",
   "management.loading": "Reading current status…",
   "management.readUnavailable": "Status could not be read. Check that the plugin and its runtime are available, then refresh.",
-  "management.observedAt": "Observed: {time}"
+  "management.observedAt": "Observed: {time}",
+  "management.resetsAt": "Resets {time}"
 }

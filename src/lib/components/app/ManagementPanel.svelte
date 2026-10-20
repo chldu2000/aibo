@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t, locale } from '$lib/i18n/runtime';
   import { translateMessage } from '../../../../packages/i18n/index.js';
-  import { AgentSettingsForm, Button, Badge } from '$lib/ui-kit';
+  import { AgentSettingsForm, Button, Badge, Icon, ManagementDataView, SegmentedControl, Tabs } from '$lib/ui-kit';
   import type { ManagementPanelEntry } from '$lib/app/management-panels';
   import type { AgentSettingsState } from '$lib/app/agent-settings-controller';
   import type { AgentSettingsTarget, AgentSettingValue } from '../../../../packages/plugin-protocol/src/settings';
@@ -16,28 +16,37 @@
     onChange(target: AgentSettingsTarget, key: string, value: AgentSettingValue | undefined): void;
     onSave(target: AgentSettingsTarget): void; onReset(target: AgentSettingsTarget): void; onReload(target: AgentSettingsTarget): void;
   } = $props();
-  const section = $derived(panel.declaration.sections.find(item => item.id === sectionId) ?? panel.declaration.sections[0]);
+  const id = $props.id();
+  const sections = $derived(panel.declaration.sections);
+  const section = $derived(sections.find(item => item.id === sectionId) ?? sections[0]);
   const currentData = $derived(dataState?.target?.installationId === panel.installationId && dataState.target.panelId === panel.declaration.id && dataState.target.sectionId === section.id ? dataState : undefined);
+  const readsData = $derived(Boolean(section.providers?.application) && scope === 'application');
+  const scopeLabel = (kind: CapabilityScope['kind']) => kind === 'application' ? $t('app.globalScope') : kind === 'workspace' ? $t('app.currentProject') : $t('app.currentSession');
+  const scopeDisabled = (kind: CapabilityScope['kind']) => (kind === 'workspace' && !workspaceId)
+    || (kind === 'session' && (!session || session.archived || session.pluginInstallationId !== panel.installationId
+      || !(section.settingsReferences ?? []).some(ref => ref.contributionId === session?.agent && ref.scopes.includes('session'))));
 </script>
 
-<section class="settings-section" aria-label={panel.declaration.title}>
+<section class="settings-section" aria-labelledby="{id}-title" aria-busy={currentData?.loading ?? false}>
   <div class="settings-section-heading">
-    <h2>{panel.declaration.title}</h2>
-    {#if !panel.enabled}<Badge>{$t('app.disabled')}</Badge>{/if}
+    <div><h2 id="{id}-title">{panel.declaration.title}</h2></div>
+    <div class="settings-row-actions">
+      {#if !panel.enabled}<Badge variant="outline">{$t('app.disabled')}</Badge>{/if}
+      {#if readsData}
+        <Button variant="ghost" size="icon" title={$t('management.refresh')} aria-label={$t('management.refresh')} onclick={onRefresh}
+          disabled={!panel.enabled || currentData?.loading}><Icon name="refresh" size={16} /></Button>
+      {/if}
+    </div>
   </div>
-  <div class="settings-row-actions" role="group" aria-label={$t('management.sections')}>
-    {#each panel.declaration.sections as item (item.id)}
-      <Button variant={section.id === item.id ? 'secondary' : 'ghost'} aria-pressed={section.id === item.id} onclick={() => onSection(item.id)}>{item.title}</Button>
-    {/each}
-  </div>
-  <div class="settings-row-actions" role="group" aria-label={$t('management.scope')}>
-    {#each section.scopes as kind}
-      <Button variant={scope === kind ? 'secondary' : 'outline'} aria-pressed={scope === kind}
-        disabled={(kind === 'workspace' && !workspaceId) || (kind === 'session' && (!session || session.archived || session.pluginInstallationId !== panel.installationId || !(section.settingsReferences ?? []).some(ref => ref.contributionId === session?.agent && ref.scopes.includes('session'))))}
-        onclick={() => onScope(kind)}>{kind === 'application' ? $t('app.globalScope') : kind === 'workspace' ? $t('app.currentProject') : $t('app.currentSession')}</Button>
-    {/each}
-  </div>
-  <div class="settings-section-body">
+  {#if sections.length > 1}
+    <Tabs label={$t('management.sections')} idPrefix={id} items={sections.map(item => ({ id: item.id, label: item.title }))} value={section.id} onSelect={onSection} />
+  {/if}
+  <div id="{id}-panel" class="settings-tab-panel" role={sections.length > 1 ? 'tabpanel' : undefined} aria-labelledby={sections.length > 1 ? `${id}-tab-${section.id}` : undefined}>
+    {#if section.scopes.length > 1}
+      <SegmentedControl label={$t('management.scope')} name="{id}-scope" value={scope}
+        options={section.scopes.map(kind => ({ value: kind, label: scopeLabel(kind), disabled: scopeDisabled(kind) }))}
+        onSelect={value => onScope(value as CapabilityScope['kind'])} />
+    {/if}
     {#each forms as form (form.key)}
       {@const state = form.state}
       {#if state?.snapshot}
@@ -45,29 +54,16 @@
           error={state.error ? translateMessage($locale, state.error) : null} notice={state.notice ? translateMessage($locale, state.notice) : null}
           onChange={(key, value) => onChange(form.target, key, value)} onSave={() => onSave(form.target)} onReset={() => onReset(form.target)} onReload={() => onReload(form.target)} />
       {:else if state?.error}
-        <p role="alert">{translateMessage($locale, state.error)}</p>
-        <div class="settings-row-actions"><Button onclick={() => onReload(form.target)}>{$t('app.retry')}</Button></div>
+        <div class="settings-section-body">
+          <p role="alert">{translateMessage($locale, state.error)}</p>
+          <div class="settings-row-actions"><Button variant="outline" size="sm" onclick={() => onReload(form.target)}>{$t('app.retry')}</Button></div>
+        </div>
       {:else}<p role="status">{$t('app.loadingAgentSettings')}</p>{/if}
     {/each}
-    {#if section.providers?.application && scope === 'application'}
-      <div class="settings-row-actions"><Button onclick={onRefresh} disabled={!panel.enabled || currentData?.loading}>{$t('management.refresh')}</Button></div>
-      {#if !panel.enabled}<p role="status">{$t('management.enableToRead')}</p>
-      {:else if currentData?.loading}<p role="status">{$t('management.loading')}</p>
-      {:else if currentData?.failed}<p role="alert">{$t('management.readUnavailable')}</p>
-      {:else if currentData?.data}
-        {@const data = currentData.data}
-        <p>{data.target.label}</p>
-        {#if data.message}<p role="status">{data.message}</p>{/if}
-        {#each data.properties as property (property.key)}
-          <div class="settings-row"><span>{property.label}</span><span>{property.value}</span></div>
-        {/each}
-        {#each data.metrics as metric (metric.key)}
-          <div class="settings-row"><span>{metric.label}</span><span>{metric.value}{metric.unit}</span></div>
-          {#if metric.resetsAt}<p>{new Date(metric.resetsAt * 1000).toLocaleString($locale)}</p>{/if}
-        {/each}
-        <p>{$t('management.observedAt', {time:data.observedAt})}</p>
-      {/if}
+    {#if readsData}
+      <ManagementDataView ownerTitle={panel.declaration.title} data={currentData?.data ?? null}
+        status={!panel.enabled ? 'disabled' : currentData?.failed ? 'failed' : currentData?.data && !currentData.loading ? 'ready' : 'loading'} />
     {/if}
-    {#if !forms.length && !(section.providers?.application && scope === 'application')}<p role="status">{$t('management.noScope')}</p>{/if}
+    {#if !forms.length && !readsData}<p role="status">{$t('management.noScope')}</p>{/if}
   </div>
 </section>

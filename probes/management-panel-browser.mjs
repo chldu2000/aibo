@@ -13,8 +13,8 @@ try {
     const tab=page.getByRole('tab',{name:/Example Agent/});
     await tab.click();await page.getByLabel('First instructions',{exact:true}).fill('First draft');
     await page.getByLabel('Second instructions',{exact:true}).fill('Second draft');
-    assert.equal(await page.getByRole('button',{name:'当前项目',exact:true}).isDisabled(),true);
-    assert.equal(await page.getByRole('button',{name:'当前会话',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('radio',{name:'当前项目',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('radio',{name:'当前会话',exact:true}).isDisabled(),true);
     await page.getByRole('tab',{name:/外观/}).click();await tab.click();
     assert.equal(await page.getByLabel('First instructions',{exact:true}).inputValue(),'First draft');
     await page.getByRole('button',{name:'保存设置',exact:true}).nth(1).click();
@@ -23,9 +23,16 @@ try {
     assert.equal(await page.getByLabel('First instructions',{exact:true}).inputValue(),'First draft');
     await tab.focus();await page.keyboard.press('Home');assert.equal(await page.getByRole('tab',{name:/外观/}).getAttribute('aria-selected'),'true');
     await page.keyboard.press('End');assert.equal(await tab.getAttribute('aria-selected'),'true');
-    await page.getByRole('button',{name:'Account',exact:true}).click();
+    const account=page.getByRole('tab',{name:'Account',exact:true});
+    const behavior=page.getByRole('tab',{name:'Behavior',exact:true});
+    assert.equal(await behavior.getAttribute('aria-selected'),'true');
+    await behavior.press('End');assert.equal(await account.getAttribute('aria-selected'),'true');
+    assert.equal(await account.evaluate(element=>element===document.activeElement),true);
+    assert.equal(await tab.getAttribute('aria-selected'),'true');
     await page.getByText('person@example.test',{exact:true}).waitFor();
     assert.equal(await page.getByText('35%',{exact:true}).count(),1);
+    assert.equal(await page.getByRole('meter',{name:'Quota'}).getAttribute('aria-valuenow'),'35');
+    await page.screenshot({path:`/tmp/aibo-management-${kit}-${theme}-wide.png`});
     await page.getByRole('button',{name:'刷新',exact:true}).click();
     assert.match(await page.getByRole('alert').innerText(),/无法读取/);
     assert.equal(await page.getByText('person@example.test',{exact:true}).count(),0);

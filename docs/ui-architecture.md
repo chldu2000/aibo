@@ -260,7 +260,8 @@ Git 多仓库视图和终端工具栏曾因没有这些规则而变得杂乱：�
 4. **不为低频恢复动作常驻一行。** “重新加载”这类恢复入口只在故障时出现，或放进菜单。
 5. **皮肤不得以功能命名。** 视觉按组件与语义（标题行、列表行、折叠行）编写，不新增
    `.git-*`、`.changeset-*` 之类按业务命名的皮肤选择器；复用已有的标题行/列表行结构。
-   `test/ui-style-boundaries.test.mjs` 对 ak-ui 中此类选择器数量设有只减不增的上限。
+   `test/ui-style-boundaries.test.mjs` 对两套 kit 中 `git-*` / `changeset-*` 选择器设有只减不增的上限，
+   并禁止 `plugin-*` 及设置窗口外壳以外的 `management-*` 选择器。
 6. **路径、文件名与计数必须处理边界值：**以 `/` 结尾的未跟踪目录、超长路径、重命名、
    干净仓库、窄宽度（320px）。新增面板和设置分区须在 ak-ui 与 Material 3 两套皮肤下，
    用多项、空状态、不可用与长路径数据截图验收。
@@ -274,6 +275,16 @@ Git 多仓库视图和终端工具栏曾因没有这些规则而变得杂乱：�
 10. **操作跟随它作用的行。** 分组的操作放在该行尾部，不汇总成区域底部的一排按钮；
     说明写在行的辅助文字或分区说明里，不夹在按钮之间。分区级操作（如“选择目录安装”）放在分区标题右侧。
     设置行在卡片或分区表面内只画行间分隔线，不再叠加外框；容器边框最多两层。
+11. **分区切换与互斥选择使用语义控件。** 同一页内的分区用 `Tabs`（`role="tablist"`，方向键/Home/End 切换，
+    不冒泡到外层导航）；作用域、模式、语言等少量互斥选项用 `SegmentedControl`，只有一个可用选项时不渲染。
+    不得用 `Button` 的 `secondary` / `ghost` / `outline` 变体模拟选中态，也不得在应用组件里复制
+    `appearance-*` 等其他页面的类名。
+12. **数值与时间按语义呈现。** 比例、额度用数值加 `role="meter"` 进度条；时间一律按当前语言本地化，
+    不直接显示 ISO 字符串或时间戳；归属于某项的说明（如重置时间）写在该行的辅助行，不单独成段。
+13. **插件管理面板只做装配。** `ManagementPanel` 只组合 `Tabs`、`SegmentedControl`、`AgentSettingsForm`
+    与 `ManagementDataView`；只读数据的行、数值和进度视觉由 `ManagementDataView` 在各 kit 中实现。
+    新的数据形态先扩展 ui-kit 合同和两套 kit，不在面板内拼 `settings-row` 或私有类名。
+    `test/architecture-boundaries.test.mjs` 检查这一约束。
 
 ## 生命周期、隔离与恢复
 
@@ -419,6 +430,7 @@ UI 实现变化需检查默认 Material 3 与 ak-ui 的浅/深主题，以及受
 | hostApi 1.1.0 公开控件的定制与预检 | `probes/presentation-controls-browser.mjs`、`probes/presentation-skin-controls-browser.mjs` |
 | 分支/取消归档、切换期间迟到时间线、默认与外部呈现导航 | `probes/session-lifecycle-browser.mjs` |
 | 五类设置、快捷入口、布局恢复焦点、插件草稿与继承 | `probes/settings-sections-browser.mjs`、`probes/workspace-preferences-browser.mjs` |
+| 插件管理面板的分区标签、作用域、只读数据、失败重试与窄宽度（输出两套 kit 浅/深截图，需人工比对） | `probes/management-panel-browser.mjs` |
 
 `verify` 不运行浏览器或 Rust 测试；使用替身 IPC 的浏览器结果不能证明原生授权、持久化或 OS 行为。
 涉及这些边界时追加对应原生验证并说明未覆盖范围。仅文档修改运行 `verify` 并检查引用即可。

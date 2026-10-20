@@ -316,6 +316,22 @@ test('composer goals use a semantic control implemented by every built-in kit', 
   }
 });
 
+test('plugin management panels compose ui-kit controls instead of borrowing settings classes', async () => {
+  // Panels and settings information architecture: hand-assembled panels drifted from both kits.
+  const panel = await readFile(path.join(root, 'src/lib/components/app/ManagementPanel.svelte'), 'utf8');
+  for (const control of ['<Tabs', '<SegmentedControl', '<ManagementDataView']) assert.ok(panel.includes(control), `ManagementPanel renders ${control}`);
+  assert.doesNotMatch(panel, /role="(?:tablist|tab|radiogroup|meter)"|aria-pressed|settings-rows?(?![\w-])|class="appearance-|<style/,
+    'section tabs, scope choice and read-only data come from ui-kit components, not app markup');
+  const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
+  const shared = await readFile(path.join(root, 'src/lib/ui-kit/kits/shared-controls.ts'), 'utf8');
+  for (const role of ['Tabs', 'SegmentedControl', 'ManagementDataView']) {
+    assert.match(contract, new RegExp(`\\n  ${role}: Component<Ui${role}Props>;`));
+    assert.match(shared, new RegExp(`\\n  ${role},`));
+    const component = await readFile(path.join(root, `src/lib/ui-kit/kits/shared/${role}.svelte`), 'utf8');
+    assert.match(component, /data-ui-component="/, `${role} exposes a component hook for kit styles`);
+  }
+});
+
 test('subagent cards and detail dialogs remain skin-owned semantic controls', async () => {
   const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
   const timeline = await readFile(path.join(root, 'src/lib/components/app/TimelinePanel.svelte'), 'utf8');

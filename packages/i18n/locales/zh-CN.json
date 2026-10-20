@@ -2416,5 +2416,6 @@
   "management.enableToRead": "启用插件后可读取状态。",
   "management.loading": "正在读取当前状态…",
   "management.readUnavailable": "无法读取状态。请检查插件及其运行环境，然后刷新。",
-  "management.observedAt": "读取时间：{time}"
+  "management.observedAt": "读取时间：{time}",
+  "management.resetsAt": "{time} 重置"
 }

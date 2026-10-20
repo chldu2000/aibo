@@ -43,7 +43,7 @@ Schema 位于 [management-panel.v1.schema.json](../contracts/management-panel.v1
 [management-panel fixture](../fixtures/plugins/management-panel/manifest.json)。
 
 验证：`node --test test/management-panels.test.mjs`、Rust `plugin_manifest` 测试，以及
-`node probes/management-panel-browser.mjs` 覆盖两套内置外观的导航、多表单、草稿、作用域与键盘行为。
+`node probes/management-panel-browser.mjs` 覆盖两套内置外观的导航、多表单、草稿、作用域、只读数据与键盘行为。
 
 ### 只读动态分区（1.1.0）
 

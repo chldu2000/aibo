@@ -271,7 +271,10 @@ epoch 改变时旧草稿标记失效、退出可提交状态，不为其自动�
 移除安装后清理导航，但业务历史和既有会话配置按原合同保留。
 
 视觉使用现有 [UI 架构](ui-architecture.md) 与 [Material 3](design/material3-current-spec.md)、
-[ak-ui](design/ak-ui-current-spec.md) 规范。两套 UI kit 提供同一语义控件合同。加载保留布局，
+[ak-ui](design/ak-ui-current-spec.md) 规范，必须遵守[面板与设置信息架构](ui-architecture.md#面板与设置信息架构)。
+分区、作用域与只读数据分别由 ui-kit 的 `Tabs`、`SegmentedControl`、`ManagementDataView` 渲染，
+刷新等分区级操作是标题右侧的图标按钮；宿主面板组件只负责装配，不新增私有样式类。
+两套 UI kit 提供同一语义控件合同。加载保留布局，
 错误就地展示；状态更新可访问，键盘能到达所有动作，标签切换恢复合理焦点。外部皮肤故障不影响管理入口。
 
 ## Codex 首个实现

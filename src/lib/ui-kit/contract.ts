@@ -6,6 +6,7 @@ export type UiAttachmentListProps = {
  disabled?: boolean;
 };
 import type { AgentSettingsSnapshot, AgentSettingValue } from '../../../packages/plugin-protocol/src/settings';
+import type { ManagementData } from '../../../packages/plugin-protocol/src/management';
 import type { PresentationProps } from './presentation-props';
 import type { Component, Snippet } from 'svelte';
 import type { PresentationModelMatrix, PresentationStatusMark } from '../../../packages/plugin-protocol/src/presentation-controls';
@@ -219,6 +220,33 @@ export type UiAgentSettingsFormProps = {
   onSave: () => void; onReset: () => void; onReload: () => void;
 };
 
+/** Section tabs inside one page. Tab ids are `${idPrefix}-tab-${id}`; the consumer renders
+ * the panel with id `${idPrefix}-panel` and labels it by the selected tab. */
+export type UiTabsProps = {
+  label: string;
+  idPrefix: string;
+  items: readonly { id: string; label: string }[];
+  value: string;
+  onSelect: (id: string) => void;
+};
+
+/** Mutually exclusive choice among a few visible options (scope, mode, language). */
+export type UiSegmentedControlProps = {
+  label: string;
+  name: string;
+  options: readonly { value: string; label: string; disabled?: boolean }[];
+  value: string;
+  onSelect: (value: string) => void;
+};
+
+/** Read-only plugin management data. Section actions such as refresh stay in the owner's heading. */
+export type UiManagementDataViewProps = {
+  status: 'loading' | 'ready' | 'failed' | 'disabled';
+  data: ManagementData | null;
+  /** The owner already shows this title; a target with the same label is not repeated. */
+  ownerTitle?: string;
+};
+
 export type UiGoalBarProps = {
   objective: string;
   statusLabel: string;
@@ -253,6 +281,9 @@ export type UiKitAdapter = {
   WorkbenchChrome: Component<UiWorkbenchChromeProps>;
   ManagementCenter: Component<UiManagementCenterProps>;
   SettingsSection: Component<UiSettingsSectionProps>;
+  Tabs: Component<UiTabsProps>;
+  SegmentedControl: Component<UiSegmentedControlProps>;
+  ManagementDataView: Component<UiManagementDataViewProps>;
   HostPanel: Component<UiHostPanelProps>;
   SemanticView: Component<PresentationProps>;
   AgentStatusMark: Component<UiAgentStatusMarkProps>;

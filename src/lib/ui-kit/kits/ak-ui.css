@@ -767,7 +767,7 @@
   background: var(--aibo-surface-hover);
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation, .ui-tabs) {
   --ak-tabs-signal: var(--aibo-accent);
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
@@ -777,7 +777,7 @@
   background: var(--aibo-surface-hover);
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation, .ui-tabs) > .ui-button {
   position: relative;
   min-width: 0;
   min-height: 44px;
@@ -791,19 +791,19 @@
   font-weight: 600;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:hover:not(:disabled) {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation, .ui-tabs) > .ui-button:hover:not(:disabled) {
   background: transparent;
   color: var(--aibo-text);
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:is([aria-selected='true'], [aria-current='page']) {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation, .ui-tabs) > .ui-button:is([aria-selected='true'], [aria-current='page']) {
   background: transparent;
   color: var(--aibo-text);
   box-shadow: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:is([aria-selected='true'], [aria-current='page'])::after {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation, .ui-tabs) > .ui-button:is([aria-selected='true'], [aria-current='page'])::after {
   position: absolute;
   right: var(--ak-space-2);
   bottom: 0;
@@ -813,7 +813,7 @@
   content: '';
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation) > .ui-button:focus-visible {
+.app-shell[data-ui-kit='ak-ui'] :is(.side-panel-tabs, .git-section-tabs, .conversation-navigation, .ui-tabs) > .ui-button:focus-visible {
   z-index: 1;
   outline: var(--ak-focus-width) solid var(--aibo-focus);
   outline-offset: -4px;
@@ -1112,13 +1112,13 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.app-shell[data-ui-kit='ak-ui'] .appearance-mode-control {
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-mode-control, .ui-segmented) {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ak-space-2);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .appearance-mode-option {
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-mode-option, .ui-segmented-option) {
   position: relative;
   display: flex;
   align-items: center;
@@ -1132,17 +1132,17 @@
   cursor: pointer;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .appearance-mode-option:hover {
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-mode-option, .ui-segmented-option):hover {
   background: var(--aibo-hover);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .appearance-mode-option.active {
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-mode-option, .ui-segmented-option).active {
   border-color: var(--aibo-accent);
   background: var(--aibo-accent-soft);
   box-shadow: inset 3px 0 var(--aibo-accent);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .appearance-choice-mark {
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-choice-mark, .ui-segmented-mark) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1152,12 +1152,12 @@
   color: var(--aibo-accent);
 }
 
-.app-shell[data-ui-kit='ak-ui'] .appearance-mode-option:has(> input:disabled) {
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-mode-option, .ui-segmented-option):has(> input:disabled) {
   opacity: .5;
   cursor: not-allowed;
 }
 
-.app-shell[data-ui-kit='ak-ui'] .appearance-mode-option > input:disabled {
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-mode-option, .ui-segmented-option) > input:disabled {
   cursor: not-allowed;
 }
 
@@ -2310,7 +2310,7 @@
 /* The radio stays in the tab order but out of sight: the card border, signal bar and
    check mark state the selection, and the swatches remain the only colour preview. */
 
-.app-shell[data-ui-kit='ak-ui'] :is(.appearance-theme-option, .appearance-mode-option) > input {
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-theme-option, :is(.appearance-mode-option, .ui-segmented-option)) > input {
   /* Stretched over the card so the radio itself is the click target everywhere on it. */
   position: absolute;
   inset: 0;
@@ -2329,7 +2329,7 @@
   display: none;
 }
 
-.app-shell[data-ui-kit='ak-ui'] :is(.appearance-theme-option, .appearance-mode-option):focus-within {
+.app-shell[data-ui-kit='ak-ui'] :is(.appearance-theme-option, :is(.appearance-mode-option, .ui-segmented-option)):focus-within {
   outline: var(--ak-focus-width) solid var(--aibo-focus);
   outline-offset: 2px;
 }
@@ -2537,6 +2537,29 @@
 }
 .app-shell[data-ui-kit='ak-ui'] .git-section-tabs > .ui-button {
   flex: none;
+}
+/* Page-level tabs (Tabs component) sit flush with the section; the rule under them is the only frame. */
+.app-shell[data-ui-kit='ak-ui'] .ui-tabs {
+  display: flex;
+  background: transparent;
+}
+.app-shell[data-ui-kit='ak-ui'] .ui-tabs > .ui-button {
+  flex: none;
+  min-height: 40px;
+}
+.app-shell[data-ui-kit='ak-ui'] .ui-data-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--aibo-text);
+  font-size: var(--aibo-type-ui);
+  font-weight: 600;
+}
+.app-shell[data-ui-kit='ak-ui'] .ui-meter {
+  block-size: var(--ak-line-strong);
+  border-radius: 0;
+  background: var(--aibo-border);
+}
+.app-shell[data-ui-kit='ak-ui'] .ui-meter > span {
+  background: var(--aibo-accent);
 }
 .app-shell[data-ui-kit='ak-ui'] .git-section-toolbar > .git-review-button {
   min-height: 32px;
