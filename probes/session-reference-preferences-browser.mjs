@@ -80,7 +80,7 @@ try {
     await page.setViewportSize({ width: 1440, height: 960 });
     await page.getByRole('tab', { name: '外观', exact: true }).click();
     await page.locator('.appearance-kit-option').filter({ hasText: kit }).click();
-    await page.locator('.appearance-theme-option, .appearance-mode-option').filter({ hasText: theme }).click();
+    await page.locator('.appearance-theme-option, .ui-segmented-option').filter({ hasText: theme }).click();
     await page.getByRole('tab', { name: '工作区', exact: true }).click();
     await range.focus(); await page.keyboard.press('Space'); await page.keyboard.press('Home'); await page.keyboard.press('Enter'); await saved(null);
     await choose('最近若干条消息'); await saved(1);

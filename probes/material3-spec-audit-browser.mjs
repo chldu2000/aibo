@@ -243,14 +243,14 @@ async function auditWorkbench(browser, port, theme) {
     document.querySelector('.app-shell').append(probe); const value = getComputedStyle(probe).color; probe.remove(); return value;
   }, [comp.scrim['container-color'].color, comp.scrim['container-opacity']]);
   check('scrim', 'container-color × container-opacity', scrimRgb, scrim);
-  const group = dialog.locator('.appearance-mode-control').first();
-  const segments = group.locator('.appearance-mode-option');
+  const group = dialog.locator('.ui-segmented').first();
+  const segments = group.locator('.ui-segmented-option');
   const connected = comp['button-group-connected-small'];
   check('button-group-connected', 'between-space', connected['between-space'], (await group.evaluate(e => parseFloat(getComputedStyle(e).columnGap))));
   const firstSegment = await style(segments.first());
   check('button-group-connected', 'container-height', connected['container-height'], firstSegment.height);
   check('button-group-connected', 'inner-corner-corner-size', connected['inner-corner-corner-size'], firstSegment.radiusEnd > firstSegment.height / 2 - 1 ? (await style(segments.nth(1))).radius : firstSegment.radiusEnd);
-  check('button-group-connected', 'selected tonal colour (secondary)', await c('secondary'), (await style(group.locator('.appearance-mode-option.active'))).background);
+  check('button-group-connected', 'selected tonal colour (secondary)', await c('secondary'), (await style(group.locator('.ui-segmented-option.active'))).background);
   await page.keyboard.press('Escape');
 
   await page.evaluate(() => window.__auditProbe.notify('已保存', 'success'));

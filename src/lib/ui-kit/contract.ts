@@ -234,8 +234,11 @@ export type UiTabsProps = {
 export type UiSegmentedControlProps = {
   label: string;
   name: string;
+  /** An option that cannot be chosen in this context; shown as unavailable. */
   options: readonly { value: string; label: string; disabled?: boolean }[];
   value: string;
+  /** Temporarily blocks the whole group (for example while a change applies) without marking options unavailable. */
+  disabled?: boolean;
   onSelect: (value: string) => void;
 };
 

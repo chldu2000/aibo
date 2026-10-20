@@ -63,11 +63,11 @@ try {
     await selected('外观');
     assert.equal(await dialog.getByRole('radiogroup',{name:kit === 'ak-ui' ? '主题' : '明暗模式',exact:true}).getByRole('radio').count(),2);
     assert.equal(await dialog.getByRole('radiogroup',{name:'界面语言'}).getByRole('radio').count(),3);
-    const languageOptions = dialog.locator('[aria-labelledby="language-title"] .appearance-mode-option');
+    const languageOptions = dialog.locator('[aria-labelledby="language-title"] .ui-segmented-option');
     const checkLanguageLayout = async () => {
       for (const option of await languageOptions.all()) {
         const geometry = await option.evaluate(el => {
-          const mark = el.querySelector('.appearance-choice-mark').getBoundingClientRect();
+          const mark = el.querySelector('.ui-segmented-mark').getBoundingClientRect();
           const label = el.lastElementChild.getBoundingClientRect();
           const bounds = el.getBoundingClientRect();
           return {offset: mark.height ? Math.abs(mark.y + mark.height / 2 - label.y - label.height / 2) : 0, height: bounds.height,

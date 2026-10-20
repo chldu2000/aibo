@@ -2,7 +2,7 @@
   import type { LanguagePreference } from '../../../../packages/i18n/index.js';
   import { t } from '$lib/i18n/runtime';
   import { tick, untrack, type Snippet } from 'svelte';
-  import { Button, Icon, ManagementCenter, Separator, themeForColorScheme, themePaletteOptions } from '$lib/ui-kit';
+  import { Button, Icon, ManagementCenter, SegmentedControl, Separator, themeForColorScheme, themePaletteOptions } from '$lib/ui-kit';
   import type { UiKitOption, UiManagementSection } from '$lib/ui-kit';
 
   type SettingsPanelProps = {
@@ -36,6 +36,9 @@
   const activeKit = $derived(uiKits.find((kit) => kit.id === activeUiKitName) ?? uiKits[0]);
   const selectedTheme = $derived(activeKit?.themes.find(theme => theme.id === activeThemeId));
   const palettes = $derived(themePaletteOptions(activeKit?.themes ?? [], activeThemeId));
+  const languageOptions = $derived((['system', 'zh-CN', 'en'] as const).map(value => ({
+    value, label: value === 'system' ? $t('language.system') : value === 'zh-CN' ? $t('language.zh-CN') : $t('language.en'),
+  })));
   const modes = $derived([{ id: 'light', label: $t('appearance.light') }, { id: 'dark', label: $t('appearance.dark') }] as const);
 </script>
 
@@ -43,16 +46,8 @@
   <div class="settings-tab-panel">
     <section class="settings-section" aria-labelledby="language-title">
       <div class="settings-section-heading"><div><h2 id="language-title">{$t('language.title')}</h2><p>{$t('language.description')}</p></div></div>
-      <div class="appearance-mode-control" role="radiogroup" aria-label={$t('language.title')}>
-        {#each ['system', 'zh-CN', 'en'] as value}
-          <label class="appearance-mode-option" class:active={languagePreference === value}>
-            <input type="radio" name="interface-language" {value} checked={languagePreference === value}
-              onchange={() => onSelectLanguage(value as LanguagePreference)} />
-            <span class="appearance-choice-mark" aria-hidden="true">{#if languagePreference === value}<Icon name="check" size={16} />{/if}</span>
-            <span>{value === 'system' ? $t('language.system') : value === 'zh-CN' ? $t('language.zh-CN') : $t('language.en')}</span>
-          </label>
-        {/each}
-      </div>
+      <SegmentedControl label={$t('language.title')} name="interface-language" value={languagePreference}
+        options={languageOptions} onSelect={value => onSelectLanguage(value as LanguagePreference)} />
     </section>
     <Separator />
     <section class="settings-section" aria-labelledby="ui-kit-title">
@@ -74,17 +69,9 @@
     <section class="settings-section" aria-labelledby="theme-color-title">
       {#if palettes.length}
       <div class="settings-section-heading"><div><h2 id="theme-color-title">{$t('appearance.mode')}</h2><p>{$t('appearance.mode.description')}</p></div></div>
-      <div class="appearance-mode-control" role="radiogroup" aria-label={$t('appearance.mode')}>
-        {#each modes as mode (mode.id)}
-          {@const theme = themeForColorScheme(activeKit.themes, activeThemeId, mode.id)}
-          <label class="appearance-mode-option" class:active={selectedTheme?.colorScheme === mode.id} class:unavailable={!theme}>
-            <input type="radio" name="appearance-mode" value={mode.id} aria-label={mode.label} disabled={appearanceBusy || !theme}
-              checked={selectedTheme?.colorScheme === mode.id} onchange={() => { if (theme) onSelectTheme(theme.id); }} />
-            <span class="appearance-choice-mark" aria-hidden="true">{#if selectedTheme?.colorScheme === mode.id}<Icon name="check" size={16} />{/if}</span>
-            <span>{mode.label}</span>
-          </label>
-        {/each}
-      </div>
+      <SegmentedControl label={$t('appearance.mode')} name="appearance-mode" value={selectedTheme?.colorScheme ?? ''} disabled={appearanceBusy}
+        options={modes.map(mode => ({ value: mode.id, label: mode.label, disabled: !themeForColorScheme(activeKit.themes, activeThemeId, mode.id) }))}
+        onSelect={value => { const theme = themeForColorScheme(activeKit.themes, activeThemeId, value as 'light' | 'dark'); if (theme) onSelectTheme(theme.id); }} />
       <div class="settings-section-heading appearance-palette-heading"><div><h2 id="palette-title">{$t('appearance.palette')}</h2><p>{$t('appearance.palette.description')}</p></div></div>
       <div class="appearance-palette-grid" role="radiogroup" aria-labelledby="palette-title">
         {#each palettes as palette (palette.id)}

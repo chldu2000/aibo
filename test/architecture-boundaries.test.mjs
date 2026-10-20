@@ -316,12 +316,15 @@ test('composer goals use a semantic control implemented by every built-in kit', 
   }
 });
 
-test('plugin management panels compose ui-kit controls instead of borrowing settings classes', async () => {
+test('settings pages compose ui-kit controls instead of borrowing settings classes', async () => {
   // Panels and settings information architecture: hand-assembled panels drifted from both kits.
   const panel = await readFile(path.join(root, 'src/lib/components/app/ManagementPanel.svelte'), 'utf8');
   for (const control of ['<Tabs', '<SegmentedControl', '<ManagementDataView']) assert.ok(panel.includes(control), `ManagementPanel renders ${control}`);
   assert.doesNotMatch(panel, /role="(?:tablist|tab|radiogroup|meter)"|aria-pressed|settings-rows?(?![\w-])|class="appearance-|<style/,
     'section tabs, scope choice and read-only data come from ui-kit components, not app markup');
+  const settings = await readFile(path.join(root, 'src/lib/components/app/SettingsPanel.svelte'), 'utf8');
+  assert.equal(settings.match(/<SegmentedControl/g)?.length, 2, 'language and brightness use the shared segmented control');
+  assert.doesNotMatch(settings, /appearance-mode-/, 'segmented choices are not hand-assembled in the appearance page');
   const contract = await readFile(path.join(root, 'src/lib/ui-kit/contract.ts'), 'utf8');
   const shared = await readFile(path.join(root, 'src/lib/ui-kit/kits/shared-controls.ts'), 'utf8');
   for (const role of ['Tabs', 'SegmentedControl', 'ManagementDataView']) {
