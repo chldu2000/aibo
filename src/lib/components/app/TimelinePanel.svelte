@@ -188,6 +188,8 @@
     onSelectWorkspacePath,
   }: TimelinePanelProps = $props();
   const sessionKind = $derived(sessionAgentKind(session));
+  const tokenFormat = $derived(new Intl.NumberFormat($locale));
+  const tokenCount = (value: number) => tokenFormat.format(value);
   const timelineStickiness = createTimelineStickiness();
   let expandedExecutionIds = $state<string[]>([]);
   let timelineFeed: HTMLElement | null = $state(null);
@@ -630,7 +632,7 @@
   {#if codexGoal?.objective && codexGoal.status !== 'cleared'}
     <GoalBar objective={codexGoal.objective}
       statusLabel={goalStatusLabel(codexGoal, sessionRunning, $locale)}
-      usageLabel={codexGoal.tokenBudget !== null ? `Token ${codexGoal.tokensUsed ?? 0} / ${codexGoal.tokenBudget}` : codexGoal.tokensUsed !== null ? `Token ${codexGoal.tokensUsed}` : null}
+      usageLabel={codexGoal.tokenBudget !== null ? `Token ${tokenCount(codexGoal.tokensUsed ?? 0)} / ${tokenCount(codexGoal.tokenBudget)}` : codexGoal.tokensUsed !== null ? `Token ${tokenCount(codexGoal.tokensUsed)}` : null}
       busy={goalBusy || selectedSessionArchiving}
       onPause={!sessionArchived && session?.capabilities.includes('goal.pause') && (codexGoal.status === 'active' || codexGoal.status === 'paused' && sessionRunning) ? onPauseGoal : undefined}
       onResume={!sessionArchived && !sessionRunning && session?.capabilities.includes('goal.resume') && goalCanResume(codexGoal) ? onResumeGoal : undefined}

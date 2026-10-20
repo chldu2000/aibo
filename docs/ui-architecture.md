@@ -431,6 +431,7 @@ UI 实现变化需检查默认 Material 3 与 ak-ui 的浅/深主题，以及受
 | 分支/取消归档、切换期间迟到时间线、默认与外部呈现导航 | `probes/session-lifecycle-browser.mjs` |
 | 五类设置、快捷入口、布局恢复焦点、插件草稿与继承 | `probes/settings-sections-browser.mjs`、`probes/workspace-preferences-browser.mjs` |
 | 插件管理面板的分区标签、作用域、只读数据、失败重试与窄宽度（输出两套 kit 浅/深截图，需人工比对） | `probes/management-panel-browser.mjs` |
+| 目标栏单行收起、展开、紧凑操作的命中区域、窄宽度与触屏尺寸（两套 kit） | `probes/goal-bar-browser.mjs` |
 
 `verify` 不运行浏览器或 Rust 测试；使用替身 IPC 的浏览器结果不能证明原生授权、持久化或 OS 行为。
 涉及这些边界时追加对应原生验证并说明未覆盖范围。仅文档修改运行 `verify` 并检查引用即可。

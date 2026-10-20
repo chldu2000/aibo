@@ -1,15 +1,32 @@
 
 /* GoalBar */
-
-  .app-shell[data-ui-kit='ak-ui'] .goal-bar { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 8px 16px 0; padding: 12px 16px; background: var(--aibo-surface); color: var(--aibo-text); border: 1px solid var(--aibo-border); border-radius: 0; }
-  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-actions { display: flex; flex-wrap: wrap; gap: var(--ak-space-1); }
-  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-copy { flex: 1; min-width: 0; }
-  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 1.6; }
-  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .expanded p { white-space: normal; overflow-wrap: anywhere; }
-  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) small { color: var(--aibo-muted); font-size: 12px; }
+  /* Collapsed: a single 40px line, status and usage after the objective. Expanded: the objective wraps and status moves below.
+     Actions are 32px visible with a 44px hit area; coarse pointers restore full-size targets. */
+  .app-shell[data-ui-kit='ak-ui'] .goal-bar { display: flex; align-items: center; gap: var(--ak-space-2); min-width: 0; min-height: 40px; margin: 8px 16px 0; padding: 3px 4px 3px 12px; background: var(--aibo-surface); color: var(--aibo-text); border: 1px solid var(--aibo-border); border-radius: 0; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) > svg { flex: none; color: var(--aibo-info-text); }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-copy { display: flex; flex: 1; align-items: baseline; gap: var(--ak-space-3); min-width: 0; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) p { flex: 1 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 1.5; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) small { display: flex; flex: none; align-items: baseline; color: var(--aibo-muted); font-size: 12px; line-height: 1.5; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-usage::before { margin-inline: 6px; color: var(--aibo-border-strong); content: '·'; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-actions { display: flex; flex: none; gap: 2px; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-actions > .ui-button[data-size='icon'] { position: relative; width: 32px; min-width: 32px; height: 32px; min-height: 32px; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-actions > .ui-button[data-size='icon']::before { position: absolute; inset: -7px -1px; content: ''; }
+  .app-shell[data-ui-kit='ak-ui'] .goal-bar.expanded { align-items: flex-start; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar.expanded) > svg { margin-top: 9px; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar.expanded) .goal-copy { flex-direction: column; align-items: stretch; gap: 2px; padding-block: 6px; }
+  .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar.expanded) p { white-space: normal; overflow-wrap: anywhere; }
   @media (max-width: 720px) {
-    .app-shell[data-ui-kit='ak-ui'] .goal-bar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--ak-space-2); align-items: start; padding: var(--ak-space-3); }
-    .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-actions { grid-column: 2; }
+    /* Narrow columns give the objective the full width; status and actions share the second row. */
+    .app-shell[data-ui-kit='ak-ui'] .goal-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: var(--ak-space-2); row-gap: 0; padding: var(--ak-space-2) var(--ak-space-1) 2px var(--ak-space-3); }
+    .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) > svg, .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar.expanded) > svg { align-self: start; margin-top: 2px; }
+    .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-copy, .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar.expanded) .goal-copy { display: contents; }
+    .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) p { grid-column: 2 / -1; padding-inline-end: var(--ak-space-2); }
+    .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) small { grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-actions { grid-column: 3; }
+  }
+  @media (pointer: coarse) {
+    .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-actions > .ui-button[data-size='icon'] { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+    .app-shell[data-ui-kit='ak-ui'] :where(.goal-bar) .goal-actions > .ui-button[data-size='icon']::before { content: none; }
   }
 
 

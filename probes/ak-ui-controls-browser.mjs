@@ -49,6 +49,6 @@ try {
    await page.screenshot({path:`/tmp/aibo-ak-controls/${theme}.png`});
  }
  await page.getByRole('button',{name:'切换忙碌'}).click();assert(await page.getByRole('combobox',{name:'模型上下文大小'}).isDisabled());assert(await page.getByRole('button',{name:'暂停目标',exact:true}).isDisabled());assert(await page.getByRole('button',{name:'第三方模型，高',exact:true}).isDisabled());
- await page.setViewportSize({width:390,height:844});assert((await page.locator('.goal-copy').boundingBox()).width >= 220, 'narrow goal text gets a full readable column');assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'/tmp/aibo-ak-controls/narrow.png'});
+ await page.setViewportSize({width:390,height:844});assert((await page.locator('.goal-copy p').boundingBox()).width >= 220, 'narrow goal text gets a full readable column');assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'/tmp/aibo-ak-controls/narrow.png'});
  assert.deepEqual(errors,[]);console.log('PASS: ak-ui controls and forms retain actions, skin-owned selection, disabled/error/focus states, 44px targets and small geometry in both themes and narrow viewport.');
 } catch(error) {console.error(JSON.stringify({errors}));await page.screenshot({path:'/tmp/aibo-ak-controls/failure.png'});throw error;} finally {await browser.close();await server.close()}
