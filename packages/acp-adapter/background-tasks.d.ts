@@ -1,7 +1,7 @@
 export interface BackgroundTask {
   id: string; rootTurnId: string; name: string; command: string;
   status: 'running' | 'completed' | 'failed' | 'stopped' | 'unknown';
-  activity: string; outputPath?: string; exitCode?: number | null;
+  activity: string; output?: string; outputPath?: string; exitCode?: number | null;
 }
 export class BackgroundTasks {
   tasks: Map<string, BackgroundTask>;

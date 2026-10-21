@@ -467,6 +467,7 @@
   "background.id": "Task ID: {id}",
   "background.exitCode": "Exit code: {code}",
   "background.output": "Output file: {path}",
+  "background.activity": "Full output · {count} lines",
   "background.status.running": "Running",
   "background.status.completed": "Completed",
   "background.status.failed": "Failed",

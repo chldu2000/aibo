@@ -10,19 +10,30 @@ try {
     const page=await browser.newPage({locale:'zh-CN',viewport:{width:1280,height:800}});
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/probes/background-tasks-browser.html`);
-    await page.evaluate(async ({kit,theme})=>{const r=await import('/src/lib/ui-kit/registry.ts');r.setUiKit(kit);r.setUiTheme(theme);},{kit,theme});
+    await page.evaluate(async ({kit,theme})=>{const r=await import('/src/lib/ui-kit/registry.ts');r.setUiKit(kit);r.setUiTheme(theme);const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:'zh-CN',locale:'zh-CN'});},{kit,theme});
     await page.getByText('运行中',{exact:true}).waitFor();
     assert.equal(await page.getByText('python eval.py --input <script>alert(1)</script>',{exact:true}).count(),1);
-    const details=page.locator('summary'); await details.focus(); await page.keyboard.press('Enter');
+    const details=page.locator('summary',{hasText:'任务详情'}); await details.focus(); await page.keyboard.press('Enter');
     await page.getByText('任务 ID：shell-42',{exact:true}).waitFor();
     await page.evaluate(()=>window.finishBackgroundTask());
     await page.getByText('失败',{exact:true}).waitFor();
     await page.getByText('退出码：2',{exact:true}).waitFor();
+    const output=page.locator('details.activity');
+    await output.getByText('完整输出 · 41 行').waitFor();
+    assert.equal(await output.locator('.preview').innerText(),'case 40: ok\n评估结束：2 项未通过','folded output previews the activity tail');
+    assert.equal(await output.locator('pre').isVisible(),false,'long output is folded by default');
+    await page.screenshot({path:`/tmp/aibo-background-${kit}-${theme}-folded.png`});
+    await output.locator('summary').focus(); await page.keyboard.press('Enter');
+    await output.locator('pre').waitFor();
+    assert.ok(await output.locator('pre').evaluate(el=>el.clientHeight<=24*16+1),'expanded output is height-capped');
+    await page.evaluate(()=>window.showLegacyBackgroundTask());
+    await output.getByText('完整输出 · 2 行').waitFor();
+    assert.equal(await output.locator('pre').innerText(),'旧记录第一行\n旧记录最后一行','legacy history keeps its full activity');
     await page.setViewportSize({width:390,height:680});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'card fits narrow viewport');
     await page.screenshot({path:`/tmp/aibo-background-${kit}-${theme}.png`});
     await page.close();
   }
   assert.deepEqual(errors,[]);
-  console.log('Background tasks: both kits, light/dark, status updates, literal output, keyboard details, narrow viewport passed.');
+  console.log('Background tasks: both kits, light/dark, status updates, literal output, folded output, legacy history, keyboard details, narrow viewport passed.');
 } finally {await browser.close();await server.close();}

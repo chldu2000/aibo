@@ -11,6 +11,8 @@ export class BackgroundTasks {
     for (const key of ['id', 'rootTurnId', 'name', 'command', 'activity', 'outputPath']) {
       if (next[key] !== undefined) next[key] = String(next[key]).slice(0, key === 'activity' ? 12000 : 4000);
     }
+    // Full output keeps its newest end; `activity` stays the short summary shown without expanding.
+    if (next.output !== undefined) next.output = String(next.output).slice(-12000);
     if (!['running','completed','failed','stopped','unknown'].includes(next.status)) next.status = 'unknown';
     // Late start/progress messages cannot revive a task with an observed terminal state.
     if (old && ['completed','failed','stopped'].includes(old.status) && ['running','unknown'].includes(next.status)) next.status = old.status;

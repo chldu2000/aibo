@@ -311,7 +311,7 @@ struct BundledPackage {
 }
 fn bundled_packages() -> Vec<BundledPackage> {
     vec![
-        BundledPackage {directory:"codex-2.0.20",files:vec![("launcher.mjs", include_bytes!("../capability-plugins/codex/launcher.mjs").as_slice()),("management.mjs", include_bytes!("../capability-plugins/codex/management.mjs").as_slice()),("background-tasks.mjs", include_bytes!("../capability-plugins/codex/background-tasks.mjs").as_slice()),("NOTICE.md", include_bytes!("../capability-plugins/codex/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/codex/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/codex/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/codex/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())],authority:Some(("dev.aibo.codex.agent","codex-native"))},
+        BundledPackage {directory:"codex-2.0.21",files:vec![("launcher.mjs", include_bytes!("../capability-plugins/codex/launcher.mjs").as_slice()),("management.mjs", include_bytes!("../capability-plugins/codex/management.mjs").as_slice()),("background-tasks.mjs", include_bytes!("../capability-plugins/codex/background-tasks.mjs").as_slice()),("NOTICE.md", include_bytes!("../capability-plugins/codex/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/codex/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/codex/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/codex/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())],authority:Some(("dev.aibo.codex.agent","codex-native"))},
         BundledPackage {directory:"pi-2.0.11",files:vec![("NOTICE.md", include_bytes!("../capability-plugins/pi/NOTICE.md").as_slice()), ("plugin.json", include_bytes!("../capability-plugins/pi/plugin.json").as_slice()), ("engine.mjs", include_bytes!("../capability-plugins/pi/engine.mjs").as_slice()), ("worker.mjs", include_bytes!("../capability-plugins/pi/worker.mjs").as_slice()), ("session-provider.mjs", include_bytes!("../capability-plugins/session-provider.mjs").as_slice())],authority:None},
     ]
 }
@@ -951,7 +951,7 @@ mod tests {
         let installed = list(&db).await.unwrap();
         assert_eq!(installed.len(), 2);
         assert_eq!(installed.iter().map(|plugin|plugin.plugin_id.as_str()).collect::<std::collections::HashSet<_>>(), std::collections::HashSet::from(["dev.aibo.codex", "dev.aibo.pi"]));
-        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.codex").unwrap().plugin_version, "2.0.20");
+        assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.codex").unwrap().plugin_version, "2.0.21");
         assert_eq!(installed.iter().find(|plugin| plugin.plugin_id == "dev.aibo.pi").unwrap().plugin_version, "2.0.11");
         assert!(installed.iter().all(|plugin|plugin.enabled && plugin.installed));
         for plugin in &installed {

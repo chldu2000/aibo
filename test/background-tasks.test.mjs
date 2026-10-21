@@ -41,6 +41,31 @@ test('Codex requires background evidence, preserves parent and receives completi
   assert.equal(tasks.list()[0].rootTurnId,'parent');
 });
 
+test('Codex keeps the newest output lines as activity and the bounded full output separately', () => {
+  const tasks = new CodexBackgroundTasks();
+  const lines = Array.from({length:2000},(_,i)=>`line ${i+1}`);
+  const item = {id:'cmd',type:'commandExecution',command:'make',processId:'42',status:'inProgress',aggregatedOutput:lines.join('\n')+'\n\n'};
+  tasks.observe('item/started',{item},'parent');
+  tasks.turnEnded('parent');
+  const [task] = tasks.list();
+  assert.equal(task.activity,'line 1998\nline 1999\nline 2000');
+  assert.equal(task.output.length,12000);
+  assert.ok(task.output.endsWith('line 2000\n\n'),'truncation keeps the newest output');
+  tasks.observe('item/completed',{item:{...item,status:'completed',exitCode:0,aggregatedOutput:'done'}},null);
+  assert.deepEqual([tasks.list()[0].activity,tasks.list()[0].output],['done','done']);
+});
+
+test('background task contract adds full output without dropping manifests that predate it', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const read = async file => JSON.parse(await readFile(new URL(`../${file}`, import.meta.url), 'utf8'));
+  const variants = (await read('contracts/session-features.v1.json')).capabilities['background-tasks.list'];
+  const taskFields = shape => Object.keys(shape.outputSchema.properties.tasks.items.properties);
+  const codex = (await read('src-tauri/capability-plugins/codex/plugin.json')).contributions[0].operations
+    .find(operation => operation.capability.id === 'dev.aibo.codex.background-tasks.list');
+  assert.ok(variants.some(shape => JSON.stringify(shape.outputSchema) === JSON.stringify(codex.outputSchema) && taskFields(shape).includes('output')));
+  assert.ok(variants.some(shape => !taskFields(shape).includes('output')), 'released plugins without output still negotiate');
+});
+
 test('native terminal list discovers background work during a turn; missing tasks are not successes', async () => {
   const tasks = new CodexBackgroundTasks();
   const item={id:'cmd',type:'commandExecution',command:'server',status:'inProgress'};

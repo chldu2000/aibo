@@ -421,6 +421,10 @@
                 "type": "string",
                 "maxLength": 12000
               },
+              "output": {
+                "type": "string",
+                "maxLength": 12000
+              },
               "outputPath": {
                 "type": "string",
                 "maxLength": 4000

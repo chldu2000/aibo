@@ -1,5 +1,10 @@
 import { BackgroundTasks } from '@aibolabs/acp-adapter/background-tasks';
 
+/** The newest few output lines summarize progress; the full aggregated output travels separately. */
+export function outputTail(output, lines = 3) {
+  return output.trimEnd().split('\n').filter(line => line.trim()).slice(-lines).join('\n').slice(-600);
+}
+
 /** Correlate native terminal evidence before exposing a command as background work. */
 export class CodexBackgroundTasks extends BackgroundTasks {
   commands = new Map();
@@ -26,7 +31,7 @@ export class CodexBackgroundTasks extends BackgroundTasks {
     this.update({ id:item.id, name:'后台命令', command:item.command ?? '',
       status:item.status === 'completed' ? (item.exitCode && item.exitCode !== 0 ? 'failed' : 'completed')
         : ['failed','declined'].includes(item.status) ? 'failed' : 'running',
-      activity:item.aggregatedOutput ?? '', exitCode:item.exitCode ?? null }, item.rootTurnId);
+      activity:outputTail(item.aggregatedOutput ?? ''), output:item.aggregatedOutput ?? '', exitCode:item.exitCode ?? null }, item.rootTurnId);
   }
   turnEnded(rootTurnId) {
     for (const command of this.commands.values()) {

@@ -449,6 +449,7 @@
   "background.id": "任务 ID：{id}",
   "background.exitCode": "退出码：{code}",
   "background.output": "输出文件：{path}",
+  "background.activity": "完整输出 · {count} 行",
   "background.status.running": "运行中",
   "background.status.completed": "已完成",
   "background.status.failed": "失败",
