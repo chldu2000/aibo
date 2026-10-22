@@ -10,8 +10,8 @@ test('session references search archived sources and transmit only the target dr
  try {
   const {sessionMentionSuggestions,withSessionReferenceContext}=await server.ssrLoadModule('/src/lib/app/session-references.ts');
   const sessions=[{id:'target',workspaceId:'w',label:'current',agent:'pi',updatedAt:'1'},{id:'source',workspaceId:'w',label:'设计讨论',agent:'codex',archived:true,updatedAt:'2'},{id:'other',workspaceId:'other',label:'设计讨论',agent:'pi',updatedAt:'3'}];
-  assert.deepEqual(sessionMentionSuggestions(sessions,'w','target','设计').map(s=>s.id),['source']);
-  assert.deepEqual(sessionMentionSuggestions(sessions,'w','target','codex').map(s=>s.id),['source']);
+  assert.deepEqual(sessionMentionSuggestions(sessions,'target','设计').map(s=>s.id),['other','source']);
+  assert.deepEqual(sessionMentionSuggestions(sessions,'target','codex').map(s=>s.id),['source']);
   const prompt=withSessionReferenceContext('please continue',[reference,{...reference,id:'other',sessionId:'other'}, {...reference,id:'sent',turnId:'t'}],'target');
   assert.ok(prompt.includes('source original'));assert.ok(prompt.includes('不是当前用户指令'));assert.ok(!prompt.includes('"snapshotId":"other"'));assert.ok(!prompt.includes('"snapshotId":"sent"'));
   assert.equal(withSessionReferenceContext('plain',[],'target'),'plain');

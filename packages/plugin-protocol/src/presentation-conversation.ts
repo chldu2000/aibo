@@ -280,7 +280,7 @@ export type PresentationConversation = {
   modelCatalogLoading: boolean;
   modelOverride: string | null;
   workspacePathSuggestions: WorkspacePathSuggestion[];
-  sessionSuggestions?: Session[];
+  sessionSuggestions?: (Session & { workspaceLabel?: string })[];
   agentCommands: AgentCommand[];
   agentCommandsLoading: boolean;
   draft: string;

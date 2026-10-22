@@ -1193,7 +1193,7 @@
   let sessionsLoadingWorkspaceIds = $state<string[]>([]);
   let composerText = $state('');
   let workspacePathSuggestions = $state<WorkspacePathSuggestion[]>([]);
-  let sessionSuggestions = $state<Session[]>([]);
+  let sessionSuggestions = $state<(Session & { workspaceLabel: string })[]>([]);
   let agentCommands = $state<AgentCommand[]>([]);
   let agentCommandsLoading = $state(false);
   let pathSearchGeneration = 0;
@@ -2418,9 +2418,12 @@
     if (pathSearchTimer) clearTimeout(pathSearchTimer);
     pathSearchTimer = setTimeout(() => {
       pathSearchTimer = undefined;
-      void listAllSessions(workspaceId, { statusFilter: 'all' }).then(sessions => {
+      void Promise.all(workspaces.map(workspace => listAllSessions(workspace.id, { statusFilter: 'all' }))).then(groups => {
+        const sessions = groups.flat();
         if (generation === pathSearchGeneration && selectedSessionId === targetSessionId) {
-          sessionSuggestions = sessionMentionSuggestions(sessions, workspaceId, targetSessionId, query);
+          sessionSuggestions = sessionMentionSuggestions(sessions, targetSessionId, query).map(session => ({
+            ...session, workspaceLabel: workspaces.find(workspace => workspace.id === session.workspaceId)?.label ?? session.workspaceId,
+          }));
         }
       }).catch(() => {
         if (generation === pathSearchGeneration) sessionSuggestions = [];

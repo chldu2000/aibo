@@ -3,9 +3,9 @@ import type { Locale } from '../../../packages/i18n/index.js';
 import { LocalizedError } from './error-utils.ts';
 import type { ContextAttachment, Session } from '$lib/types';
 
-export function sessionMentionSuggestions(sessions: Session[], workspaceId: string, targetId: string, query: string): Session[] {
+export function sessionMentionSuggestions(sessions: Session[], targetId: string, query: string): Session[] {
   const needle = query.toLocaleLowerCase();
-  return sessions.filter(session => session.workspaceId === workspaceId && session.id !== targetId
+  return sessions.filter(session => session.id !== targetId
     && `${session.label} ${session.agent} ${session.id}`.toLocaleLowerCase().includes(needle))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)).slice(0, 8);
 }

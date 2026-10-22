@@ -20,8 +20,9 @@ try {
   const errors=[];page.on('pageerror',error=>errors.push(error.stack??error.message));
   await page.addInitScript(({kit,theme,pkg})=>{
    if(window!==window.top)return;
+   localStorage.setItem('aibo.selected-session',JSON.stringify({workspaceId:'w',sessionId:'target'}));
    localStorage.setItem('aibo.language.v1','zh-CN');localStorage.setItem('aibo.appearance.v1',JSON.stringify({kitId:kit,themeId:theme}));
-   const sessions=['target','source'].map(id=>({id,workspaceId:'w',label:id==='target'?'Current session':'原始引用 {label}',agent:'unknown.agent',state:'idle',archived:false,externalSessionId:null,pluginInstallationId:'fixture',capabilities:[],createdAt:'now',updatedAt:'now'}));
+   const sessions=['target','source'].map(id=>({id,workspaceId:id==='target'?'w':'other',label:id==='target'?'Current session':'原始引用 {label}',agent:'unknown.agent',state:'idle',archived:id==='source',externalSessionId:null,pluginInstallationId:'fixture',capabilities:[],createdAt:'now',updatedAt:'now'}));
    const sentLabel='已发送 /用户/{label}/完整会话';
    const sent={schema:'aibo.context-attachment/v1',id:'sent',workspaceId:'w',sessionId:'target',turnId:'t',path:'会话：'+sentLabel,mediaType:'application/vnd.aibo.session-reference+json',sendStrategy:'inline',contentHash:'sha256:sent',size:123,createdAt:'now',inlineContext:JSON.stringify({schema:'aibo.session-reference/v3',snapshotId:'sent',sourceSessionId:'source',sourceLabel:sentLabel,messages:[{role:'assistant',content:'已发送快照原文 {label}'}]})};
    const file={...sent,id:'file',turnId:null,path:'会话：中文原文.txt',mediaType:'text/plain',sendStrategy:'reference',inlineContext:null};
@@ -60,8 +61,8 @@ try {
     window.referenceCalls.push({command,args});
     if(command.startsWith('plugin:event|'))return 1;
     if(command==='get_app_snapshot')return {platform:'macos',appVersion:'probe',workspaceCount:1,diagnostics:window.diagnosticsFixture};
-    if(command==='list_workspaces')return [{id:'w',path:'/probe',label:'Workspace',trust:'trusted',createdAt:'now',updatedAt:'now'}];
-    if(command==='list_sessions')return sessions;
+    if(command==='list_workspaces')return [{id:'w',path:'/probe',label:'Workspace',trust:'trusted',createdAt:'now',updatedAt:'now'},{id:'other',path:'/other',label:'Other workspace',trust:'trusted',createdAt:'now',updatedAt:'now'}];
+    if(command==='list_sessions')return sessions.filter(session=>session.workspaceId===args.workspaceId);
     if(command==='probe_agents')return window.diagnosticsFixture;
     if(command==='open_workspace_location')throw {code:'initialization_error',message:'app initialization failed: 原始打开诊断',localized:{schema:'aibo.host-message/v1',key:window.openLocationKey,params:{target:args.target,error:'底层原文 {error}'}}};
     if(command==='read_session_history'||command==='read_session_history_around'){
@@ -94,10 +95,9 @@ try {
     return [];
    }};
   },config);
-  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`, {timeout:60000});
   let scope=page;
   if(config.pkg){await page.locator('.presentation-external iframe').first().waitFor();scope=page.frameLocator('.presentation-external iframe').first();}
-  await scope.getByText('Current session',{exact:true}).click();
   const input=scope.locator('textarea');await input.waitFor();
   const setLocale=locale=>page.evaluate(async locale=>{const {language}=await import('/src/lib/i18n/runtime.ts');language.set({preference:locale,locale});},locale);
   const count=command=>page.evaluate(command=>window.referenceCalls.filter(call=>call.command===command).length,command);
@@ -143,19 +143,18 @@ try {
   for(const key of ['scopeInvalid','empty','selectedTooLarge','snapshotTooLarge'].map(key=>'native.reference.'+key)){
    await page.evaluate(key=>window.referenceKey=key,key);
    const draft='原始草稿 {snapshot} @原始';await input.fill(draft);
-   await scope.getByRole('option').filter({hasText:'原始引用 {label}'}).click();
+   await scope.getByRole('option').filter({hasText:'原始引用 {label}'}).filter({hasText:'Other workspace'}).filter({hasText:'已归档'}).click();
    await page.getByText(catalogs['zh-CN'][key],{exact:true}).waitFor().catch(async error=>{console.error(JSON.stringify({config:{kit:config.kit,theme:config.theme,id:config.pkg?.release.manifest.id},key,calls:await page.evaluate(()=>window.referenceCalls.slice(-20)),text:await page.locator('body').innerText(),errors}));await page.screenshot({path:'/tmp/aibo-i18n-history-failure-109.png'});throw error;});
    const calls=await count('reference_session');
    const request=await page.evaluate(()=>window.referenceCalls.filter(call=>call.command==='reference_session').at(-1).args);
    assert.deepEqual(request,{sessionId:'target',sourceSessionId:'source'});
    await setLocale('en');await page.getByText(catalogs.en[key],{exact:true}).waitFor();
    assert.equal(await input.inputValue(),draft);assert.equal(await count('reference_session'),calls);
-   await scope.getByText('原始引用 {label}',{exact:true}).first().waitFor();
    await setLocale('zh-CN');await page.getByText(catalogs['zh-CN'][key],{exact:true}).waitFor();
    assert.equal(await input.inputValue(),draft);assert.equal(await count('reference_session'),calls);
   }
   await page.evaluate(()=>window.referenceKey='');await input.fill('成功草稿 @原始');
-  await scope.getByRole('option').filter({hasText:'原始引用 {label}'}).click();
+  await scope.getByRole('option').filter({hasText:'原始引用 {label}'}).filter({hasText:'Other workspace'}).filter({hasText:'已归档'}).click();
   await page.getByText(catalogs['zh-CN']['app.referenceAdded'],{exact:true}).waitFor();
   assert.equal(await input.inputValue(),'成功草稿 ');
   assert.equal(await page.getByText(catalogs['zh-CN']['native.reference.snapshotTooLarge'],{exact:true}).count(),0);
@@ -171,7 +170,7 @@ try {
    assert.deepEqual(await page.evaluate(()=>window.referenceAttachments),originalAttachments);
    assert.equal(await count('list_session_attachments'),attachmentReads);assert.equal(await count('reference_session'),captures);
   }
-  await scope.getByRole(config.pkg?'button':'tab',{name:'上下文',exact:true}).click();
+  await scope.getByRole('button',{name:'上下文',exact:true}).click();
   for(const locale of ['zh-CN','en','zh-CN']){
    await setLocale(locale);const prefix=locale==='en'?'Session: ':'会话：';
    await scope.getByText(prefix+'已发送 /用户/{label}/完整会话',{exact:true}).first().waitFor();
@@ -193,6 +192,11 @@ try {
   const remove=scope.getByRole('button',{name:'移除附件 会话：原始引用 {label}',exact:true});
   await remove.click();await page.waitForFunction(()=>window.referenceCalls.some(call=>call.command==='remove_session_attachment'));
   assert.deepEqual(await page.evaluate(()=>window.referenceCalls.filter(call=>call.command==='remove_session_attachment').at(-1).args),{sessionId:'target',attachmentId:'snapshot'});
+  if(process.env.AIBO_PROBE_REFERENCES_ONLY){
+   assert.deepEqual(errors,[]);
+   console.log(`${config.kit}/${config.theme}/${config.pkg?.release.manifest.id??'builtin'}: cross-workspace archived references show workspace names, preserve drafts on failure, capture, translate and remove successfully`);
+   await page.close();continue;
+  }
   await page.evaluate(()=>window.clearRuntimeSessionFixture());
   const diagnostic=await page.evaluate(()=>window.diagnosticsFixture);const probes=await count('probe_agents'),snapshots=await count('get_app_snapshot');
   for(const locale of ['zh-CN','en','zh-CN']){

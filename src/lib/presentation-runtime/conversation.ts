@@ -32,7 +32,7 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   if (available && (!state.running || capable('queue.manage'))) {
     add('draft', [], 'input'); add('addAttachments'); add('addDirectory');
     for (const item of state.attachments) if (item.sessionId === session.id && item.turnId === null) add('removeAttachment', [item.id]);
-    for (const item of state.sessionSuggestions ?? []) if (item.id !== session.id && item.workspaceId === session.workspaceId) add('selectSessionReference', [item.id]);
+    for (const item of state.sessionSuggestions ?? []) if (item.id !== session.id) add('selectSessionReference', [item.id]);
     for (const item of state.workspacePathSuggestions) add('selectPath', [item.path]);
     for (const command of state.agentCommands) if (command.enabled !== false) add('selectCommand', [command.name]);
   }

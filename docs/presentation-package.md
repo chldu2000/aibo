@@ -292,6 +292,10 @@ SubagentDialog 也不会公开：它是模态对话框，内容是宿主渲染�
 目录，覆盖 Composer、发送/停止/重试、队列、附件、模型与访问模式、压缩、分支、
 用户回答和会话树操作。原首批顶层 draft/timeline 字段暂保留兼容。
 
+`sessionSuggestions` 可包含其他工作区及已归档会话，排除当前会话。条目的可选
+`workspaceLabel` 提供来源工作区显示名称，缺失时回退到 `workspaceId`；归档标记
+由 `archived` 决定。选择仍须使用宿主提供的 `selectSessionReference` 动作。
+
 会话快照的可选 `historyOnly` 表示用户卸载时已清除插件恢复数据，缺省为 `false`。
 这种会话继续展示宿主历史，但不提供发送、恢复和 Agent 操作；宿主动作目录和原生准入共同执行此限制。
 

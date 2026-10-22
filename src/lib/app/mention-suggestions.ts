@@ -3,7 +3,7 @@ import type { Session, WorkspacePathSuggestion } from '$lib/types';
 export type MentionCategory = 'all' | 'files' | 'folders' | 'sessions';
 
 export type MentionSuggestion =
-  | { kind: 'session'; session: Session }
+  | { kind: 'session'; session: Session & { workspaceLabel?: string } }
   | { kind: 'file' | 'folder'; path: WorkspacePathSuggestion };
 
 export function filterMentionSuggestions(

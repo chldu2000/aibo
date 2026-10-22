@@ -101,7 +101,7 @@ async fn authorize(
     reference: &str,
     source: &str,
 ) -> Result<String, String> {
-    let row = sqlx::query("SELECT a.inline_context,a.content_hash FROM attachments a JOIN sessions target ON target.id=a.session_id JOIN sessions source ON source.id=? JOIN workspaces w ON w.id=target.workspace_id JOIN turns t ON t.id=a.turn_id AND t.session_id=target.id WHERE a.id=? AND a.session_id=? AND a.turn_id=? AND a.media_type='application/vnd.aibo.session-reference+json' AND source.workspace_id=target.workspace_id AND source.id<>target.id AND w.trusted=1 AND t.status='running'")
+    let row = sqlx::query("SELECT a.inline_context,a.content_hash FROM attachments a JOIN sessions target ON target.id=a.session_id JOIN sessions source ON source.id=? JOIN workspaces w ON w.id=target.workspace_id JOIN turns t ON t.id=a.turn_id AND t.session_id=target.id WHERE a.id=? AND a.session_id=? AND a.turn_id=? AND a.media_type='application/vnd.aibo.session-reference+json' AND source.id<>target.id AND w.trusted=1 AND t.status='running'")
         .bind(source).bind(reference).bind(owner).bind(turn).fetch_optional(db).await.map_err(err)?
         .ok_or("permission_denied: source is not a reference accepted in this active turn")?;
     let snapshot: Value =
@@ -293,7 +293,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("aibo-history-tool-{}", ulid::Ulid::new()));
         let db = crate::open_database(&root.join("db")).await.unwrap();
         sqlx::raw_sql("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w','/history-tool','w',1,'now','now'),('foreign','/else','foreign',1,'now','now');
-            INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('target','w','third.party','target','running','now','now'),('source','w','unknown.provider','source','idle','now','now'),('foreign','foreign','another','foreign','idle','now','now');
+            INSERT INTO sessions(id,workspace_id,agent,label,state,created_at,updated_at) VALUES('target','w','third.party','target','running','now','now'),('source','foreign','unknown.provider','source','idle','now','now'),('foreign','foreign','another','foreign','idle','now','now');
             INSERT INTO messages(id,session_id,role,content,status,sequence,created_at,updated_at) VALUES('original','source','assistant','reference-time text','streaming',1,'now','now');")
             .execute(&db).await.unwrap();
         let attachment = crate::session_context::capture(&db, "target", "source")

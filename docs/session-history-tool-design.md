@@ -102,15 +102,15 @@ SDK 每回合最多 8 个并发请求，输入最多 128 KiB，单次最长 30 �
 
 1. 活跃回合、nativeSessionId、实际协商的 host-tools 和运行代际。
 2. 真实引用附件属于调用会话和该回合；已接受的 user 消息携带相同 snapshotId/contentHash。
-   仅草稿、任意同工作区会话 ID 或伪造提示不能授权。
-3. 来源和目标在同一受信工作区，来源与目标不同；信任撤销立即拒绝。来源可归档、可离线。
+   仅草稿、任意会话 ID 或伪造提示不能授权。
+3. 目标位于受信工作区，来源与目标不同；目标工作区信任撤销立即拒绝。来源可跨工作区、可归档、可离线，读取仍须当前回合显式携带该来源引用。
 4. 历史工具专用只读路由先处理；Core 文件/命令路由仍保留 agent-managed 拒绝和原有审批。
 
 ## 验证
 
 - `test/host-tools.test.mjs`：通道绑定、取消、官方 MCP 客户端发现/调用/错误/凭证、
   不同工具名称的通用目录，Codex/Pi 注册、调用、跨进程恢复和无目录普通会话。
-- Rust `session_history_tools`：草稿/伪造/跨工作区拒绝、归档、大消息 Unicode 分片、tool/system、
+- Rust `session_history_tools`：草稿/伪造拒绝、显式引用跨工作区读取、归档、大消息 Unicode 分片、tool/system、
   冻结版本、游标篡改/过期/代际、信任撤销、资源限额、回合关闭与清理。
 - Rust `third_party_agent_managed_history_tools_use_host_scope_without_core_file_authority`：
   改名第三方插件从清单/握手到数据库原文读取及恢复，同时证明不能调用 Core 文件工具。

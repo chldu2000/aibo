@@ -23,7 +23,7 @@ pub(crate) async fn consume_queued(db: &SqlitePool, session_id: &str, turn_id: &
 pub(crate) async fn capture(db: &SqlitePool, target_id: &str, source_id: &str) -> Result<ContextAttachment, CoreError> {
     let target = crate::session_by_id(db, target_id).await?;
     let source = crate::session_by_id(db, source_id).await?;
-    if target.workspace_id != source.workspace_id || target_id == source_id || target.archived {
+    if target_id == source_id || target.archived {
         return Err(crate::ui_i18n::invalid_path_error("native.reference.scopeInvalid", serde_json::json!({})));
     }
     // One SQLite read transaction freezes membership and streaming content.
@@ -151,19 +151,20 @@ mod tests {
             sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES (?,?,?,0,'now','now')")
                 .bind(id).bind(root.join(id).to_string_lossy().as_ref()).bind(id).execute(&db).await.unwrap();
         }
-        for (id,w,archived) in [("target","w",0),("source","w",1),("foreign","other",0),("empty","w",0)] {
+        for (id,w,archived) in [("target","w",0),("source","other",1),("foreign","other",0),("empty","w",0)] {
             sqlx::query("INSERT INTO sessions(id,workspace_id,agent,label,state,archived,created_at,updated_at) VALUES (?,?,'dev.aibo.pi.agent',?,'closed',?,'now','now')")
                 .bind(id).bind(w).bind(id).bind(archived).execute(&db).await.unwrap();
         }
         sqlx::query("INSERT INTO messages(id,session_id,role,content,status,sequence,created_at,updated_at) VALUES ('m','source','assistant','原始回答','streaming',1,'now','now')").execute(&db).await.unwrap();
-        for source in ["target","foreign"] {
-            assert_display(capture(&db,"target",source).await.unwrap_err(),"只能引用当前工作区的其他会话，且目标会话不能已归档。","Only other sessions in the current workspace can be referenced, and the target session must not be archived.");
+        for source in ["target"] {
+            assert_display(capture(&db,"target",source).await.unwrap_err(),"只能引用其他会话，且目标会话不能已归档。","Only other sessions can be referenced, and the target session must not be archived.");
         }
         assert!(capture(&db,"target","missing").await.is_err());
         assert_display(capture(&db,"target","empty").await.unwrap_err(),"该会话暂无已保存的消息可供引用。","This session has no saved messages to reference.");
-        assert_display(capture(&db,"source","target").await.unwrap_err(),"只能引用当前工作区的其他会话，且目标会话不能已归档。","Only other sessions in the current workspace can be referenced, and the target session must not be archived.");
+        assert_display(capture(&db,"source","target").await.unwrap_err(),"只能引用其他会话，且目标会话不能已归档。","Only other sessions can be referenced, and the target session must not be archived.");
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM attachments").fetch_one(&db).await.unwrap(),0);
         let attachment = capture(&db,"target","source").await.unwrap();
+        assert_eq!(attachment.workspace_id, "w");
         let original = attachment.inline_context.unwrap();
         let value: serde_json::Value = serde_json::from_str(&original).unwrap();
         assert_eq!(value["throughMessageId"], "m");

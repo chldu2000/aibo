@@ -103,12 +103,12 @@ test('session approvals offer only current choices and render inside the convers
  assert.doesNotMatch(tree,/approval:foreign/,'other sessions stay out of this conversation');
 });
 
-test('session reference actions reject foreign sessions and retire after selection or navigation',()=>{
+test('session reference actions allow cross-workspace sessions and retire after selection or navigation',()=>{
  const candidate={...state.session,id:'source',archived:true};
  const referencing={...state,draft:'@',sessionSuggestions:[candidate,{...candidate,id:'foreign',workspaceId:'elsewhere'},state.session]};
  const directory=createConversationDirectory();
  const actions=directory.project(referencing).filter(a=>a.operation==='selectSessionReference');
- assert.deepEqual(actions.map(a=>a.args),[['source']]);
+ assert.deepEqual(actions.map(a=>a.args),[['source'],['foreign']]);
  const intent={id:actions[0].token,event:'click',context};
  assert.equal(directory.resolve({...referencing,sessionSuggestions:[]},context,intent),null);
  assert.equal(directory.resolve({...referencing,busy:true},context,intent),null);

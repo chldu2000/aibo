@@ -35,7 +35,7 @@
     modelCatalogLoading: boolean;
     modelOverride?: string | null;
     workspacePathSuggestions: WorkspacePathSuggestion[];
-    sessionSuggestions?: Session[];
+    sessionSuggestions?: (Session & { workspaceLabel?: string })[];
     sessionIcons?: Record<string, import('../../../../packages/plugin-protocol/src/agent-icon').AgentIcon | undefined>;
     onSelectSessionReference?: (id: string) => void | Promise<void>;
     agentCommands: AgentCommand[];
@@ -480,7 +480,7 @@
                 <Icon name={suggestion.kind === 'folder' ? 'folder' : 'file'} size={13} />
               {/if}
               <span>{suggestion.kind === 'session' ? suggestion.session.label : suggestion.path.path}</span>
-              <small>{suggestion.kind === 'session' ? $t('composer.sessionReference', { agent: suggestion.session.agent, archived: suggestion.session.archived ? $t('composer.archivedSuffix') : '' }) : suggestion.kind === 'folder' ? $t('composer.folder') : $t('composer.file')}</small>
+              <small>{suggestion.kind === 'session' ? $t('composer.sessionReference', { workspace: suggestion.session.workspaceLabel ?? suggestion.session.workspaceId, archived: suggestion.session.archived ? $t('composer.archivedSuffix') : '' }) : suggestion.kind === 'folder' ? $t('composer.folder') : $t('composer.file')}</small>
             </button>
           {/each}
         </div>
