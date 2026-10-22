@@ -30,9 +30,10 @@ function controls({control,props,actions},locale='zh-CN') {
   }
   if(control==='AttachmentList') {
     const remove=id=>actions.find(a=>a.kind==='remove'&&a.id===id)?.token;
+    const open=id=>actions.find(a=>a.kind==='open'&&a.id===id)?.token;
     return {...node('ul','attachments',null,props.items.map(item=>({...node('li','attachment:'+item.id,null,[
       node('span','attachment-icon:'+item.id,item.mediaType.startsWith('image/')?'▣':'▤',[],{'aria-hidden':'true'}),
-      node('span','attachment-name:'+item.id,item.name,[],{title:item.name}),
+      open(item.id)?button('attachment-open:'+item.id,item.name,open(item.id),{title:item.name}):node('span','attachment-name:'+item.id,item.name,[],{title:item.name}),
       ...(item.sizeLabel?[node('span','attachment-size:'+item.id,item.sizeLabel)]:[]),
       ...(props.removable?[button('attachment-remove:'+item.id,'×',remove(item.id),{disabled:!remove(item.id),'aria-label':t('external.removeAttachment',{name:item.name})})]:[]),
     ]),className:'attachment'})),{'aria-label':props.label}),className:'attachments'};

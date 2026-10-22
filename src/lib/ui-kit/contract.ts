@@ -3,6 +3,7 @@ export type UiAttachmentListProps = {
  items: { id: string; path: string; mediaType: string; displayName?: string; sizeLabel?: string }[];
  previews?: Record<string, string | null>;
  onRemove?: (id: string) => void;
+ onOpen?: (id: string) => void;
  disabled?: boolean;
 };
 import type { AgentSettingsSnapshot, AgentSettingValue } from '../../../packages/plugin-protocol/src/settings';
@@ -32,6 +33,7 @@ export type UiIconName =
   | 'close'
   | 'delete'
   | 'diagnostics'
+  | 'download'
   | 'edit'
   | 'eye'
   | 'image'

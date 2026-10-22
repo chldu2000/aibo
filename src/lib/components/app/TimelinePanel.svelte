@@ -70,6 +70,7 @@
     busy: boolean;
     attachments: ContextAttachment[];
     attachmentPreviews?: Record<string, string | null>;
+    onOpenAttachment?: (id: string) => void;
     executionProfile: SessionExecutionProfile | null;
     modelConfiguration: ModelConfigurationState;
     modelCatalog: SessionModelCatalog | null;
@@ -146,7 +147,7 @@
     sessionRunning,
     selectedSessionArchiving,
     busy,
-    attachments, attachmentPreviews = {},
+    attachments, attachmentPreviews = {}, onOpenAttachment,
     executionProfile,
     modelConfiguration,
     modelCatalog,
@@ -450,7 +451,7 @@
               {@const attached = item.role === 'user' ? splitMessageAttachments(item.content, attachments) : { body:item.content, attachments:[] }}
               {@const message = item.role === 'user' ? splitSessionReferences(attached.body) : { body: item.content, references: [] }}
               <div class="entry-content">{#if message.body}<MarkdownContent {onOpenLink} content={message.body} />{:else if !message.references.length && !attached.attachments.length}…{/if}</div>
-              <AttachmentList items={attached.attachments} previews={attachmentPreviews} />
+              <AttachmentList items={attached.attachments} previews={attachmentPreviews} onOpen={onOpenAttachment} />
               {#each message.references as reference, index (`${reference.id}-${index}`)}
                 {@const scope = reference.mode === 'complete' ? (reference.messageLimit === null ? $t('timeline.referenceScopeAll') : $t('timeline.referenceScopeRecent', { count: reference.messageLimit })) : reference.mode === 'excerpts' ? $t('timeline.referenceScopeExcerpts') : $t('timeline.referenceScopeLegacy')}
                 <details class="session-reference">
@@ -611,7 +612,7 @@
             {/if}
             <Button variant="ghost" size="sm" onclick={() => onRemoveQueuedMessage(item.id)} disabled={busy || sessionArchived || session?.historyOnly || selectedSessionArchiving || item.status === 'sending'}>{$t('common.delete')}</Button>
           </div>
-          <AttachmentList items={splitMessageAttachments(item.text, attachments).attachments} previews={attachmentPreviews} />
+          <AttachmentList items={splitMessageAttachments(item.text, attachments).attachments} previews={attachmentPreviews} onOpen={onOpenAttachment} />
           {#if item.error}<div role="status">{item.error}</div>{/if}
         {/each}
       {:else}
@@ -651,6 +652,7 @@
     busy={busy}
     attachments={attachments}
     {attachmentPreviews}
+    {onOpenAttachment}
     executionProfile={executionProfile}
     {modelConfiguration}
     modelCatalog={modelCatalog}

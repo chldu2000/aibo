@@ -76,6 +76,6 @@ export type PresentationControlData =
   | { control: 'SessionControlMark'; props: PresentationSessionControlMark; actions: readonly [] }
   | { control: 'Select'; props: PresentationSelect; actions: readonly PresentationOpenAction[] }
   | { control: 'ModelContextSelect'; props: PresentationModelContextSelect; actions: readonly PresentationOpenAction[] }
-  | { control: 'AttachmentList'; props: PresentationAttachmentList; actions: readonly { token: string; kind: 'remove'; id: string }[] }
+  | { control: 'AttachmentList'; props: PresentationAttachmentList; actions: readonly { token: string; kind: 'remove' | 'open'; id: string }[] }
   | { control: 'GoalBar'; props: PresentationGoalBar; actions: readonly { token: 'pause' | 'resume' | 'clear'; kind: 'pause' | 'resume' | 'clear' }[] }
   | { control: 'SubagentCard'; props: PresentationSubagentCard; actions: readonly PresentationOpenAction[] };

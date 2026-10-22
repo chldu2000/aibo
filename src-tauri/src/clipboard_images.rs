@@ -142,6 +142,11 @@ pub(crate) fn turn_attachment_display(
 
 /// Resolve only an attachment owned by this session; callers never provide file paths.
 pub(crate) async fn preview(db: &SqlitePool, session_id: &str, id: &str) -> Result<String, HostMessage> {
+    let (_, mime, bytes) = read_image(db, session_id, id).await?;
+    Ok(format!("data:{mime};base64,{}",STANDARD.encode(bytes)))
+}
+
+pub(crate) async fn read_image(db: &SqlitePool, session_id: &str, id: &str) -> Result<(String, String, Vec<u8>), HostMessage> {
     let row = sqlx::query("SELECT a.id,a.media_type,a.inline_context,a.content_hash,a.path,w.path AS workspace_path FROM attachments a JOIN workspaces w ON w.id=a.workspace_id WHERE a.id=? AND a.session_id=?")
         .bind(id).bind(session_id).fetch_one(db).await.map_err(|_| HostMessage::new("native.image.notFound", serde_json::json!({})))?;
     let mime: String = row.get("media_type");
@@ -158,7 +163,9 @@ pub(crate) async fn preview(db: &SqlitePool, session_id: &str, id: &str) -> Resu
     let hash: Option<String> = row.get("content_hash");
     if hash.is_some_and(|hash|hash != format!("sha256:{:x}",Sha256::digest(&bytes))) { return Err(HostMessage::new("native.image.previewChanged", serde_json::json!({}))); }
     extension(&mime,&bytes).map_err(image_error_display)?;
-    Ok(format!("data:{mime};base64,{}",STANDARD.encode(bytes)))
+    let attachment_path: String = row.get("path");
+    let name = attachment_path.rsplit(['/', '\\']).next().filter(|name| !name.is_empty()).unwrap_or("image").to_owned();
+    Ok((name, mime, bytes))
 }
 
 /// Deleting a draft attachment releases its owned file; never delete paths

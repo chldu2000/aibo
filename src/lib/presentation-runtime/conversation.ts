@@ -25,6 +25,7 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   const session = state.session;
   if (state.timeline.length > state.timelineVisibleCount) add('loadOlder');
   if (!session) return entries;
+  for (const item of state.attachments) if (item.sessionId === session.id && item.mediaType !== 'application/vnd.aibo.session-reference+json') add('openAttachment', [item.id]);
   const bound = Boolean(session.pluginInstallationId);
   const available = bound && !session.archived && !session.historyOnly && !state.archiving && !state.busy;
   const hasImage = state.attachments.some(item => item.sessionId === session.id && item.turnId === null && item.sendStrategy === 'inline' && item.mediaType.startsWith('image/'));

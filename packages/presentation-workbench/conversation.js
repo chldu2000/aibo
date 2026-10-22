@@ -39,7 +39,7 @@ export function renderConversation(state,actions,locale='zh-CN'){
   state.queue.paused?text('queue:paused',t('queue.paused')):null,
   ...(state.queue.items?.length?state.queue.items.map(item=>section('queue:item:'+item.id,item.status==='sending'?t('external.sendingMessage'):item.status==='uncertain'?t('external.deliveryUnknown'):item.status==='failed'?t('queue.failed'):t('external.waitingToSend'),[
    text('queue:text:'+item.id,splitSessionReferences(item.text).body.split('[AIBO_CONTEXT_ATTACHMENTS]')[0].trim()),
-   ...splitMessageAttachments(item.text,state.attachments).attachments.map(attachment=>renderMessageAttachment(attachment,'queue:'+item.id+':attachment:'+attachment.id)),
+   ...splitMessageAttachments(item.text,state.attachments).attachments.map(attachment=>renderMessageAttachment(attachment,'queue:'+item.id+':attachment:'+attachment.id,locale,find('openAttachment',attachment.id))),
    item.error?text('queue:error:'+item.id,item.error):null,
    (!state.running || state.session?.capabilities.includes('queue.steer')) ? button('queue:send:'+item.id,t('composer.sendNow'),find('sendQueuedMessage',item.id)) : null,
    button('queue:remove:'+item.id,t('git.deleted'),find('removeQueuedMessage',item.id)),
@@ -60,7 +60,7 @@ export function renderConversation(state,actions,locale='zh-CN'){
 
   composer.push(node('nav','conversation:composer-tools',null,controls(['addAttachments','addDirectory','send','stop','queueSteer','queueFollowUp'])));
   const pendingAttachments=state.attachments.filter(item=>item.turnId===null && item.sessionId===state.session.id);
-  const attachmentList=node('ul','conversation:attachment-list',null,pendingAttachments.map(item=>node('li','attachment:'+item.id,null,[renderMessageAttachment(item,'composer:attachment:'+item.id),button('attachment:remove:'+item.id,t('external.removeAttachment',{name:item.displayName??item.path}),find('removeAttachment',item.id))])));
+  const attachmentList=node('ul','conversation:attachment-list',null,pendingAttachments.map(item=>node('li','attachment:'+item.id,null,[renderMessageAttachment(item,'composer:attachment:'+item.id,locale,find('openAttachment',item.id)),button('attachment:remove:'+item.id,t('external.removeAttachment',{name:item.displayName??item.path}),find('removeAttachment',item.id))])));
   if(pendingAttachments.length)composer.push(node('details','conversation:attachments',null,[node('summary','conversation:attachments:summary',t('external.attachmentsCount',{count:pendingAttachments.length})),attachmentList],{open:true}));
   const mention=/(?:^|\s)@[^\s]*$/.test(state.draft);
   const slash=state.draft.match(/^\/([^\s]*)$/);

@@ -132,3 +132,14 @@ test('control defaults, marks and host menus use locale without changing options
  const modelContext={options:[{id:'standard',label:'原始上下文',description:null}],current:'standard',disabled:false,onSelect(){}};
  const menu=resolveControlIntent('ModelContextSelect',modelContext,{id:'open',event:'click'}).menu(modelContext,'en');assert.equal(menu.label,'Model context size');assert.equal(menu.options[0].label,'原始上下文');
 });
+
+test('attachment preview intents keep bytes in the host and revoke removed items',async()=>{
+ const opened=[];
+ const props={items:[{id:'image',path:'/private/image.png',mediaType:'image/png'}],disabled:true,onOpen:id=>opened.push(id)};
+ const data=controlInput('AttachmentList',props,{workspaceId:'w',sessionId:'s',revision:1}).data;
+ assert.deepEqual(data.actions,[{token:'open:image',kind:'open',id:'image'}]);
+ assert.equal(JSON.stringify(data).includes('/private'),false);
+ await resolveControlIntent('AttachmentList',props,{id:'open:image',event:'click'}).run();
+ assert.deepEqual(opened,['image']);
+ assert.equal(resolveControlIntent('AttachmentList',{...props,items:[]},{id:'open:image',event:'click'}),null);
+});

@@ -29,6 +29,7 @@
     busy: boolean;
     attachments: ContextAttachment[];
     attachmentPreviews?: Record<string, string | null>;
+    onOpenAttachment?: (id: string) => void;
     executionProfile: SessionExecutionProfile | null;
     modelConfiguration: ModelConfigurationState;
     modelCatalog: SessionModelCatalog | null;
@@ -68,7 +69,7 @@
     sessionStarting = false,
     selectedSessionArchiving,
     busy,
-    attachments, attachmentPreviews = {},
+    attachments, attachmentPreviews = {}, onOpenAttachment,
     executionProfile,
     modelConfiguration,
     modelCatalog,
@@ -334,7 +335,7 @@
 <Card as="form" class="composer" data-ui-component="composer" onsubmit={(event) => { event.preventDefault(); onSend(); }}>
   <div class="composer-body">
     {#if visibleAttachments.length > 0}
-      <AttachmentList items={visibleAttachments.map(item => ({ ...item, sizeLabel: formatBytes(item.size) }))} previews={attachmentPreviews} onRemove={onRemoveAttachment} disabled={busy} />
+      <AttachmentList items={visibleAttachments.map(item => ({ ...item, sizeLabel: formatBytes(item.size) }))} previews={attachmentPreviews} onOpen={onOpenAttachment} onRemove={onRemoveAttachment} disabled={busy} />
     {/if}
     <div class="composer-input-stack">
     <!-- Mirror of the text with @references as tags; the textarea above it keeps input, caret and selection. -->

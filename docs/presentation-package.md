@@ -197,7 +197,7 @@ Shift/Ctrl+Enter 始终换行，即使建议列表打开也不确认选项。普
 | SessionControlMark | 1.1.0 | 无 |
 | Select | 1.1.0 | `open`：请求宿主打开选项菜单 |
 | ModelContextSelect | 1.1.0 | `open`：请求宿主打开上下文大小菜单 |
-| AttachmentList | 1.1.0 | `remove`：移除一个上下文附件（token 为 `remove:<id>`） |
+| AttachmentList | 1.1.0 | `remove`：移除一个上下文附件；可选 `open`：打开宿主预览（token 为 `remove:<id>` / `open:<id>`） |
 | GoalBar | 1.1.0 | `pause` / `resume` / `clear`：仅列出宿主当前提供且非忙碌时可用的操作 |
 | SubagentCard | 1.1.0 | `open`：打开宿主的子 Agent 工作过程对话框 |
 
@@ -237,7 +237,7 @@ AttachmentList、GoalBar、SubagentCard 的高度随内容变化：沙箱在每�
 包不能让这些控件的内容按视口定高（例如 `100vh`、`height: 100%`），否则测得的高度就是 iframe 自身高度，无法随内容缩小。
 
 AttachmentList 的 `props` 为 `{ items, removable, disabled, label }`，每项只有 `id`、文件名 `name`、`mediaType`、`sizeLabel`；
-附件的宿主路径和图片预览不会发送给包，因此替换后的列表不显示图片缩略图。只读的消息附件没有 `remove` 动作。
+附件的宿主路径和图片预览不会发送给包，因此替换后的列表不显示图片缩略图。只读的消息附件没有 `remove` 动作；可选 `open` 动作按当前附件身份打开宿主预览，图片字节继续保留在宿主。
 GoalBar 的 `props` 为 `{ objective, statusLabel, usageLabel, busy }`，展开长目标属于包的本地状态。
 SubagentCard 的 `props` 为 `{ name, task, statusLabel, activity, failed }`，工作过程由宿主对话框显示。
 
@@ -291,6 +291,8 @@ SubagentDialog 也不会公开：它是模态对话框，内容是宿主渲染�
 会话的用户问题、回答草稿和会话树。`data.conversationActions` 是宿主生成的操作
 目录，覆盖 Composer、发送/停止/重试、队列、附件、模型与访问模式、压缩、分支、
 用户回答和会话树操作。原首批顶层 draft/timeline 字段暂保留兼容。
+`openAttachment` 的参数为当前会话附件 ID，可用于草稿、消息和队列；它不受发送忙碌或归档限制，
+附件移除或会话切换后动作失效。会话引用快照仍使用原有展开阅读，不提供此文件预览动作。
 
 `sessionSuggestions` 可包含其他工作区及已归档会话，排除当前会话。条目的可选
 `workspaceLabel` 提供来源工作区显示名称，缺失时回退到 `workspaceId`；归档标记

@@ -1,6 +1,6 @@
 import {presentationTranslator} from './i18n.js';
 import {formatDateTime} from './i18n.generated.js';
-import {node,section,text} from './tree.js';
+import {node,section,text,button} from './tree.js';
 export function renderExecutionProfile(profile,key,locale='zh-CN'){
  const t=presentationTranslator(locale);
  const labels={interactionMode:{ask:t('inspector.ask'),plan:t('inspector.plan'),edit:t('common.edit')},filesystemPolicy:{'agent-managed':t('inspector.nativePermissions'),'read-only':t('git.readOnly'),'workspace-write':t('inspector.workspaceWrite'),'danger-full-access':t('external.fullFileAccess')},commandPolicy:{'agent-managed':t('inspector.nativePermissions'),disabled:t('inspector.disabled'),approved:t('inspector.approvalRequired'),trusted:t('inspector.automatic')},networkPolicy:{disabled:t('inspector.disabled'),'agent-managed':t('inspector.agentManaged')},approvalPolicy:{never:t('external.neverApprove'),untrusted:t('external.approveUntrusted'),'on-request':t('external.approveOnRequest'),trusted:t('external.trustMode')},approvalReviewer:{user:t('role.user'),'auto-review':t('external.autoReview'),none:t('external.none')}};
@@ -19,10 +19,10 @@ export function renderSessionMetadata(session,key,locale='zh-CN'){
  return node('details',key,null,[node('summary',key+':summary',t('external.sessionInformation')),text(key+':id',t('external.sessionId',{id:session.id})),text(key+':external',session.externalSessionId?t('external.remoteBinding',{id:session.externalSessionId}):null),text(key+':updated',session.updatedAt?t('external.updatedAt',{date:formatDateTime(locale,session.updatedAt,{dateStyle:'medium',timeStyle:'short'})}):null),text(key+':archived',session.archived?t('session.status.archived'):null)]);
 }
 
-export function renderMessageAttachment(item,key,locale='zh-CN'){
+export function renderMessageAttachment(item,key,locale='zh-CN',openAction){
  const name=item.displayName??((item.path??item.id).split(/[\\/]/).pop()||item.id);
  return {...node('div',key,null,[
-  item.mediaType?.startsWith('image/')?{...node('img',key+':preview',null,[],{alt:name,width:'160',height:'112'}),resource:'attachment:'+item.id}:null,
-  text(key+':name',name),
+  item.mediaType?.startsWith('image/')?{...node('img',key+':preview',null,[],{alt:name,width:'160',height:'112'}),resource:'attachment:'+item.id,...(openAction?{events:{click:openAction.token}}:{})}:null,
+  openAction?button(key+':open',name,openAction):text(key+':name',name),
  ],{title:item.displayName??item.path??item.id}),className:'message-attachment'};
 }

@@ -64,7 +64,7 @@ export function renderTimelineEntry(entry,actions,attachments=[],locale='zh-CN')
   const attached=entry.role==='user'?splitMessageAttachments(entry.content,attachments):{body:entry.content,attachments:[]};
   const message=entry.role==='user'?splitSessionReferences(attached.body):{body:entry.content,references:[]};
   content=node('div',key+':body',null,[message.body?renderRichText(message.body,'message:content:'+entry.id,entry.id,actions,locale):message.references.length||attached.attachments.length?null:text(key+':empty','…'),
-   ...attached.attachments.map(item=>renderMessageAttachment(item,key+':attachment:'+item.id)),
+   ...attached.attachments.map(item=>renderMessageAttachment(item,key+':attachment:'+item.id,locale,actionFor(actions,'openAttachment',item.id))),
    ...message.references.map((reference,index)=>{const refKey=key+':reference:'+index;return node('details',refKey,null,[
     node('summary',refKey+':title',t('external.referenceTitle',{title:reference.title})),
     text(refKey+':note',[reference.agent,referenceScope(reference,t),reference.omitted?t('timeline.referenceOmitted',{count:reference.omitted}):''].filter(Boolean).join(' · ')),

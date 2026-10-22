@@ -634,6 +634,9 @@ export const registerSessionClipboardImages = (sessionId: string, images: import
 export const getSessionAttachmentPreview = (sessionId: string, attachmentId: string): Promise<string> =>
   invoke<string>('get_session_attachment_preview', { sessionId, attachmentId });
 
+export const saveSessionAttachmentImage = (sessionId: string, attachmentId: string): Promise<string | null> =>
+  invoke('save_session_attachment_image', { sessionId, attachmentId });
+
 export const searchGlobal = (request: import('./app/global-search').SearchRequest): Promise<import('./app/global-search').SearchPage> => invoke('search_global', { request });
 export const readSearchResult = (target: import('./app/global-search').SearchTarget): Promise<{ title: string; content: string; localizedContent?: unknown; localizedSuffix?: unknown; target: import('./app/global-search').SearchTarget; truncated: boolean }> => invoke('read_search_result', { target });
 

@@ -83,8 +83,10 @@ const contextMenu = (props: UiModelContextSelectProps, locale: Locale = 'zh-CN')
   };
 /** Only the file name leaves the host: attachment paths may reveal local directories, and previews stay host-side. */
 const fileName = (path: string) => path.split(/[\\/]/).pop() || path;
-const removals = (props: UiAttachmentListProps) =>
-  props.onRemove && !props.disabled ? props.items.map(item => ({ token: `remove:${item.id}`, kind: 'remove' as const, id: item.id })) : [];
+const attachmentActions = (props: UiAttachmentListProps) => [
+  ...(props.onRemove && !props.disabled ? props.items.map(item => ({ token: `remove:${item.id}`, kind: 'remove' as const, id: item.id })) : []),
+  ...(props.onOpen ? props.items.filter(item => item.mediaType !== 'application/vnd.aibo.session-reference+json').map(item => ({ token: `open:${item.id}`, kind: 'open' as const, id: item.id })) : []),
+];
 const goalActions = (props: UiGoalBarProps) => props.busy ? [] : (['pause', 'resume', 'clear'] as const)
   .filter(kind => ({ pause: props.onPause, resume: props.onResume, clear: props.onClear })[kind])
   .map(kind => ({ token: kind, kind }));
@@ -188,11 +190,11 @@ const registry: { [Name in PresentationControl]: ControlDefinition<Name, Control
         items: props.items.map(({ id, path, mediaType, sizeLabel }) => ({ id, name: fileName(path), mediaType, sizeLabel: sizeLabel ?? null })),
         removable: Boolean(props.onRemove), disabled: Boolean(props.disabled), label: translate(locale, props.onRemove ? 'inspector.attachments' : 'attachments.messages'),
       },
-      actions: removals(props),
+      actions: attachmentActions(props),
     }),
     resolve(props, intent) {
-      const action = click(intent) ? removals(props).find(action => action.token === intent.id) : undefined;
-      return action ? { kind: 'run', run: () => props.onRemove?.(action.id) } : null;
+      const action = click(intent) ? attachmentActions(props).find(action => action.token === intent.id) : undefined;
+      return action ? { kind: 'run', run: () => action.kind === 'open' ? props.onOpen?.(action.id) : props.onRemove?.(action.id) } : null;
     },
     preflight: { items: [{ id: 'preflight', path: 'notes.md', mediaType: 'text/markdown', sizeLabel: '1 KB' }], onRemove() {} },
     frame: 'content',

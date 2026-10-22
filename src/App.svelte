@@ -14,6 +14,24 @@
   import {linkTarget} from '../packages/presentation-workbench/links.js';
   import {createFilePreviewController,emptyFilePreview} from '$lib/app/file-preview-controller';
   import FilePreviewPanel from '$lib/components/app/FilePreviewPanel.svelte';
+  import ImagePreviewPanel from '$lib/components/app/ImagePreviewPanel.svelte';
+  import { createImagePreviewController, createImageSaveController, type ImagePreviewState } from '$lib/app/image-preview-controller';
+  let imagePreview = $state<ImagePreviewState>(null);
+  let imageSaving = $state(false);
+  const savePreviewImage = createImageSaveController(saveSessionAttachmentImage, value => { imageSaving = value; }, (message, kind) => setNotice(message, kind));
+  const imagePreviewController = createImagePreviewController(getSessionAttachmentPreview, value => { imagePreview = value; });
+  $effect(() => { selectedSessionId; selectedWorkspaceId; imagePreviewController.close(); });
+  $effect(() => {
+    if (imagePreview && !attachments.some(item => item.id === imagePreview?.attachmentId && item.sessionId === imagePreview?.sessionId)) imagePreviewController.close();
+  });
+  async function openAttachment(id: string): Promise<void> {
+    const item = attachments.find(item => item.id === id && item.sessionId === selectedSessionId);
+    if (!item || item.mediaType === 'application/vnd.aibo.session-reference+json') return;
+    imagePreviewController.close(); filePreviewController.close();
+    if (item.mediaType.startsWith('image/')) {
+      await imagePreviewController.open(item.sessionId, item.id, item.path.split(/[/\\]/).pop() || item.path);
+    } else await filePreviewController.open(item.sessionId, item.path);
+  }
   let filePreview = $state(emptyFilePreview());
   const filePreviewController = createFilePreviewController(readLinkedFile, value => { filePreview = value; });
   $effect(() => { selectedSessionId; selectedWorkspaceId; filePreviewController.close(); });
@@ -73,7 +91,7 @@
   }
 
   import { createAttachmentPreviews } from '$lib/app/attachment-previews';
-  import { getSessionAttachmentPreview } from '$lib/api';
+  import { getSessionAttachmentPreview, saveSessionAttachmentImage } from '$lib/api';
   import { SubagentDetails, WorkspacePreferencesPanel, HostConfirmationPanel } from '$lib/components/app';
   import SessionReferencePreferencesPanel from '$lib/components/app/SessionReferencePreferencesPanel.svelte';
   import { createSessionReferencePreferencesController, emptySessionReferencePreferences } from '$lib/app/session-reference-preferences-controller';
@@ -363,6 +381,7 @@
       case 'draft': composerText = intent.value!; handleComposerInput(composerText); break;
       case 'copyCode': await navigator.clipboard.writeText(action.args[2]!); setNotice(localizedMessage('app.codeCopied'), 'success'); break;
       case 'openLink': await handleOpenLink(action.args[2]!); break;
+      case 'openAttachment': await openAttachment(action.args[0]!); break;
       case 'send': await sendPrompt(); break;
       case 'stop': await abortPrompt(); break;
       case 'retry': await retryLastPrompt(); break;
@@ -3854,6 +3873,7 @@
          is initialized once and would reject edits after session navigation. -->
     <TimelinePanel
       onOpenLink={guard('onOpenLink', (url) => void handleOpenLink(url))}
+      onOpenAttachment={guard('onOpenAttachment', (id) => void openAttachment(id))}
       presentationActions={conversationActions}
       activeTab={sessionTabs[selectedSessionId ?? ''] ?? 'conversation'}
       onSelectTab={guard('onSelectTab', (tab) => {
@@ -4152,6 +4172,11 @@
     onCancelPiNavigation={() => (piNavigationEntryId = null)}
   />
 
+{#if imagePreview}
+  <ImagePreviewPanel state={imagePreview} onClose={() => imagePreviewController.close()}
+    saving={imageSaving} onSave={() => { if (imagePreview) void savePreviewImage(imagePreview.sessionId, imagePreview.attachmentId); }}
+    onRetry={() => { if (imagePreview) void openAttachment(imagePreview.attachmentId); }} />
+{/if}
 {#if filePreview.path !== null}
   <FilePreviewPanel state={filePreview} onClose={() => filePreviewController.close()}
     onReadLine={line => { if (filePreview.sessionId && filePreview.path) void filePreviewController.open(filePreview.sessionId,filePreview.path,line); }}

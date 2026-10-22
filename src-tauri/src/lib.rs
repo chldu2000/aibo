@@ -33,6 +33,7 @@ mod search_assets;
 mod session_activity_tests;
 mod session_context;
 mod clipboard_images;
+mod image_save;
 mod capability_history;
 mod workspace_git_approval;
 mod workspace_writes;
@@ -3295,6 +3296,7 @@ pub fn run() {
             register_session_attachments,
             register_session_clipboard_images,
             get_session_attachment_preview,
+            image_save::save_session_attachment_image,
             reference_session,
             list_session_attachments,
             remove_session_attachment,

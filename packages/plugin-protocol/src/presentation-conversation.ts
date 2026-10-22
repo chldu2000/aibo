@@ -290,7 +290,7 @@ export type PresentationConversation = {
   treeNavigationStatus: string | null;
 };
 
-export type PresentationConversationOperation = 'copyCode' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue' | 'removeQueuedMessage' | 'sendQueuedMessage' | 'resumeQueue' | 'clearGoal' | 'pauseGoal' | 'resumeGoal'
+export type PresentationConversationOperation = 'copyCode' | 'openAttachment' | 'openLink' | 'draft' | 'send' | 'stop' | 'retry' | 'queueSteer' | 'queueFollowUp' | 'clearQueue' | 'removeQueuedMessage' | 'sendQueuedMessage' | 'resumeQueue' | 'clearGoal' | 'pauseGoal' | 'resumeGoal'
   | 'addAttachments' | 'addDirectory' | 'removeAttachment' | 'selectPath' | 'selectSessionReference' | 'selectCommand'
   | 'openSubagent' | 'loadOlder' | 'fork' | 'loadModels' | 'selectModel' | 'selectServiceTier' | 'selectContextWindow' | 'selectAccess' | 'compact'
   | 'answer' | 'chooseAnswer' | 'submitAnswers' | 'cancelAnswers' | 'resolveApproval'

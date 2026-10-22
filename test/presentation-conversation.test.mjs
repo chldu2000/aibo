@@ -19,7 +19,7 @@ test('conversation directory covers data-dependent operations without fabricatin
  assert.deepEqual(actions.filter(a=>a.operation==='selectCommand').map(a=>a.args),[['help']]);
  assert.deepEqual(actions.filter(a=>a.operation==='selectModel').map(a=>a.args),[['model',null],['model','high']]);
  const historical={...state,session:{...state.session,pluginInstallationId:null}};
- assert.deepEqual(operations(historical),['loadOlder']);
+ assert.deepEqual(operations(historical),['loadOlder','openAttachment','openAttachment']);
  assert.ok(!operations({...state,session:{...state.session,capabilities:[]}}).includes('compact'));
  const active={...state,running:true};
  for(const operation of ['send','selectModel','fork','selectAccess','compact'])assert.ok(!operations(active).includes(operation),operation);
