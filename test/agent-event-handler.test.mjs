@@ -256,3 +256,28 @@ test('retry defaults remain translatable while prompts, provider reasons and too
   emit('tool.started',{itemId:'raw',itemType:'commandExecution',summary:'工具操作'});assert.equal(timeline.at(-1).content,'工具操作');
  }finally{await server.close();}
 });
+
+test('approval and input events immediately update sidebar session state without a list refresh', async () => {
+  const server = await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
+  try {
+    const {handleAgentEvent} = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
+    const {reconcileSessionRefresh} = await server.ssrLoadModule('/src/lib/app/session-transitions.ts');
+    for (const selected of [true, false]) for (const [kind, waiting] of [['approval','waiting_approval'],['user_input','waiting_user']]) {
+      const baseline = [{id:'s',state:'running',createdAt:'2026-10-14',updatedAt:'2026-10-14'}, {id:'other',state:'idle'}];
+      let sessions = baseline;
+      const context = {selectedSessionId:selected?'s':'other',timeline:[],pendingApprovals:[],pendingUserInputs:[],lastSubmittedPrompt:null,
+        setAgentActivity(){},updateWorkspaceSessions(_,update){sessions=update(sessions);},
+        setPendingApprovals(value){context.pendingApprovals=value;},setPendingUserInputs(value){context.pendingUserInputs=value;},
+        setTimeline(){},setRetry(){},setNotice(){},refreshSessions(){return new Promise(()=>{});}};
+      const emit = (type,payload) => handleAgentEvent({sessionId:'s',workspaceId:'w',turnId:'t',type,payload,occurredAt:'2026-10-14',source:{}},context);
+      emit(`${kind}.requested`,{requestId:'r',questions:[]});
+      assert.equal(sessions[0].state,waiting,`${kind}: sidebar must show the pending request`);
+      assert.equal(sessions[1],baseline[1],'another session is unchanged');
+      assert.equal(reconcileSessionRefresh(baseline,sessions,baseline).find(s=>s.id==='s').state,waiting,'an old list response cannot erase waiting');
+      emit('tool.completed',{itemId:'parallel',itemType:'commandExecution'});
+      assert.equal(sessions[0].state,waiting,'parallel tool completion preserves waiting');
+      emit(`${kind}.resolved`,{requestId:'r',decision:'accept'});
+      assert.equal(sessions[0].state,'running','resolved request clears the sidebar wait');
+    }
+  } finally {await server.close();}
+});

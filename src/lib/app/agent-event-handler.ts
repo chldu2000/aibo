@@ -49,6 +49,14 @@ export function eventTimelineItemId(event: Pick<AgentEvent, 'turnId'>, itemId: s
   return event.turnId ? `${event.turnId}:${itemId}` : itemId;
 }
 
+// These events commit session state in the host without a separate state_changed event.
+const requestSessionStates: Partial<Record<AgentEvent['type'], Session['state']>> = {
+  'approval.requested': 'waiting_approval',
+  'approval.resolved': 'running',
+  'user_input.requested': 'waiting_user',
+  'user_input.resolved': 'running',
+};
+
 /** One gate per app subscription; host sequences are monotonic within a runtime generation. */
 export function createAgentEventGate() {
   const cursors = new Map<string, { generation: string; sequence: number; occurredAt: string; retired: Set<string> }>();
@@ -65,7 +73,7 @@ export function createAgentEventGate() {
     }
     cursors.set(event.sessionId, {generation:event.generationId, sequence:event.sequence,
       occurredAt:event.occurredAt, retired:previous?.retired ?? new Set()});
-    if (['turn.started', 'turn.completed', 'turn.failed', 'adapter.crashed', 'session.state_changed'].includes(event.type)) {
+    if (requestSessionStates[event.type] || ['turn.started', 'turn.completed', 'turn.failed', 'adapter.crashed', 'session.state_changed'].includes(event.type)) {
       stateRevisions.set(event.sessionId, (stateRevisions.get(event.sessionId) ?? 0) + 1);
     }
     return true;
@@ -122,7 +130,7 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
           : event.payload.status === 'failed'
             ? 'failed'
             : 'idle'
-        : undefined;
+        : requestSessionStates[event.type];
 
   // A turn can spend time between two streamed items (for example, after a
   // tool completes and before Pi starts its next response). Keep that phase

@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
 
-test('a delayed send acknowledgement cannot restore running after a terminal event', async () => {
+test('a delayed send acknowledgement cannot overwrite terminal or waiting state', async () => {
   const server = await createServer({server:{middlewareMode:true,ws:false,watch:null},appType:'custom'});
   try {
     const {createMessageController} = await server.ssrLoadModule('/src/lib/app/message-controller.ts');
     const {createAgentEventGate,handleAgentEvent} = await server.ssrLoadModule('/src/lib/app/agent-event-handler.ts');
-    for (const terminal of [null,'turn.failed','adapter.crashed','turn.completed']) {
+    for (const [type, expected] of [[null,'running'],['turn.failed','failed'],['adapter.crashed','interrupted'],['turn.completed','interrupted'],['approval.requested','waiting_approval'],['user_input.requested','waiting_user']]) {
       const session={id:'s',workspaceId:'w',state:'failed',capabilities:[],archived:false};
       let map={w:[session]}, finish, started;
       const entered=new Promise(resolve=>{started=resolve;});
@@ -22,12 +22,12 @@ test('a delayed send acknowledgement cannot restore running after a terminal eve
         refreshTimeline:async()=>{},refreshAttachments:async()=>{},
       });
       const pending=controller.sendPrompt();await entered;
-      const event={sessionId:'s',workspaceId:'w',turnId:'t',generationId:'g',sequence:1,occurredAt:'2026-10-14',type:terminal??'usage.updated',payload:{status:'interrupted'}};
+      const event={sessionId:'s',workspaceId:'w',turnId:'t',generationId:'g',sequence:1,occurredAt:'2026-10-14',type:type??'usage.updated',source:{},payload:{status:'interrupted',requestId:'r',questions:[]}};
       assert.equal(gate.accept(event),true);
       handleAgentEvent(event,{selectedSessionId:'s',timeline:[],pendingApprovals:[],pendingUserInputs:[],
         setAgentActivity(){},updateWorkspaceSessions:(_,update)=>{map={w:update(map.w)};},setPendingApprovals(){},setPendingUserInputs(){},setUsageSnapshot(){},setTimeline(){},setRetry(){},setNotice(){},refreshSessions(){}});
       finish({...session,state:'running'});await pending;
-      assert.equal(map.w[0].state,terminal==='turn.failed'?'failed':terminal?'interrupted':'running');
+      assert.equal(map.w[0].state,expected);
     }
   } finally {await server.close();}
 });

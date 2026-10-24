@@ -36,6 +36,8 @@ try {
     await page.evaluate(command=>window.requestApproval('long',command),command);
     const card = page.locator('.approval-card');
     await card.waitFor();
+    await page.locator('.session-item .session-state-label').waitFor();
+    assert.match(await page.locator('.session-item').getAttribute('aria-label'), /待审批/);
     // Column widths are recomputed after a resize; measure once the card and composer stop moving.
     const settle = () => page.evaluate(() => new Promise(resolve => {
       let last = '', stable = 0;
