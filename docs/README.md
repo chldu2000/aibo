@@ -24,6 +24,7 @@
 
 ### 核心合同与开发参考
 
+- [会话恢复状态与错误分类目标规格](session-recovery-state-spec.md)：待实现；小型恢复入口、独立任务状态、旧会话迁移及准确错误分类。
 - [English README](../README.md)、[中文 README](../README_zh.md)：产品介绍、Agent 接入与使用入口。
 - [领域词汇](../CONTEXT.md)：插件、贡献、会话身份、能力与呈现概念的统一定义。
 - [插件开发指引](plugin-development_zh.md)、[English guide](plugin-development.md)：能力包、会话提供者与呈现扩展。
