@@ -32,6 +32,7 @@
 
   type TimelinePanelProps = {
     onOpenLink?: (url: string) => void;
+    onReadBackgroundTask?: (id: string) => void;
     onOpenSubagent?: (id: string) => void;
     presentationActions?: Snippet;
     activeTab?: 'conversation' | 'executions' | 'changes';
@@ -115,6 +116,7 @@
 
   let {
     onOpenLink,
+    onReadBackgroundTask,
     onOpenSubagent,
     presentationActions,
     activeTab = 'conversation',
@@ -405,7 +407,7 @@
             {@const child = item.toolName === 'subagent' ? parseSubagent(item.content) : null}
             {@const backgroundTask = parseBackgroundTask(item, $locale)}
             {#if backgroundTask}
-              <div data-presentation-message={'message:' + item.id}><BackgroundTaskCard task={backgroundTask} /></div>
+              <div data-presentation-message={'message:' + item.id}><BackgroundTaskCard task={backgroundTask} onRead={session?.capabilities.includes('background-tasks.read') && !session?.archived && !session?.historyOnly ? () => onReadBackgroundTask?.(backgroundTask.id) : undefined} /></div>
             {:else if child}
               <div data-presentation-message={'message:' + item.id}><SubagentCard name={child.name} task={child.task} statusLabel={$t(`subagent.status.${child.status}`)} activity={child.activity} failed={['failed','unavailable'].includes(child.status)} onOpen={() => onOpenSubagent?.(child.id)} /></div>
             {:else if item.role === 'tool' || (item.role === 'system' && item.toolName === 'reasoning')}

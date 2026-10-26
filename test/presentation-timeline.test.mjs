@@ -64,3 +64,12 @@ test('subagent cards expose a scoped history action instead of rendering their i
  assert.ok(nodes.some(node=>node.events?.click==='child-history'));
  assert.ok(!nodes.some(node=>node.text===JSON.stringify(task)));
 });
+
+test('background output is literal, marks truncation and uses the host-issued read action',()=>{
+ const task={id:'task',rootTurnId:'turn',name:'job',command:'echo',activity:'summary',status:'completed',output:'<script>literal</script>',outputTruncated:true};
+ const nodes=flatten(renderTimelineEntry({...entry,role:'system',toolName:'background_task',content:JSON.stringify(task)},[{operation:'openBackgroundTask',args:['task'],event:'click',token:'read-task'}]));
+ assert.ok(nodes.some(node=>node.events?.click==='read-task'));
+ assert.ok(nodes.some(node=>node.tag==='pre'&&node.text===task.output));
+ assert.ok(nodes.some(node=>node.text?.includes('截断')));
+ assert.ok(!nodes.some(node=>node.tag==='script'));
+});

@@ -74,7 +74,7 @@ export declare class AcpSession {
   constructor(options: { extension: AcpExtension; transportFactory?: (options: { cwd: string }) => AcpTransport; emit?: (event: unknown) => void; pluginVersion?: string; cancelGraceMs?: number; commandWaitMs?: number });
   readonly sessionId: string | null | undefined;
   hostToolsRegistered?: boolean;
-  open(options: { mode: 'create' | 'resume'; workspaceId: string; workspacePath: string; executionProfile: unknown; recovery?: unknown; permissions: readonly string[]; mcpServers?: unknown[]; hostMcpTools?: { providerIdentifier: string; toolName: string }[] }): Promise<{ nativeSessionId: string; recovery: unknown; capabilities: string[] }>;
+  open(options: { privateDataPath?: string; ownerSessionId?: string; mode: 'create' | 'resume'; workspaceId: string; workspacePath: string; executionProfile: unknown; recovery?: unknown; permissions: readonly string[]; mcpServers?: unknown[]; hostMcpTools?: { providerIdentifier: string; toolName: string }[] }): Promise<{ nativeSessionId: string; recovery: unknown; capabilities: string[] }>;
   prompt(options: { text: string; turnId: string; attachments?: unknown[]; additionalInstructions?: string; writable?: boolean }): Promise<{ status: 'completed' | 'interrupted' | 'failed'; recovery: unknown }>;
   listBackgroundTasks(): { tasks: import('./background-tasks.mjs').BackgroundTask[]; recovery: unknown; capabilities: string[] };
   cancel(): Promise<{ accepted: true }>;

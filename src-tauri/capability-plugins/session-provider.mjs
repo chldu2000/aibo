@@ -1,3 +1,4 @@
+import { boundedRecovery } from '@aibolabs/acp-adapter/background-tasks';
 import { createHostToolChannel, hostToolDefinitions } from '@aibolabs/capability-runtime/host-tools';
 /** Session domain implementation for the shared Capability runtime; no Agent wire protocol. */
 export function sessionProvider({engine, pluginId, actions}) {
@@ -6,7 +7,7 @@ export function sessionProvider({engine, pluginId, actions}) {
   const hostTools = createHostToolChannel();
   const pendingTools = new Map();
   const reject = message => { throw new Error(message); };
-  const snapshot = output => ({...output,recovery:engine.snapshot(),capabilities:[...engine.capabilities,...(engine.hostToolsRegistered?.() ? ['host-tools'] : [])]});
+  const snapshot = output => ({...output,recovery:boundedRecovery(engine.snapshot()),capabilities:[...engine.capabilities,...(engine.hostToolsRegistered?.() ? ['host-tools'] : [])]});
   function publish(event) {
     if (!owner) {
       // Native providers may finish a recovery update immediately after a turn.

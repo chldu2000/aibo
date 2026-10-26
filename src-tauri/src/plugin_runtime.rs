@@ -155,7 +155,7 @@ impl PluginRuntime {
                             }
                             let mut encoded = serde_json::to_vec(&json!({"jsonrpc":"2.0", "id":id, "method":method, "params":params})).unwrap();
                             if encoded.len() > MAX_MESSAGE {
-                                let _ = reply.send(Err("invalid_request: message exceeds limit".into()));
+                                let _ = reply.send(Err("frame_too_large: message exceeds limit".into()));
                                 continue;
                             }
                             encoded.push(b'\n');
@@ -171,7 +171,7 @@ impl PluginRuntime {
                                 Err(error) => json!({"jsonrpc":"2.0","id":id,"error":{"code":-32000,"message":error}}),
                             };
                             let mut encoded = serde_json::to_vec(&message).unwrap();
-                            if encoded.len() > MAX_MESSAGE { break "invalid_request: message exceeds limit"; }
+                            if encoded.len() > MAX_MESSAGE { break "frame_too_large: message exceeds limit"; }
                             encoded.push(b'\n');
                             match tokio::time::timeout(Duration::from_secs(5), stdin.write_all(&encoded)).await {
                                 Ok(Ok(())) => {},
@@ -189,7 +189,7 @@ impl PluginRuntime {
                         for byte in &bytes[..count] {
                             if *byte != b'\n' {
                                 frame.push(*byte);
-                                if frame.len() > MAX_MESSAGE { break 'runtime "invalid_request: oversized plugin frame"; }
+                                if frame.len() > MAX_MESSAGE { break 'runtime "frame_too_large: oversized plugin frame"; }
                                 continue;
                             }
                             let message: Value = match serde_json::from_slice(&frame) {
@@ -213,7 +213,7 @@ impl PluginRuntime {
                                 let Some(reply) = pending.remove(id) else { break 'runtime "invalid_request: unknown or duplicate response"; };
                                 let response = if message.get("error").is_some() {
                                     // Never expose plugin-provided messages to logs or UI without redaction.
-                                    Err(format!("{}: plugin request rejected", message["error"]["data"]["kind"].as_str().unwrap_or("internal")))
+                                    Err(format!("{}: plugin request rejected", message["error"]["data"]["reason"].as_str().filter(|reason| matches!(*reason,"recovery_version_unsupported"|"recovery_state_missing"|"recovery_state_corrupt"|"recovery_state_write_failed"|"native_resume_failed")).or_else(||message["error"]["data"]["kind"].as_str()).unwrap_or("internal")))
                                 } else { Ok(message["result"].clone()) };
                                 let _ = reply.send(response);
                             } else {
@@ -475,7 +475,8 @@ mod tests {
         ] {
             let runtime = PluginRuntime::spawn_capability(Path::new("node"), &["-e".into(), script.into()], Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
             let result = runtime.request("capability.initialize", json!({}), Duration::from_secs(5)).await;
-            assert!(result.unwrap_err().contains("invalid_request"));
+            let error=result.unwrap_err();
+            assert!(error.starts_with(if script.contains("1048577") {"frame_too_large:"} else {"invalid_request:"}));
             runtime.stop().await;
         }
     }

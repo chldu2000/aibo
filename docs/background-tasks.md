@@ -27,3 +27,11 @@ SDK 0.1.9 新增可选读取能力。清单、运行时协商和操作输出遵�
 针对性测试包含：SDK 状态恢复/乱序、Codex 识别证据和父回合结束后的 Worker 查询、Claude 主回复结束后收到失败通知、宿主投影去重/父回合归属/旧 generation 拒绝，以及两套皮肤的明暗主题、状态变化、键盘详情和窄屏显示。
 
 运行 `pnpm run verify`、`cargo test --manifest-path src-tauri/Cargo.toml --lib session_host --no-fail-fast`、`node probes/background-tasks-browser.mjs`。第三方插件仓库运行 `AIBO_SDK=local pnpm run verify`。这些是模拟原生协议与浏览器组件验证，不代表生产账户真实模型回合或安装后的桌面应用验收。
+
+## 恢复状态与按需输出（SDK 0.1.13 源码）
+
+Codex 2.0.22 与 Claude Code 0.4.9 将任务状态保存在插件私有目录，recovery 只携带不可变修订引用，兼容旧内联任务数据。私有数据须随插件升级、回滚与备份保留，不能只复制绑定 JSON。当前修订保守保留，达到磁盘预算时明确拒绝保存。
+
+`background-tasks.list` 新变体接收可选 cursor，返回 nextCursor 与有界摘要；宿主逐页观察并投影。旧无 cursor 的变体继续使用。新 `background-tasks.read` 接收 taskId、可选 cursor/revision，返回 output、nextCursor、revision、truncated 及原有 recovery/capabilities。输出按需读取，不再随列表和 recovery 重复发送；跨页变化必须重读。内置双皮肤与外部工作台均提供读取入口，未协商能力的旧会话仍展示历史中的内联输出。
+
+保留输出仍是末尾最多 12,000 Unicode 码点，不等于完整进程日志。新界面在达到保留界限时提示可能截断。详见[恢复状态规格](session-recovery-state-spec.md)。

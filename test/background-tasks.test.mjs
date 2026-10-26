@@ -62,7 +62,7 @@ test('background task contract adds full output without dropping manifests that 
   const taskFields = shape => Object.keys(shape.outputSchema.properties.tasks.items.properties);
   const codex = (await read('src-tauri/capability-plugins/codex/plugin.json')).contributions[0].operations
     .find(operation => operation.capability.id === 'dev.aibo.codex.background-tasks.list');
-  assert.ok(variants.some(shape => JSON.stringify(shape.outputSchema) === JSON.stringify(codex.outputSchema) && taskFields(shape).includes('output')));
+  assert.ok(variants.some(shape => JSON.stringify(shape.outputSchema) === JSON.stringify(codex.outputSchema) && shape.outputSchema.properties.nextCursor));
   assert.ok(variants.some(shape => !taskFields(shape).includes('output')), 'released plugins without output still negotiate');
 });
 

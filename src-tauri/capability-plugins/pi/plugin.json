@@ -1,11 +1,11 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.pi",
-  "version": "2.0.11",
+  "version": "2.0.12",
   "displayName": "Pi",
   "description": "Pi session capabilities.",
   "hostSdk": {
-    "min": "0.1.8",
+    "min": "0.1.13",
     "maxExclusive": "0.2.0"
   },
   "host": {
@@ -49,8 +49,8 @@
       "settings": {
         "schema": "aibo.agent-settings/v1",
         "version": 1,
-        "title": "Agent 设置",
-        "description": "每次发送消息时应用；会话设置覆盖项目设置，项目设置覆盖全局设置。",
+        "title": "Agent \u8bbe\u7f6e",
+        "description": "\u6bcf\u6b21\u53d1\u9001\u6d88\u606f\u65f6\u5e94\u7528\uff1b\u4f1a\u8bdd\u8bbe\u7f6e\u8986\u76d6\u9879\u76ee\u8bbe\u7f6e\uff0c\u9879\u76ee\u8bbe\u7f6e\u8986\u76d6\u5168\u5c40\u8bbe\u7f6e\u3002",
         "scopes": [
           "application",
           "workspace",
@@ -59,8 +59,8 @@
         "fields": [
           {
             "key": "additionalInstructions",
-            "label": "附加指令",
-            "description": "在发送给 Agent 的每条消息前附加这些指令。留空表示不附加。",
+            "label": "\u9644\u52a0\u6307\u4ee4",
+            "description": "\u5728\u53d1\u9001\u7ed9 Agent \u7684\u6bcf\u6761\u6d88\u606f\u524d\u9644\u52a0\u8fd9\u4e9b\u6307\u4ee4\u3002\u7559\u7a7a\u8868\u793a\u4e0d\u9644\u52a0\u3002",
             "type": "multiline",
             "default": "",
             "maxLength": 8000
@@ -962,8 +962,8 @@
         {
           "id": "read-only",
           "kind": "mode",
-          "label": "只读",
-          "description": "查看文件，不修改工作区",
+          "label": "\u53ea\u8bfb",
+          "description": "\u67e5\u770b\u6587\u4ef6\uff0c\u4e0d\u4fee\u6539\u5de5\u4f5c\u533a",
           "profile": {
             "interactionMode": "ask",
             "filesystemPolicy": "read-only",
@@ -976,8 +976,8 @@
         {
           "id": "plan",
           "kind": "mode",
-          "label": "计划",
-          "description": "分析并制定方案，不执行修改",
+          "label": "\u8ba1\u5212",
+          "description": "\u5206\u6790\u5e76\u5236\u5b9a\u65b9\u6848\uff0c\u4e0d\u6267\u884c\u4fee\u6539",
           "profile": {
             "interactionMode": "plan",
             "filesystemPolicy": "read-only",
@@ -991,8 +991,8 @@
         {
           "id": "workspace-write",
           "kind": "mode",
-          "label": "工作区写入",
-          "description": "允许修改工作区，命令需要审批",
+          "label": "\u5de5\u4f5c\u533a\u5199\u5165",
+          "description": "\u5141\u8bb8\u4fee\u6539\u5de5\u4f5c\u533a\uff0c\u547d\u4ee4\u9700\u8981\u5ba1\u6279",
           "profile": {
             "interactionMode": "edit",
             "filesystemPolicy": "workspace-write",

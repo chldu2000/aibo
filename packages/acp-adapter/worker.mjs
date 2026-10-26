@@ -160,6 +160,7 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
   const approvalOperation = contribution.operations.find(operation => operation.capability.id === `${manifest.pluginId}.approval.respond`);
   const active = { ...configured, approvalOptions: approvalOperation?.inputSchema?.properties?.optionId !== undefined };
   if (configured.approvalChoices?.length && !active.approvalOptions) throw new Error('Invalid acp.json: approvalOptions require the { requestId, optionId } approval.respond input');
+  if (contribution.operations.some(op=>op.capability.id===`${manifest.pluginId}.background-tasks.read`)) active.capabilities=[...(active.capabilities??BASE_CAPABILITIES),'background-tasks.read'];
   const label = active.label, feature = name => `${manifest.pluginId}.${name}`;
   const instructions = additionalInstructions ?? settingsInstructions(label);
   let owner, bridge;
@@ -204,7 +205,7 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
         }
         const mcpServers = bridge ? [{ ...bridge.configuration, env: Object.entries(bridge.configuration.env).map(([name, value]) => ({ name, value })) }] : [];
         try {
-          await session.open({ mode: input.mode, workspaceId: context.workspaceId, workspacePath: context.workspacePath, executionProfile: input.executionProfile, recovery: input.recovery, permissions: context.permissions, mcpServers,
+          await session.open({ privateDataPath: tools.initialization.privateData.path, ownerSessionId: request.scope.id, mode: input.mode, workspaceId: context.workspaceId, workspacePath: context.workspacePath, executionProfile: input.executionProfile, recovery: input.recovery, permissions: context.permissions, mcpServers,
             hostMcpTools: bridge ? definitions.filter(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false).map(tool => ({ providerIdentifier: bridge.configuration.name, toolName: tool.name })) : [] });
           // ACP may initialize/list MCP tools lazily when the first prompt starts.
           // Successful session/new or session/load registers this session's servers.
@@ -212,7 +213,8 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
           return session.snapshot();
         } catch (error) { await session.close(); await closeBridge(); throw error; }
       }
-      if (request.capability === feature('background-tasks.list')) return session.listBackgroundTasks();
+      if (request.capability === feature('background-tasks.read')) return {...session.backgroundTasks.read(input),recovery:session.recovery(),capabilities:session.capabilities()};
+      if (request.capability === feature('background-tasks.list')) return contribution.operations.some(op=>op.capability.id===feature('background-tasks.read')) ? {...session.backgroundTasks.page(input.cursor),recovery:session.recovery(),capabilities:session.capabilities()} : session.listBackgroundTasks();
       if (request.capability === feature('command.list')) return await commandDirectory();
       if (request.capability === feature('model.reasoning')) return await session.configure('reasoning', input);
       if (request.capability === feature('model.context-window')) return await session.configure('context', input);
@@ -236,7 +238,8 @@ export function serveAcpAgent({ manifestUrl, configUrl, extension, additionalIns
     if (!owner || owner.request.invocationId !== invocation.invocationId) throw Object.assign(new Error(`No matching ${label} invocation`), { kind: 'invalid_input' });
     const input = inputOf(request);
     if (request.capability === 'aibo.session.tool.respond') return hostTools.respond(input);
-    if (request.capability === feature('background-tasks.list')) return session.listBackgroundTasks();
+    if (request.capability === feature('background-tasks.read')) return {...session.backgroundTasks.read(input),recovery:session.recovery(),capabilities:session.capabilities()};
+      if (request.capability === feature('background-tasks.list')) return contribution.operations.some(op=>op.capability.id===feature('background-tasks.read')) ? {...session.backgroundTasks.page(input.cursor),recovery:session.recovery(),capabilities:session.capabilities()} : session.listBackgroundTasks();
     if (request.capability === feature('command.list')) return await commandDirectory();
     if (request.capability.startsWith(feature('model.'))) throw Object.assign(new Error(`${label} model configuration requires an idle session`), { kind: 'busy' });
     if (request.capability === 'aibo.session.cancel') return session.cancel();

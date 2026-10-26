@@ -2256,7 +2256,7 @@ async fn invoke_capability(request: capability_broker::Request, window: tauri::W
     let caller = window.label().to_owned();
     let approval = host_write_request(request.request_id.clone(), window, state.db.clone(), host_confirmation::Category::CapabilityWrite);
     // Execution belongs to Core even if the calling view disappears.
-    tokio::spawn(async move { broker.invoke_authorized(&caller, request, &approval).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None, localized:Some(ui_i18n::display_descriptor("native.broker.taskStopped",serde_json::json!({}))) })?
+    tokio::spawn(async move { broker.invoke_authorized(&caller, request, &approval).await }).await.map_err(|_| capability_broker::Failure { code: "provider_unavailable".into(), message: "Capability task stopped".into(), invocation_id: None, reason:None, details:None, localized:Some(ui_i18n::display_descriptor("native.broker.taskStopped",serde_json::json!({}))) })?
 }
 #[tauri::command]
 async fn list_capability_history_scopes(before: Option<String>, legacy: Option<bool>, window: tauri::WebviewWindow, state: State<'_, AppState>) -> Result<capability_history::ScopePage, CoreError> {

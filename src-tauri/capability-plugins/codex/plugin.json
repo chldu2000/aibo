@@ -1,7 +1,7 @@
 {
   "schema": "aibo.plugin-manifest/v2",
   "pluginId": "dev.aibo.codex",
-  "version": "2.0.21",
+  "version": "2.0.22",
   "displayName": "Codex",
   "description": "Codex session capabilities.",
   "hostSdk": {
@@ -54,8 +54,8 @@
       "settings": {
         "schema": "aibo.agent-settings/v1",
         "version": 1,
-        "title": "Agent 设置",
-        "description": "每次发送消息时应用；会话设置覆盖项目设置，项目设置覆盖全局设置。",
+        "title": "Agent \u8bbe\u7f6e",
+        "description": "\u6bcf\u6b21\u53d1\u9001\u6d88\u606f\u65f6\u5e94\u7528\uff1b\u4f1a\u8bdd\u8bbe\u7f6e\u8986\u76d6\u9879\u76ee\u8bbe\u7f6e\uff0c\u9879\u76ee\u8bbe\u7f6e\u8986\u76d6\u5168\u5c40\u8bbe\u7f6e\u3002",
         "scopes": [
           "application",
           "workspace",
@@ -64,8 +64,8 @@
         "fields": [
           {
             "key": "additionalInstructions",
-            "label": "附加指令",
-            "description": "在发送给 Agent 的每条消息前附加这些指令。留空表示不附加。",
+            "label": "\u9644\u52a0\u6307\u4ee4",
+            "description": "\u5728\u53d1\u9001\u7ed9 Agent \u7684\u6bcf\u6761\u6d88\u606f\u524d\u9644\u52a0\u8fd9\u4e9b\u6307\u4ee4\u3002\u7559\u7a7a\u8868\u793a\u4e0d\u9644\u52a0\u3002",
             "type": "multiline",
             "default": "",
             "maxLength": 8000
@@ -1159,14 +1159,20 @@
           "inputSchema": {
             "type": "object",
             "additionalProperties": false,
-            "properties": {}
+            "properties": {
+              "cursor": {
+                "type": "string",
+                "maxLength": 4000
+              }
+            }
           },
           "outputSchema": {
             "type": "object",
             "required": [
               "tasks",
               "recovery",
-              "capabilities"
+              "capabilities",
+              "nextCursor"
             ],
             "properties": {
               "tasks": {
@@ -1206,10 +1212,6 @@
                       "type": "string",
                       "maxLength": 12000
                     },
-                    "output": {
-                      "type": "string",
-                      "maxLength": 12000
-                    },
                     "outputPath": {
                       "type": "string",
                       "maxLength": 4000
@@ -1243,6 +1245,96 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "nextCursor": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 4000
+              }
+            }
+          },
+          "idempotent": true
+        },
+        {
+          "id": "dev.aibo.codex.operation.background-tasks-read",
+          "capability": {
+            "id": "dev.aibo.codex.background-tasks.read",
+            "version": "1.0.0"
+          },
+          "effect": "read",
+          "permissions": [
+            "workspace.read"
+          ],
+          "timeoutMs": 15000,
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "taskId"
+            ],
+            "properties": {
+              "taskId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "cursor": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 12000
+              },
+              "revision": {
+                "type": "string",
+                "minLength": 64,
+                "maxLength": 64
+              }
+            }
+          },
+          "outputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "output",
+              "nextCursor",
+              "revision",
+              "truncated",
+              "recovery",
+              "capabilities"
+            ],
+            "properties": {
+              "output": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "nextCursor": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 12000
+              },
+              "revision": {
+                "type": "string",
+                "minLength": 64,
+                "maxLength": 64
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "recovery": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -1254,7 +1346,7 @@
           "id": "ask-for-approval",
           "kind": "permission",
           "label": "Ask for approval",
-          "description": "由原生执行器在执行操作前请求你的批准",
+          "description": "\u7531\u539f\u751f\u6267\u884c\u5668\u5728\u6267\u884c\u64cd\u4f5c\u524d\u8bf7\u6c42\u4f60\u7684\u6279\u51c6",
           "profile": {
             "filesystemPolicy": "workspace-write",
             "commandPolicy": "approved",
@@ -1267,7 +1359,7 @@
           "id": "approve-for-me",
           "kind": "permission",
           "label": "Approve for me",
-          "description": "由原生执行器自动批准沙箱内的操作",
+          "description": "\u7531\u539f\u751f\u6267\u884c\u5668\u81ea\u52a8\u6279\u51c6\u6c99\u7bb1\u5185\u7684\u64cd\u4f5c",
           "profile": {
             "filesystemPolicy": "workspace-write",
             "commandPolicy": "trusted",
@@ -1280,7 +1372,7 @@
           "id": "full-access",
           "kind": "permission",
           "label": "Full Access",
-          "description": "由原生执行器以完整主机访问执行操作",
+          "description": "\u7531\u539f\u751f\u6267\u884c\u5668\u4ee5\u5b8c\u6574\u4e3b\u673a\u8bbf\u95ee\u6267\u884c\u64cd\u4f5c",
           "profile": {
             "filesystemPolicy": "danger-full-access",
             "commandPolicy": "trusted",
@@ -1388,7 +1480,7 @@
       "sections": [
         {
           "id": "behavior",
-          "title": "行为",
+          "title": "\u884c\u4e3a",
           "scopes": [
             "application",
             "workspace",
@@ -1408,7 +1500,7 @@
         },
         {
           "id": "account",
-          "title": "账户",
+          "title": "\u8d26\u6237",
           "scopes": [
             "application"
           ],
@@ -1421,7 +1513,7 @@
         },
         {
           "id": "usage",
-          "title": "用量",
+          "title": "\u7528\u91cf",
           "scopes": [
             "application"
           ],

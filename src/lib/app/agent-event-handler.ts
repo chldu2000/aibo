@@ -92,11 +92,15 @@ export function handleAgentEvent(event: AgentEvent, context: AgentEventHandlerCo
   }
   if (event.type === 'background-task.updated') {
     if (event.sessionId !== selectedSessionId) return;
-    const content = JSON.stringify(event.payload);
+    let content = JSON.stringify(event.payload);
     const task = parseBackgroundTask({toolName:'background_task',content,status:'streaming'});
     if (!task) return;
     const externalMessageId = `background:${task.id}`;
     const existing = context.timeline.find(item => item.externalMessageId === externalMessageId);
+    if (existing && task.output===undefined) {
+      const previous=parseBackgroundTask(existing);
+      if(previous?.output!==undefined && previous.status===task.status && previous.activity===task.activity) content=JSON.stringify({...task,output:previous.output,outputTruncated:previous.outputTruncated});
+    }
     const status: TimelineItem['status'] = task.status === 'running' ? 'streaming' : task.status === 'failed' ? 'failed' : ['unknown','stopped'].includes(task.status) ? 'interrupted' : 'completed';
     const item: TimelineItem = {...existing,id:existing?.id ?? `${event.sessionId}:background:${task.id}`,sessionId:event.sessionId,
       turnId:task.rootTurnId,externalMessageId,role:'system',toolName:'background_task',entryType:null,content,status,

@@ -193,3 +193,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 Windows 桌面打包运行须验证无控制台时仍落盘、目录打开、进程退出和 junction 边界。macOS、Linux 的原生结果分别登记；未执行的平台明确标为未验证，不用浏览器替身或跨平台编译代替。测试证据只含合成内容、临时身份与隔离路径。
 
 完成报告按 T 编号列出通过、失败或未执行及原因，并列出实际文件路径和命令。L1 的 T01–16 未全部通过时，不能标记 L1 完成；平台验证范围随结果单独说明。仅编写本规格不改变现行合同，也不代表上述验收已经通过。
+
+### 恢复请求拒绝诊断
+
+恢复修复增加受限 `capability.validate` 操作及 request_id_invalid、binding_mismatch、input_too_large、frame_too_large、恢复状态/原生恢复错误分类。Session 失败记录可携带经宿主校验的 capability_id 和数值 actual_bytes/limit_bytes；不记录恢复正文、后台任务输出或任意插件错误文本。字段仍经过事件白名单和身份格式验证。

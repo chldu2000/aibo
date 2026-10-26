@@ -408,6 +408,7 @@
         break;
       }
       case 'loadOlder': loadOlderTimeline(); break;
+      case 'openBackgroundTask': if (target) await openBackgroundTask(target); break;
       case 'openSubagent': if (target) await openSubagent(target); break;
       case 'fork': await forkSession(selectedSessionId, target ?? undefined); break;
       case 'loadModels': await loadSessionModels(); break;
@@ -915,7 +916,7 @@
     writePersistedSelection as writeSelectionToStorage,
   } from '$lib/app/selection-storage';
   import { normalizeAgentGoal, goalCanResume } from '$lib/app/session-goal';
-  import { watchBackgroundTasks, reconcileBackgroundTasks } from '$lib/app/background-task-controller';
+  import { watchBackgroundTasks, reconcileBackgroundTasks, readBackgroundTaskPages, readBackgroundTaskOutput, applyBackgroundTaskOutput } from '$lib/app/background-task-controller';
   import { createAgentEventGate, handleAgentEvent as processAgentEvent } from '$lib/app/agent-event-handler';
   import { createExecutionHistoryController, emptyExecutionHistory } from '$lib/app/execution-history-controller';
   import { createSessionHistoryController, emptySessionHistory, sessionHistoryPresentation } from '$lib/app/session-history-controller';
@@ -1917,7 +1918,7 @@
     if (!session) return;
     return watchBackgroundTasks(session, {
       invoke: async value => {
-        const result = await agentFacade.invoke(value, 'background-tasks.list');
+        const result = await readBackgroundTaskPages(input => agentFacade.invoke(value, 'background-tasks.list', input), () => selectedSessionId === id);
         if (selectedSessionId !== id || !Array.isArray(result.tasks)) return;
         timeline = reconcileBackgroundTasks(timeline, result);
       },
@@ -1927,6 +1928,20 @@
       },
     });
   });
+
+  let backgroundReadGeneration=0;
+  $effect(() => { selectedSessionId; backgroundReadGeneration++; });
+  async function openBackgroundTask(taskId: string) {
+    const session=selectedSession;
+    if (!session || session.archived || session.historyOnly || !session.capabilities.includes('background-tasks.read')) return;
+    const generation=++backgroundReadGeneration;
+    const active=()=>selectedSessionId===session.id && backgroundReadGeneration===generation;
+    try {
+      const result=await readBackgroundTaskOutput(taskId,input=>agentFacade.invoke(session,'background-tasks.read',input),active);
+      if (!result || !active()) return;
+      timeline=applyBackgroundTaskOutput(timeline,taskId,result);
+    } catch(error) { if(active()) errorMessage=toErrorText(error); }
+  }
 
   async function loadSessionCommands(session: Session): Promise<AgentCommand[]> {
     const capability = session.capabilities.includes('command.list') ? 'command.list' : session.capabilities.includes('skill.list') ? 'skill.list' : null;
@@ -3899,6 +3914,7 @@
       usageValues={usageValues}
       retryPrompt={retryPrompt}
       retryReason={retryReason ? translateMessage($locale,retryReason) : null}
+      onReadBackgroundTask={guard('onReadBackgroundTask', (id: string) => void openBackgroundTask(id))}
       onOpenSubagent={guard('onOpenSubagent', (id) => void openSubagent(id))}
       userInputRequests={selectedUserInputRequests}
       approvalRequests={selectedApprovals}

@@ -162,3 +162,14 @@ mod tests {
         }
     }
 }
+
+/// Shared byte budgets for accepted recovery entries and their next open request.
+pub(crate) fn recovery_limit(name:&str)->usize {
+    static LIMITS:OnceLock<Value>=OnceLock::new();
+    LIMITS.get_or_init(||serde_json::from_str(include_str!("../../contracts/session-recovery-limits.v1.json")).unwrap())[name].as_u64().unwrap() as usize
+}
+pub(crate) fn validate_recovery_size(value:&Value)->Result<(),crate::ui_i18n::HostMessage> {
+    let actual=value.to_string().len();let limit=recovery_limit("legacyRecoveryBytes");
+    if actual>limit {return Err(crate::ui_i18n::HostMessage::with_diagnostic("native.broker.recoveryInputLimit",serde_json::json!({"capability":"aibo.session.open","actualBytes":actual,"limitBytes":limit}),"input_too_large: recovery state"));}
+    Ok(())
+}

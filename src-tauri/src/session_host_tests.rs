@@ -2366,3 +2366,73 @@ async fn workspace_busy_turn_fails_without_dispatch_and_can_be_retried() {
         broker.stop_session(&session.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[tokio::test]
+async fn oversized_legacy_codex_recovery_migrates_before_sending_and_preserves_identity() {
+    let root = std::env::temp_dir().join(format!("aibo-host-recovery-budget-{}",ulid::Ulid::new()));
+    let package = root.join("package");
+    let workspace = root.join("workspace");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&workspace).unwrap();
+    let mut manifest: Value = serde_json::from_str(include_str!("../capability-plugins/codex/plugin.json")).unwrap();
+    manifest["executableDependencies"] = json!([{"kind":"runtime","name":"node","versionRange":">=22","required":true}]);
+    fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
+    let engine = include_str!("../capability-plugins/codex/engine.mjs");
+    let native_start = "const launcher = codexLauncher();";
+    assert!(engine.contains(native_start));
+    fs::write(package.join("engine.mjs"),engine.replace(native_start,"const launcher = { command: process.execPath, prefix: [path.join(import.meta.dirname, 'fake-codex.mjs')], shell: false };")).unwrap();
+    for (name, source) in [
+        ("worker.mjs",include_str!("../capability-plugins/codex/worker.mjs")),
+        ("fake-codex.mjs",include_str!("../../fixtures/plugins/codex/fake-codex.mjs")),
+        ("background-tasks.mjs",include_str!("../capability-plugins/codex/background-tasks.mjs")),
+        ("management.mjs",include_str!("../capability-plugins/codex/management.mjs")),
+        ("launcher.mjs",include_str!("../capability-plugins/codex/launcher.mjs")),
+        ("session-provider.mjs",include_str!("../capability-plugins/session-provider.mjs")),
+    ] {fs::write(package.join(name),source).unwrap();}
+    let db = crate::open_database(&root.join("data/aibo.sqlite3")).await.unwrap();
+    sqlx::query("INSERT INTO workspaces(id,path,label,trusted,created_at,updated_at) VALUES('w',?,'Test',1,?,?)")
+        .bind(workspace.to_string_lossy().as_ref()).bind(crate::now_iso()).bind(crate::now_iso()).execute(&db).await.unwrap();
+    let installed = plugin_registry::install(&db,&root.join("data"),&package).await.unwrap();
+    plugin_registry::enable(&db,&installed.id,true).await.unwrap();
+    // Fixture native execution is explicitly authorized by the host, not its ID.
+    assert_eq!(execution_profile::installation_backend(&db,&installed.id,"dev.aibo.codex.agent").await.unwrap(),execution_profile::EnforcementBackend::Unnegotiated);
+    sqlx::query("INSERT INTO session_execution_authorities(installation_id,contribution_id,backend) VALUES(?,'dev.aibo.codex.agent','codex-native')")
+        .bind(&installed.id).execute(&db).await.unwrap();
+    let broker = Broker::new(db.clone());
+    let host = SessionHost::new(db.clone(),broker.clone());
+
+    let source=host.create_with_profile_from("main","w",&installed.id,"dev.aibo.codex.agent",None).await.unwrap();
+    host.send_configured_from("main",&source.id,"first turn").await.unwrap();
+    wait_for_turn(&host,&source.id).await;
+    let mut saved=host.saved_binding(&source.id).await.unwrap().unwrap();
+    let native=saved["nativeSessionId"].clone();
+    let parent:String=sqlx::query_scalar("SELECT id FROM turns WHERE session_id=? LIMIT 1").bind(&source.id).fetch_one(&db).await.unwrap();
+    saved["recovery"]["version"]=json!(1);
+    saved["recovery"]["data"]["backgroundTasks"]=json!((0..10).map(|i|json!({"id":format!("old-{i}"),"rootTurnId":parent,"name":"task","command":"echo","status":"completed","activity":"done","output":"中".repeat(5000)})).collect::<Vec<_>>());
+    assert!(saved["recovery"].to_string().len()>65_536);
+    broker.stop_session(&source.id).await.unwrap();
+    sqlx::query("UPDATE session_bindings SET plugin_binding_json=? WHERE session_id=?").bind(saved.to_string()).bind(&source.id).execute(&db).await.unwrap();
+    host.send_configured_from("main",&source.id,"continue after migration").await.unwrap();
+    wait_for_turn(&host,&source.id).await;
+    let after=host.saved_binding(&source.id).await.unwrap().unwrap();
+    assert_eq!(after["nativeSessionId"],native);
+    assert!(after["recovery"].to_string().len()<crate::session_contract::recovery_limit("entryBytes"));
+    assert_eq!(after["recovery"]["version"],2);
+    let output=host.invoke_capability_from("main",&source.id,"background-tasks.read",json!({"taskId":"old-9"})).await.unwrap();
+    assert_eq!(output["output"],"中".repeat(4096));
+    let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM turns WHERE session_id=?").bind(&source.id).fetch_one(&db).await.unwrap();assert_eq!(count,2);
+    broker.stop_session(&source.id).await.unwrap();
+    host.resume_from("main",&source.id).await.unwrap();
+    assert_eq!(host.saved_binding(&source.id).await.unwrap().unwrap()["nativeSessionId"],native);
+    broker.stop_session(&source.id).await.unwrap();
+    manifest["version"]=json!("2.0.23");fs::write(package.join("plugin.json"),manifest.to_string()).unwrap();
+    let target=plugin_registry::install(&db,&root.join("data"),&package).await.unwrap();
+    sqlx::query("INSERT INTO session_execution_authorities(installation_id,contribution_id,backend) VALUES(?,'dev.aibo.codex.agent','codex-native')").bind(&target.id).execute(&db).await.unwrap();
+    plugin_registry::enable(&db,&target.id,true).await.unwrap();
+    let migrated=host.migrate_release(&root.join("data"),&installed.id,&target.id).await.unwrap();
+    assert!(migrated.failed.is_empty());assert_eq!(migrated.migrated,vec![source.id.clone()]);
+    assert_eq!(host.saved_binding(&source.id).await.unwrap().unwrap()["nativeSessionId"],native);
+    let output=host.invoke_capability_from("main",&source.id,"background-tasks.read",json!({"taskId":"old-9"})).await.unwrap();
+    assert_eq!(output["output"],"中".repeat(4096),"private revision survives release-directory migration");
+    broker.stop_session(&source.id).await.unwrap();db.close().await;fs::remove_dir_all(root).unwrap();
+}

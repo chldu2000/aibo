@@ -1,5 +1,5 @@
 export interface BackgroundTask {
-  id: string; rootTurnId: string; name: string; command: string; activity: string; output?: string;
+  id: string; rootTurnId: string; name: string; command: string; activity: string; output?: string; outputTruncated?: boolean;
   status: 'running' | 'completed' | 'failed' | 'stopped' | 'unknown'; outputPath?: string; exitCode?: number | null;
 }
 export const backgroundTaskLabels: Record<BackgroundTask['status'], string>;

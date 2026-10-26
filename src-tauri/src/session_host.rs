@@ -211,10 +211,11 @@ impl SessionHost {
         let binding=Self::binding(&session,"aibo.session.open")?;
         let request=Request {scope:binding.scope.clone(),capability:binding.capability.clone(),version:binding.version.clone(),request_id:ulid::Ulid::new().to_string(),turn_id:None,input:json!({"mode":if previous.is_some(){"resume"}else{"create"},"executionProfile":profile.enforced,"recovery":previous.as_ref().map(|b|&b["recovery"])})};
         diagnostic.fields.request_id = Some(request.request_id.clone());
-        let result=self.broker.invoke_bound(caller,request,&binding).await.map_err(|error| { diagnostic.fields.error_code = Some(crate::diagnostics::classify_error(&format!("{}:", error.code))); error.into_host_message() })?;
+        let result=self.broker.invoke_bound(caller,request,&binding).await.map_err(|error| { diagnostic.fields.error_code = Some(crate::diagnostics::classify_error(&format!("{}:", error.reason.as_deref().unwrap_or(&error.code)))); error.into_host_message() })?;
         diagnostic.fields.generation_id = Some(result.generation_id.clone());
         let negotiated = crate::session_contract::negotiate(&manifest, &session.agent, &result.output["capabilities"], &result.negotiated_operations);
         let now=crate::now_iso();
+        crate::session_contract::validate_recovery_size(&result.output["recovery"])?;
         let document=json!({"schema":"aibo.session-binding/v2","sessionId":session_id,"pluginInstallationId":session.plugin_installation_id,"pluginId":manifest["pluginId"],"pluginVersion":manifest["version"],"agentId":session.agent,"nativeSessionId":result.output["nativeSessionId"],"runtimeProtocolVersion":"2.1","recovery":result.output["recovery"],"createdAt":previous.as_ref().map(|b|b["createdAt"].clone()).unwrap_or(json!(now)),"updatedAt":now});
         if !crate::session_contract::binding_schema().is_valid(&document) {return Err(session_error("native.session.invalidBinding","invalid_output: session binding"));}
         let mut tx=self.db.begin_with("BEGIN IMMEDIATE").await.map_err(|e|e.to_string())?;
@@ -407,6 +408,7 @@ impl SessionHost {
     }
     async fn save_recovery_display(&self,session_id:&str,response:&Response)->Result<(),HostMessage> {
         if response.output.get("recovery").is_none() {return Ok(());}
+        crate::session_contract::validate_recovery_size(&response.output["recovery"])?;
         let mut binding=self.saved_binding_display(session_id).await?.ok_or_else(||session_error("native.session.bindingMissing","invalid_session: missing binding"))?;
         if binding["recovery"] == response.output["recovery"] {
             // Metadata polling is observational when recovery is unchanged. Rewriting

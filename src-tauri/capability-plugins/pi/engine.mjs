@@ -549,7 +549,7 @@ async function startPi(cwd, runtimeDataPath, sessionFile, executionProfile = {},
   const modelRuntime = await ModelRuntime.create();
   let manager;
   if (sessionFile) {
-    try { manager = SessionManager.open(sessionFile, runtimeDataPath, cwd); } catch {}
+    try { manager = SessionManager.open(sessionFile, runtimeDataPath, cwd); } catch { throw Object.assign(new Error('native_resume_failed'),{kind:'native_resume_failed'}); }
   }
   manager ??= SessionManager.create(cwd, runtimeDataPath);
   const workspaceWriteEnabled = executionProfile.interactionMode === 'edit' && executionProfile.filesystemPolicy === 'workspace-write';
@@ -627,11 +627,14 @@ export async function execute(action, p) {
   if (action === 'create' || action === 'resume') {
     if (session || !p.workspace?.path || typeof p.executionProfile?.runtimeDataPath !== 'string') fail('permission_denied');
     const previous = action === 'resume' ? p.binding?.recovery : null;
-    if (previous && (previous.schema !== 'dev.aibo.pi.recovery' || previous.version !== 1)) fail('invalid_recovery_data');
+    if(previous && previous.version!==1) throw Object.assign(new Error('recovery_version_unsupported'),{kind:'recovery_version_unsupported'});
+    if(previous && previous.schema!=='dev.aibo.pi.recovery') throw Object.assign(new Error('recovery_state_corrupt'),{kind:'recovery_state_corrupt'});
+    if(action==='resume' && (typeof previous?.data?.sessionFile!=='string'||!previous.data.sessionFile)) throw Object.assign(new Error('recovery_state_missing'),{kind:'recovery_state_missing'});
     const state = await startPi(p.workspace.path, p.executionProfile.runtimeDataPath, previous?.data?.sessionFile ?? null, p.executionProfile,p.hostTools??[]);
     registeredHostTools=p.hostTools??[];
     const nativeId = state.data?.sessionId;
     if (!nativeId) fail('invalid_session', 'Pi did not return a session id');
+    if(previous?.data?.nativeSessionId && nativeId!==previous.data.nativeSessionId) {await stopPi();throw Object.assign(new Error('native_resume_failed'),{kind:'native_resume_failed'});}
     const configuredReference = typeof p.executionProfile.model === 'string' ? p.executionProfile.model : '';
     const separator = configuredReference.indexOf('/');
     const configuredModel = separator > 0 ? {

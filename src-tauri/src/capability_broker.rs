@@ -72,15 +72,50 @@ pub(crate) struct Failure {
     pub code: String, pub message: String, pub invocation_id: Option<String>,
     #[serde(default, skip_serializing_if="Option::is_none")]
     pub localized: Option<Value>,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub details: Option<Value>,
 }
 impl Failure {
     pub(crate) fn into_host_message(self) -> crate::ui_i18n::HostMessage {
         crate::ui_i18n::HostMessage {diagnostic:self.message,localized:self.localized}
     }
 }
-fn fail(code: &str, message: &str) -> Failure { Failure { code: code.into(), message: message.into(), invocation_id: None, localized:None } }
+fn fail(code: &str, message: &str) -> Failure { Failure { code: code.into(), message: message.into(), invocation_id: None, localized:None, reason:None, details:None } }
 fn fail_display(code: &str, message: &str, key: &str) -> Failure {
     Failure {localized:Some(crate::ui_i18n::display_descriptor(key,json!({}))),..fail(code,message)}
+}
+fn invalid_request(reason: &str, key: &str, details: Value) -> Failure {
+    crate::diagnostics::emit(crate::diagnostics::Event::SessionFailed,crate::diagnostics::Fields {
+        operation:Some("capability.validate"),error_code:Some(crate::diagnostics::classify_error(&format!("{reason}:"))),
+        capability_id:details["capability"].as_str().map(str::to_owned),actual_bytes:details["actualBytes"].as_u64(),limit_bytes:details["limitBytes"].as_u64(),..Default::default()
+    });
+    let mut params=details.clone();params["reason"]=json!(reason);
+    Failure { reason:Some(reason.into()),details:Some(details.clone()),
+        localized:Some(crate::ui_i18n::display_descriptor(key,params)),..fail("invalid_input",reason) }
+}
+fn validate_input(capability: &str, input: &Value) -> Result<(),Failure> {
+    if capability=="aibo.session.open" {
+        let actual=input["executionProfile"].to_string().len();let limit=crate::session_contract::recovery_limit("executionProfileBytes");
+        if actual>limit {return Err(invalid_request("input_too_large","native.broker.profileLimit",json!({"capability":capability,"field":"executionProfile","actualBytes":actual,"limitBytes":limit})));}
+    }
+    let actual=input.to_string().len();
+    // Compatibility is confined to old session recovery, never ordinary calls.
+    let limit=if capability=="aibo.session.open" && input["mode"]=="resume" { crate::session_contract::recovery_limit("legacyOpenInputBytes") } else { input_limit(capability) };
+    if actual>limit {return Err(invalid_request("input_too_large",if capability=="aibo.session.open" {"native.broker.recoveryInputLimit"} else {"native.broker.inputLimit"},json!({"capability":capability,"actualBytes":actual,"limitBytes":limit})));}
+    Ok(())
+}
+fn validate_request(request: &Request,binding:Option<&Binding>)->Result<(),Failure> {
+    if request.request_id.is_empty() || request.request_id.len()>160 {return Err(invalid_request("request_id_invalid","native.broker.requestId",json!({})));}
+    if let Some(binding)=binding {
+        let mut fields=Vec::new();
+        if request.scope!=binding.scope {fields.push("scope");}
+        if request.capability!=binding.capability {fields.push("capability");}
+        if request.version!=binding.version {fields.push("version");}
+        if !fields.is_empty() {return Err(invalid_request("binding_mismatch","native.broker.bindingMismatch",json!({"fields":fields})));}
+    }
+    validate_input(&request.capability,&request.input)
 }
 fn database(_: impl std::fmt::Display) -> Failure { fail_display("provider_unavailable", "Capability storage is unavailable", "native.broker.storage") }
 #[derive(Deserialize, Serialize, Debug)]
@@ -333,7 +368,7 @@ impl Broker {
     }
     pub(crate) async fn invoke_bound_observed(&self, caller: &str, request: Request, binding: &Binding, observer: Option<EventObserver>) -> Result<Response,Failure> {
         Self::identity(&request.scope,&request.capability,&request.version)?;
-        if request.request_id.is_empty() || request.request_id.len()>160 || request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version || request.input.to_string().len() > input_limit(&request.capability) { return Err(fail_display("invalid_input", "Contribution binding mismatch", "native.broker.bindingMismatch")); }
+        validate_request(&request,Some(binding))?;
         let provider = self.offers(&request.scope,&request.capability,&request.version,Some(&binding.installation_id)).await?.into_iter().find(|offer|offer.contribution_id == binding.contribution_id).ok_or_else(||fail_display("provider_unavailable", "Contribution provider is unavailable", "native.broker.contributionUnavailable"))?;
         self.invoke_selected_observed(caller,request,provider,None,None,observer).await
     }
@@ -403,7 +438,7 @@ impl Broker {
     }
     pub async fn invoke(&self, caller: &str, request: Request) -> Result<Response, Failure> {
         Self::identity(&request.scope,&request.capability,&request.version)?;
-        if request.request_id.is_empty() || request.request_id.len() > 160 || request.input.to_string().len() > input_limit(&request.capability) { return Err(fail_display("invalid_input", "Request size or identity limit", "native.broker.requestLimit")); }
+        validate_request(&request,None)?;
         let provider = self.provider(&request).await?;
         self.invoke_selected(caller,request,provider,None,None).await
     }
@@ -609,7 +644,7 @@ impl Broker {
                     let result = self.child_call(child_id,&message["params"],id,&runtime,request,provider,chain).await;
                     if chain.write.as_ref().is_some_and(|write|write.is_uncertain()) { return Err(fail_display("outcome_unknown", "A descendant write has an unknown outcome", "native.broker.descendantUnknown")); }
                     // Failures are structured data, so no plugin-provided text is reflected.
-                    let reply = match result { Ok(response) => json!({"ok":true,"response":response}), Err(error) => json!({"ok":false,"error":{"code":error.code,"message":error.message,"invocationId":error.invocation_id}}) };
+                    let reply = match result { Ok(response) => json!({"ok":true,"response":response}), Err(error) => json!({"ok":false,"error":error}) };
                     tokio::select! {
                         biased;
                         _ = chain.cancelled() => return Err(fail_display("cancelled", "Invocation was cancelled", "native.broker.cancelled")),
@@ -634,7 +669,7 @@ impl Broker {
     async fn child_call(&self, child_id: &str, params: &Value, parent_id: &str, runtime: &PluginRuntime, request: &Request, provider: &Provider, chain: &Chain) -> Result<Response, Failure> {
         let child: ChildRequest = serde_json::from_value(params.clone()).map_err(|_|fail_display("invalid_input", "Invalid dependency call envelope", "native.broker.dependencyEnvelope"))?;
         if child.invocation_id != parent_id || child.generation_id != runtime.generation_id { return Err(fail_display("permission_denied", "Dependency call does not belong to this invocation", "native.broker.dependencyInvocation")); }
-        if child.input.to_string().len() > input_limit(&child.capability) { return Err(fail_display("invalid_input", "Dependency input exceeds limit", "native.broker.dependencyInput")); }
+        validate_input(&child.capability,&child.input)?;
         let child_request = Request { turn_id:request.turn_id.clone(), scope:request.scope.clone(), capability:child.capability.clone(), version:child.version.clone(),
             request_id: {use sha2::{Digest,Sha256}; format!("child-{:x}",Sha256::digest(format!("{parent_id}\0{child_id}")))}, input:child.input.clone() };
         let prepare = self.dependency_provider(&child_request,provider,&child.plugin_id,&child.contribution_id,true);
@@ -655,6 +690,14 @@ impl Broker {
 }
 fn transport(error: String) -> Failure {
     let code = error.split(':').next().unwrap_or("");
+    let key=match code {
+        "recovery_version_unsupported"=>Some("native.recovery.version"),
+        "recovery_state_missing"=>Some("native.recovery.missing"),
+        "recovery_state_corrupt"=>Some("native.recovery.corrupt"),
+        "recovery_state_write_failed"=>Some("native.recovery.write"),
+        "native_resume_failed"=>Some("native.recovery.native"),"frame_too_large"=>Some("native.broker.frameLimit"),_=>None,
+    };
+    if let Some(key)=key {return Failure {reason:Some(code.into()),localized:Some(crate::ui_i18n::display_descriptor(key,json!({"reason":code}))),..fail("provider_unavailable",code)};}
     fail_display(match code { "busy" | "timeout" | "cancelled" | "unsupported" | "incompatible_version" | "permission_denied" | "invalid_output" | "invalid_input" | "approval_rejected" | "outcome_unknown" => code, _ => "provider_unavailable" }, "Capability transport failed", "native.broker.transport")
 }
 
@@ -662,6 +705,29 @@ fn transport(error: String) -> Failure {
 mod tests {
     use super::*;
     use std::fs;
+    #[test]
+    fn request_validation_distinguishes_identity_binding_and_utf8_size() {
+        let mut req=Request {scope:Scope::Session("s".into()),capability:"dev.test.read".into(),version:"1.0.0".into(),request_id:"r".into(),turn_id:None,input:json!({})};
+        let binding=Binding {scope:req.scope.clone(),capability:req.capability.clone(),version:req.version.clone(),installation_id:"i".into(),contribution_id:"c".into()};
+        req.request_id.clear();req.scope=Scope::Session("wrong".into());req.input=json!({"text":"中".repeat(30000)});
+        assert_eq!(validate_request(&req,Some(&binding)).unwrap_err().reason.as_deref(),Some("request_id_invalid"));
+        req.request_id="r".into();assert_eq!(validate_request(&req,Some(&binding)).unwrap_err().reason.as_deref(),Some("binding_mismatch"));
+        req.scope=binding.scope.clone();let error=validate_request(&req,Some(&binding)).unwrap_err();assert_eq!(error.reason.as_deref(),Some("input_too_large"));
+        assert_eq!(error.details.as_ref().unwrap()["actualBytes"],req.input.to_string().len());
+        req.input=json!("x".repeat(65534));assert!(validate_request(&req,Some(&binding)).is_ok());
+        req.input=json!("x".repeat(65535));assert_eq!(validate_request(&req,Some(&binding)).unwrap_err().reason.as_deref(),Some("input_too_large"));
+    }
+    #[test]
+    fn legacy_recovery_budget_is_confined_to_resume_and_limits_profile() {
+        let input=json!({"mode":"resume","executionProfile":{},"recovery":{"data":"中".repeat(30000)}});
+        assert!(validate_input("aibo.session.open",&input).is_ok());
+        assert_eq!(validate_input("dev.test.read",&input).unwrap_err().reason.as_deref(),Some("input_too_large"));
+        let mut create=input.clone();create["mode"]=json!("create");assert!(validate_input("aibo.session.open",&create).is_err());
+        let mut oversized=input;oversized["executionProfile"]=json!({"text":"x".repeat(32768)});assert!(validate_input("aibo.session.open",&oversized).is_err());
+        for reason in ["recovery_state_missing","recovery_state_corrupt","recovery_state_write_failed","recovery_version_unsupported","native_resume_failed"] {
+            assert_eq!(transport(format!("{reason}: plugin request rejected")).reason.as_deref(),Some(reason));
+        }
+    }
     const CAP: &str = "dev.aibo.capability-echo.echo";
     const CONTRIBUTION: &str = "dev.aibo.capability-echo.read";
     struct Fixture { root: PathBuf, db: SqlitePool, broker: Broker, installation: String }

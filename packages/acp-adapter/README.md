@@ -106,3 +106,11 @@ Omission preserves legacy behavior. Require hostSdk >=0.1.7 for this declaration
 ### Vendor usage metadata (SDK 0.1.10)
 
 `AcpExtension.mapUsage(update)` may return generic `limits` observations. The session calls it only for current live `usage_update` notifications, including while idle, and merges limits by ID into the same snapshot as context, cost and turn totals. Omitted windows are preserved; reconnect clears observations and history replay is ignored. No vendor keys belong in this SDK. A limit includes `id`, `label`, numeric `usedPercent`, `windowMinutes`, optional reset time in Unix seconds (`resetsAt`, null if unknown), and observation time in Unix seconds (`observedAt`). Observations never enter recovery.
+
+## Durable recovery state (SDK 0.1.13 source)
+
+`serveAcpAgent` supplies the host-owned private instance path and Aibo session identity to `AcpSession.open`. Recovery v2 keeps background task state in immutable, content-addressed revisions and carries only an `aibo.private-state/v1` reference. Version 1 inline task arrays remain readable. Direct `AcpSession` consumers can opt in with `privateDataPath` and `ownerSessionId`; without them the legacy in-memory recovery API is retained.
+
+Keep the private directory with the corresponding binding during backups, upgrades and rollbacks. Revisions are not automatically deleted without a host reference acknowledgement. The store has a 16 MiB object limit and a 64 MiB directory quota; failure to write never publishes a new reference. New recovery entries are capped at 16 KiB. Limits shared with the host come from `contracts/session-recovery-limits.v1.json`.
+
+Providers that declare the new cursor-bearing `background-tasks.list` variant and `background-tasks.read` operation receive paginated summaries and revision-checked output chunks. The worker only selects this path when the read operation is declared. Plugins keeping the old declaration retain their old list response. Output retains at most 12,000 Unicode code points from the end; absence of a process is never evidence of success, and restored running tasks become unknown until native evidence arrives.

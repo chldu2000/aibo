@@ -29,6 +29,9 @@ try {
     await page.evaluate(()=>window.showLegacyBackgroundTask());
     await output.getByText('完整输出 · 2 行').waitFor();
     assert.equal(await output.locator('pre').innerText(),'旧记录第一行\n旧记录最后一行','legacy history keeps its full activity');
+    await page.getByRole('button',{name:'读取任务输出'}).click();
+    await page.getByText('仅显示保留的末尾输出，早期内容可能已截断。',{exact:true}).waitFor();
+    await page.getByText('按需读取的输出',{exact:true}).waitFor();
     await page.setViewportSize({width:390,height:680});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'card fits narrow viewport');
     await page.screenshot({path:`/tmp/aibo-background-${kit}-${theme}.png`});

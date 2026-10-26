@@ -1,3 +1,4 @@
+import { boundedRecovery } from '@aibolabs/acp-adapter/background-tasks';
 import {codexLauncher} from './launcher.mjs';
 import { CodexBackgroundTasks } from './background-tasks.mjs';
 import { spawn } from 'node:child_process';
@@ -7,10 +8,10 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 const pluginId = 'dev.aibo.codex';
-const pluginVersion = '2.0.21';
+const pluginVersion = '2.0.22';
 const backgroundTasks = new CodexBackgroundTasks();
 
-export const capabilities = ['background-tasks.list', 'session.create', 'session.resume', 'session.close', 'turn.send', 'image.input', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
+export const capabilities = ['background-tasks.read', 'background-tasks.list', 'session.create', 'session.resume', 'session.close', 'turn.send', 'image.input', 'turn.cancel', 'queue.manage', 'stream.text', 'goal.manage', 'goal.pause', 'goal.resume', 'model.select', 'model.reasoning', 'model.service-tier', 'model.context-window', 'skill.list', 'approval.respond', 'user-input.respond', 'session.snapshot', 'session.fork'];
 let child = null;
 let childLines = null;
 let nextId = 1;
@@ -74,15 +75,16 @@ function nativeModels() {
 }
 
 function recovery() {
-  return { schema: 'dev.aibo.codex.recovery', version: 1, data: {
+  return boundedRecovery({ schema: 'dev.aibo.codex.recovery', version: 2, data: {
     threadId: session.threadId,
-    backgroundTasks: backgroundTasks.list(),
+    backgroundTasks: backgroundTasks.checkpoint(),
+    hasPrompt: session.hasPrompt,
     model: session.model,
     reasoningEffort: session.reasoningEffort,
     serviceTier: session.serviceTier,
     contextWindow: session.contextWindow,
     hostToolNames:session.hostTools?.map(tool=>tool.name)??[],
-  } };
+  } });
 }
 // model/list omits context bounds. Use the native, freshly downloaded catalog,
 // never API marketing limits or another provider's same-named model.
@@ -568,6 +570,13 @@ async function stopCodex() {
 export async function execute(action, p) {
   if (action === 'create' || action === 'resume') {
     if (session || !p.workspace?.path) fail('permission_denied');
+    if(action==='resume') {
+      const state=p.binding?.recovery;
+      if(![1,2].includes(state?.version)) throw Object.assign(new Error('recovery_version_unsupported'),{kind:'recovery_version_unsupported'});
+      if(state?.schema!=='dev.aibo.codex.recovery'||typeof state.data?.threadId!=='string') throw Object.assign(new Error('recovery_state_corrupt'),{kind:'recovery_state_corrupt'});
+    }
+    backgroundTasks.configureStorage(p.executionProfile.runtimeDataPath,p.sessionId);
+    backgroundTasks.restore(p.binding?.recovery?.data?.backgroundTasks);
     const recoveryModel = p.binding?.recovery?.data?.model;
     const contextWindow = p.executionProfile?.model && p.executionProfile.model !== recoveryModel
       ? null : p.binding?.recovery?.data?.contextWindow ?? null;
@@ -597,13 +606,13 @@ export async function execute(action, p) {
     let nativeModel = model;
     if (action === 'resume') {
       const recovery = p.binding?.recovery;
-      if (p.binding?.pluginId !== pluginId || recovery?.schema !== 'dev.aibo.codex.recovery' || recovery?.version !== 1 || typeof recovery.data?.threadId !== 'string') fail('invalid_recovery_data');
+      if (p.binding?.pluginId !== pluginId || recovery?.schema !== 'dev.aibo.codex.recovery' || ![1,2].includes(recovery?.version) || typeof recovery.data?.threadId !== 'string') fail('invalid_recovery_data');
       threadId = recovery.data.threadId;
       hostTools=hostTools.filter(tool=>recovery.data.hostToolNames?.includes(tool.name));
       try {
         const result = await rpc('thread/resume', { threadId, approvalPolicy, ...(approvalsReviewer ? {approvalsReviewer} : {}), sandbox, ...(model ? {model} : {}) });
         validateThreadPolicy(result, approvalPolicy, approvalsReviewer, sandbox, model);
-        threadId = result?.thread?.id ?? threadId;
+        if(result?.thread?.id && result.thread.id!==threadId) throw Object.assign(new Error('native_resume_failed'),{kind:'native_resume_failed'});
         nativeModel = result.model;
       } catch (error) {
         // Codex creates the thread record before its first rollout. If Aibo
@@ -612,16 +621,15 @@ export async function execute(action, p) {
         // with the current profile; the host persists the new binding from
         // this session response, while the selected model/reasoning values
         // remain in the recovery payload below.
-        if (!isMissingRolloutError(error)) throw error;
+        if (!isMissingRolloutError(error) || recovery.data.hasPrompt !== false) throw Object.assign(error,{kind:'native_resume_failed'});
         ({threadId, model:nativeModel} = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model, hostTools));
       }
     } else {
       ({threadId, model:nativeModel} = await startThread(p.workspace.path, approvalPolicy, approvalsReviewer, sandbox, model, hostTools));
     }
-    backgroundTasks.restore(p.binding?.recovery?.data?.backgroundTasks);
     backgroundTasks.commands.clear();
     backgroundTasks.listSupported = true;
-    session = { id: p.sessionId, threadId, eventSessionId:p.eventSessionId, cwd: p.workspace.path,
+    session = { id: p.sessionId, hasPrompt: action==='resume' ? p.binding?.recovery?.data?.hasPrompt !== false : false, threadId, eventSessionId:p.eventSessionId, cwd: p.workspace.path,
       model:nativeModel, reasoningEffort, serviceTier, contextWindow, executionProfile:p.executionProfile,hostTools,
       revision: 0, turn: null, goal: null, tokenUsage: null, rateLimitUsage: null };
     if (!p.suppressStarted) emit('session.started', { state: 'idle' });
@@ -629,11 +637,14 @@ export async function execute(action, p) {
     return { nativeSessionId: threadId, recovery: recovery() };
   }
   if (!session || p.sessionId !== session.id) fail('invalid_session');
+  if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.background-task-output') return backgroundTasks.read(p.input);
   if (action === 'operation' && p.operationId === 'ext.dev.aibo.codex.background-tasks') {
-    try { return {tasks: await backgroundTasks.refresh(rpc, session.threadId)}; }
-    catch { backgroundTasks.unavailable('原生任务状态暂不可用。'); return {tasks:backgroundTasks.list()}; }
+    try { await backgroundTasks.refresh(rpc, session.threadId); return backgroundTasks.page(p.input?.cursor); }
+    catch { backgroundTasks.unavailable('原生任务状态暂不可用。'); return backgroundTasks.page(p.input?.cursor); }
   }
   if (action === 'send') {
+    session.hasPrompt = true;
+    publishRecovery();
     if (session.turn || session.changingContext) fail('busy');
     const turn = newTurn(p);
     session.turn = turn;

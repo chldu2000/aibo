@@ -24,7 +24,9 @@
     "worker.d.ts",
     "README.md",
     "background-tasks.mjs",
-    "background-tasks.d.ts"
+    "background-tasks.d.ts",
+    "recovery-state.mjs",
+    "recovery-limits.mjs"
   ],
   "exports": {
     ".": {

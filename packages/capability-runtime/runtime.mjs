@@ -11,8 +11,10 @@ export function createCapabilityRuntime({ pluginId, pluginVersion, contributionI
     const kinds = new Set(['unsupported','incompatible_version','permission_denied','provider_unavailable','busy','cancelled','timeout','invalid_output','invalid_input','approval_rejected','outcome_unknown']);
     const aliases = {capability_unsupported:'unsupported',invalid_request:'invalid_input',invalid_session:'invalid_input',invalid_recovery_data:'invalid_input'};
     const raw = error?.kind ?? error?.code;
+    const recoveryReasons = new Set(['recovery_version_unsupported','recovery_state_missing','recovery_state_corrupt','recovery_state_write_failed','native_resume_failed']);
+    const reason = recoveryReasons.has(raw) ? raw : undefined;
     const kind = kinds.has(raw) ? raw : aliases[raw] ?? 'provider_unavailable';
-    send({jsonrpc:'2.0',id,error:{code:-32000,message:(error instanceof Error ? error.message : fallback).slice(0,4096),data:{kind}}});
+    send({jsonrpc:'2.0',id,error:{code:-32000,message:(error instanceof Error ? error.message : fallback).slice(0,4096),data:{kind,...(reason ? {reason} : {})}}});
   }
 
   function close(reason = 'Capability transport closed') {

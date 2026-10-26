@@ -1,8 +1,8 @@
 <script lang="ts">
   import { t } from '$lib/i18n/runtime';
-  import { Badge, Card, CardContent, CardHeader, CardTitle } from '$lib/ui-kit';
+  import { Button, Badge, Card, CardContent, CardHeader, CardTitle } from '$lib/ui-kit';
   import { type BackgroundTask } from '../../../../packages/presentation-workbench/background-tasks.js';
-  let { task }: { task: BackgroundTask } = $props();
+  let { task, onRead }: { task: BackgroundTask; onRead?: () => void } = $props();
   // Plugins with full output send it separately and keep `activity` short; older history stored the whole output in `activity`.
   const fullOutput = $derived(task.output ?? task.activity);
   const outputLines = $derived(fullOutput.trimEnd().split('\n'));
@@ -17,6 +17,8 @@
     <Badge variant={task.status === 'failed' ? 'destructive' : task.status === 'unknown' ? 'warning' : 'outline'}>{$t(`background.status.${task.status}`)}</Badge>
   </CardHeader>
   <CardContent>
+    {#if onRead}<Button variant="ghost" onclick={onRead}>{$t('background.readOutput')}</Button>{/if}
+    {#if task.outputTruncated}<p>{$t('background.outputTruncated')}</p>{/if}
     {#if task.command}<pre class="tool-output">{task.command}</pre>{/if}
     {#if foldOutput}
       <details class="activity">

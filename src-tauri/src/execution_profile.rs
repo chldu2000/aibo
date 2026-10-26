@@ -302,6 +302,7 @@ pub(crate) async fn save_for_session(
     session_id: &str,
     profile: &ResolvedExecutionProfile,
 ) -> Result<(), sqlx::Error> {
+    if serde_json::to_vec(&profile.enforced).map_err(|e|sqlx::Error::Protocol(e.to_string()))?.len()>crate::session_contract::recovery_limit("executionProfileBytes") {return Err(sqlx::Error::Protocol("input_too_large: execution profile exceeds recovery budget".into()));}
     let now = profile.resolved_at.clone();
     sqlx::query(
         "INSERT INTO session_execution_profiles

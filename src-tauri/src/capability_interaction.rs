@@ -26,6 +26,7 @@ pub(crate) struct Control {
 impl Broker {
     /// Caller is supplied by the host, and request_id refers to its live invocation.
     pub(crate) async fn control(&self, caller: &str, control: CapabilityControl) -> Result<Response,Failure> {
+        if control.request_id.is_empty() || control.request_id.len()>160 {return Err(invalid_request("request_id_invalid","native.broker.requestId",json!({})));}
         let key = (caller.to_owned(),control.request_id);
         let interaction = self.flights.lock().await.get(&key)
             .filter(|flight|!*flight.cancel.borrow())
@@ -34,7 +35,7 @@ impl Broker {
         let _permit = interaction.control_permit.clone().try_acquire_owned().map_err(|_|fail_display("busy", "Another control is pending", "native.broker.controlBusy"))?;
         Self::identity(&interaction.scope,&control.capability,&control.version)?;
         self.workspace(&interaction.scope).await?;
-        if control.input.to_string().len() > input_limit(&control.capability) { return Err(fail_display("invalid_input", "Control input exceeds limit", "native.broker.controlInputLimit")); }
+        validate_input(&control.capability,&control.input)?;
         let provider = self.offers(&interaction.scope,&control.capability,&control.version,Some(&interaction.provider.installation_id)).await?
             .into_iter().find(|provider|provider.contribution_id == interaction.provider.contribution_id)
             .ok_or_else(||fail_display("unsupported", "The pinned provider does not offer this control", "native.broker.controlUnsupported"))?;

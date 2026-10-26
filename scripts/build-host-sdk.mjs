@@ -8,6 +8,11 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const output = path.join(root, 'packages/plugin-host/sdk.json');
 const temporary = await mkdtemp(path.join(tmpdir(), 'aibo-host-sdk-'));
+const recoveryLimits = '// Generated from contracts/session-recovery-limits.v1.json.\nexport default ' + (await readFile(path.join(root,'contracts/session-recovery-limits.v1.json'),'utf8')).trim() + ';\n';
+const limitsPath = path.join(root,'packages/acp-adapter/recovery-limits.mjs');
+if (process.argv.includes('--check')) {
+  if(await readFile(limitsPath,'utf8')!==recoveryLimits)throw Error('Recovery limits are stale');
+} else await writeFile(limitsPath,recoveryLimits);
 try {
   execFileSync(process.execPath, [path.join(root, 'node_modules/typescript/bin/tsc'),
     '-p', path.join(root, 'packages/plugin-protocol/tsconfig.json'), '--outDir', temporary], { stdio: 'pipe' });
@@ -30,7 +35,7 @@ try {
       sdk.exports[specifier.replace(/^@aibolabs\//, '@aibo/')] = `${name}/${target.import.slice(2)}`;
     }
     const files = name === 'capability-runtime' ? ['runtime.mjs', 'stdio.mjs', 'host-tools.mjs', 'host-tools-mcp.mjs']
-      : name === 'acp-adapter' ? ['background-tasks.mjs', 'index.mjs', 'session.mjs', 'transport.mjs', 'config.mjs', 'image-input.mjs', 'elicitation.mjs', 'worker.mjs']
+      : name === 'acp-adapter' ? ['recovery-limits.mjs', 'recovery-state.mjs', 'background-tasks.mjs', 'index.mjs', 'session.mjs', 'transport.mjs', 'config.mjs', 'image-input.mjs', 'elicitation.mjs', 'worker.mjs']
       : (await readdir(temporary)).filter(file => file.endsWith('.js')).sort().map(file => `dist/${file}`);
     for (const file of files) {
       sdk.modules[`${name}/${file}`] = await readFile(name === 'plugin-protocol'

@@ -1,3 +1,4 @@
+import { parseBackgroundTask } from '../../../packages/presentation-workbench/background-tasks.js';
 import type { PresentationConversation, PresentationConversationAction } from '../../../packages/plugin-protocol/src/presentation-conversation';
 import type { PresentationContext, PresentationIntent } from '../../../packages/plugin-protocol/src/presentation-runtime';
 import { createActionDirectory } from './action-directory.ts';
@@ -21,6 +22,8 @@ export function conversationActions(state: PresentationConversation): Spec[] {
   for (const entry of state.timeline) {
     const child = entry.toolName === 'subagent' ? parseSubagent(entry.content) : null;
     if (child) add('openSubagent', [child.id]);
+    const task=parseBackgroundTask(entry);
+    if(task && state.session?.capabilities.includes('background-tasks.read') && !state.session.archived && !state.session.historyOnly) add('openBackgroundTask',[task.id]);
   }
   const session = state.session;
   if (state.timeline.length > state.timelineVisibleCount) add('loadOlder');

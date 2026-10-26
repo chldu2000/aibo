@@ -28,7 +28,7 @@ fn failure(error: CoreError) -> Failure {
         code => code,
     };
     match value["message"].as_str() {
-        Some(message)=>Failure {localized:value.get("localized").cloned(),..fail(code,message)},
+        Some(message)=>Failure {localized:value.get("localized").cloned(),reason:value.get("reason").or_else(||value.pointer("/localized/params/reason")).and_then(Value::as_str).map(str::to_owned),details:value.get("details").cloned(),..fail(code,message)},
         None=>fail_display(code,"Capability write could not settle","native.broker.writeSettlement"),
     }
 }
@@ -83,7 +83,8 @@ impl Broker {
     }
     pub(crate) async fn invoke_authorized_observed(&self, caller: &str, request: Request, approval: &workspace_write_runs::Request,observer:Option<EventObserver>) -> Result<Response, Failure> {
         Self::identity(&request.scope, &request.capability, &request.version)?;
-        if !approval.matches(&request.request_id, caller) || request.request_id.is_empty() || request.request_id.len() > 160 || request.input.to_string().len() > input_limit(&request.capability) {
+        validate_request(&request,None)?;
+        if !approval.matches(&request.request_id, caller) {
             return Err(fail_display("invalid_input", "Invalid capability request or host approval identity", "native.broker.approvalIdentity"));
         }
         let workspace_id: Option<String> = match &request.scope {
@@ -106,11 +107,8 @@ impl Broker {
     pub(crate) async fn invoke_bound_authorized_observed(&self, caller: &str, request: Request, binding: &Binding,
         approval: &workspace_write_runs::Request, observer: Option<EventObserver>) -> Result<Response, Failure> {
         Self::identity(&request.scope, &request.capability, &request.version)?;
-        if request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version
-            || !approval.matches(&request.request_id, caller) || request.request_id.is_empty()
-            || request.request_id.len() > 160 || request.input.to_string().len() > input_limit(&request.capability) {
-            return Err(fail_display("invalid_input", "Invalid bound capability request or host approval identity", "native.broker.boundApprovalIdentity"));
-        }
+        validate_request(&request,Some(binding))?;
+        if !approval.matches(&request.request_id,caller) {return Err(fail_display("invalid_input","Host approval identity mismatch","native.broker.boundApprovalIdentity"));}
         let workspace_id: Option<String> = match &request.scope {
             Scope::Application => None,
             Scope::Workspace(id) => Some(id.clone()),
@@ -185,7 +183,7 @@ impl Broker {
     }
 
     async fn bound_write_provider(&self, request: &Request, binding: &Binding) -> Result<Provider,Failure> {
-        if request.scope != binding.scope || request.capability != binding.capability || request.version != binding.version {return Err(fail_display("invalid_input", "Semantic write binding mismatch", "native.broker.semanticBinding"));}
+        validate_request(request,Some(binding))?;
         self.offers(&request.scope,&request.capability,&request.version,Some(&binding.installation_id)).await?.into_iter()
             .find(|provider|provider.contribution_id == binding.contribution_id && provider.operation["effect"] == "write")
             .ok_or_else(||fail_display("provider_unavailable", "Semantic write provider is unavailable", "native.broker.semanticProvider"))
@@ -196,7 +194,8 @@ impl Broker {
     pub(crate) async fn invoke_semantic_write<P,Fut>(&self, caller: &str, request: Request, binding: &Binding,
         identity: Value, approval: &workspace_write_runs::Request, check_view: P) -> Result<Response,Failure>
     where P: Fn() -> Fut, Fut: std::future::Future<Output=Result<Value,CoreError>> {
-        if !approval.matches(&request.request_id,caller) || request.input.to_string().len() > MAX_INPUT {return Err(fail_display("invalid_input", "Invalid semantic write identity or size", "native.broker.semanticIdentity"));}
+        validate_request(&request,Some(binding))?;
+        if !approval.matches(&request.request_id,caller) {return Err(fail_display("invalid_input", "Invalid semantic write identity or size", "native.broker.semanticIdentity"));}
         let provider = self.bound_write_provider(&request,binding).await?;
         if !jsonschema::options().build(&provider.operation["inputSchema"]).map_err(database)?.is_valid(&request.input) {return Err(fail_display("invalid_input", "Input does not match the capability contract", "native.broker.inputContract"));}
         let workspace = self.workspace(&request.scope).await?.ok_or_else(||fail_display("permission_denied", "Semantic writes require a workspace", "native.broker.semanticWorkspace"))?;

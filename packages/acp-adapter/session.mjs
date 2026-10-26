@@ -1,4 +1,4 @@
-import { BackgroundTasks } from './background-tasks.mjs';
+import { BackgroundTasks, boundedRecovery } from './background-tasks.mjs';
 import { imageInput } from './image-input.mjs';
 import { AcpTransport } from './transport.mjs';
 import { modelParameters, selectValues } from './config.mjs';
@@ -112,13 +112,14 @@ export class AcpSession {
     };
   }
 
-  async open({ mode, workspaceId, workspacePath, executionProfile, recovery, permissions, mcpServers = [], hostMcpTools = [] }) {
+  async open({ mode, workspaceId, workspacePath, executionProfile, recovery, privateDataPath, ownerSessionId, permissions, mcpServers = [], hostMcpTools = [] }) {
     if (this.phase === 'failed' || this.transport?.closed) await this.close();
     if (this.phase !== 'stopped') {
       if (this.sessionId && this.workspaceId === workspaceId) return this.snapshot();
       throw pluginError('busy', `${this.label} session is already open`);
     }
     const policy = this.extension.validateExecutionProfile(executionProfile, permissions);
+    if (privateDataPath) this.backgroundTasks.configureStorage(privateDataPath, ownerSessionId);
     const restored = mode === 'resume' ? this.#validateRecovery(recovery, workspaceId, workspacePath) : null;
     this.backgroundTasks.restore(restored?.backgroundTasks);
     this.usage = {};
@@ -157,7 +158,9 @@ export class AcpSession {
       let result;
       if (loadNative) {
         if (this.agentCapabilities.loadSession !== true) throw pluginError('unsupported', `This ${this.label} CLI cannot restore ACP sessions`);
-        result = await transport.request('session/load', { sessionId: restored.nativeSessionId, cwd: workspacePath, mcpServers }, 90_000);
+        try { result = await transport.request('session/load', { sessionId: restored.nativeSessionId, cwd: workspacePath, mcpServers }, 90_000); }
+        catch (error) { throw pluginError('native_resume_failed',error.message); }
+        if(result?.sessionId && result.sessionId!==restored.nativeSessionId) throw pluginError('native_resume_failed','Native session identity changed');
         this.sessionId = restored.nativeSessionId;
       } else {
         result = await transport.request('session/new', { cwd: workspacePath, mcpServers }, 90_000);
@@ -440,7 +443,8 @@ export class AcpSession {
 
   snapshot() { return { nativeSessionId: this.sessionId, recovery: this.recovery(), capabilities: this.capabilities() }; }
   recovery(parameters = this.parameters()) {
-    return { schema: this.extension.recoverySchema, version: 1, data: { nativeSessionId: this.sessionId, workspaceId: this.workspaceId, workspacePath: this.workspacePath, protocolVersion: 1, backgroundTasks: this.backgroundTasks.list(), modeId: this.modeId, hostMcpServerName: this.hostMcpServerName, hasPrompt: this.hasPrompt, ...(this.modelConfig ? { modelId: this.modelConfig.current, reasoningEffort: parameters.current, contextWindow: parameters.context?.currentValue ?? null } : {}) } };
+    const value = { schema: this.extension.recoverySchema, version: this.backgroundTasks.store ? 2 : 1, data: { nativeSessionId: this.sessionId, workspaceId: this.workspaceId, workspacePath: this.workspacePath, protocolVersion: 1, backgroundTasks: this.backgroundTasks.checkpoint(), modeId: this.modeId, hostMcpServerName: this.hostMcpServerName, hasPrompt: this.hasPrompt, ...(this.modelConfig ? { modelId: this.modelConfig.current, reasoningEffort: parameters.current, contextWindow: parameters.context?.currentValue ?? null } : {}) } };
+    return this.backgroundTasks.store ? boundedRecovery(value) : value;
   }
 
   async close() {
@@ -544,7 +548,8 @@ export class AcpSession {
   #validateRecovery(value, workspaceId, workspacePath) {
     const recovery = object(value);
     const data = object(recovery.data);
-    if (recovery.schema !== this.extension.recoverySchema || recovery.version !== 1 || typeof data.nativeSessionId !== 'string' || !data.nativeSessionId) throw pluginError('invalid_input', `Invalid ${this.label} recovery data`);
+    if (![1,2].includes(recovery.version)) throw pluginError('recovery_version_unsupported','Unsupported recovery version');
+    if (recovery.schema !== this.extension.recoverySchema || typeof data.nativeSessionId !== 'string' || !data.nativeSessionId) throw pluginError('recovery_state_corrupt', `Invalid ${this.label} recovery data`);
     if (data.workspaceId !== workspaceId || data.workspacePath !== workspacePath) throw pluginError('permission_denied', `${this.label} recovery belongs to another workspace`);
     if (data.hasPrompt !== undefined && typeof data.hasPrompt !== 'boolean') throw pluginError('invalid_input', `Invalid ${this.label} prompt recovery state`);
     return data;

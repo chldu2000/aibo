@@ -49,6 +49,7 @@ impl SessionHost {
                 if turn_id.is_some() { return Err(session_error("native.event.recoveryTurn","invalid_session: recovery update cannot belong to a turn")); }
                 let previous: String = sqlx::query_scalar("SELECT plugin_binding_json FROM session_bindings WHERE session_id=?").bind(session_id).fetch_one(&mut *tx).await.map_err(|e|e.to_string())?;
                 let mut current: Value = serde_json::from_str(&previous).map_err(|_|session_error("native.event.recoveryData","invalid_recovery_data"))?;
+                crate::session_contract::validate_recovery_size(&p["payload"]["recovery"])?;
                 current["recovery"] = p["payload"]["recovery"].clone();
                 current["updatedAt"] = json!(now);
                 if !crate::session_contract::binding_schema().is_valid(&current) { return Err(session_error("native.event.recoveryUpdate","invalid_recovery_data: recovery update")); }

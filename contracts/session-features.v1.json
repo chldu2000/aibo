@@ -1301,6 +1301,181 @@
             }
           }
         }
+      },
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cursor": {
+              "type": "string",
+              "maxLength": 4000
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "required": [
+            "tasks",
+            "recovery",
+            "capabilities",
+            "nextCursor"
+          ],
+          "properties": {
+            "tasks": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "rootTurnId",
+                  "name",
+                  "command",
+                  "status",
+                  "activity"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "minLength": 1
+                  },
+                  "rootTurnId": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "command": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "activity": {
+                    "type": "string",
+                    "maxLength": 12000
+                  },
+                  "outputPath": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "status": {
+                    "enum": [
+                      "running",
+                      "completed",
+                      "failed",
+                      "stopped",
+                      "unknown"
+                    ]
+                  },
+                  "exitCode": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nextCursor": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 4000
+            }
+          }
+        }
+      }
+    ],
+    "background-tasks.read": [
+      {
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "taskId"
+          ],
+          "properties": {
+            "taskId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "cursor": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 12000
+            },
+            "revision": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "output",
+            "nextCursor",
+            "revision",
+            "truncated",
+            "recovery",
+            "capabilities"
+          ],
+          "properties": {
+            "output": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "nextCursor": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 12000
+            },
+            "revision": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "recovery": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
       }
     ]
   }

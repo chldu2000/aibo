@@ -112,6 +112,7 @@ impl SessionHost {
             }
             let mut document=previous.clone();
             document["pluginInstallationId"]=json!(target);document["pluginVersion"]=manifest["version"].clone();
+            crate::session_contract::validate_recovery_size(&response.output["recovery"])?;
             document["recovery"]=response.output["recovery"].clone();document["updatedAt"]=json!(crate::now_iso());
             if !crate::session_contract::binding_schema().is_valid(&document) { return Err(HostMessage::new("native.plugin.recoveryInvalid",json!({}))); }
             if document["recovery"].to_string().contains(old_root.to_string_lossy().as_ref()) { return Err(HostMessage::new("native.plugin.oldStorageDependency",json!({}))); }

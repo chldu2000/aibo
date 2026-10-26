@@ -161,7 +161,7 @@ impl Event {
                     | "operation"
                     | "outcome"
                     | "error_code"
-                    | "duration_ms"
+                    | "duration_ms" | "capability_id" | "actual_bytes" | "limit_bytes"
             ),
             Self::Panic => key == "frames",
             Self::FrontendException | Self::FrontendRejection | Self::PresentationFailed => {
@@ -187,6 +187,9 @@ impl Event {
 /// construct these fields itself, never forward an arbitrary input object.
 #[derive(Default)]
 pub(crate) struct Fields {
+    pub capability_id: Option<String>,
+    pub actual_bytes: Option<u64>,
+    pub limit_bytes: Option<u64>,
     pub session_id: Option<String>,
     pub turn_id: Option<String>,
     pub request_id: Option<String>,
@@ -269,6 +272,8 @@ fn code(value: &str) -> bool {
             | "2.0"
             | "2.1"
             | "invalid_session"
+            | "request_id_invalid" | "binding_mismatch" | "input_too_large" | "frame_too_large"
+            | "recovery_state_missing" | "recovery_state_corrupt" | "recovery_state_write_failed" | "recovery_version_unsupported" | "native_resume_failed" | "capability.validate"
             | "invalid_input"
             | "provider_unavailable"
             | "unsupported"
@@ -386,7 +391,8 @@ impl Context {
             contribution_id,
             generation_id,
             window_id,
-            previous_boot_id
+            previous_boot_id,
+            capability_id
         );
         strings!(version, plugin_version);
         strings!(timestamp_valid, first_failure_at, recovered_at);
@@ -404,7 +410,9 @@ impl Context {
             signal,
             count,
             os_error_code,
-            migration_version
+            migration_version,
+            actual_bytes,
+            limit_bytes
         );
         if !fields.frames.is_empty() {
             if event.allows("frames") {
@@ -574,6 +582,8 @@ pub(crate) fn classify_error(error: &str) -> &'static str {
         "internal" => "disconnected",
         "busy" => "busy",
         "invalid_session" => "invalid_session",
+        "request_id_invalid"=>"request_id_invalid", "binding_mismatch"=>"binding_mismatch", "input_too_large"=>"input_too_large", "frame_too_large"=>"frame_too_large",
+        "recovery_state_missing"=>"recovery_state_missing", "recovery_state_corrupt"=>"recovery_state_corrupt", "recovery_state_write_failed"=>"recovery_state_write_failed", "recovery_version_unsupported"=>"recovery_version_unsupported", "native_resume_failed"=>"native_resume_failed",
         "invalid_input" => "invalid_input",
         "provider_unavailable" => "provider_unavailable",
         "unsupported" | "capability_unsupported" => "unsupported",
