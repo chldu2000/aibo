@@ -116,7 +116,7 @@ fn literal_like(query: &str) -> String {
             .replace('_', "\\_")
     )
 }
-const JOINS: &str = "FROM search_documents d LEFT JOIN sessions s ON s.id=d.session_id LEFT JOIN capability_events ce ON d.source='capability-event' AND ce.sequence=d.target_id LEFT JOIN capability_invocations ci ON (d.source='capability' AND ci.id=d.target_id) OR (d.source='capability-event' AND ci.id=ce.invocation_id) LEFT JOIN sessions cs ON ci.scope_kind='session' AND cs.id=ci.scope_id LEFT JOIN workspaces w ON w.id=COALESCE(d.workspace_id,s.workspace_id,cs.workspace_id,CASE WHEN ci.scope_kind='workspace' THEN ci.scope_id END)";
+const JOINS: &str = "FROM search_documents d LEFT JOIN sessions s ON s.id=d.session_id LEFT JOIN capability_invocations ci ON d.source='capability' AND ci.id=d.target_id LEFT JOIN sessions cs ON ci.scope_kind='session' AND cs.id=ci.scope_id LEFT JOIN workspaces w ON w.id=COALESCE(d.workspace_id,s.workspace_id,cs.workspace_id,CASE WHEN ci.scope_kind='workspace' THEN ci.scope_id END)";
 pub(crate) async fn search(
     db: &SqlitePool,
     caller: &str,
@@ -373,7 +373,7 @@ mod tests {
             limit: 50,
         };
         let owned = search(&db, "owner", audit.clone()).await.unwrap();
-        assert_eq!(owned.items.len(), 2);
+        assert_eq!(owned.items.len(), 1);
         let sources = owned
             .items
             .iter()
@@ -381,7 +381,7 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(
             sources,
-            std::collections::BTreeSet::from(["capability", "capability-event"])
+            std::collections::BTreeSet::from(["capability"])
         );
         for item in &owned.items {
             assert!(detail(&db, "owner", item.target.clone()).await.is_ok());

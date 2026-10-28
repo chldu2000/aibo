@@ -24,6 +24,7 @@
 
 ### 核心合同与开发参考
 
+- [事件存储策略](event-storage.md)、[存储与搜索决定](adr/0010-event-storage-and-search.md)：事件分级、搜索投影、迁移范围与后续保留策略的前置条件。
 - [会话恢复状态与错误分类目标规格](session-recovery-state-spec.md)：源码实现完成；小型恢复入口、独立任务状态、旧会话迁移及准确错误分类。
 - [English README](../README.md)、[中文 README](../README_zh.md)：产品介绍、Agent 接入与使用入口。
 - [领域词汇](../CONTEXT.md)：插件、贡献、会话身份、能力与呈现概念的统一定义。
@@ -87,6 +88,7 @@
 - [0007-presentation-core-and-fallback](adr/0007-presentation-core-and-fallback.md)
 - [0008-unified-presentation-plugins](adr/0008-unified-presentation-plugins.md)
 - [0009-presentation-package-isolation](adr/0009-presentation-package-isolation.md)
+- [0010-event-storage-and-search](adr/0010-event-storage-and-search.md)
 
 ## 历史归档
 

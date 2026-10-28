@@ -1,4 +1,8 @@
 //! Compatibility for exact historical migrations applied during development.
+#[cfg(test)]
+#[path = "event_search_migration_tests.rs"]
+mod event_search_tests;
+
 use sqlx::migrate::{Migrate, MigrateError, Migration, MigrationType};
 
 pub(crate) async fn run(connection: &mut sqlx::SqliteConnection) -> Result<(), MigrateError> {

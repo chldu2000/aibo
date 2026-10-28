@@ -502,6 +502,15 @@ impl Broker {
         if let Err(error) = insert { self.flights.lock().await.remove(&key); return Err(database(error)); }
         let mut result = self.execute(&id,&request,&provider,&slot,workspace.as_ref(),&chain,observer.as_ref()).await;
         if result.is_err() { if let Some(token) = &provider.candidate { if let Err(error) = self.discard_candidate(token).await { result = Err(error); } } }
+        // Stop admitting controls, then let an admitted control receive its
+        // acknowledgement before write cleanup stops the owning runtime. A
+        // control may itself complete the invocation (for example goal pause).
+        let interaction = self.flights.lock().await.get_mut(&key).and_then(|flight| flight.interaction.take());
+        if let Some(interaction) = interaction {
+            if let Ok(_permit) = interaction.control_permit.acquire().await {
+                interaction.control_permit.close();
+            }
+        }
         if let Some(write) = &chain.write {
             if write.is_uncertain() { result = Err(fail_display("outcome_unknown", "A descendant write has an unknown outcome", "native.broker.descendantUnknown")); }
             if let Some(runtime) = slot.runtime.lock().await.take() {

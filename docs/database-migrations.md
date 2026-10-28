@@ -107,6 +107,12 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 0064 及之前 SQL 建库，经真实打开升级和重开，验证旧任务结果、消息、草稿、旧 checksum、
 外键与完整性，以及新显示元数据保留。没有元数据的旧文字保持原文。
 
+0066 按 [ADR 0010](adr/0010-event-storage-and-search.md) 收窄搜索投影：移除能力事件搜索触发器及
+派生副本，在同一事务重建 FTS；能力调用摘要、其他搜索来源、原始审计和业务历史保持。
+`event_search_migration_preserves_history_and_rebuilds_only_derived_data` 从冻结的 0065 及之前
+SQL 建库，验证升级/重开、旧 checksum、审计读取、消息/草稿/子代理、文件缓存、FTS 和外键。
+释放页可重用，但不在启动中执行 VACUUM；迁移成功不等于数据库文件立即缩小。
+
 ## 已发生改写时
 
 1. 从原提交或已知发布版本恢复准确的原始 SQL，保留有数据的数据库。

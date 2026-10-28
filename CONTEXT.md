@@ -73,6 +73,12 @@ _Avoid_: Confusing the binding with the native session identifier alone.
 **History Projection**:
 The host-owned durable record of normalized session activity, readable even when its provider is disabled, missing, or incompatible. It is distinct from plugin-owned recovery data.
 
+**Audit Record**:
+A host-owned record of an operation's identity, authorization, lifecycle, or outcome. Its availability is independent of whether its contents are searchable.
+
+**Search Projection**:
+A derived representation of selected persisted content for discovery. Removing content from this projection does not remove its source history or audit record.
+
 **Session Release Migration**:
 A host-managed transition to a newer release of the same provider after that release successfully restores the existing native session. A failed migration preserves the previous binding and recovery data.
 
