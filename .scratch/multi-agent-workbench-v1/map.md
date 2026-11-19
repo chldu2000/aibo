@@ -25,6 +25,7 @@ Label: wayfinder:map
 - [会话持久化](issues/06-session-persistence.md): 一个全局 SQLite 库（纯 Go 驱动）加附件目录，默认放在 `~/Library/Application Support/aibo/`，可迁移到自定义位置；删除源会话后，指向它的引用失效；单实例运行；升级前先备份。
 - [发起和呈现引用的交互](issues/07-reference-ux.md): 两条发起路径：在源会话里选中范围后点“发给…”，或在接收方输入 `@` 拉取；接收方用卡片显示引用，可以展开概要，读取记录可以跳回来源；原型在 `prototype/reference-ux` 分支。
 - [验证 Codex app-server 按 thread 注入工具与审批行为](issues/08-codex-thread-tools.md): Codex 用一个 app-server 跑多个 thread，MCP 按 thread 注入；两家都能免审批；两家都不提供 Agent 生成的标题；两家都会发出压缩事件（Claude 带 token 数，Codex 只有时间戳）。
+- [aibo 记录与 Agent 实际上下文不一致时的处理](issues/09-native-divergence.md): 压缩只在会话里留一个标记（不算消息），会话视图里显示为分隔线；引用和读取工具都基于完整记录；允许把会话引用给它自己，用来找回被压缩掉的内容；会话菜单里可以手动压缩；v1 不转发 Agent 自带的斜杠命令。
 
 ## Not yet specified
 
@@ -33,6 +34,7 @@ Label: wayfinder:map
 - Agent 工具调用 / 权限请求的审批 UI。
 - Agent 的安装检测、版本兼容与登录状态处理。
 - 引用概要的具体生成规则（包含哪些字段、摘录多少）。
+- Agent 自带的斜杠命令（`/clear`、`/model`、`/rewind` 等）：是否支持，以及支持后如何让 aibo 的记录与 Agent 上下文保持一致。
 - 工作台外壳：工作区的添加与移除；会话列表的组织与管理（搜索、归档、重命名）；配置项（数据目录、Agent 可执行文件路径、分页预算等）；窗口布局。等前面的任务有结论后再拆成具体任务；某一项的关键问题是“它该长什么样”时，再单独做原型。
 
 ## Out of scope

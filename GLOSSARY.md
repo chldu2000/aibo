@@ -13,7 +13,7 @@ _Avoid_: 客户端, IDE, 平台
 _Avoid_: 模型, LLM, bot
 
 **会话 (Session)**:
-用户与某一个 Agent 之间的一段连续对话。
+用户与某一个 Agent 之间的一段连续对话。aibo 记录的是会话中实际发生过的一切，不随 Agent 上下文的压缩而改变。
 _Avoid_: 对话, thread, chat
 
 **消息 (Message)**:
@@ -25,7 +25,7 @@ _Avoid_: 事件, item, 条目
 _Avoid_: 回合, round
 
 **会话引用 (Session Reference)**:
-指向某个会话的句柄，连同一份简短概要交给另一个 Agent；接收方按需通过工具读取被引用会话的细节，而不是收到完整副本。
+指向某个会话的句柄，连同一份简短概要交给一个会话（可以是另一个 Agent 的会话，也可以是源会话自身）；接收方按需通过工具读取被引用会话的细节，而不是收到完整副本。
 _Avoid_: 会话转发, 会话复制, handoff, 上下文粘贴
 
 **引用范围 (Reference Range)**:
@@ -39,3 +39,11 @@ _Avoid_: 摘要, summary
 **工作区 (Workspace)**:
 会话所属的项目目录；Agent 在其中运行。会话引用可以跨工作区。
 _Avoid_: 项目, folder, repo
+
+**Agent 上下文 (Agent Context)**:
+Agent 当前实际保留、用于推理的内容；可能因上下文压缩而少于会话记录。
+_Avoid_: 记忆, memory, 原生会话
+
+**上下文压缩 (Context Compaction)**:
+Agent 为节省上下文而丢弃或概括早期内容的行为；aibo 在会话中以压缩标记记下其位置，压缩标记不是消息。
+_Avoid_: compact, 摘要化, 截断
