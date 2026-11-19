@@ -27,6 +27,7 @@ Label: wayfinder:map
 - [验证 Codex app-server 按 thread 注入工具与审批行为](issues/08-codex-thread-tools.md): Codex 用一个 app-server 跑多个 thread，MCP 按 thread 注入；两家都能免审批；两家都不提供 Agent 生成的标题；两家都会发出压缩事件（Claude 带 token 数，Codex 只有时间戳）。
 - [aibo 记录与 Agent 实际上下文不一致时的处理](issues/09-native-divergence.md): 压缩只在会话里留一个标记（不算消息），会话视图里显示为分隔线；引用和读取工具都基于完整记录；允许把会话引用给它自己，用来找回被压缩掉的内容；会话菜单里可以手动压缩；v1 不转发 Agent 自带的斜杠命令。
 - [续接原生会话与续接失败时的兜底](issues/10-native-session-recovery.md): 发首条消息时才续接，闲置 30 分钟自动断开，每次续接都重新注入 MCP token；续接失败时提示用户，用户可以选择在同一个 aibo 会话里换一个新的原生会话（记一个上下文重置标记），并把之前的内容自引用过去；aibo 会话同一时刻只对应一个原生会话。
+- [用 MyGO 验证会话视图的原生渲染](issues/11-mygo-native-spike.md): 真机验证通过（流式 Markdown、1 万条消息、着色器 glass、大输出都没有明显慢帧）；按整条消息多选时，不连续的选区需要先规整为连续范围；本机构建要用 `CGO_ENABLED=0`；验证程序在 `spike/mygo-session-view` 分支。
 
 ## Not yet specified
 
