@@ -33,6 +33,7 @@ Label: wayfinder:map
 - [审批请求的通道与交互](issues/13-approval-flow.md): Claude 的审批走 control 协议，因为这样能拿到原生建议；会话可在三档审批之间切换；审批卡片挂在工具调用下面，选项以 Agent 原生的为准，“本会话内始终允许”由 aibo 补记，进程重启后仍然有效，永久选项要写明写入位置；没处理的审批会一直等着，后台会话会发系统通知提醒。
 - [Agent 的发现、版本兼容与登录引导](issues/15-agent-discovery-login.md): 先查用户指定路径，再查固定位置，最后用登录 shell；最低版本取实测时的版本；未安装时只给链接，不代为安装；Claude 引导到终端登录，Codex 可以在应用内登录；Codex 的登录状态靠启动时检查、订阅 `account/updated` 和 401 时重查来维护，不做每轮检查。
 - [引用概要的生成规则](issues/16-reference-brief-rules.md): 发送时每个引用渲染成一个 `<aibo-reference>` 块，放在用户正文前面；摘录取范围内第一条用户消息和最后一条 Agent 回复；工具名按接收方 Agent 的写法；是否读取由 Agent 自己判断；自引用用另一套措辞；概要在创建引用时固定，最长 1500 字；卡片展开后显示 Agent 实际收到的文本。
+- [工作区与会话列表的管理（含配置项清单）](issues/17-workspace-session-management.md): 工作区以绝对路径识别，移除工作区时会话转为归档；侧栏按工作区分组、按活跃时间排序，并显示状态标记；会话可重命名、删除、归档和搜索；新建会话时选 Agent 和模型；设置分通用、Agent、高级三页。
 
 ## Not yet specified
 
@@ -49,3 +50,4 @@ Label: wayfinder:map
 - 分屏同时浏览两个会话，以及在两栏之间拖拽引用：留到以后支持分屏时再加（见[发起和呈现引用的交互](issues/07-reference-ux.md)）。
 - 导入 aibo 之外产生的原生会话：与“v1 只引用 aibo 内发起的会话”“不读取 Agent 本地存储”两项决定冲突。
 - 支持 Agent 自带的斜杠命令：v1 只做“不转发，并给出提示”（见[aibo 记录与 Agent 实际上下文不一致时的处理](issues/09-native-divergence.md)）。
+- 会话进行中切换模型：两家 Agent 中途换模型的方式和审批行为都还没实测，v1 只支持在新建会话时选择模型（见[工作区与会话列表的管理（含配置项清单）](issues/17-workspace-session-management.md)）。

@@ -67,3 +67,7 @@ _Avoid_: 权限弹窗, permission prompt
 **审批档位 (Approval Level)**:
 会话级的审批策略，分“每次询问”“自动接受工作区内修改”“全部自动”三档，分别映射到各 Agent 的原生设置。
 _Avoid_: 权限模式, permission mode, 沙箱级别
+
+**归档 (Archive)**:
+会话从工作区分组中隐藏、但数据与引用都保持有效的状态；移除工作区时其会话转为归档。
+_Avoid_: 隐藏, 收起
