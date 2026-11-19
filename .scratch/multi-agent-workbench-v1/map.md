@@ -20,6 +20,7 @@ Label: wayfinder:map
 - [MyGO 原生 UI 能否渲染 Agent 会话](issues/02-mygo-rendering.md): 能；原生 `ui`（markdown Stream + List + DiffView）加着色器 glass，不做 WebView 混合；跨消息复制按整条消息从数据模型取。
 - [Claude Code 与 Codex CLI 的结构化接入方式](issues/01-agent-integration.md): Claude 用常驻 `claude -p` stream-json，Codex 用 `codex app-server` JSON-RPC，都不需要 Node；自定义适配器接口（事件分类参照 ACP），v1 不走 ACP；只调用用户本机的 `claude`，不碰凭据。
 - [如何给每个会话注入工作台自己的 MCP server](issues/03-mcp-injection.md): 工作台进程内的 streamable HTTP（127.0.0.1 随机端口），每个会话一个 bearer token；Claude 用 `--mcp-config` + `--strict-mcp-config`，Codex 用 `-c mcp_servers.aibo`（只能追加）；SDK 用官方 go-sdk。
+- [规范会话模型](issues/04-canonical-session-model.md): 引用以“消息”为单位（用户消息/Agent 回复/工具调用/计划），按会话内递增序号编址；会话只追加；思考附属于回复、默认不读；子代理嵌套、审批作属性；一个工作台会话对应一个 Agent 原生会话。
 
 ## Not yet specified
 
