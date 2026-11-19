@@ -34,6 +34,7 @@ Label: wayfinder:map
 - [Agent 的发现、版本兼容与登录引导](issues/15-agent-discovery-login.md): 先查用户指定路径，再查固定位置，最后用登录 shell；最低版本取实测时的版本；未安装时只给链接，不代为安装；Claude 引导到终端登录，Codex 可以在应用内登录；Codex 的登录状态靠启动时检查、订阅 `account/updated` 和 401 时重查来维护，不做每轮检查。
 - [引用概要的生成规则](issues/16-reference-brief-rules.md): 发送时每个引用渲染成一个 `<aibo-reference>` 块，放在用户正文前面；摘录取范围内第一条用户消息和最后一条 Agent 回复；工具名按接收方 Agent 的写法；是否读取由 Agent 自己判断；自引用用另一套措辞；概要在创建引用时固定，最长 1500 字；卡片展开后显示 Agent 实际收到的文本。
 - [工作区与会话列表的管理（含配置项清单）](issues/17-workspace-session-management.md): 工作区以绝对路径识别，移除工作区时会话转为归档；侧栏按工作区分组、按活跃时间排序，并显示状态标记；会话可重命名、删除、归档和搜索；新建会话时选 Agent 和模型；设置分通用、Agent、高级三页。
+- [工作台窗口布局](issues/18-window-layout.md): 三栏布局，左侧是浮动的 Liquid Glass 侧栏，右侧详情以 glass 面板浮出；设置是全局弹窗；输入框用图标按钮，上方有染色 glass 的状态徽标；文字和图标颜色一律取自主题；会话可以拆到独立窗口（低优先级）；原型保存在 `prototype/window-layout` 分支。
 
 ## Not yet specified
 
