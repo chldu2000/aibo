@@ -40,6 +40,10 @@ _Avoid_: 摘要, summary
 会话所属的项目目录；Agent 在其中运行。会话引用可以跨工作区。
 _Avoid_: 项目, folder, repo
 
+**源工作区 (Source Workspace)**:
+被引用会话所属的工作区。接收方会话在收到跨工作区的引用后，可以只读地访问它。
+_Avoid_: 来源目录, 原项目
+
 **Agent 上下文 (Agent Context)**:
 Agent 当前实际保留、用于推理的内容；可能因上下文压缩而少于会话记录。
 _Avoid_: 记忆, memory

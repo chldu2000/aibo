@@ -28,16 +28,12 @@ Label: wayfinder:map
 - [aibo 记录与 Agent 实际上下文不一致时的处理](issues/09-native-divergence.md): 压缩只在会话里留一个标记（不算消息），会话视图里显示为分隔线；引用和读取工具都基于完整记录；允许把会话引用给它自己，用来找回被压缩掉的内容；会话菜单里可以手动压缩；v1 不转发 Agent 自带的斜杠命令。
 - [续接原生会话与续接失败时的兜底](issues/10-native-session-recovery.md): 发首条消息时才续接，闲置 30 分钟自动断开，每次续接都重新注入 MCP token；续接失败时提示用户，用户可以选择在同一个 aibo 会话里换一个新的原生会话（记一个上下文重置标记），并把之前的内容自引用过去；aibo 会话同一时刻只对应一个原生会话。
 - [用 MyGO 验证会话视图的原生渲染](issues/11-mygo-native-spike.md): 真机验证通过（流式 Markdown、1 万条消息、着色器 glass、大输出都没有明显慢帧）；按整条消息多选时，不连续的选区需要先规整为连续范围；本机构建要用 `CGO_ENABLED=0`；验证程序在 `spike/mygo-session-view` 分支。
+- [检测 Agent 的安装、版本与登录状态的方式](issues/14-agent-detection-research.md): 先查用户指定路径，再查固定位置，最后用 `$SHELL -lic` 找可执行文件；版本取自 `--version`；登录状态用 `claude auth status` 和 Codex 的 `account/read` 检测（Codex 每个 turn 前都要查）；Claude 只能引导用户去终端登录，Codex 可以在应用内用浏览器或设备码登录。
+- [跨工作区引用中的文件路径](issues/12-cross-workspace-paths.md): 接收方可以读源工作区，但只读（Claude 用 `--add-dir`，Codex 本来就能读），授权在整个会话期间有效；路径不改写，读取时开头注明源工作区，并提示文件可能已经改动。
 
 ## Not yet specified
 
-- 跨工作区引用时文件路径的处理规则（接收方看不到源工作区文件时怎么办）。
-- 导入工作台之外产生的原生会话（`~/.claude`、`~/.codex` 存储）——等接入方式调研后再判断是否值得做。
-- Agent 工具调用 / 权限请求的审批 UI。
-- Agent 的安装检测、版本兼容与登录状态处理。
-- 引用概要的具体生成规则（包含哪些字段、摘录多少）。
-- Agent 自带的斜杠命令（`/clear`、`/model`、`/rewind` 等）：是否支持，以及支持后如何让 aibo 的记录与 Agent 上下文保持一致。
-- 工作台外壳：工作区的添加与移除；会话列表的组织与管理（搜索、归档、重命名）；配置项（数据目录、Agent 可执行文件路径、分页预算、闲置断开时长等）；窗口布局。等前面的任务有结论后再拆成具体任务；某一项的关键问题是“它该长什么样”时，再单独做原型。
+<!-- 已全部拆成任务 -->
 
 ## Out of scope
 
@@ -48,3 +44,5 @@ Label: wayfinder:map
 - 由 LLM 生成引用概要（工作台不持有模型 API key）。
 - 会话导出为 Markdown、一键备份与恢复：数据目录是普通文件夹，可以手动复制备份（见[会话持久化](issues/06-session-persistence.md)）。
 - 分屏同时浏览两个会话，以及在两栏之间拖拽引用：留到以后支持分屏时再加（见[发起和呈现引用的交互](issues/07-reference-ux.md)）。
+- 导入 aibo 之外产生的原生会话：与“v1 只引用 aibo 内发起的会话”“不读取 Agent 本地存储”两项决定冲突。
+- 支持 Agent 自带的斜杠命令：v1 只做“不转发，并给出提示”（见[aibo 记录与 Agent 实际上下文不一致时的处理](issues/09-native-divergence.md)）。
