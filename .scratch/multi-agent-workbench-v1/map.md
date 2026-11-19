@@ -23,6 +23,7 @@ Label: wayfinder:map
 - [规范会话模型](issues/04-canonical-session-model.md): 引用以“消息”为单位（用户消息/Agent 回复/工具调用/计划），按会话内递增序号编址；会话只追加；思考附属于回复、默认不读；子代理嵌套、审批作属性；一个工作台会话对应一个 Agent 原生会话。
 - [引用读取工具的接口](issues/05-read-session-tools.md): 四个只读、免审批的工具 `list_references` / `read_reference` / `read_message` / `search_reference`；只能读引用范围内的消息；返回给大模型读的文本并分页（约 8k token/页）；关键词或正则搜索，不做语义搜索。
 - [会话持久化](issues/06-session-persistence.md): 一个全局 SQLite 库（纯 Go 驱动）加附件目录，默认放在 `~/Library/Application Support/aibo/`，可迁移到自定义位置；删除源会话后，指向它的引用失效；单实例运行；升级前先备份。
+- [发起和呈现引用的交互](issues/07-reference-ux.md): 两条发起路径：在源会话里选中范围后点“发给…”，或在接收方输入 `@` 拉取；接收方用卡片显示引用，可以展开概要，读取记录可以跳回来源；原型在 `prototype/reference-ux` 分支。
 
 ## Not yet specified
 
@@ -40,3 +41,4 @@ Label: wayfinder:map
 - 实时引用（引用跟随源会话更新）。
 - 由 LLM 生成引用概要（工作台不持有模型 API key）。
 - 会话导出为 Markdown、一键备份与恢复：数据目录是普通文件夹，可以手动复制备份（见[会话持久化](issues/06-session-persistence.md)）。
+- 分屏同时浏览两个会话，以及在两栏之间拖拽引用：留到以后支持分屏时再加（见[发起和呈现引用的交互](issues/07-reference-ux.md)）。
