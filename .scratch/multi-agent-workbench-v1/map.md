@@ -22,6 +22,7 @@ Label: wayfinder:map
 - [如何给每个会话注入工作台自己的 MCP server](issues/03-mcp-injection.md): 工作台进程内的 streamable HTTP（127.0.0.1 随机端口），每个会话一个 bearer token；Claude 用 `--mcp-config` + `--strict-mcp-config`，Codex 用 `-c mcp_servers.aibo`（只能追加）；SDK 用官方 go-sdk。
 - [规范会话模型](issues/04-canonical-session-model.md): 引用以“消息”为单位（用户消息/Agent 回复/工具调用/计划），按会话内递增序号编址；会话只追加；思考附属于回复、默认不读；子代理嵌套、审批作属性；一个工作台会话对应一个 Agent 原生会话。
 - [引用读取工具的接口](issues/05-read-session-tools.md): 四个只读、免审批的工具 `list_references` / `read_reference` / `read_message` / `search_reference`；只能读引用范围内的消息；返回给大模型读的文本并分页（约 8k token/页）；关键词或正则搜索，不做语义搜索。
+- [会话持久化](issues/06-session-persistence.md): 一个全局 SQLite 库（纯 Go 驱动）加附件目录，默认放在 `~/Library/Application Support/aibo/`，可迁移到自定义位置；删除源会话后，指向它的引用失效；单实例运行；升级前先备份。
 
 ## Not yet specified
 
@@ -38,3 +39,4 @@ Label: wayfinder:map
 - Windows / Linux 打包与适配。
 - 实时引用（引用跟随源会话更新）。
 - 由 LLM 生成引用概要（工作台不持有模型 API key）。
+- 会话导出为 Markdown、一键备份与恢复：数据目录是普通文件夹，可以手动复制备份（见[会话持久化](issues/06-session-persistence.md)）。
