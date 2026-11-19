@@ -31,6 +31,7 @@ Label: wayfinder:map
 - [检测 Agent 的安装、版本与登录状态的方式](issues/14-agent-detection-research.md): 先查用户指定路径，再查固定位置，最后用 `$SHELL -lic` 找可执行文件；版本取自 `--version`；登录状态用 `claude auth status` 和 Codex 的 `account/read` 检测（Codex 每个 turn 前都要查）；Claude 只能引导用户去终端登录，Codex 可以在应用内用浏览器或设备码登录。
 - [跨工作区引用中的文件路径](issues/12-cross-workspace-paths.md): 接收方可以读源工作区，但只读（Claude 用 `--add-dir`，Codex 本来就能读），授权在整个会话期间有效；路径不改写，读取时开头注明源工作区，并提示文件可能已经改动。
 - [审批请求的通道与交互](issues/13-approval-flow.md): Claude 的审批走 control 协议，因为这样能拿到原生建议；会话可在三档审批之间切换；审批卡片挂在工具调用下面，选项以 Agent 原生的为准，“本会话内始终允许”由 aibo 补记，进程重启后仍然有效，永久选项要写明写入位置；没处理的审批会一直等着，后台会话会发系统通知提醒。
+- [Agent 的发现、版本兼容与登录引导](issues/15-agent-discovery-login.md): 先查用户指定路径，再查固定位置，最后用登录 shell；最低版本取实测时的版本；未安装时只给链接，不代为安装；Claude 引导到终端登录，Codex 可以在应用内登录；Codex 的登录状态靠启动时检查、订阅 `account/updated` 和 401 时重查来维护，不做每轮检查。
 
 ## Not yet specified
 
