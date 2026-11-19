@@ -42,8 +42,16 @@ _Avoid_: 项目, folder, repo
 
 **Agent 上下文 (Agent Context)**:
 Agent 当前实际保留、用于推理的内容；可能因上下文压缩而少于会话记录。
-_Avoid_: 记忆, memory, 原生会话
+_Avoid_: 记忆, memory
 
 **上下文压缩 (Context Compaction)**:
 Agent 为节省上下文而丢弃或概括早期内容的行为；aibo 在会话中以压缩标记记下其位置，压缩标记不是消息。
 _Avoid_: compact, 摘要化, 截断
+
+**上下文重置 (Context Reset)**:
+Agent 上下文被完全清空、改由一个新的原生会话继续的情况；aibo 在会话中以上下文重置标记记下其位置，会话本身照常延续。
+_Avoid_: 重开会话, 会话迁移
+
+**原生会话 (Native Session)**:
+Agent 自己保存的会话（如 Claude 的 session、Codex 的 thread）。一个会话同一时刻只对应一个原生会话，历史上可以先后对应多个；aibo 只记录其 ID。
+_Avoid_: 底层会话, Agent 会话
