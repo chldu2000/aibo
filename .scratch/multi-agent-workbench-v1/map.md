@@ -29,7 +29,6 @@ Label: wayfinder:map
 - Agent 工具调用 / 权限请求的审批 UI。
 - Agent 的安装检测、版本兼容与登录状态处理。
 - 引用概要的具体生成规则（包含哪些字段、摘录多少）。
-- 应用重启后会话的恢复（是否续接 Agent 侧会话）。
 
 ## Out of scope
 
