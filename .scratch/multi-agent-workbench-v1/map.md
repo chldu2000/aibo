@@ -24,6 +24,7 @@ Label: wayfinder:map
 - [引用读取工具的接口](issues/05-read-session-tools.md): 四个只读、免审批的工具 `list_references` / `read_reference` / `read_message` / `search_reference`；只能读引用范围内的消息；返回给大模型读的文本并分页（约 8k token/页）；关键词或正则搜索，不做语义搜索。
 - [会话持久化](issues/06-session-persistence.md): 一个全局 SQLite 库（纯 Go 驱动）加附件目录，默认放在 `~/Library/Application Support/aibo/`，可迁移到自定义位置；删除源会话后，指向它的引用失效；单实例运行；升级前先备份。
 - [发起和呈现引用的交互](issues/07-reference-ux.md): 两条发起路径：在源会话里选中范围后点“发给…”，或在接收方输入 `@` 拉取；接收方用卡片显示引用，可以展开概要，读取记录可以跳回来源；原型在 `prototype/reference-ux` 分支。
+- [验证 Codex app-server 按 thread 注入工具与审批行为](issues/08-codex-thread-tools.md): Codex 用一个 app-server 跑多个 thread，MCP 按 thread 注入；两家都能免审批；两家都不提供 Agent 生成的标题；两家都会发出压缩事件（Claude 带 token 数，Codex 只有时间戳）。
 
 ## Not yet specified
 
