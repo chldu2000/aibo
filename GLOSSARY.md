@@ -59,3 +59,11 @@ _Avoid_: 重开会话, 会话迁移
 **原生会话 (Native Session)**:
 Agent 自己保存的会话（如 Claude 的 session、Codex 的 thread）。一个会话同一时刻只对应一个原生会话，历史上可以先后对应多个；aibo 只记录其 ID。
 _Avoid_: 底层会话, Agent 会话
+
+**审批请求 (Approval Request)**:
+Agent 在执行操作前向用户请求许可；其结果记为对应工具调用的属性。
+_Avoid_: 权限弹窗, permission prompt
+
+**审批档位 (Approval Level)**:
+会话级的审批策略，分“每次询问”“自动接受工作区内修改”“全部自动”三档，分别映射到各 Agent 的原生设置。
+_Avoid_: 权限模式, permission mode, 沙箱级别

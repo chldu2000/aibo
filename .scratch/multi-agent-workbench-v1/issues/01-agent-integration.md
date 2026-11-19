@@ -18,3 +18,7 @@ Findings: ../research/01-agent-integration.md
 - **条款约束**：工作台只调用用户已安装、未修改的 `claude`，不读取也不转交 `~/.claude` 中的凭据；默认不用 `--bare`。
 
 详见 [调研结果](../research/01-agent-integration.md)。
+
+## 后续修正
+
+“审批请求的通道与交互”经过实测后决定：Claude 的审批改走 control 协议（`--permission-prompt-tool stdio` + `can_use_tool`），不再走 MCP 审批工具。原因是 MCP 审批工具收不到原生的权限建议 `permission_suggestions`。
