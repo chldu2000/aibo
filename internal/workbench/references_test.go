@@ -68,7 +68,7 @@ func TestPushWholeSessionReference(t *testing.T) {
 		"- 范围：#1–#4，共 4 条消息",
 		"- 首条用户消息：#1「我们要把 orders 表迁到 Postgres，先梳理风险。」",
 		"- 末条 Agent 回复：#4「方案已写进 docs/migration.md。」",
-		`- 可用工具：read_reference(ref_id="` + r.ID + `")、list_references`,
+		`- 可用工具：read_reference(ref_id="` + r.ID + `")、read_message、list_references`,
 	} {
 		if !strings.Contains(r.Brief, want) {
 			t.Errorf("brief lacks %q:\n%s", want, r.Brief)

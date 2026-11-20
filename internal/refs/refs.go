@@ -70,7 +70,7 @@ func brief(in BriefInput, excerptLen int) string {
 			fmt.Fprintf(&b, "- %s：#%d「%s」\n", e.label, e.m.Seq, excerpt(e.m, excerptLen))
 		}
 	}
-	fmt.Fprintf(&b, "- 可用工具：%s(ref_id=%q)、%s\n", in.ToolName(ToolReadReference), in.ID, in.ToolName(ToolListReferences))
+	fmt.Fprintf(&b, "- 可用工具：%s(ref_id=%q)、%s、%s\n", in.ToolName(ToolReadReference), in.ID, in.ToolName(ToolReadMessage), in.ToolName(ToolListReferences))
 	b.WriteString("</aibo-reference>")
 	return b.String()
 }
@@ -142,20 +142,6 @@ func ReadHeader(r model.Reference, crossWorkspace bool) string {
 		fmt.Fprintf(&b, "源工作区：%s（不是你当前的工作区；其中的相对路径都相对于它，你只能读取不能修改）\n", r.SourceWorkspace)
 	}
 	b.WriteString("提醒：引用是创建时的快照，其中提到的文件可能已在引用之后被修改。\n")
-	return b.String()
-}
-
-// Messages renders messages for a model to read, each under a heading
-// "### [seq] role · time".
-func Messages(ms []model.Message, agentName string) string {
-	var b strings.Builder
-	for _, m := range ms {
-		role := roleName(m.Kind, agentName)
-		if m.State == model.Interrupted {
-			role += "（已中断）"
-		}
-		fmt.Fprintf(&b, "\n### [%d] %s · %s\n\n%s\n", m.Seq, role, m.CreatedAt.Local().Format("2006-01-02 15:04"), strings.TrimRight(m.Text, "\n"))
-	}
 	return b.String()
 }
 

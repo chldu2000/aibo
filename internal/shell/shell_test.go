@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -170,10 +171,18 @@ func TestPushReference(t *testing.T) {
 
 	// The most recent session, the source, is open.
 	waitFor("好的")
-	click("引用整个会话…")
+	click("选择消息以引用或复制")
+	click("选中整个会话")
+	waitFor("已选 #1–#2 · 2 条")
+	click("发给…")
 	click("引用给 新会话")
+	waitFor("接收方 Agent 会收到下面的概要") // the preview
+	if !tt.HasText("- 范围：#1–#2，共 2 条消息") {
+		t.Errorf("the preview lacks the range: %q", tt.Texts())
+	}
+	click("引用")
 	if wb.Drafts(target.ID) == nil {
-		t.Fatal("no draft after picking the target")
+		t.Fatal("no draft after confirming")
 	}
 	label := "假 Agent · 数据库迁移方案 · #1–#2（2 条）"
 	waitFor(label) // the draft chip, in the target's composer
@@ -188,4 +197,102 @@ func TestPushReference(t *testing.T) {
 	if !tt.HasText("数据库迁移方案") {
 		t.Errorf("the source is not open: %q", tt.Texts())
 	}
+}
+
+// Selection mode: click, Shift-click, gaps filled, whole turns, copy,
+// and a reference to a new session.
+func TestSelectAndReferenceToNewSession(t *testing.T) {
+	respond := func(ctx context.Context, _ agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
+		emit(agent.ReplyDelta{ReplyID: "r", Text: strings.Replace(turn.Text, "问题", "回答", 1)})
+		emit(agent.ReplyDone{ReplyID: "r"})
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	src, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	for _, q := range []string{"问题一", "问题二", "问题三"} {
+		wb.Send(src.ID, q)
+		for wb.Status(src.ID).Running {
+			<-changes
+		}
+	}
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 900)
+	for i := 0; i < 5; i++ {
+		tt.Frame()
+		tt.Advance(time.Second)
+	}
+	click := func(mods ui.Modifiers, s string) {
+		t.Helper()
+		if err := tt.ClickWith(mods, s); err != nil {
+			t.Fatalf("%v; the window shows %q", err, tt.Texts())
+		}
+		tt.Frame()
+	}
+	// row clicks where a message's number shows, which takes no input
+	// itself in selection mode: the row under it does.
+	row := func(mods ui.Modifiers, seq string) {
+		t.Helper()
+		r, ok := tt.Find(seq)
+		if !ok {
+			t.Fatalf("no %s in %q", seq, tt.Texts())
+		}
+		tt.ClickAtWith(mods, r.X+r.W/2, r.Y+r.H/2)
+		tt.Frame()
+	}
+	shows := func(want ...string) {
+		t.Helper()
+		for _, w := range want {
+			if !tt.HasText(w) {
+				t.Errorf("the window lacks %q: %q", w, tt.Texts())
+			}
+		}
+	}
+
+	click(0, "选择消息以引用或复制")
+	shows("点击消息设起点")
+	row(0, "#3")
+	shows("已选 #3 · 1 条")
+	row(ui.Shift, "#6")
+	shows("已选 #3–#6 · 4 条")
+	if tt.HasText("已补齐中间的消息") {
+		t.Error("a contiguous choice says it was filled")
+	}
+	row(0, "#1")
+	row(ui.Super, "#4") // leaving a gap
+	shows("已选 #1–#4 · 4 条", "已补齐中间的消息")
+	row(0, "#4") // alone
+	click(0, "选中整轮")
+	shows("已选 #3–#4 · 2 条")
+	if tt.HasText("已补齐中间的消息") {
+		t.Error("the note outlived the gap")
+	}
+	click(0, "复制")
+	if got := tt.Clipboard(); got != "### [3] 用户\n\n问题二\n\n### [4] 假 Agent\n\n回答二\n" {
+		t.Errorf("clipboard = %q", got)
+	}
+
+	click(0, "发给…")
+	click(0, "引用给 "+filepath.Base(ws.Path)+" 的新 假 Agent 会话")
+	shows("- 范围：#3–#4，共 2 条消息", "- 首条用户消息：#3「问题二」")
+	click(0, "引用")
+	all := wb.Sessions()
+	if len(all) != 2 {
+		t.Fatalf("%d sessions, want the new one", len(all))
+	}
+	var created string
+	for _, x := range all {
+		if x.ID != src.ID {
+			created = x.ID
+		}
+	}
+	d := wb.Drafts(created)
+	if len(d) != 1 || d[0].From != 3 || d[0].To != 4 {
+		t.Fatalf("drafts of the new session = %+v", d)
+	}
+	shows("假 Agent · 问题一 · #3–#4（2 条）") // its chip, in the new session's composer
 }

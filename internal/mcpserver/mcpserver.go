@@ -22,7 +22,24 @@ import (
 // Its errors are shown to the Agent as they are.
 type Reader interface {
 	ListReferences(sessionID string) (string, error)
-	ReadReference(sessionID, refID string) (string, error)
+	ReadReference(sessionID string, q ReadReference) (string, error)
+	ReadMessage(sessionID string, q ReadMessage) (string, error)
+}
+
+// ReadReference is read_reference's input.
+type ReadReference struct {
+	RefID           string `json:"ref_id" jsonschema:"要读取的引用 ID，如 ref_7Kq2xP"`
+	FromSeq         int    `json:"from_seq,omitempty" jsonschema:"从这个序号开始读；不填则从引用范围的开头读"`
+	Cursor          string `json:"cursor,omitempty" jsonschema:"上一页末尾给出的 cursor，用来读下一页"`
+	IncludeThinking bool   `json:"include_thinking,omitempty" jsonschema:"是否包含 Agent 的思考内容，默认不包含"`
+}
+
+// ReadMessage is read_message's input.
+type ReadMessage struct {
+	RefID           string `json:"ref_id" jsonschema:"引用 ID"`
+	Seq             int    `json:"seq" jsonschema:"要读取的消息序号，必须在引用范围内"`
+	Cursor          string `json:"cursor,omitempty" jsonschema:"上一页末尾给出的 cursor，用来读这条消息的下一页"`
+	IncludeThinking bool   `json:"include_thinking,omitempty" jsonschema:"是否包含 Agent 的思考内容，默认不包含"`
 }
 
 // Server is the running MCP server.
@@ -144,10 +161,6 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 
 type listIn struct{}
 
-type readIn struct {
-	RefID string `json:"ref_id" jsonschema:"要读取的引用 ID，如 ref_7Kq2xP"`
-}
-
 func (s *Server) newServer(sessionID string) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "aibo", Title: "aibo 工作台"}, &mcp.ServerOptions{
 		Instructions: "aibo 工作台交给本会话的会话引用：其他会话中一段消息的只读快照。用户的请求依赖引用的内容时，先读取再回答。",
@@ -162,10 +175,17 @@ func (s *Server) newServer(sessionID string) *mcp.Server {
 	})
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        refs.ToolReadReference,
-		Description: "按顺序读取一个会话引用范围内的消息，每条消息以“### [序号] 角色 · 时间”开头。",
+		Description: "按顺序分页读取一个会话引用范围内的消息，每条消息以“### [序号] 角色 · 时间”开头；过长的消息只显示开头，用 read_message 读完整内容。页尾给出下一页的 cursor。",
 		Annotations: readOnly,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in readIn) (*mcp.CallToolResult, any, error) {
-		return result(s.reader.ReadReference(sessionID, in.RefID))
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ReadReference) (*mcp.CallToolResult, any, error) {
+		return result(s.reader.ReadReference(sessionID, in))
+	})
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        refs.ToolReadMessage,
+		Description: "读取会话引用中一条消息的完整内容，内容很长时分页，页尾给出下一页的 cursor。",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ReadMessage) (*mcp.CallToolResult, any, error) {
+		return result(s.reader.ReadMessage(sessionID, in))
 	})
 	return srv
 }

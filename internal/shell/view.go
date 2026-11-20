@@ -105,8 +105,16 @@ func (s *Shell) pane(c *ui.Context) {
 	v := s.view(x.ID)
 	ws := s.workspaceOf(x)
 	ui.Box(c).Fill().Children(func() {
-		ui.Column(c).Fill().Children(func() {
-			s.messages(c, v).Grow(1)
+		// Chosen rows show in a light tint with the theme's text, not the
+		// list's solid accent.
+		th := *t
+		if v.sel.on {
+			th.Accent, th.AccentText = tinted(c, ui.RGBA(40, 120, 255, 0.28)), t.Text
+		}
+		ui.Themed(c, &th).Fill().Children(func() {
+			ui.Column(c).Fill().Children(func() {
+				s.messages(c, v).Grow(1)
+			})
 		})
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(80).PassThrough().Material(glass.ScrollEdge{})
 		ui.Row(c).Absolute().Top(12).Left(16).Right(16).Height(46).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
@@ -114,15 +122,21 @@ func (s *Shell) pane(c *ui.Context) {
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).NoWrap()
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).NoWrap()
 			ui.Spacer(c)
-			pick := iconButton(c, "arrowshape.turn.up.right", "引用整个会话…")
-			if pick.Clicked() {
-				s.picking = !s.picking
+			if iconButton(c, "arrowshape.turn.up.right", "选择消息以引用或复制").Clicked() {
+				if v.sel.on {
+					s.stopSelecting(v)
+				} else {
+					s.startSelecting(v)
+				}
 			}
-			ui.Popover(c, pick, &s.picking, func() { s.targetPicker(c, x) })
 		})
 		ui.Column(c).Absolute().Bottom(16).Left(16).Right(16).Gap(8).Children(func() {
 			s.banners(c, x.ID)
-			s.composer(c, x, v)
+			if v.sel.on {
+				s.selectionBar(c, x, v)
+			} else {
+				s.composer(c, x, v)
+			}
 		})
 	})
 }
@@ -140,7 +154,9 @@ func (s *Shell) messages(c *ui.Context, v *sessionView) ui.Element {
 	t := c.Theme()
 	return ui.List(c, &v.list, len(v.msgs), func(i int) {
 		m := v.msgs[i]
-		row := ui.Row(c).Gap(10).AlignItems(ui.Start).Padding(4).Radius(10).Children(func() {
+		// In selection mode a press anywhere on a message chooses it,
+		// rather than selecting its text or pressing its buttons.
+		row := ui.Row(c).Gap(10).AlignItems(ui.Start).Padding(4).Radius(10).IgnoreInput(v.sel.on).Children(func() {
 			ui.Textf(c, "#%d", m.Seq).FontSize(11).TextColor(t.TextMuted).Width(34)
 			ui.Column(c).Grow(1).MaxWidth(820).Gap(6).Children(func() {
 				switch m.Kind {
@@ -305,42 +321,6 @@ func agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
 		name = "假 Agent"
 	}
 	return ui.Image(c, g).Size(size, size).Tooltip(name)
-}
-
-// targetPicker lists the sessions the open session can be referenced to.
-func (s *Shell) targetPicker(c *ui.Context, src model.Session) {
-	t := c.Theme()
-	ui.Column(c).Width(320).Gap(2).Padding(10).Children(func() {
-		ui.Text(c, "把整个会话引用给…").Bold().TextColor(t.Text).Padding(0, 6, 6)
-		found := false
-		for _, ws := range s.wb.Workspaces() {
-			for _, x := range s.wb.Sessions() {
-				if x.WorkspaceID != ws.ID || x.ID == src.ID {
-					continue
-				}
-				found = true
-				row := ui.Row(c).Key(x.ID).Gap(8).Padding(6, 8).Radius(7).AlignItems(ui.Center).Label("引用给 " + sessionTitle(x)).Children(func() {
-					agentGlyph(c, x.Agent, 16)
-					ui.Text(c, sessionTitle(x)).TextColor(t.Text).NoWrap().Grow(1)
-					ui.Text(c, workspaceName(ws)).FontSize(11).TextColor(t.TextMuted)
-				})
-				if row.Hovered() {
-					row.Background(t.SurfaceHover)
-				}
-				if row.Clicked() {
-					s.picking = false
-					if _, err := s.wb.ReferenceSession(src.ID, x.ID); err != nil {
-						s.notice = "引用失败：" + err.Error()
-					} else {
-						s.current = x.ID
-					}
-				}
-			}
-		}
-		if !found {
-			ui.Text(c, "没有其他会话。先在工作区上点“＋”新建一个。").FontSize(12).TextColor(t.TextMuted).Padding(0, 6)
-		}
-	})
 }
 
 // refLabel names a reference in one line: source, title and range.

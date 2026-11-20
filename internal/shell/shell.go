@@ -40,8 +40,6 @@ type Shell struct {
 	views   map[string]*sessionView
 	notice  string // an error to show, until dismissed
 	md      markdown.Options
-	// picking shows the targets for referencing the open session.
-	picking bool
 	// openCards are the reference cards showing their briefs.
 	openCards map[string]bool
 }
@@ -52,6 +50,8 @@ type sessionView struct {
 	loaded bool
 	list   ui.ListState
 	draft  string
+	// sel is selection mode.
+	sel selection
 	// highlight is the range of sequence numbers shown highlighted, as
 	// when jumping to what a reference covers; zero for none.
 	highlight [2]int

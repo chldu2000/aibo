@@ -6,15 +6,22 @@ import (
 	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/mcpserver"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
 )
 
 // ReferenceSession references the whole of the source session, as far as
 // its messages have ended, in a draft for the target session's composer.
-// The reference is a snapshot: what the source says or is called later
-// does not change it.
 func (w *Workbench) ReferenceSession(sourceID, targetID string) (model.Reference, error) {
+	return w.ReferenceRange(sourceID, 0, 0, targetID)
+}
+
+// ReferenceRange references the source session's messages from..to (0, 0
+// for all those that have ended) in a draft for the target session's
+// composer. The reference is a snapshot: what the source says or is
+// called later does not change it.
+func (w *Workbench) ReferenceRange(sourceID string, from, to int, targetID string) (model.Reference, error) {
 	if sourceID == targetID {
 		return model.Reference{}, ErrSelfReference
 	}
@@ -25,24 +32,15 @@ func (w *Workbench) ReferenceSession(sourceID, targetID string) (model.Reference
 		w.mu.Unlock()
 		return model.Reference{}, ErrNoSuchSession
 	}
-	if err := w.load(sourceID, src); err != nil {
+	ms, err := w.rangeOf(sourceID, src, from, to)
+	if err != nil {
 		w.mu.Unlock()
 		return model.Reference{}, err
 	}
-	// Only ended messages can be referenced; those still streaming are
-	// at the end.
-	var ended []model.Message
-	for _, m := range src.msgs {
-		if !m.State.Ended() {
-			break
-		}
-		ended = append(ended, m)
-	}
-	if len(ended) == 0 {
-		w.mu.Unlock()
-		return model.Reference{}, ErrNothingToRef
-	}
-	r := w.newReference(src.info, tgt.info, ended)
+	srcWS, _ := w.workspace(src.info.WorkspaceID)
+	tgtWS, _ := w.workspace(tgt.info.WorkspaceID)
+	r := w.newReference(newID("ref_"), src.info, srcWS, tgt.info.Agent, tgtWS, ms)
+	r.TargetID = targetID
 	if err := w.st.AddReference(r); err != nil {
 		w.mu.Unlock()
 		return model.Reference{}, err
@@ -53,13 +51,67 @@ func (w *Workbench) ReferenceSession(sourceID, targetID string) (model.Reference
 	return r, nil
 }
 
-// newReference makes a draft reference of messages ms of src for tgt,
-// with its brief. w.mu is held.
-func (w *Workbench) newReference(src, tgt model.Session, ms []model.Message) model.Reference {
-	srcWS, _ := w.workspace(src.WorkspaceID)
-	tgtWS, _ := w.workspace(tgt.WorkspaceID)
+// PreviewBrief returns the brief a reference of the source's messages
+// from..to (0, 0 for all) would have for a session of the Agent kind in
+// the workspace, but for its ID, given when the reference is made.
+func (w *Workbench) PreviewBrief(sourceID string, from, to int, kind agent.Kind, workspaceID string) (string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	src, ok := w.sessions[sourceID]
+	if !ok {
+		return "", ErrNoSuchSession
+	}
+	ms, err := w.rangeOf(sourceID, src, from, to)
+	if err != nil {
+		return "", err
+	}
+	srcWS, _ := w.workspace(src.info.WorkspaceID)
+	tgtWS, ok := w.workspace(workspaceID)
+	if !ok {
+		return "", ErrNoSuchWorkspace
+	}
+	return w.newReference("ref_（发出时生成）", src.info, srcWS, kind, tgtWS, ms).Brief, nil
+}
+
+// rangeOf returns a session's messages from..to, all of which must have
+// ended; 0, 0 is every message that has ended. w.mu is held.
+func (w *Workbench) rangeOf(id string, s *session, from, to int) ([]model.Message, error) {
+	if err := w.load(id, s); err != nil {
+		return nil, err
+	}
+	// Only ended messages can be referenced; those still streaming are
+	// at the end.
+	var ended []model.Message
+	for _, m := range s.msgs {
+		if !m.State.Ended() {
+			break
+		}
+		ended = append(ended, m)
+	}
+	if len(ended) == 0 {
+		return nil, ErrNothingToRef
+	}
+	if from == 0 && to == 0 {
+		return ended, nil
+	}
+	first, last := ended[0].Seq, ended[len(ended)-1].Seq
+	if from > to || from < first || to > last {
+		return nil, fmt.Errorf("%w：%s，可以引用的是 %s", ErrBadRange, refs.Range(from, to), refs.Range(first, last))
+	}
+	var out []model.Message
+	for _, m := range ended {
+		if m.Seq >= from && m.Seq <= to {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// newReference makes a draft reference of messages ms of src, with its
+// brief for a session of the Agent kind in workspace tgtWS. w.mu is held.
+func (w *Workbench) newReference(id string, src model.Session, srcWS model.Workspace, kind agent.Kind, tgtWS model.Workspace, ms []model.Message) model.Reference {
 	r := model.Reference{
-		ID:              newID("ref_"),
+		ID:              id,
 		SourceID:        src.ID,
 		SourceTitle:     titleOf(src),
 		SourceAgent:     src.Agent,
@@ -67,7 +119,6 @@ func (w *Workbench) newReference(src, tgt model.Session, ms []model.Message) mod
 		From:            ms[0].Seq,
 		To:              ms[len(ms)-1].Seq,
 		Count:           len(ms),
-		TargetID:        tgt.ID,
 		State:           model.Draft,
 		CreatedAt:       w.now(),
 	}
@@ -76,16 +127,21 @@ func (w *Workbench) newReference(src, tgt model.Session, ms []model.Message) mod
 		SourceTitle: r.SourceTitle,
 		SourceAgent: w.agentDisplayName(src.Agent),
 		Messages:    ms,
-		ToolName:    func(t string) string { return t },
-	}
-	if a := w.agent(tgt.Agent); a != nil {
-		in.ToolName = a.ToolName
+		ToolName:    w.toolNamer(kind),
 	}
 	if srcWS.Path != tgtWS.Path {
 		in.SourceWorkspace = srcWS.Path
 	}
 	r.Brief = refs.Brief(in)
 	return r
+}
+
+// toolNamer names tools as an Agent of kind sees them.
+func (w *Workbench) toolNamer(kind agent.Kind) func(string) string {
+	if a := w.agent(kind); a != nil {
+		return a.ToolName
+	}
+	return func(t string) string { return t }
 }
 
 func titleOf(x model.Session) string {
@@ -231,37 +287,95 @@ func (rd reader) ListReferences(sessionID string) (string, error) {
 	return b.String(), nil
 }
 
-func (rd reader) ReadReference(sessionID, refID string) (string, error) {
-	w := rd.w
-	now := w.now()
-	w.mu.Lock()
+// given returns a delivered reference of the session, the range's
+// messages, and the header of what reads return. w.mu is held.
+func (w *Workbench) given(sessionID, refID string) (*model.Reference, []model.Message, string, error) {
 	r, ok := w.refs[refID]
 	if !ok || r.TargetID != sessionID || r.State != model.Delivered {
-		w.mu.Unlock()
-		return "", fmt.Errorf("本会话没有 ID 为 %q 的引用。可以用 %s 查看交给本会话的引用。", refID, refs.ToolListReferences)
+		return nil, nil, "", fmt.Errorf("本会话没有 ID 为 %q 的引用。可以用 %s 查看交给本会话的引用。", refID, refs.ToolListReferences)
 	}
 	ms, exists, err := w.st.MessageRange(r.SourceID, r.From, r.To)
 	if err != nil {
-		w.mu.Unlock()
-		return "", err
+		return nil, nil, "", err
 	}
 	if !exists {
-		w.mu.Unlock()
-		return "", fmt.Errorf("引用的源会话已被删除，引用 %s 已失效。", refID)
+		return nil, nil, "", fmt.Errorf("引用的源会话已被删除，引用 %s 已失效。", refID)
+	}
+	if len(ms) == 0 {
+		return nil, nil, "", fmt.Errorf("引用 %s 的范围里没有消息。", refID)
 	}
 	cross := false
 	if tgt, ok := w.sessions[sessionID]; ok {
 		ws, _ := w.workspace(tgt.info.WorkspaceID)
 		cross = ws.Path != r.SourceWorkspace
 	}
-	out := refs.ReadHeader(*r, cross) + refs.Messages(ms, w.agentDisplayName(r.SourceAgent))
-	if len(ms) > 0 {
-		read := model.ReferenceRead{From: ms[0].Seq, To: ms[len(ms)-1].Seq, At: now}
-		if err := w.st.AddRead(refID, read); err == nil {
-			r.Reads = append(r.Reads, read)
+	return r, ms, refs.ReadHeader(*r, cross), nil
+}
+
+// receiverTools names tools as the session's Agent sees them. w.mu is
+// held.
+func (w *Workbench) receiverTools(sessionID string) func(string) string {
+	if s, ok := w.sessions[sessionID]; ok {
+		return w.toolNamer(s.info.Agent)
+	}
+	return func(t string) string { return t }
+}
+
+func (rd reader) ReadReference(sessionID string, q mcpserver.ReadReference) (string, error) {
+	w := rd.w
+	w.mu.Lock()
+	r, ms, header, err := w.given(sessionID, q.RefID)
+	if err != nil {
+		w.mu.Unlock()
+		return "", err
+	}
+	read, err := refs.ReadPage(refs.ReadRequest{
+		Ref: *r, Messages: ms, FromSeq: q.FromSeq, Cursor: q.Cursor, Thinking: q.IncludeThinking,
+		AgentName: w.agentDisplayName(r.SourceAgent), ToolName: w.receiverTools(sessionID), Header: header, Budgets: w.budgets,
+	})
+	w.mu.Unlock()
+	if err != nil {
+		return "", err
+	}
+	w.recordRead(sessionID, q.RefID, read)
+	return read.Text, nil
+}
+
+func (rd reader) ReadMessage(sessionID string, q mcpserver.ReadMessage) (string, error) {
+	w := rd.w
+	w.mu.Lock()
+	r, ms, header, err := w.given(sessionID, q.RefID)
+	if err != nil {
+		w.mu.Unlock()
+		return "", err
+	}
+	var m *model.Message
+	for i := range ms {
+		if ms[i].Seq == q.Seq {
+			m = &ms[i]
+		}
+	}
+	read, err := refs.ReadMessage(refs.MessageRequest{
+		Ref: *r, Message: m, Seq: q.Seq, Cursor: q.Cursor, Thinking: q.IncludeThinking,
+		AgentName: w.agentDisplayName(r.SourceAgent), ToolName: w.receiverTools(sessionID), Header: header, Budgets: w.budgets,
+	})
+	w.mu.Unlock()
+	if err != nil {
+		return "", err
+	}
+	w.recordRead(sessionID, q.RefID, read)
+	return read.Text, nil
+}
+
+// recordRead records that the session's Agent read part of a reference.
+func (w *Workbench) recordRead(sessionID, refID string, read refs.Read) {
+	w.mu.Lock()
+	if r, ok := w.refs[refID]; ok {
+		rd := model.ReferenceRead{From: read.From, To: read.To, At: w.now()}
+		if err := w.st.AddRead(refID, rd); err == nil {
+			r.Reads = append(r.Reads, rd)
 		}
 	}
 	w.mu.Unlock()
 	w.notify(Change{SessionID: sessionID})
-	return out, nil
 }

@@ -77,11 +77,17 @@ type bench struct {
 
 func open(t *testing.T, dir string, respond fake.Responder, now ...func() time.Time) *bench {
 	t.Helper()
-	f := fake.New(respond)
-	o := workbench.Options{DataDir: dir, Agents: []agent.Agent{f}}
+	o := workbench.Options{}
 	if len(now) > 0 {
 		o.Now = now[0]
 	}
+	return openWith(t, dir, respond, o)
+}
+
+func openWith(t *testing.T, dir string, respond fake.Responder, o workbench.Options) *bench {
+	t.Helper()
+	f := fake.New(respond)
+	o.DataDir, o.Agents = dir, []agent.Agent{f}
 	w, err := workbench.Open(o)
 	if err != nil {
 		t.Fatal(err)

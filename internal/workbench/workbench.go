@@ -32,6 +32,8 @@ type Options struct {
 	Agents []agent.Agent
 	// Now tells the time; nil uses time.Now.
 	Now func() time.Time
+	// Budgets are the read tools' page sizes; zero uses the defaults.
+	Budgets refs.Budgets
 }
 
 // Errors of the workbench's operations.
@@ -46,6 +48,7 @@ var (
 	ErrNothingToRef     = errors.New("会话里还没有可以引用的消息")
 	ErrSelfReference    = errors.New("暂不支持把会话引用给它自己")
 	ErrNoSuchReference  = errors.New("引用不存在")
+	ErrBadRange         = errors.New("引用范围无效")
 	errWorkbenchClosing = errors.New("工作台正在关闭")
 )
 
@@ -76,11 +79,12 @@ type AgentInfo struct {
 
 // Workbench is the open workbench.
 type Workbench struct {
-	st     *store.Store
-	mcp    *mcpserver.Server
-	agents []agent.Agent
-	now    func() time.Time
-	pumps  sync.WaitGroup
+	st      *store.Store
+	mcp     *mcpserver.Server
+	agents  []agent.Agent
+	now     func() time.Time
+	budgets refs.Budgets
+	pumps   sync.WaitGroup
 
 	mu         sync.Mutex
 	closing    bool
@@ -114,6 +118,9 @@ func Open(o Options) (*Workbench, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
+	if o.Budgets == (refs.Budgets{}) {
+		o.Budgets = refs.DefaultBudgets
+	}
 	st, err := store.Open(o.DataDir)
 	if err != nil {
 		return nil, err
@@ -123,7 +130,7 @@ func Open(o Options) (*Workbench, error) {
 		st.Close()
 		return nil, err
 	}
-	w := &Workbench{st: st, agents: o.Agents, now: o.Now, sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
+	w := &Workbench{st: st, agents: o.Agents, now: o.Now, budgets: o.Budgets, sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
 	if w.workspaces, err = st.Workspaces(); err != nil {
 		st.Close()
 		return nil, err
