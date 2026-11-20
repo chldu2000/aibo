@@ -7,6 +7,8 @@ package claude_test
 //	AIBO_CONTRACT=1 CGO_ENABLED=0 go test ./internal/agent/claude -run Contract -v
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -151,4 +153,13 @@ func TestContractInterrupt(t *testing.T) {
 	if r := ms[len(ms)-1]; r.State != model.Done || !strings.Contains(r.Text, "OK") {
 		t.Errorf("turn after stop = %+v", r)
 	}
+}
+
+func TestContractResumeFailure(t *testing.T) {
+	path := contract(t)
+	_, err := claude.New(path).Start(context.Background(), agent.StartOptions{Workspace: t.TempDir(), Model: contractModel, ResumeID: "00000000-0000-4000-8000-000000000000"})
+	if !errors.Is(err, agent.ErrResumeFailed) || !strings.Contains(err.Error(), "No conversation found") {
+		t.Errorf("resuming a lost session: %v", err)
+	}
+	t.Logf("error: %v", err)
 }

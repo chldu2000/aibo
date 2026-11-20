@@ -35,6 +35,11 @@ type Options struct {
 	Now func() time.Time
 	// Budgets are the read tools' page sizes; zero uses the defaults.
 	Budgets refs.Budgets
+	// IdleTimeout is how long a native session runs without a turn
+	// before it is stopped (30 minutes when zero); IdleCheck is how often
+	// that is looked at (a minute when zero).
+	IdleTimeout time.Duration
+	IdleCheck   time.Duration
 }
 
 // Errors of the workbench's operations.
@@ -49,6 +54,7 @@ var (
 	ErrNothingToRef     = errors.New("会话里还没有可以引用的消息")
 	ErrSlashCommand     = errors.New("暂不支持 Agent 自带的斜杠命令。要压缩上下文，请用输入框里的“压缩上下文”")
 	ErrNothingToCompact = errors.New("会话里还没有内容，无需压缩")
+	ErrNeedsRecovery    = errors.New("原生会话无法续接：请先选择新开原生会话，或暂不处理")
 	ErrNoSuchReference  = errors.New("引用不存在")
 	ErrBadRange         = errors.New("引用范围无效")
 	ErrNoSuchApproval   = errors.New("这个审批请求已经处理过或不存在")
@@ -76,6 +82,11 @@ type Status struct {
 	Error string
 	// Approvals counts the approval requests waiting for an answer.
 	Approvals int
+	// ResumeFailed is the Agent's error when the native session could
+	// not be resumed, until the user chooses what to do (Recover).
+	// ReadOnly is set when the user chose to leave it for now.
+	ResumeFailed string
+	ReadOnly     bool
 }
 
 // AgentInfo describes an available Agent.
@@ -91,6 +102,8 @@ type Workbench struct {
 	agents  []agent.Agent
 	now     func() time.Time
 	budgets refs.Budgets
+	idle    time.Duration
+	done    chan struct{} // closed when the workbench closes
 	pumps   sync.WaitGroup
 
 	mu         sync.Mutex
@@ -116,6 +129,14 @@ type session struct {
 	// the keys of itemKey, to indexes in msgs.
 	items     map[string]int
 	lastFlush time.Time
+	// resumeFailed is the Agent's error when the native session could not
+	// be resumed, until the user chooses what to do (Recover); readOnly
+	// is set when the user chose to leave it for now.
+	resumeFailed string
+	readOnly     bool
+	// lastActive is when the session last did something, for idle
+	// disconnection.
+	lastActive time.Time
 	// restart is set when the native session must start again, without
 	// a revoked rule, once its turn ends.
 	restart bool
@@ -145,7 +166,13 @@ func Open(o Options) (*Workbench, error) {
 		st.Close()
 		return nil, err
 	}
-	w := &Workbench{st: st, agents: o.Agents, now: o.Now, budgets: o.Budgets, sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
+	if o.IdleTimeout == 0 {
+		o.IdleTimeout = idleTimeout
+	}
+	if o.IdleCheck == 0 {
+		o.IdleCheck = time.Minute
+	}
+	w := &Workbench{st: st, agents: o.Agents, now: o.Now, budgets: o.Budgets, idle: o.IdleTimeout, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
 	if w.workspaces, err = st.Workspaces(); err != nil {
 		st.Close()
 		return nil, err
@@ -170,6 +197,7 @@ func Open(o Options) (*Workbench, error) {
 		st.Close()
 		return nil, err
 	}
+	go w.watchIdle(o.IdleCheck)
 	return w, nil
 }
 
@@ -177,7 +205,12 @@ func Open(o Options) (*Workbench, error) {
 // interrupted, and closes the database.
 func (w *Workbench) Close() error {
 	w.mu.Lock()
+	if w.closing {
+		w.mu.Unlock()
+		return nil
+	}
 	w.closing = true
+	close(w.done)
 	var natives []agent.Session
 	for _, s := range w.sessions {
 		if s.native != nil {
@@ -342,7 +375,8 @@ func (w *Workbench) Status(id string) Status {
 	if !ok {
 		return Status{}
 	}
-	return Status{Connected: s.native != nil, Running: s.running, Error: s.err, Approvals: len(w.pending(s))}
+	return Status{Connected: s.native != nil, Running: s.running, Error: s.err, Approvals: len(w.pending(s)),
+		ResumeFailed: s.resumeFailed, ReadOnly: s.readOnly}
 }
 
 // Messages returns a session's messages in order.
@@ -388,7 +422,6 @@ func (w *Workbench) load(id string, s *session) error {
 // may then have no text of its own.
 func (w *Workbench) Send(id, text string) error {
 	text = strings.TrimSpace(text)
-	now := w.now()
 
 	w.mu.Lock()
 	s, ok := w.sessions[id]
@@ -399,14 +432,16 @@ func (w *Workbench) Send(id, text string) error {
 	case w.closing:
 		w.mu.Unlock()
 		return errWorkbenchClosing
+	case s.resumeFailed != "":
+		w.mu.Unlock()
+		return ErrNeedsRecovery
 	}
 	if slashCommand.MatchString(text) {
 		// aibo's record would no longer match the Agent's state.
 		w.mu.Unlock()
 		return ErrSlashCommand
 	}
-	drafts := w.drafts(id)
-	if text == "" && len(drafts) == 0 {
+	if text == "" && len(w.drafts(id)) == 0 {
 		w.mu.Unlock()
 		return ErrEmptyMessage
 	}
@@ -418,9 +453,29 @@ func (w *Workbench) Send(id, text string) error {
 		w.mu.Unlock()
 		return err
 	}
+	// Running from here, so that nothing else starts meanwhile.
+	s.running, s.err, s.items = true, "", map[string]int{}
+	native, info := s.native, s.info
+	ws, _ := w.workspace(info.WorkspaceID)
+	w.mu.Unlock()
+
+	// The native session first: if it cannot be resumed, nothing is
+	// recorded, and the user's words stay in the composer.
+	if native == nil {
+		var err error
+		if native, err = w.connect(id, info, ws); err != nil {
+			w.startFailed(id, err)
+			return err
+		}
+	}
+
+	now := w.now()
+	w.mu.Lock()
+	drafts := w.drafts(id)
 	m := model.Message{Kind: model.UserMessage, State: model.Done, Text: text, CreatedAt: now, FinishedAt: now}
 	seq, err := w.st.AppendMessage(id, m)
 	if err != nil {
+		s.running = false
 		w.mu.Unlock()
 		return err
 	}
@@ -432,6 +487,7 @@ func (w *Workbench) Send(id, text string) error {
 	}
 	if len(drafts) > 0 {
 		if err := w.st.Deliver(m.Refs, seq); err != nil {
+			s.running = false
 			w.mu.Unlock()
 			return err
 		}
@@ -444,28 +500,32 @@ func (w *Workbench) Send(id, text string) error {
 		s.info.Title = defaultTitle(text)
 		w.st.SetTitle(id, s.info.Title, false)
 	}
-	s.info.ActiveAt = now
+	s.info.ActiveAt, s.lastActive = now, now
 	w.st.Touch(id, now)
-	s.running, s.err, s.items = true, "", map[string]int{}
-	native := s.native
-	info := s.info
-	ws, _ := w.workspace(info.WorkspaceID)
 	w.mu.Unlock()
 	w.notify(Change{SessionID: id, Message: &m})
 
-	if native == nil {
-		var err error
-		native, err = w.connect(id, info, ws)
-		if err != nil {
-			w.fail(id, "启动 Agent 失败："+err.Error())
-			return err
-		}
-	}
 	if err := native.Send(context.Background(), agent.Turn{Text: refs.TurnText(briefs, text)}); err != nil {
 		w.fail(id, "发送失败："+err.Error())
 		return err
 	}
 	return nil
+}
+
+// startFailed ends a turn whose native session did not start: a native
+// session that cannot be resumed waits for the user to choose what to do
+// (Recover).
+func (w *Workbench) startFailed(id string, err error) {
+	if !errors.Is(err, agent.ErrResumeFailed) {
+		w.fail(id, "启动 Agent 失败："+err.Error())
+		return
+	}
+	w.mu.Lock()
+	if s, ok := w.sessions[id]; ok {
+		s.running, s.resumeFailed, s.readOnly = false, err.Error(), false
+	}
+	w.mu.Unlock()
+	w.notify(Change{SessionID: id})
 }
 
 // connect starts or resumes the session's native session and pumps its
@@ -489,6 +549,7 @@ func (w *Workbench) connect(id string, info model.Session, ws model.Workspace) (
 		return nil, errWorkbenchClosing
 	}
 	w.sessions[id].native = native
+	w.sessions[id].lastActive = w.now()
 	w.pumps.Add(1)
 	w.mu.Unlock()
 	go w.pump(id, native)
@@ -588,6 +649,9 @@ func (w *Workbench) Compact(id string) error {
 	case s.running:
 		w.mu.Unlock()
 		return ErrTurnRunning
+	case s.resumeFailed != "":
+		w.mu.Unlock()
+		return ErrNeedsRecovery
 	}
 	if err := w.load(id, s); err != nil {
 		w.mu.Unlock()
@@ -605,7 +669,7 @@ func (w *Workbench) Compact(id string) error {
 	if native == nil {
 		var err error
 		if native, err = w.connect(id, info, ws); err != nil {
-			w.fail(id, "启动 Agent 失败："+err.Error())
+			w.startFailed(id, err)
 			return err
 		}
 	}

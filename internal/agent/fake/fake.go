@@ -34,9 +34,10 @@ type Agent struct {
 	decisions chan Decision
 	levels    chan agent.ApprovalLevel
 
-	mu     sync.Mutex
-	starts []agent.StartOptions
-	nextID int
+	mu          sync.Mutex
+	resumeFails string
+	starts      []agent.StartOptions
+	nextID      int
 }
 
 // New returns a fake Agent answering every turn with respond.
@@ -62,6 +63,14 @@ func (a *Agent) Name() string     { return "假 Agent" }
 // ToolName is the tool's own name: the fake calls tools by it.
 func (a *Agent) ToolName(tool string) string { return tool }
 
+// FailResumes makes every Start that resumes fail with ErrResumeFailed
+// and why, as an Agent that lost its native sessions; "" stops it.
+func (a *Agent) FailResumes(why string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.resumeFails = why
+}
+
 // Starts returns the options of every Start so far, in order.
 func (a *Agent) Starts() []agent.StartOptions {
 	a.mu.Lock()
@@ -72,6 +81,11 @@ func (a *Agent) Starts() []agent.StartOptions {
 func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Session, error) {
 	a.mu.Lock()
 	a.starts = append(a.starts, opts)
+	if opts.ResumeID != "" && a.resumeFails != "" {
+		why := a.resumeFails
+		a.mu.Unlock()
+		return nil, fmt.Errorf("%w：%s", agent.ErrResumeFailed, why)
+	}
 	id := opts.ResumeID
 	if id == "" {
 		a.nextID++

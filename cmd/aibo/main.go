@@ -7,6 +7,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -102,6 +103,31 @@ func main() {
 			}
 			return paths[0], true
 		},
+	})
+	// Quitting while sessions run asks first: their turns would be cut
+	// short (and saved as interrupted).
+	var quitting atomic.Bool
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		n := 0
+		for _, x := range wb.Sessions() {
+			if wb.Status(x.ID).Running {
+				n++
+			}
+		}
+		if n == 0 || e.SessionEnding || quitting.Load() {
+			return
+		}
+		e.PreventDefault()
+		go func() {
+			r, err := mygo.Dialog.Message(mygo.MessageOptions{Parent: win.Load(), Type: mygo.MessageWarning,
+				Message: fmt.Sprintf("有 %d 个会话正在运行，确定退出吗？", n),
+				Detail:  "退出会中断它们：正在进行的回复保存为“已中断”，还没处理的审批视为拒绝。",
+				Buttons: []string{"退出", "取消"}, DefaultButton: 1, CancelButton: 1})
+			if err == nil && r.Button == 0 {
+				quitting.Store(true)
+				mygo.App.Quit()
+			}
+		}()
 	})
 	// A notification opens its session, also after aibo was relaunched.
 	mygo.App.OnNotificationClick(func(id string) {

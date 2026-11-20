@@ -8,6 +8,8 @@ package codex_test
 //	AIBO_CONTRACT=1 CGO_ENABLED=0 go test ./internal/agent/codex -run Contract -v
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -167,4 +169,14 @@ func TestContractInterrupt(t *testing.T) {
 	if r := lastReply(e.idle(t, s.ID)); r.State != model.Done || !strings.Contains(r.Text, "OK") {
 		t.Errorf("turn after stop = %+v", r)
 	}
+}
+
+func TestContractResumeFailure(t *testing.T) {
+	path := contract(t)
+	a := codex.New(path)
+	_, err := a.Start(context.Background(), agent.StartOptions{Workspace: t.TempDir(), ResumeID: "01a1f700-0000-7000-8000-000000000000"})
+	if !errors.Is(err, agent.ErrResumeFailed) || !strings.Contains(err.Error(), "no rollout found") {
+		t.Errorf("resuming a lost thread: %v", err)
+	}
+	t.Logf("error: %v", err)
 }

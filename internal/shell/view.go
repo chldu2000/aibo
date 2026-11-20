@@ -10,6 +10,7 @@ import (
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
+	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
@@ -247,8 +248,12 @@ func (s *Shell) banners(c *ui.Context, id string) {
 			}
 		})
 	}
-	if e := s.wb.Status(id).Error; e != "" {
-		bar(e, nil)
+	st := s.wb.Status(id)
+	if st.Error != "" {
+		bar(st.Error, nil)
+	}
+	if st.ResumeFailed != "" {
+		s.resumeBanner(c, id, st)
 	}
 	if s.notice != "" {
 		bar(s.notice, func() { s.notice = "" })
@@ -296,7 +301,11 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			})
 		}
 		prompt := "给 " + s.agentName(x.Agent) + " 发消息"
-		input := ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).OnTextKey(func(k ui.TextKey) bool {
+		blocked := s.wb.Status(x.ID).ResumeFailed != ""
+		if blocked {
+			prompt = "原生会话无法续接，请先在上方选择怎么处理"
+		}
+		input := ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).Disabled(blocked).OnTextKey(func(k ui.TextKey) bool {
 			if k.Key != ui.KeyEnter || k.Mods != 0 {
 				return false
 			}
@@ -494,4 +503,36 @@ func kTokens(n int) string {
 		return fmt.Sprint(n)
 	}
 	return fmt.Sprintf("%.1fk", float64(n)/1000)
+}
+
+// resumeBanner says the native session could not be resumed, in the
+// Agent's words, and offers what to do: a new native session, with the
+// earlier messages referenced or not, or nothing for now (read-only).
+func (s *Shell) resumeBanner(c *ui.Context, id string, st workbench.Status) {
+	t := c.Theme()
+	recover := func(r workbench.Recovery) {
+		if err := s.wb.Recover(id, r); err != nil {
+			s.notice = err.Error()
+		}
+	}
+	ui.Column(c).Gap(8).Padding(10, 12).Radius(14).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
+		if st.ReadOnly {
+			ui.Text(c, "会话只读：原生会话无法续接").Bold().TextColor(t.Text)
+		} else {
+			ui.Text(c, "无法续接原生会话").Bold().TextColor(t.Text)
+			ui.Text(c, st.ResumeFailed).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
+			ui.Text(c, "aibo 的会话记录都还在。新开一个原生会话就能继续，但 Agent 的上下文会从头开始；带上引用，它可以按需读回之前的内容。").FontSize(12).TextColor(t.TextMuted)
+		}
+		ui.Row(c).Gap(6).Wrap().Children(func() {
+			if ui.PrimaryButton(c, "新开原生会话并引用之前的内容（推荐）").Clicked() {
+				recover(workbench.FreshWithReference)
+			}
+			if ui.Button(c, "新开原生会话（不带引用）").Clicked() {
+				recover(workbench.Fresh)
+			}
+			if !st.ReadOnly && ui.Button(c, "暂不处理").Clicked() {
+				recover(workbench.Later)
+			}
+		})
+	})
 }

@@ -10,7 +10,12 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 )
+
+// ErrResumeFailed is what Start returns, wrapped with the Agent's own
+// words, when the native session to resume is lost or cannot be resumed.
+var ErrResumeFailed = errors.New("原生会话无法续接")
 
 // Kind names an Agent implementation, as stored with each session.
 type Kind string

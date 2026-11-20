@@ -781,3 +781,72 @@ func TestCompactionSlashAndSelfReference(t *testing.T) {
 	click("引用")
 	shows("本会话 · #1–#2（2 条）")
 }
+
+// A native session that cannot be resumed shows why, in the Agent's
+// words, and what can be done; a new one is marked in the session.
+func TestResumeFailureBanner(t *testing.T) {
+	dir := t.TempDir()
+	respond := func(ctx context.Context, _ agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
+		emit(agent.ReplyDone{ReplyID: "r", Text: "好的"})
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: dir, Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	wb.Send(s.ID, "定个方案")
+	for wb.Status(s.ID).Running {
+		<-changes
+	}
+	wb.Close()
+
+	f := fake.New(respond)
+	f.FailResumes("No conversation found with session ID: x")
+	wb, err = workbench.Open(workbench.Options{DataDir: dir, Agents: []agent.Agent{f}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 900)
+	frame := func() {
+		for i := 0; i < 3; i++ {
+			tt.Frame()
+			tt.Advance(time.Second)
+		}
+	}
+	frame()
+	click := func(s string) {
+		t.Helper()
+		if err := tt.Click(s); err != nil {
+			t.Fatalf("%v; the window shows %q", err, tt.Texts())
+		}
+		frame()
+	}
+	shows := func(want ...string) {
+		t.Helper()
+		for _, w := range want {
+			if !tt.HasText(w) {
+				t.Errorf("the window lacks %q: %q", w, tt.Texts())
+			}
+		}
+	}
+
+	click("给 假 Agent 发消息")
+	tt.Type("继续")
+	tt.Key(0, ui.KeyEnter)
+	frame()
+	shows("无法续接原生会话", "原生会话无法续接：No conversation found with session ID: x", "原生会话无法续接，请先在上方选择怎么处理")
+	click("暂不处理")
+	shows("会话只读：原生会话无法续接")
+	if tt.HasText("暂不处理") {
+		t.Error("read-only still offers to leave it")
+	}
+	click("新开原生会话并引用之前的内容（推荐）")
+	if tt.HasText("原生会话无法续接") {
+		t.Errorf("the banner stayed: %q", tt.Texts())
+	}
+	shows("已切换到新的 Agent 原生会话", "本会话 · #1–#2（2 条）", "给 假 Agent 发消息")
+}

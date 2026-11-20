@@ -5,6 +5,7 @@
 package shell
 
 import (
+	"errors"
 	"path/filepath"
 	"sync"
 
@@ -190,7 +191,10 @@ func (s *Shell) newSession(ws model.Workspace, kind agent.Kind) {
 // send sends the session's draft.
 func (s *Shell) send(id string, text string) bool {
 	if err := s.wb.Send(id, text); err != nil {
-		s.notice = err.Error()
+		// A native session that cannot be resumed has its own banner.
+		if !errors.Is(err, agent.ErrResumeFailed) && !errors.Is(err, workbench.ErrNeedsRecovery) {
+			s.notice = err.Error()
+		}
 		return false
 	}
 	return true

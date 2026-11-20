@@ -92,7 +92,7 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	}
 	if err := srv.call(ctx, method, params, &res); err != nil {
 		if opts.ResumeID != "" {
-			return nil, fmt.Errorf("续接 Codex thread %s 失败：%w", opts.ResumeID, err)
+			return nil, fmt.Errorf("%w：%v", agent.ErrResumeFailed, err)
 		}
 		return nil, fmt.Errorf("新建 Codex thread 失败：%w", err)
 	}

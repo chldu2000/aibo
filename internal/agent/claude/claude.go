@@ -98,19 +98,46 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	if err != nil {
 		return nil, err
 	}
-	s := &session{cmd: cmd, stdin: stdin, events: make(chan agent.Event, 256), parser: newParser(), exited: make(chan struct{})}
+	s := &session{cmd: cmd, stdin: stdin, events: make(chan agent.Event, 256), parser: newParser(), exited: make(chan struct{}), ready: make(chan struct{})}
 	cmd.Stderr = &s.stderr
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("启动 Claude Code 失败：%w", err)
 	}
 	go s.read(stdout)
-	// The control protocol starts with initialize; interrupts need it.
+	// The control protocol starts with initialize, which Claude Code
+	// answers once the session is ready: a session it cannot resume ends
+	// first, with the reason on stderr.
 	if err := s.write(map[string]any{"type": "control_request", "request_id": "init", "request": map[string]any{"subtype": "initialize", "hooks": nil}}); err != nil {
 		s.Close()
 		return nil, err
 	}
-	return s, nil
+	select {
+	case <-s.ready:
+		return s, nil
+	case <-s.exited:
+	case <-ctx.Done():
+		s.cmd.Process.Kill()
+		<-s.exited
+		return nil, ctx.Err()
+	case <-time.After(startTimeout):
+		s.cmd.Process.Kill()
+		<-s.exited
+	}
+	why := strings.TrimSpace(s.stderr.String())
+	if why == "" {
+		why = s.startErr
+	}
+	if why == "" {
+		why = "没有回应"
+	}
+	if opts.ResumeID != "" {
+		return nil, fmt.Errorf("%w：%s", agent.ErrResumeFailed, why)
+	}
+	return nil, fmt.Errorf("Claude Code 启动失败：%s", why)
 }
+
+// startTimeout is how long Claude Code may take to be ready.
+const startTimeout = time.Minute
 
 type session struct {
 	cmd    *exec.Cmd
@@ -118,6 +145,10 @@ type session struct {
 	events chan agent.Event
 	stderr tail
 	exited chan struct{}
+	// ready is closed when Claude Code answered initialize; startErr is
+	// what it reported before, failing to start.
+	ready    chan struct{}
+	startErr string
 
 	mu      sync.Mutex
 	parser  *parser
@@ -193,7 +224,26 @@ func (s *session) Close() error {
 func (s *session) read(stdout io.Reader) {
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 64*1024), 64<<20) // tool results come in one line
+	started := false
 	for sc.Scan() {
+		if !started {
+			var e struct {
+				Type     string `json:"type"`
+				Errors   []string
+				Response struct {
+					RequestID string `json:"request_id"`
+				} `json:"response"`
+			}
+			json.Unmarshal(sc.Bytes(), &e)
+			switch {
+			case e.Type == "control_response" && e.Response.RequestID == "init":
+				started = true
+				close(s.ready)
+			case e.Type == "result":
+				s.startErr = strings.Join(e.Errors, "\n")
+			}
+			continue
+		}
 		s.mu.Lock()
 		evs := s.parser.line(sc.Bytes())
 		for _, e := range evs {
