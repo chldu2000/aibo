@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -295,4 +296,114 @@ func TestSelectAndReferenceToNewSession(t *testing.T) {
 		t.Fatalf("drafts of the new session = %+v", d)
 	}
 	shows("假 Agent · 问题一 · #3–#4（2 条）") // its chip, in the new session's composer
+}
+
+// Pulling from the receiver: "@" opens the panel, which finds a session in
+// another workspace, chooses a range on its timeline with the brief beside
+// it, and inserts the reference next to what the user typed.
+func TestPullReferenceWithAt(t *testing.T) {
+	var got []string
+	var mu sync.Mutex
+	respond := func(ctx context.Context, _ agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
+		mu.Lock()
+		got = append(got, turn.Text)
+		mu.Unlock()
+		emit(agent.ReplyDelta{ReplyID: "r", Text: strings.Replace(turn.Text, "问", "答", 1)})
+		emit(agent.ReplyDone{ReplyID: "r"})
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	other, _ := wb.AddWorkspace(t.TempDir())
+	src, _ := wb.NewSession(other.ID, fake.Kind, "")
+	for _, q := range []string{"问：迁移的风险", "问：时区", "问：方案"} {
+		wb.Send(src.ID, q)
+		for wb.Status(src.ID).Running {
+			<-changes
+		}
+	}
+	home, _ := wb.AddWorkspace(t.TempDir())
+	wb.NewSession(home.ID, fake.Kind, "") // the newest: open at start
+	sh := shell.New(wb, shell.Options{})
+	tt := ui.NewTester(sh.View, 1100, 800)
+	tt.Frame()
+	click := func(s string) {
+		t.Helper()
+		if err := tt.Click(s); err != nil {
+			t.Fatalf("%v; the window shows %q", err, tt.Texts())
+		}
+		tt.Frame()
+	}
+	row := func(mods ui.Modifiers, seq string) {
+		t.Helper()
+		r, ok := tt.Find(seq)
+		if !ok {
+			t.Fatalf("no %s in %q", seq, tt.Texts())
+		}
+		tt.ClickAtWith(mods, r.X+r.W/2, r.Y+r.H/2)
+		tt.Frame()
+	}
+	shows := func(want ...string) {
+		t.Helper()
+		for _, w := range want {
+			if !tt.HasText(w) {
+				t.Errorf("the window lacks %q: %q", w, tt.Texts())
+			}
+		}
+	}
+
+	click("给 假 Agent 发消息")
+	tt.Type("按这个写 @")
+	tt.Frame()
+	shows("引用其他会话")
+	tt.Type("迁移") // the search has the focus
+	tt.Frame()
+	if tt.HasText("选择 新会话") {
+		t.Error("the search lists the receiving session itself")
+	}
+	click("选择 问：迁移的风险")
+	shows("点击消息设起点，Shift+点击设终点", "选好范围后，这里显示概要。")
+	row(0, "#3")
+	row(ui.Shift, "#4")
+	shows("已选 #3–#4 · 2 条", "- 范围：#3–#4，共 2 条消息", "- 源工作区："+other.Path)
+	click("插入引用")
+	if tt.HasText("插入引用") {
+		t.Fatal("the panel stayed open")
+	}
+	shows("假 Agent · 问：迁移的风险 · #3–#4（2 条）")
+
+	// The "@" did not stay in the draft; the rest did.
+	// The composer has the focus back: Enter sends.
+	tt.Key(0, ui.KeyEnter)
+	guard := time.After(time.Minute)
+	for {
+		mu.Lock()
+		n := len(got)
+		mu.Unlock()
+		if n == 4 {
+			break
+		}
+		select {
+		case <-changes:
+		case <-guard:
+			t.Fatalf("Enter sent nothing; the window shows %q", tt.Texts())
+		}
+	}
+	mu.Lock()
+	last := got[3]
+	mu.Unlock()
+	if !strings.HasSuffix(last, "</aibo-reference>\n\n按这个写") || strings.Contains(last, "@") {
+		t.Errorf("the Agent received %q", last)
+	}
+
+	// The @ button opens the panel too, and Back returns to the search.
+	tt.Frame()
+	click("引用其他会话（@）")
+	click("选择 问：迁移的风险")
+	click("返回搜索")
+	shows("选择 问：迁移的风险")
 }

@@ -40,6 +40,11 @@ type Shell struct {
 	views   map[string]*sessionView
 	notice  string // an error to show, until dismissed
 	md      markdown.Options
+	// pull is the @ panel of the open session.
+	pull pull
+	// refocus gives the composer the keyboard focus in the next frame
+	// that builds it.
+	refocus bool
 	// openCards are the reference cards showing their briefs.
 	openCards map[string]bool
 }
@@ -50,6 +55,9 @@ type sessionView struct {
 	loaded bool
 	list   ui.ListState
 	draft  string
+	// typed is the draft as the composer last saw it, to notice an "@"
+	// typed into it.
+	typed string
 	// sel is selection mode.
 	sel selection
 	// highlight is the range of sequence numbers shown highlighted, as

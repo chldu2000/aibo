@@ -130,6 +130,7 @@ func (s *Shell) pane(c *ui.Context) {
 				}
 			}
 		})
+		s.pullPanel(c, x) // before the composer, which it may give the focus back to
 		ui.Column(c).Absolute().Bottom(16).Left(16).Right(16).Gap(8).Children(func() {
 			s.banners(c, x.ID)
 			if v.sel.on {
@@ -238,7 +239,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			})
 		}
 		prompt := "给 " + s.agentName(x.Agent) + " 发消息"
-		ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).OnTextKey(func(k ui.TextKey) bool {
+		input := ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).OnTextKey(func(k ui.TextKey) bool {
 			if k.Key != ui.KeyEnter || k.Mods != 0 {
 				return false
 			}
@@ -247,7 +248,20 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			}
 			return true
 		})
+		if s.refocus {
+			input.Focus()
+			s.refocus = false
+		}
+		// Typing "@" opens the @ panel instead.
+		if draft, at := typedAt(v.typed, v.draft); at {
+			v.draft = draft
+			s.openPull()
+		}
+		v.typed = v.draft
 		ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+			if iconButton(c, "at", "引用其他会话（@）").Clicked() {
+				s.openPull()
+			}
 			ui.Spacer(c)
 			if running {
 				if roundButton(c, "stop.fill", "停止", t.Text, t.Background).Clicked() {
