@@ -292,7 +292,7 @@ func (rd reader) ListReferences(sessionID string) (string, error) {
 func (w *Workbench) given(sessionID, refID string) (*model.Reference, []model.Message, string, error) {
 	r, ok := w.refs[refID]
 	if !ok || r.TargetID != sessionID || r.State != model.Delivered {
-		return nil, nil, "", fmt.Errorf("本会话没有 ID 为 %q 的引用。可以用 %s 查看交给本会话的引用。", refID, refs.ToolListReferences)
+		return nil, nil, "", fmt.Errorf("本会话没有 ID 为 %q 的引用。可以用 %s 查看交给本会话的引用。", refID, w.receiverTools(sessionID)(refs.ToolListReferences))
 	}
 	ms, exists, err := w.st.MessageRange(r.SourceID, r.From, r.To)
 	if err != nil {
@@ -388,7 +388,7 @@ func (rd reader) SearchReference(sessionID string, q mcpserver.SearchReference) 
 	if q.RefID != "" {
 		r, ok := w.refs[q.RefID]
 		if !ok || r.TargetID != sessionID || r.State != model.Delivered {
-			return "", fmt.Errorf("本会话没有 ID 为 %q 的引用。可以用 %s 查看交给本会话的引用。", q.RefID, refs.ToolListReferences)
+			return "", fmt.Errorf("本会话没有 ID 为 %q 的引用。可以用 %s 查看交给本会话的引用。", q.RefID, w.receiverTools(sessionID)(refs.ToolListReferences))
 		}
 		targets = []*model.Reference{r}
 	} else {

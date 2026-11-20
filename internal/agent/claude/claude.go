@@ -53,13 +53,31 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 	if opts.ResumeID != "" {
 		args = append(args, "--resume", opts.ResumeID)
 	}
+	if opts.MCP != nil {
+		// Only the workbench's server, its token read from the process's
+		// environment (tokenVar) so that it is not on the command line,
+		// and its tools need no approval.
+		cfg, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"aibo": map[string]any{
+			"type":    "http",
+			"url":     opts.MCP.URL,
+			"headers": map[string]string{"Authorization": "Bearer ${" + tokenVar + "}"},
+		}}})
+		args = append(args, "--mcp-config", string(cfg), "--strict-mcp-config", "--allowedTools", "mcp__aibo__*")
+	}
 	return args
 }
+
+// tokenVar is the environment variable that holds the session's token
+// for the workbench MCP server.
+const tokenVar = "AIBO_MCP_TOKEN"
 
 func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Session, error) {
 	cmd := exec.Command(a.Path, a.args(opts)...)
 	cmd.Dir = opts.Workspace
 	cmd.Env = append(os.Environ(), a.Env...)
+	if opts.MCP != nil {
+		cmd.Env = append(cmd.Env, tokenVar+"="+opts.MCP.Token)
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

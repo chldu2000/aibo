@@ -39,9 +39,10 @@ func New(path string) *Agent { return &Agent{Path: path} }
 func (a *Agent) Kind() agent.Kind { return Kind }
 func (a *Agent) Name() string     { return "Codex" }
 
-// ToolName is the tool's own name. How Codex's model sees an MCP
-// server's tools is to be measured with ticket 08.
-func (a *Agent) ToolName(tool string) string { return tool }
+// ToolName is how Codex's model names an MCP server's tool, as measured
+// with codex-cli 0.169.0: mcp__<server>__<tool>, as Claude does. (The
+// app-server's items name it <server>.<tool>; the model never sees that.)
+func (a *Agent) ToolName(tool string) string { return "mcp__aibo__" + tool }
 
 // Approval policy and sandbox until the approval levels (ticket 10): the
 // default level, every approval request declined.
@@ -58,6 +59,16 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	params := map[string]any{"cwd": opts.Workspace, "approvalPolicy": approvalPolicy, "sandbox": sandbox}
 	if opts.Model != "" {
 		params["model"] = opts.Model
+	}
+	if opts.MCP != nil {
+		// This thread's alone: its token in its headers, which a thread's
+		// config keeps apart from the other threads'. Its tools need no
+		// approval.
+		params["config"] = map[string]any{"mcp_servers": map[string]any{"aibo": map[string]any{
+			"url":                         opts.MCP.URL,
+			"http_headers":                map[string]string{"Authorization": "Bearer " + opts.MCP.Token},
+			"default_tools_approval_mode": "approve",
+		}}}
 	}
 	method := "thread/start"
 	if opts.ResumeID != "" {
