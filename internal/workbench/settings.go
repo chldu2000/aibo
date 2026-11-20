@@ -62,3 +62,18 @@ func (w *Workbench) SetSettings(s Settings) error {
 	w.notify(Change{})
 	return nil
 }
+
+// Pref reads a preference kept with the data, as the executables the
+// user chose; ok is false when it is not set.
+func (w *Workbench) Pref(key string, v any) (ok bool, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.st.Setting("pref:"+key, v)
+}
+
+// SetPref keeps a preference with the data.
+func (w *Workbench) SetPref(key string, v any) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.st.SetSetting("pref:"+key, v)
+}

@@ -2,6 +2,7 @@ package codex
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -22,6 +23,8 @@ type thread struct {
 	files map[string]item
 	// compacting is set while a compaction asked for runs.
 	compacting bool
+	// loggedOut is set once the turn found Codex signed out.
+	loggedOut bool
 }
 
 func newThread() *thread { return &thread{replies: map[string]bool{}, files: map[string]item{}} }
@@ -89,10 +92,14 @@ type notification struct {
 		} `json:"error"`
 	} `json:"turn"`
 	Error *struct {
-		Message string `json:"message"`
+		Message        string          `json:"message"`
+		CodexErrorInfo json.RawMessage `json:"codexErrorInfo"`
 	} `json:"error"`
 	WillRetry bool `json:"willRetry"`
 }
+
+// unauthorized matches an error's info of a 401: Codex signed out.
+var unauthorized = regexp.MustCompile(`"httpStatusCode"\s*:\s*401\b`)
 
 // tool is a tool call item's name and input, or ok false for items that
 // are not tool calls.
@@ -208,12 +215,20 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		}
 		return []agent.Event{agent.PlanUpdated{PlanID: n.TurnID, Items: items, Raw: params}}
 	case "error":
+		if n.Error != nil && unauthorized.Match(n.Error.CodexErrorInfo) {
+			// Signed out: no use waiting for its retries.
+			if t.loggedOut {
+				return nil
+			}
+			t.loggedOut = true
+			return []agent.Event{agent.NotLoggedIn{}, agent.Failed{Message: "Codex 未登录。请在设置的“Agent”页登录，然后重新发送。"}}
+		}
 		if n.Error != nil && !n.WillRetry {
 			return []agent.Event{agent.Failed{Message: "Codex 出错：" + n.Error.Message}}
 		}
 	case "turn/completed":
 		clear(t.files)
-		t.compacting = false
+		t.compacting, t.loggedOut = false, false
 		out := t.flushReasoning()
 		switch n.Turn.Status {
 		case "interrupted":

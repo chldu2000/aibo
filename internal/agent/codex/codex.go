@@ -24,17 +24,27 @@ const Kind agent.Kind = "codex"
 
 // Agent runs Codex.
 type Agent struct {
-	// Path is the codex executable.
-	Path string
-	// Env is added to the environment of its process.
-	Env []string
+	mu sync.Mutex
+	// onAccount is told of sign-ins: their end (LoginDone) and changes of
+	// the account.
+	onAccount func(AccountEvent)
+	// path is the codex executable; env is added to the environment of
+	// its process.
+	path string
+	env  []string
+	srv  *server // nil until the first session, or after it exited
+}
 
-	mu  sync.Mutex
-	srv *server // nil until the first session, or after it exited
+// Configure sets the executable and the environment of the app-server
+// started from then on.
+func (a *Agent) Configure(path string, env []string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.path, a.env = path, env
 }
 
 // New returns the Agent running the codex at path.
-func New(path string) *Agent { return &Agent{Path: path} }
+func New(path string) *Agent { return &Agent{path: path} }
 
 func (a *Agent) Kind() agent.Kind { return Kind }
 func (a *Agent) Name() string     { return "Codex" }
@@ -109,13 +119,16 @@ func (a *Agent) server(ctx context.Context) (*server, error) {
 	if a.srv != nil && !a.srv.isDead() {
 		return a.srv, nil
 	}
-	srv, err := startServer(ctx, a.Path, a.Env, func(s *server) {
+	if a.path == "" {
+		return nil, errors.New("没有找到 Codex")
+	}
+	srv, err := startServer(ctx, a.path, a.env, func(s *server) {
 		a.mu.Lock()
 		if a.srv == s {
 			a.srv = nil
 		}
 		a.mu.Unlock()
-	})
+	}, a.account)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +142,9 @@ type server struct {
 	stdin  io.WriteCloser
 	stderr tail
 	onIdle func(*server)
+	// onAccount gets the notifications of the account: sign-ins and
+	// their end.
+	onAccount func(method string, params json.RawMessage)
 	// wmu orders writes to stdin; not mu, which the reader takes, so that
 	// a full pipe cannot hold both.
 	wmu sync.Mutex
@@ -157,7 +173,7 @@ type message struct {
 	} `json:"error,omitempty"`
 }
 
-func startServer(ctx context.Context, path string, env []string, onIdle func(*server)) (*server, error) {
+func startServer(ctx context.Context, path string, env []string, onIdle func(*server), onAccount func(string, json.RawMessage)) (*server, error) {
 	cmd := exec.Command(path, "app-server")
 	cmd.Env = append(os.Environ(), env...)
 	stdin, err := cmd.StdinPipe()
@@ -168,7 +184,7 @@ func startServer(ctx context.Context, path string, env []string, onIdle func(*se
 	if err != nil {
 		return nil, err
 	}
-	s := &server{cmd: cmd, stdin: stdin, onIdle: onIdle, pending: map[int]chan response{}, sessions: map[string]*session{}, exited: make(chan struct{})}
+	s := &server{cmd: cmd, stdin: stdin, onIdle: onIdle, onAccount: onAccount, pending: map[int]chan response{}, sessions: map[string]*session{}, exited: make(chan struct{})}
 	cmd.Stderr = &s.stderr
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("启动 Codex app-server 失败：%w", err)
@@ -342,8 +358,13 @@ func (s *server) request(id json.RawMessage, method string, params json.RawMessa
 	s.send(map[string]any{"id": id, "error": map[string]any{"code": -32601, "message": "aibo 不支持 " + method}})
 }
 
-// notify passes a notification to the session of its thread.
+// notify passes a notification to the session of its thread, and those
+// of the account to the Agent.
 func (s *server) notify(method string, params json.RawMessage) {
+	if strings.HasPrefix(method, "account/") && s.onAccount != nil {
+		s.onAccount(method, params)
+		return
+	}
 	var p struct {
 		ThreadID string `json:"threadId"`
 	}
@@ -416,9 +437,12 @@ func (s *session) notify(method string, params json.RawMessage) {
 	}
 	evs := s.parse.handle(method, params)
 	for _, e := range evs {
-		if _, ok := e.(agent.TurnEnded); ok {
+		switch e.(type) {
+		case agent.TurnEnded:
 			s.running, s.turn = false, ""
 			clear(s.asks)
+		case agent.NotLoggedIn:
+			go s.Interrupt(context.Background())
 		}
 	}
 	// Under the lock, so that Close does not close events meanwhile.
@@ -587,4 +611,79 @@ func (s *session) Compact(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// AccountEvent is news of the account: a sign-in that ended (LoginID
+// set), or a change of how Codex is signed in.
+type AccountEvent struct {
+	LoginID string
+	Success bool
+	Error   string
+}
+
+// OnAccount calls fn, from any goroutine, with the account's news.
+func (a *Agent) OnAccount(fn func(AccountEvent)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.onAccount = fn
+}
+
+func (a *Agent) account(method string, params json.RawMessage) {
+	a.mu.Lock()
+	fn := a.onAccount
+	a.mu.Unlock()
+	if fn == nil {
+		return
+	}
+	switch method {
+	case "account/login/completed":
+		var p struct {
+			LoginID string  `json:"loginId"`
+			Success bool    `json:"success"`
+			Error   *string `json:"error"`
+		}
+		json.Unmarshal(params, &p)
+		e := AccountEvent{LoginID: p.LoginID, Success: p.Success}
+		if p.Error != nil {
+			e.Error = *p.Error
+		}
+		fn(e)
+	case "account/updated":
+		fn(AccountEvent{})
+	}
+}
+
+// Login is a sign-in started in aibo: in the browser at AuthURL, or with
+// UserCode at VerificationURL.
+type Login struct {
+	ID              string `json:"loginId"`
+	AuthURL         string `json:"authUrl"`
+	VerificationURL string `json:"verificationUrl"`
+	UserCode        string `json:"userCode"`
+}
+
+// Login starts signing in with ChatGPT: in the browser, or with a device
+// code when deviceCode. Codex keeps the credentials; aibo never sees
+// them. Its end comes to OnAccount.
+func (a *Agent) Login(ctx context.Context, deviceCode bool) (Login, error) {
+	srv, err := a.server(ctx)
+	if err != nil {
+		return Login{}, err
+	}
+	kind := "chatgpt"
+	if deviceCode {
+		kind = "chatgptDeviceCode"
+	}
+	var l Login
+	err = srv.call(ctx, "account/login/start", map[string]any{"type": kind}, &l)
+	return l, err
+}
+
+// CancelLogin cancels a sign-in started.
+func (a *Agent) CancelLogin(ctx context.Context, id string) error {
+	srv, err := a.server(ctx)
+	if err != nil {
+		return err
+	}
+	return srv.call(ctx, "account/login/cancel", map[string]any{"loginId": id}, nil)
 }

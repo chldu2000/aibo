@@ -61,10 +61,12 @@ func (s *Shell) settingsModal(c *ui.Context) {
 					s.settings.open = false
 				}
 			})
-			ui.Tabs(c, &s.settings.tab, "通用", "高级")
+			ui.Tabs(c, &s.settings.tab, "通用", "Agent", "高级")
 			switch s.settings.tab {
 			case 0:
 				s.generalSettings(c)
+			case agentsTab:
+				s.agentSettings(c)
 			default:
 				s.advancedSettings(c)
 			}
@@ -222,7 +224,7 @@ func (s *Shell) advancedSettings(c *ui.Context) {
 			st.Budgets, st.IdleTimeout = d.Budgets, d.IdleTimeout
 			if s.saveSettings(st) {
 				s.openSettings()
-				s.settings.tab = 1
+				s.settings.tab = advancedTab
 			}
 		}
 		if ui.PrimaryButton(c, "保存").Clicked() {
@@ -258,3 +260,6 @@ func (s *Shell) saveSettings(st workbench.Settings) bool {
 	}
 	return true
 }
+
+// advancedTab is the settings' advanced page.
+const advancedTab = 2

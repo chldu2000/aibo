@@ -26,14 +26,23 @@ const Kind agent.Kind = "claude"
 
 // Agent runs Claude Code.
 type Agent struct {
-	// Path is the claude executable.
-	Path string
-	// Env is added to the environment of its processes.
-	Env []string
+	mu sync.Mutex
+	// path is the claude executable; env is added to the environment of
+	// its processes.
+	path string
+	env  []string
+}
+
+// Configure sets the executable and the environment its sessions start
+// with from then on.
+func (a *Agent) Configure(path string, env []string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.path, a.env = path, env
 }
 
 // New returns the Agent running the claude at path.
-func New(path string) *Agent { return &Agent{Path: path} }
+func New(path string) *Agent { return &Agent{path: path} }
 
 func (a *Agent) Kind() agent.Kind { return Kind }
 func (a *Agent) Name() string     { return "Claude Code" }
@@ -84,9 +93,15 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 const tokenVar = "AIBO_MCP_TOKEN"
 
 func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Session, error) {
-	cmd := exec.Command(a.Path, a.args(opts)...)
+	a.mu.Lock()
+	path, env := a.path, a.env
+	a.mu.Unlock()
+	if path == "" {
+		return nil, errors.New("没有找到 Claude Code")
+	}
+	cmd := exec.Command(path, a.args(opts)...)
 	cmd.Dir = opts.Workspace
-	cmd.Env = append(os.Environ(), a.Env...)
+	cmd.Env = append(os.Environ(), env...)
 	if opts.MCP != nil {
 		cmd.Env = append(cmd.Env, tokenVar+"="+opts.MCP.Token)
 	}

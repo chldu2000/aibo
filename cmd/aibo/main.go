@@ -3,10 +3,12 @@
 //	CGO_ENABLED=0 go build -o aibo ./cmd/aibo && ./aibo
 //
 // AIBO_DATA_DIR replaces the data directory (and the config file's
-// choice), for development. AIBO_DEMO=1 adds a scripted Agent.
+// choice), for development. AIBO_DEMO=1 adds a scripted Agent. The
+// Agents are found by package agents.
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -17,33 +19,14 @@ import (
 	"sync/atomic"
 
 	"github.com/chldu2000/aibo/internal/agent"
-	"github.com/chldu2000/aibo/internal/agent/claude"
-	"github.com/chldu2000/aibo/internal/agent/codex"
 	"github.com/chldu2000/aibo/internal/agent/fake"
+	"github.com/chldu2000/aibo/internal/agents"
 	"github.com/chldu2000/aibo/internal/appdata"
 	"github.com/chldu2000/aibo/internal/shell"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
-
-// find finds an Agent's executable on PATH or where it is usually
-// installed: an app launched from the Dock has no shell PATH. Agent
-// discovery proper (the login shell's PATH, versions, a chosen path) is
-// ticket 15's.
-func find(name string) (string, bool) {
-	if p, err := exec.LookPath(name); err == nil {
-		return p, true
-	}
-	home, _ := os.UserHomeDir()
-	for _, dir := range []string{filepath.Join(home, ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin"} {
-		p := filepath.Join(dir, name)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			return p, true
-		}
-	}
-	return "", false
-}
 
 // notificationPrefix starts the IDs of approval notifications, before
 // their sessions' IDs.
@@ -54,6 +37,7 @@ type app struct {
 	def     string // the default data directory, with the config file
 	dir     string // the data directory in use
 	release func() // releases the data directory's lock
+	reg     *agents.Registry
 	agents  []agent.Agent
 	wb      *workbench.Workbench
 	sh      *shell.Shell
@@ -71,13 +55,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	a := &app{def: def}
-	if path, ok := find("claude"); ok {
-		a.agents = append(a.agents, claude.New(path))
-	}
-	if path, ok := find("codex"); ok {
-		a.agents = append(a.agents, codex.New(path))
-	}
+	a := &app{def: def, reg: agents.New(agents.Options{})}
+	a.agents = a.reg.Agents()
 	if os.Getenv("AIBO_DEMO") == "1" {
 		a.agents = append(a.agents, fake.New(fake.Demo))
 	}
@@ -123,7 +102,7 @@ func (a *app) start() {
 			release, err = appdata.Lock(dir)
 		}
 		if err == nil {
-			a.wb, err = workbench.Open(workbench.Options{DataDir: dir, Agents: a.agents})
+			a.wb, err = workbench.Open(workbench.Options{DataDir: dir, Agents: a.agents, Ready: a.ready, OnNotLoggedIn: a.reg.MarkNotLoggedIn})
 			if err != nil {
 				release()
 			}
@@ -141,7 +120,22 @@ func (a *app) start() {
 			return
 		}
 	}
+	// The Agents are looked for once the window is up: the login shell
+	// can take a moment.
+	var paths map[agent.Kind]string
+	a.wb.Pref("agentPaths", &paths)
+	a.reg.SetPaths(paths)
 	mygo.RunOnMain(a.show)
+	a.reg.Detect(context.Background())
+}
+
+// ready says why a message cannot go to an Agent now; the demo's is
+// always ready.
+func (a *app) ready(kind agent.Kind) error {
+	if kind == fake.Kind {
+		return nil
+	}
+	return a.reg.Ready(kind)
 }
 
 func (a *app) resolve() (string, error) {
@@ -217,6 +211,16 @@ func (a *app) show() {
 	}
 	a.sh = shell.New(a.wb, shell.Options{
 		Notify:       notify,
+		Agents:       a.reg,
+		OpenURL:      func(u string) { mygo.Shell.OpenExternal(u) },
+		OpenTerminal: func(path string) { exec.Command("open", "-a", "Terminal", path).Start() },
+		ChooseFile: func() (string, bool) {
+			paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win.Load(), Title: "选择可执行文件", ShowHiddenFiles: true})
+			if err != nil || len(paths) == 0 {
+				return "", false
+			}
+			return paths[0], true
+		},
 		DataDir:      a.dir,
 		MoveDataDir:  a.moveDataDir,
 		ShowInFinder: mygo.Shell.ShowItemInFolder,
@@ -232,6 +236,11 @@ func (a *app) show() {
 			}
 			return paths[0], true
 		},
+	})
+	a.reg.OnChange(func() {
+		if w := a.win.Load(); w != nil {
+			w.Invalidate()
+		}
 	})
 	a.win.Store(mygo.NewWindow(mygo.WindowOptions{
 		Title:         "aibo",

@@ -31,6 +31,8 @@ type parser struct {
 	child int
 	// interrupting is set when the turn was asked to stop.
 	interrupting bool
+	// loggedOut is set when the turn found Claude Code signed out.
+	loggedOut bool
 	// asks are the can_use_tool requests waiting for an answer, by their
 	// request IDs.
 	asks map[string]canUseTool
@@ -66,6 +68,9 @@ type envelope struct {
 		PreTokens  int    `json:"pre_tokens"`
 		PostTokens int    `json:"post_tokens"`
 	} `json:"compact_metadata"`
+	// assistant: "authentication_failed" on the message Claude Code makes
+	// up when signed out
+	Error string `json:"error"`
 	// control_request
 	RequestID string          `json:"request_id"`
 	Request   json.RawMessage `json:"request"`
@@ -198,6 +203,11 @@ func blocks(content json.RawMessage) []block {
 }
 
 func (p *parser) assistant(e envelope, raw []byte) []agent.Event {
+	if e.Error == "authentication_failed" {
+		// Not a reply: Claude Code's "Not logged in · Please run /login".
+		p.loggedOut = true
+		return []agent.Event{agent.NotLoggedIn{}}
+	}
 	var m message
 	if json.Unmarshal(e.Message, &m) != nil {
 		return nil
@@ -312,6 +322,10 @@ func (p *parser) result(e envelope) []agent.Event {
 	// aborted_streaming: interrupted; aborted_tools: denied and stopped.
 	interrupted := p.interrupting || strings.HasPrefix(e.TerminalReason, "aborted")
 	var out []agent.Event
+	if p.loggedOut {
+		p.loggedOut = false
+		return []agent.Event{agent.Failed{Message: "Claude Code 未登录。请在终端里运行 claude 登录，然后点“重试”。"}, agent.TurnEnded{}}
+	}
 	if e.IsError && !interrupted {
 		msg := e.Result
 		if msg == "" {

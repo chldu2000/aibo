@@ -129,3 +129,29 @@ func TestCompactBoundary(t *testing.T) {
 		}
 	}
 }
+
+// As Claude Code 2.1.318 answered a turn signed out: a made-up reply,
+// then an error result.
+func TestSignedOut(t *testing.T) {
+	p := newParser()
+	var evs []agent.Event
+	for _, l := range []string{
+		`{"type":"system","subtype":"init","session_id":"s","apiKeySource":"none"}`,
+		`{"type":"assistant","error":"authentication_failed","message":{"id":"m","model":"<synthetic>","content":[{"type":"text","text":"Not logged in · Please run /login"}]},"is_api_error_message":true}`,
+		`{"type":"result","subtype":"success","is_error":true,"terminal_reason":"api_error","result":"Not logged in · Please run /login"}`,
+	} {
+		evs = append(evs, p.line([]byte(l))...)
+	}
+	if len(evs) != 4 {
+		t.Fatalf("events = %#v", evs)
+	}
+	if _, ok := evs[1].(agent.NotLoggedIn); !ok {
+		t.Errorf("event 1 = %#v", evs[1])
+	}
+	if f, ok := evs[2].(agent.Failed); !ok || !strings.Contains(f.Message, "未登录") {
+		t.Errorf("event 2 = %#v", evs[2])
+	}
+	if evs[3] != (agent.TurnEnded{}) {
+		t.Errorf("event 3 = %#v", evs[3])
+	}
+}

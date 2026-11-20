@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/agents"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/ui"
@@ -25,6 +26,16 @@ type Options struct {
 	// MyGo's, which the app wires to open the session when clicked
 	// (Shell.Open).
 	Notify func(sessionID, title, body string)
+	// Agents is the Agents as found on this Mac, for the settings' Agent
+	// page, the login banners and the new-session picker; nil without.
+	Agents *agents.Registry
+	// OpenURL opens a web page in the browser.
+	OpenURL func(url string)
+	// OpenTerminal opens Terminal running an executable, for the user to
+	// sign in there.
+	OpenTerminal func(path string)
+	// ChooseFile asks for an executable, blocking off the main thread.
+	ChooseFile func() (string, bool)
 	// DataDir is the data directory in use, which the settings show.
 	DataDir string
 	// MoveDataDir moves the data to another directory and starts aibo
@@ -201,7 +212,7 @@ func (s *Shell) newSession(ws model.Workspace, kind agent.Kind) {
 func (s *Shell) send(id string, text string) bool {
 	if err := s.wb.Send(id, text); err != nil {
 		// A native session that cannot be resumed has its own banner.
-		if !errors.Is(err, agent.ErrResumeFailed) && !errors.Is(err, workbench.ErrNeedsRecovery) {
+		if !errors.Is(err, agent.ErrResumeFailed) && !errors.Is(err, workbench.ErrNeedsRecovery) && !errors.Is(err, agents.ErrNotLoggedIn) {
 			s.notice = err.Error()
 		}
 		return false

@@ -244,6 +244,10 @@ type Compacted struct {
 	PostTokens int
 }
 
+// NotLoggedIn reports that the Agent is signed out, or its sign-in
+// expired: it can do nothing until the user signs in again.
+type NotLoggedIn struct{}
+
 // TurnEnded ends the running turn.
 type TurnEnded struct {
 	// Interrupted is set when the turn was stopped before it finished.
@@ -265,5 +269,6 @@ func (ToolFinished) isEvent()         {}
 func (PlanUpdated) isEvent()          {}
 func (ApprovalRequested) isEvent()    {}
 func (Compacted) isEvent()            {}
+func (NotLoggedIn) isEvent()          {}
 func (TurnEnded) isEvent()            {}
 func (Failed) isEvent()               {}

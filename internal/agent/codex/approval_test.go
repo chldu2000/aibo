@@ -130,3 +130,25 @@ func TestCompaction(t *testing.T) {
 		t.Error("still compacting after the turn")
 	}
 }
+
+// As codex app-server 0.169.0 answered a turn signed out: 401s while it
+// retries.
+func TestSignedOut(t *testing.T) {
+	th := newThread()
+	retry := json.RawMessage(`{"threadId":"T","turnId":"U","error":{"message":"Reconnecting... 2/5","codexErrorInfo":{"responseStreamDisconnected":{"httpStatusCode":401}},"additionalDetails":"401 Unauthorized"},"willRetry":true}`)
+	evs := th.handle("error", retry)
+	if len(evs) != 2 {
+		t.Fatalf("events = %#v", evs)
+	}
+	if _, ok := evs[0].(agent.NotLoggedIn); !ok {
+		t.Errorf("event 0 = %#v", evs[0])
+	}
+	if evs := th.handle("error", retry); len(evs) != 0 {
+		t.Errorf("told twice: %#v", evs)
+	}
+	other := json.RawMessage(`{"threadId":"T","turnId":"U","error":{"message":"Reconnecting... 1/5","codexErrorInfo":{"responseStreamDisconnected":{"httpStatusCode":503}}},"willRetry":true}`)
+	th.handle("turn/completed", json.RawMessage(`{"threadId":"T","turn":{"id":"U","status":"failed"}}`))
+	if evs := th.handle("error", other); len(evs) != 0 {
+		t.Errorf("a 503 being retried: %#v", evs)
+	}
+}

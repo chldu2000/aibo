@@ -185,6 +185,12 @@ func (w *Workbench) handle(id string, ev agent.Event) {
 		w.st.Touch(id, now)
 	case agent.Compacted:
 		w.addMarker(id, s, model.Marker{Kind: model.Compaction, Trigger: e.Trigger, PreTokens: e.PreTokens, PostTokens: e.PostTokens, At: now})
+	case agent.NotLoggedIn:
+		s.needsLogin = true
+		if w.loggedOut != nil {
+			kind := s.info.Agent
+			defer func() { go w.loggedOut(kind) }()
+		}
 	case agent.Failed:
 		s.err = e.Message
 	}

@@ -78,8 +78,8 @@ func (s *Shell) workspaceGroups(c *ui.Context) {
 			ui.Text(c, workspaceName(ws)).FontSize(12).Bold().TextColor(t.TextMuted).Tooltip(ws.Path).Grow(1)
 			plus := iconButton(c, "plus", "在 "+workspaceName(ws)+" 新建会话")
 			if plus.Clicked() {
-				if agents := s.wb.Agents(); len(agents) == 1 {
-					s.newSession(ws, agents[0].Kind)
+				if all := s.wb.Agents(); len(all) == 1 {
+					s.newSession(ws, all[0].Kind)
 				} else {
 					s.choosingAgent = ws.ID
 				}
@@ -90,6 +90,17 @@ func (s *Shell) workspaceGroups(c *ui.Context) {
 					ui.Column(c).Width(220).Gap(2).Padding(8).Children(func() {
 						ui.Text(c, "新建会话").Bold().TextColor(t.Text).Padding(0, 6, 4)
 						for _, a := range s.wb.Agents() {
+							if ok, why := s.agentOK(a.Kind); !ok {
+								// Unavailable: grayed, with why.
+								ui.Row(c).Key(string(a.Kind)).Gap(8).Padding(6, 8).Opacity(0.5).Children(func() {
+									agentGlyph(c, a.Kind, 16)
+									ui.Column(c).Grow(1).Children(func() {
+										ui.Text(c, a.Name).TextColor(t.Text)
+										ui.Text(c, why).FontSize(11).TextColor(t.TextMuted)
+									})
+								})
+								continue
+							}
 							if pickRow(c, string(a.Kind), "用 "+a.Name+" 新建会话", func() {
 								agentGlyph(c, a.Kind, 16)
 								ui.Text(c, a.Name).TextColor(t.Text).Grow(1)
@@ -264,6 +275,9 @@ func (s *Shell) banners(c *ui.Context, id string) {
 	}
 	if st.ResumeFailed != "" {
 		s.resumeBanner(c, id, st)
+	}
+	if x, ok := s.wb.Session(id); ok {
+		s.loginBanner(c, x, st)
 	}
 	if s.notice != "" {
 		bar(s.notice, func() { s.notice = "" })

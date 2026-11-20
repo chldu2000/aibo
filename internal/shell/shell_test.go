@@ -13,6 +13,7 @@ import (
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/fake"
+	"github.com/chldu2000/aibo/internal/agents"
 	"github.com/chldu2000/aibo/internal/shell"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/ui"
@@ -974,4 +975,85 @@ func TestSettingsModal(t *testing.T) {
 	click("更改…")
 	shows("有会话正在运行。请先等它完成或停止，再更改数据目录。")
 	close(block)
+}
+
+// stub writes an executable shell script standing in for an Agent.
+func stub(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// The Agents as found: the settings' Agent page, unavailable ones grayed
+// in the new-session picker, and a session's Agent signed out.
+func TestAgentsFoundAndSignedOut(t *testing.T) {
+	bin := t.TempDir()
+	claudePath := stub(t, bin, "claude", `case "$1" in
+--version) echo "2.1.318 (Claude Code)";;
+auth) echo '{"loggedIn":false,"authMethod":"none"}'; exit 1;;
+esac
+`)
+	stub(t, bin, "codex", `case "$1" in
+--version) echo "codex-cli 0.168.0";;
+esac
+`)
+	sh := stub(t, t.TempDir(), "fakesh", `printf '__AIBO_PATH__/usr/bin__AIBO_PATH__'`)
+	reg := agents.New(agents.Options{Shell: sh, Dirs: []string{bin}})
+	reg.Detect(context.Background())
+
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: reg.Agents(), Ready: reg.Ready})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	var opened []string
+	s := shell.New(wb, shell.Options{Agents: reg, OpenTerminal: func(p string) { opened = append(opened, p) }})
+	tt := ui.NewTester(s.View, 1100, 900)
+	frame := func() {
+		for i := 0; i < 3; i++ {
+			tt.Frame()
+			tt.Advance(time.Second)
+		}
+	}
+	frame()
+	click := func(s string) {
+		t.Helper()
+		if err := tt.Click(s); err != nil {
+			t.Fatalf("%v; the window shows %q", err, tt.Texts())
+		}
+		frame()
+	}
+	shows := func(want ...string) {
+		t.Helper()
+		for _, w := range want {
+			if !tt.HasText(w) {
+				t.Errorf("the window lacks %q: %q", w, tt.Texts())
+			}
+		}
+	}
+
+	// Codex is too old: grayed in the picker, with why.
+	click("在 " + filepath.Base(ws.Path) + " 新建会话")
+	shows("版本 0.168.0 过低，请升级到 0.169.0 或更高版本。")
+	if err := tt.Click("用 Codex 新建会话"); err == nil {
+		t.Error("an unavailable Agent can start a session")
+	}
+	click("用 Claude Code 新建会话")
+
+	// Claude Code is signed out: the session says so, and how to sign in.
+	shows("Claude Code 未登录。")
+	click("在终端中打开 claude")
+	if real, _ := filepath.EvalSymlinks(claudePath); len(opened) != 1 || opened[0] != real {
+		t.Errorf("opened %v", opened)
+	}
+	click("去登录")
+	shows("Agent", "未登录", "版本过低", "请在终端里运行 claude 完成登录", "版本 2.1.318")
+	click("复制命令")
+	if real, _ := filepath.EvalSymlinks(claudePath); tt.Clipboard() != real {
+		t.Errorf("clipboard = %q", tt.Clipboard())
+	}
 }

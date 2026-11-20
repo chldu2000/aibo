@@ -40,6 +40,12 @@ type Options struct {
 	// that is looked at (a minute when zero).
 	IdleTimeout time.Duration
 	IdleCheck   time.Duration
+	// Ready, when set, says why a message cannot go to an Agent now (not
+	// installed, signed out): the message is not sent.
+	Ready func(agent.Kind) error
+	// OnNotLoggedIn, when set, is told when a session finds its Agent
+	// signed out.
+	OnNotLoggedIn func(agent.Kind)
 }
 
 // Errors of the workbench's operations.
@@ -87,6 +93,8 @@ type Status struct {
 	// ReadOnly is set when the user chose to leave it for now.
 	ResumeFailed string
 	ReadOnly     bool
+	// NeedsLogin is set when the last turn found the Agent signed out.
+	NeedsLogin bool
 }
 
 // AgentInfo describes an available Agent.
@@ -97,15 +105,17 @@ type AgentInfo struct {
 
 // Workbench is the open workbench.
 type Workbench struct {
-	st       *store.Store
-	mcp      *mcpserver.Server
-	agents   []agent.Agent
-	now      func() time.Time
-	budgets  refs.Budgets
-	idle     time.Duration
-	settings Settings
-	done     chan struct{} // closed when the workbench closes
-	pumps    sync.WaitGroup
+	st        *store.Store
+	mcp       *mcpserver.Server
+	agents    []agent.Agent
+	now       func() time.Time
+	budgets   refs.Budgets
+	idle      time.Duration
+	settings  Settings
+	ready     func(agent.Kind) error
+	loggedOut func(agent.Kind)
+	done      chan struct{} // closed when the workbench closes
+	pumps     sync.WaitGroup
 
 	mu         sync.Mutex
 	closing    bool
@@ -135,6 +145,8 @@ type session struct {
 	// is set when the user chose to leave it for now.
 	resumeFailed string
 	readOnly     bool
+	// needsLogin is set when the last turn found the Agent signed out.
+	needsLogin bool
 	// lastActive is when the session last did something, for idle
 	// disconnection.
 	lastActive time.Time
@@ -180,7 +192,7 @@ func Open(o Options) (*Workbench, error) {
 	if o.IdleCheck == 0 {
 		o.IdleCheck = time.Minute
 	}
-	w := &Workbench{st: st, agents: o.Agents, now: o.Now, budgets: settings.Budgets, idle: settings.IdleTimeout, settings: settings, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
+	w := &Workbench{st: st, agents: o.Agents, now: o.Now, budgets: settings.Budgets, idle: settings.IdleTimeout, settings: settings, ready: o.Ready, loggedOut: o.OnNotLoggedIn, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
 	if w.workspaces, err = st.Workspaces(); err != nil {
 		st.Close()
 		return nil, err
@@ -385,7 +397,7 @@ func (w *Workbench) Status(id string) Status {
 		return Status{}
 	}
 	return Status{Connected: s.native != nil, Running: s.running, Error: s.err, Approvals: len(w.pending(s)),
-		ResumeFailed: s.resumeFailed, ReadOnly: s.readOnly}
+		ResumeFailed: s.resumeFailed, ReadOnly: s.readOnly, NeedsLogin: s.needsLogin}
 }
 
 // Messages returns a session's messages in order.
@@ -458,12 +470,18 @@ func (w *Workbench) Send(id, text string) error {
 		w.mu.Unlock()
 		return ErrTurnRunning
 	}
+	if w.ready != nil {
+		if err := w.ready(s.info.Agent); err != nil {
+			w.mu.Unlock()
+			return err
+		}
+	}
 	if err := w.load(id, s); err != nil {
 		w.mu.Unlock()
 		return err
 	}
 	// Running from here, so that nothing else starts meanwhile.
-	s.running, s.err, s.items = true, "", map[string]int{}
+	s.running, s.err, s.items, s.needsLogin = true, "", map[string]int{}, false
 	native, info := s.native, s.info
 	ws, _ := w.workspace(info.WorkspaceID)
 	w.mu.Unlock()
@@ -661,6 +679,12 @@ func (w *Workbench) Compact(id string) error {
 	case s.resumeFailed != "":
 		w.mu.Unlock()
 		return ErrNeedsRecovery
+	}
+	if w.ready != nil {
+		if err := w.ready(s.info.Agent); err != nil {
+			w.mu.Unlock()
+			return err
+		}
 	}
 	if err := w.load(id, s); err != nil {
 		w.mu.Unlock()
