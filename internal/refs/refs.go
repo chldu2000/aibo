@@ -70,7 +70,7 @@ func brief(in BriefInput, excerptLen int) string {
 			fmt.Fprintf(&b, "- %s：#%d「%s」\n", e.label, e.m.Seq, excerpt(e.m, excerptLen))
 		}
 	}
-	fmt.Fprintf(&b, "- 可用工具：%s(ref_id=%q)、%s、%s\n", in.ToolName(ToolReadReference), in.ID, in.ToolName(ToolReadMessage), in.ToolName(ToolListReferences))
+	fmt.Fprintf(&b, "- 可用工具：%s(ref_id=%q)、%s、%s、%s\n", in.ToolName(ToolReadReference), in.ID, in.ToolName(ToolReadMessage), in.ToolName(ToolSearchReference), in.ToolName(ToolListReferences))
 	b.WriteString("</aibo-reference>")
 	return b.String()
 }

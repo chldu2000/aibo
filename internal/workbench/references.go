@@ -379,3 +379,40 @@ func (w *Workbench) recordRead(sessionID, refID string, read refs.Read) {
 	w.mu.Unlock()
 	w.notify(Change{SessionID: sessionID})
 }
+
+func (rd reader) SearchReference(sessionID string, q mcpserver.SearchReference) (string, error) {
+	w := rd.w
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var targets []*model.Reference
+	if q.RefID != "" {
+		r, ok := w.refs[q.RefID]
+		if !ok || r.TargetID != sessionID || r.State != model.Delivered {
+			return "", fmt.Errorf("本会话没有 ID 为 %q 的引用。可以用 %s 查看交给本会话的引用。", q.RefID, refs.ToolListReferences)
+		}
+		targets = []*model.Reference{r}
+	} else {
+		targets = w.delivered(sessionID)
+	}
+	if len(targets) == 0 {
+		return "本会话还没有收到会话引用，没有可搜索的内容。", nil
+	}
+	var searched []refs.Searched
+	for _, r := range targets {
+		ms, exists, err := w.st.MessageRange(r.SourceID, r.From, r.To)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			if q.RefID != "" {
+				return "", fmt.Errorf("引用的源会话已被删除，引用 %s 已失效。", r.ID)
+			}
+			continue // the others are still searched
+		}
+		searched = append(searched, refs.Searched{Ref: *r, Messages: ms, AgentName: w.agentDisplayName(r.SourceAgent)})
+	}
+	return refs.Search(refs.SearchRequest{
+		Refs: searched, Query: q.Query, Regex: q.Regex, Thinking: q.IncludeThinking, Cursor: q.Cursor,
+		ToolName: w.receiverTools(sessionID),
+	})
+}

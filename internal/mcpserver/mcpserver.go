@@ -24,6 +24,16 @@ type Reader interface {
 	ListReferences(sessionID string) (string, error)
 	ReadReference(sessionID string, q ReadReference) (string, error)
 	ReadMessage(sessionID string, q ReadMessage) (string, error)
+	SearchReference(sessionID string, q SearchReference) (string, error)
+}
+
+// SearchReference is search_reference's input.
+type SearchReference struct {
+	Query           string `json:"query" jsonschema:"搜索词：默认是关键词，不区分大小写，多个词须同时出现；regex 为 true 时是正则表达式"`
+	RefID           string `json:"ref_id,omitempty" jsonschema:"只搜这一个引用；不填则搜交给本会话的全部引用"`
+	Regex           bool   `json:"regex,omitempty" jsonschema:"把 query 当作正则表达式"`
+	IncludeThinking bool   `json:"include_thinking,omitempty" jsonschema:"是否也搜 Agent 的思考内容，默认不搜"`
+	Cursor          string `json:"cursor,omitempty" jsonschema:"上一页末尾给出的 cursor，用来看更多命中"`
 }
 
 // ReadReference is read_reference's input.
@@ -186,6 +196,13 @@ func (s *Server) newServer(sessionID string) *mcp.Server {
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ReadMessage) (*mcp.CallToolResult, any, error) {
 		return result(s.reader.ReadMessage(sessionID, in))
+	})
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        refs.ToolSearchReference,
+		Description: "在交给本会话的会话引用里按关键词或正则查找消息，返回命中消息的序号和片段，每页最多 20 条。",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in SearchReference) (*mcp.CallToolResult, any, error) {
+		return result(s.reader.SearchReference(sessionID, in))
 	})
 	return srv
 }
