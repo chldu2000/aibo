@@ -23,121 +23,17 @@ func (s *Shell) View(c *ui.Context) {
 		s.openSettings()
 	}
 	s.settingsModal(c)
-	ui.Split(c, &s.split, func() {
+	root := ui.Split(c, &s.split, func() {
 		s.sidebar(c)
 	}, func() {
 		ui.Box(c).Fill().Margin(0, 0, 0, 4).Radius(14, 0, 0, 14).Clip().Background(c.Theme().Background).Children(func() {
 			s.pane(c)
 		})
 	}).Fill()
-}
-
-// sidebar is the floating Liquid Glass sidebar. Fill ignores margins, so
-// the gap around the glass is the outer box's padding.
-func (s *Shell) sidebar(c *ui.Context) {
-	t := c.Theme()
-	ui.Box(c).Fill().Padding(8).Children(func() {
-		ui.Column(c).Fill().Radius(16).Material(glass.Glass{Native: true}).Children(func() {
-			ui.Scroll(c).Grow(1).Children(func() {
-				ui.Column(c).Gap(2).Padding(40, 10, 10).Children(func() {
-					ui.Row(c).Padding(0, 6, 8).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, "aibo").Bold().FontSize(15).TextColor(t.Text)
-						ui.Spacer(c)
-						if iconButton(c, "folder.badge.plus", "添加工作区").Clicked() {
-							s.addWorkspace()
-						}
-					})
-					s.workspaceGroups(c)
-				})
-			})
-			ui.Row(c).Padding(8, 10).AlignItems(ui.Center).Children(func() {
-				if iconButton(c, "gearshape", "设置（⌘,）").Clicked() {
-					s.openSettings()
-				}
-				ui.Spacer(c)
-			})
-		})
-	})
-}
-
-func (s *Shell) workspaceGroups(c *ui.Context) {
-	t := c.Theme()
-	workspaces := s.wb.Workspaces()
-	if len(workspaces) == 0 {
-		ui.Column(c).Gap(10).Padding(16, 6).Children(func() {
-			ui.Text(c, "还没有工作区。添加一个项目文件夹，就可以在里面和 Agent 对话。").FontSize(12).TextColor(t.TextMuted)
-			if ui.Button(c, "添加工作区…").Clicked() {
-				s.addWorkspace()
-			}
-		})
-		return
-	}
-	sessions := s.wb.Sessions()
-	for _, ws := range workspaces {
-		ui.Row(c).Padding(10, 6, 4).Gap(6).AlignItems(ui.Center).Key(ws.ID).Children(func() {
-			ui.Text(c, workspaceName(ws)).FontSize(12).Bold().TextColor(t.TextMuted).Tooltip(ws.Path).Grow(1)
-			plus := iconButton(c, "plus", "在 "+workspaceName(ws)+" 新建会话")
-			if plus.Clicked() {
-				if all := s.wb.Agents(); len(all) == 1 {
-					s.newSession(ws, all[0].Kind)
-				} else {
-					s.choosingAgent = ws.ID
-				}
-			}
-			if s.choosingAgent == ws.ID {
-				open := true
-				ui.Popover(c, plus, &open, func() {
-					ui.Column(c).Width(220).Gap(2).Padding(8).Children(func() {
-						ui.Text(c, "新建会话").Bold().TextColor(t.Text).Padding(0, 6, 4)
-						for _, a := range s.wb.Agents() {
-							if ok, why := s.agentOK(a.Kind); !ok {
-								// Unavailable: grayed, with why.
-								ui.Row(c).Key(string(a.Kind)).Gap(8).Padding(6, 8).Opacity(0.5).Children(func() {
-									agentGlyph(c, a.Kind, 16)
-									ui.Column(c).Grow(1).Children(func() {
-										ui.Text(c, a.Name).TextColor(t.Text)
-										ui.Text(c, why).FontSize(11).TextColor(t.TextMuted)
-									})
-								})
-								continue
-							}
-							if pickRow(c, string(a.Kind), "用 "+a.Name+" 新建会话", func() {
-								agentGlyph(c, a.Kind, 16)
-								ui.Text(c, a.Name).TextColor(t.Text).Grow(1)
-							}).Clicked() {
-								s.newSession(ws, a.Kind)
-								open = false
-							}
-						}
-					})
-				})
-				if !open {
-					s.choosingAgent = ""
-				}
-			}
-		})
-		for _, x := range sessions {
-			if x.WorkspaceID != ws.ID {
-				continue
-			}
-			row := ui.Row(c).Key(x.ID).Gap(8).Padding(6, 8).Radius(7).AlignItems(ui.Center).Children(func() {
-				agentGlyph(c, x.Agent, 18)
-				ui.Text(c, sessionTitle(x)).TextColor(t.Text).NoWrap().Grow(1)
-				switch st := s.wb.Status(x.ID); {
-				case st.Approvals > 0:
-					ui.Text(c, fmt.Sprintf("待审批 %d", st.Approvals)).FontSize(11).Bold().TextColor(t.Warning)
-				case st.Running:
-					ui.Text(c, "运行中").FontSize(11).TextColor(t.TextMuted)
-				}
-			})
-			if x.ID == s.current {
-				row.Background(t.SurfacePressed)
-			} else if row.Hovered() {
-				row.Background(t.SurfaceHover)
-			}
-			if row.Clicked() {
-				s.current = x.ID
-			}
+	// Folders dropped on the window become workspaces.
+	for _, p := range root.DroppedFiles() {
+		if _, err := s.wb.AddWorkspace(p); err != nil {
+			s.notice = "添加工作区失败：" + err.Error()
 		}
 	}
 }
@@ -198,12 +94,8 @@ func (s *Shell) pane(c *ui.Context) {
 }
 
 func (s *Shell) workspaceOf(x model.Session) model.Workspace {
-	for _, ws := range s.wb.Workspaces() {
-		if ws.ID == x.WorkspaceID {
-			return ws
-		}
-	}
-	return model.Workspace{}
+	ws, _ := s.wb.Workspace(x.WorkspaceID)
+	return ws
 }
 
 func (s *Shell) messages(c *ui.Context, v *sessionView, markers []model.Marker) ui.Element {
@@ -278,6 +170,25 @@ func (s *Shell) banners(c *ui.Context, id string) {
 	}
 	if x, ok := s.wb.Session(id); ok {
 		s.loginBanner(c, x, st)
+		ws := s.workspaceOf(x)
+		if ws.Missing {
+			ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
+				ui.Text(c, "工作区目录不存在："+ws.Path+"。会话可以浏览和被引用，但不能继续。").TextColor(c.Theme().Text).Grow(1)
+				if ui.Button(c, "重新定位…").Clicked() {
+					s.relocate(ws)
+				}
+			})
+		}
+		if x.Archived {
+			ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
+				ui.Text(c, "这个会话已归档：不在工作区里显示，仍可以继续、搜索和被引用。").FontSize(12).TextColor(c.Theme().Text).Grow(1)
+				if ui.Button(c, "取消归档").Clicked() {
+					if err := s.wb.SetArchived(x.ID, false); err != nil {
+						s.notice = err.Error()
+					}
+				}
+			})
+		}
 	}
 	if s.notice != "" {
 		bar(s.notice, func() { s.notice = "" })

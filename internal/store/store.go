@@ -147,6 +147,9 @@ var migrations = []string{
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);`,
+	// Archived sessions, removed workspaces.
+	`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE workspaces ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // backupBeforeUpgrade copies the database of an older schema, before
@@ -196,7 +199,11 @@ func (s *Store) SetSetting(key string, v any) error {
 // SchemaVersion is the schema version this build writes.
 func SchemaVersion() int { return len(migrations) }
 
-func (s *Store) migrate() error {
+func (s *Store) migrate() error { return s.migrateTo(len(migrations)) }
+
+// migrateTo brings the schema up to version to (for tests: an older
+// database).
+func (s *Store) migrateTo(to int) error {
 	var v int
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		return err
@@ -204,7 +211,7 @@ func (s *Store) migrate() error {
 	if v > len(migrations) {
 		return fmt.Errorf("store: database schema version %d is newer than this aibo understands (%d)", v, len(migrations))
 	}
-	for ; v < len(migrations); v++ {
+	for ; v < to; v++ {
 		tx, err := s.db.Begin()
 		if err != nil {
 			return err
@@ -248,7 +255,7 @@ func (s *Store) AddWorkspace(w model.Workspace) error {
 
 // Workspaces returns every workspace, oldest first.
 func (s *Store) Workspaces() ([]model.Workspace, error) {
-	rows, err := s.db.Query(`SELECT id, path, created_at FROM workspaces ORDER BY created_at, rowid`)
+	rows, err := s.db.Query(`SELECT id, path, created_at, removed FROM workspaces ORDER BY created_at, rowid`)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +264,7 @@ func (s *Store) Workspaces() ([]model.Workspace, error) {
 	for rows.Next() {
 		var w model.Workspace
 		var at sql.NullInt64
-		if err := rows.Scan(&w.ID, &w.Path, &at); err != nil {
+		if err := rows.Scan(&w.ID, &w.Path, &at, &w.Removed); err != nil {
 			return nil, err
 		}
 		w.CreatedAt = fromMS(at)
@@ -279,7 +286,7 @@ func (s *Store) CreateSession(x model.Session) error {
 
 // Sessions returns every session, most recently active first.
 func (s *Store) Sessions() ([]model.Session, error) {
-	rows, err := s.db.Query(`SELECT id, workspace_id, agent, model, title, title_manual, created_at, active_at, approval_level, rules FROM sessions ORDER BY active_at DESC, rowid DESC`)
+	rows, err := s.db.Query(`SELECT id, workspace_id, agent, model, title, title_manual, created_at, active_at, approval_level, rules, archived FROM sessions ORDER BY active_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +296,7 @@ func (s *Store) Sessions() ([]model.Session, error) {
 		var kind, level string
 		var rules sql.NullString
 		var created, active sql.NullInt64
-		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Title, &x.TitleManual, &created, &active, &level, &rules); err != nil {
+		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Title, &x.TitleManual, &created, &active, &level, &rules, &x.Archived); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -638,6 +645,45 @@ func (s *Store) Markers(sessionID string) ([]model.Marker, error) {
 		}
 		m.Kind, m.At = model.MarkerKind(kind), fromMS(at)
 		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// SetWorkspace sets a workspace's path and whether it is removed.
+func (s *Store) SetWorkspace(w model.Workspace) error {
+	_, err := s.db.Exec(`UPDATE workspaces SET path = ?, removed = ? WHERE id = ?`, w.Path, w.Removed, w.ID)
+	return err
+}
+
+// SetArchived archives a session, or brings it back.
+func (s *Store) SetArchived(sessionID string, archived bool) error {
+	_, err := s.db.Exec(`UPDATE sessions SET archived = ? WHERE id = ?`, archived, sessionID)
+	return err
+}
+
+// ArchiveWorkspace archives every session of a workspace.
+func (s *Store) ArchiveWorkspace(workspaceID string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET archived = 1 WHERE workspace_id = ?`, workspaceID)
+	return err
+}
+
+// SearchMessages returns the sessions with messages containing text (in
+// any case, for Latin letters), with the first such message's text.
+func (s *Store) SearchMessages(text string) (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT session_id, text FROM messages WHERE instr(lower(text), lower(?)) > 0 ORDER BY session_id, seq`, text)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var id, t string
+		if err := rows.Scan(&id, &t); err != nil {
+			return nil, err
+		}
+		if _, ok := out[id]; !ok {
+			out[id] = t
+		}
 	}
 	return out, rows.Err()
 }

@@ -217,6 +217,7 @@ func Open(o Options) (*Workbench, error) {
 		st.Close()
 		return nil, err
 	}
+	w.checkWorkspaces()
 	go w.watchIdle(o.IdleCheck)
 	return w, nil
 }
@@ -303,6 +304,20 @@ func (w *Workbench) AddWorkspace(path string) (model.Workspace, error) {
 	}
 	ws := model.Workspace{ID: newID("w_"), Path: abs, CreatedAt: w.now()}
 	w.mu.Lock()
+	for i, old := range w.workspaces {
+		if old.Path == abs && old.Removed {
+			// Added again: it comes back, its sessions still archived.
+			old.Removed = false
+			if err := w.st.SetWorkspace(old); err != nil {
+				w.mu.Unlock()
+				return model.Workspace{}, err
+			}
+			w.workspaces[i] = old
+			w.mu.Unlock()
+			w.notify(Change{})
+			return old, nil
+		}
+	}
 	err = w.st.AddWorkspace(ws)
 	if err == nil {
 		w.workspaces = append(w.workspaces, ws)
@@ -322,7 +337,13 @@ func (w *Workbench) AddWorkspace(path string) (model.Workspace, error) {
 func (w *Workbench) Workspaces() []model.Workspace {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return append([]model.Workspace(nil), w.workspaces...)
+	var out []model.Workspace
+	for _, ws := range w.workspaces {
+		if !ws.Removed {
+			out = append(out, ws)
+		}
+	}
+	return out
 }
 
 func (w *Workbench) workspace(id string) (model.Workspace, bool) {
@@ -476,6 +497,10 @@ func (w *Workbench) Send(id, text string) error {
 			return err
 		}
 	}
+	if ws, _ := w.workspace(s.info.WorkspaceID); ws.Missing {
+		w.mu.Unlock()
+		return ErrWorkspaceMissing
+	}
 	if err := w.load(id, s); err != nil {
 		w.mu.Unlock()
 		return err
@@ -613,18 +638,18 @@ func (w *Workbench) Stop(id string) error {
 func (w *Workbench) pump(id string, native agent.Session) {
 	defer w.pumps.Done()
 	for ev := range native.Events() {
-		w.handle(id, ev)
+		w.handle(id, native, ev)
 	}
 	w.mu.Lock()
 	s := w.sessions[id]
-	if s == nil { // deleted
+	if s == nil || s.native != native {
+		// Deleted, or let go (detach): another native session may be
+		// running a turn of its own now.
 		w.mu.Unlock()
 		return
 	}
-	if s.native == native {
-		s.native = nil
-		w.mcp.Revoke(id)
-	}
+	s.native = nil
+	w.mcp.Revoke(id)
 	changed := w.endTurn(id, s, model.Interrupted)
 	w.mu.Unlock()
 	for _, m := range changed {
@@ -685,6 +710,10 @@ func (w *Workbench) Compact(id string) error {
 			w.mu.Unlock()
 			return err
 		}
+	}
+	if ws, _ := w.workspace(s.info.WorkspaceID); ws.Missing {
+		w.mu.Unlock()
+		return ErrWorkspaceMissing
 	}
 	if err := w.load(id, s); err != nil {
 		w.mu.Unlock()

@@ -82,20 +82,24 @@ func (s *Shell) pullSearch(c *ui.Context, x model.Session) {
 	ui.Scroll(c).Grow(1).Children(func() {
 		ui.Column(c).Gap(2).Children(func() {
 			found := false
-			for _, ws := range s.wb.Workspaces() {
-				for _, src := range s.wb.Sessions() {
-					if src.WorkspaceID != ws.ID || src.ID == x.ID || !strings.Contains(strings.ToLower(sessionTitle(src)), q) {
-						continue
+			// Every session, archived ones and those of removed
+			// workspaces too, the most recent first.
+			for _, src := range s.wb.Sessions() {
+				if src.ID == x.ID || !strings.Contains(strings.ToLower(sessionTitle(src)), q) {
+					continue
+				}
+				found = true
+				ws := s.workspaceOf(src)
+				row := pickRow(c, src.ID, "选择 "+sessionTitle(src), func() {
+					agentGlyph(c, src.Agent, 16)
+					ui.Text(c, sessionTitle(src)).TextColor(t.Text).MaxLines(1).Grow(1)
+					if src.Archived {
+						ui.Text(c, "已归档").FontSize(11).TextColor(t.TextMuted)
 					}
-					found = true
-					row := pickRow(c, src.ID, "选择 "+sessionTitle(src), func() {
-						agentGlyph(c, src.Agent, 16)
-						ui.Text(c, sessionTitle(src)).TextColor(t.Text).NoWrap().Grow(1)
-						ui.Text(c, workspaceName(ws)).FontSize(11).TextColor(t.TextMuted)
-					})
-					if row.Clicked() {
-						s.choosePullSource(src)
-					}
+					ui.Text(c, workspaceName(ws)).FontSize(11).TextColor(t.TextMuted)
+				})
+				if row.Clicked() {
+					s.choosePullSource(src)
 				}
 			}
 			if !found {

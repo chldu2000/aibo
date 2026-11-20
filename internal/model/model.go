@@ -15,6 +15,11 @@ type Workspace struct {
 	ID        string
 	Path      string
 	CreatedAt time.Time
+	// Removed is set when the user removed it: its sessions are archived.
+	Removed bool
+	// Missing is set when its directory is gone (moved, deleted, on a
+	// disk not mounted): its sessions can be read, not continued.
+	Missing bool
 }
 
 // Session is a conversation between the user and one Agent.
@@ -33,6 +38,9 @@ type Session struct {
 	NativeIDs []string
 	CreatedAt time.Time
 	ActiveAt  time.Time
+	// Archived hides the session from its workspace's group; it can still
+	// be read, searched and referenced.
+	Archived bool
 	// Level is the approval level; Rules what the user allowed for the
 	// rest of the session.
 	Level agent.ApprovalLevel

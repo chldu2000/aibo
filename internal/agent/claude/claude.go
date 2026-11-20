@@ -353,3 +353,69 @@ func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
 func (s *session) Compact(ctx context.Context) error {
 	return s.Send(ctx, agent.Turn{Text: "/compact"})
 }
+
+// Models asks Claude Code which models it offers: initialize answers
+// with them, before any turn. Its "default" is the empty ID.
+func (a *Agent) Models(ctx context.Context) ([]agent.Model, error) {
+	a.mu.Lock()
+	path, env := a.path, a.env
+	a.mu.Unlock()
+	if path == "" {
+		return nil, errors.New("没有找到 Claude Code")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose")
+	cmd.Dir = os.TempDir()
+	cmd.Env = append(os.Environ(), env...)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	defer func() {
+		stdin.Close()
+		cmd.Process.Kill()
+		cmd.Wait()
+	}()
+	b, _ := json.Marshal(map[string]any{"type": "control_request", "request_id": "models", "request": map[string]any{"subtype": "initialize"}})
+	if _, err := stdin.Write(append(b, '\n')); err != nil {
+		return nil, err
+	}
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 64*1024), 16<<20)
+	for sc.Scan() {
+		var e struct {
+			Type     string `json:"type"`
+			Response struct {
+				RequestID string `json:"request_id"`
+				Response  struct {
+					Models []struct {
+						Value       string `json:"value"`
+						DisplayName string `json:"displayName"`
+						Description string `json:"description"`
+					} `json:"models"`
+				} `json:"response"`
+			} `json:"response"`
+		}
+		if json.Unmarshal(sc.Bytes(), &e) != nil || e.Type != "control_response" || e.Response.RequestID != "models" {
+			continue
+		}
+		var out []agent.Model
+		for _, m := range e.Response.Response.Models {
+			id := m.Value
+			if id == "default" {
+				id = ""
+			}
+			out = append(out, agent.Model{ID: id, Name: m.DisplayName, Description: m.Description})
+		}
+		return out, nil
+	}
+	return nil, errors.New("Claude Code 没有说它有哪些模型")
+}

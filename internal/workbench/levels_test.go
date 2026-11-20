@@ -52,7 +52,10 @@ func TestSessionRules(t *testing.T) {
 	respond := func(ctx context.Context, _ agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
 		if turn.Text != "ask" {
 			if turn.Text == "wait" {
-				<-release
+				select {
+				case <-release:
+				case <-ctx.Done():
+				}
 			}
 			return
 		}
@@ -120,10 +123,14 @@ func TestSessionRules(t *testing.T) {
 	b2.waitFor(t, "the request", func() bool { return pendingOn(b2, t, s.ID) != nil })
 	b2.Approve(s.ID, "a", "session", "")
 	b2.idle(t, s.ID)
-	b2.Send(s.ID, "wait")
-	b2.RevokeRule(s.ID, 0)
-	if !b2.Status(s.ID).Connected {
-		t.Error("revoking stopped a running turn")
+	if err := b2.Send(s.ID, "wait"); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := b2.RevokeRule(s.ID, 0); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if st := b2.Status(s.ID); !st.Connected {
+		t.Errorf("revoking stopped a running turn: %+v", st)
 	}
 	close(release)
 	b2.waitFor(t, "the restart after the turn", func() bool { return !b2.Status(s.ID).Connected })

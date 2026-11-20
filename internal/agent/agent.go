@@ -34,6 +34,15 @@ type Agent interface {
 	ToolName(tool string) string
 }
 
+// Model is a model an Agent offers for its sessions.
+type Model struct {
+	// ID is what Start takes as StartOptions.Model; empty is the
+	// Agent's default.
+	ID          string
+	Name        string
+	Description string
+}
+
 // MCPServer is the workbench's MCP server as one session reaches it.
 type MCPServer struct {
 	// URL is the streamable HTTP endpoint.

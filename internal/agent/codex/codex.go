@@ -687,3 +687,35 @@ func (a *Agent) CancelLogin(ctx context.Context, id string) error {
 	}
 	return srv.call(ctx, "account/login/cancel", map[string]any{"loginId": id}, nil)
 }
+
+// Models asks the app-server which models Codex offers (model/list), its
+// default first, as the empty ID.
+func (a *Agent) Models(ctx context.Context) ([]agent.Model, error) {
+	srv, err := a.server(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		Data []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"displayName"`
+			Description string `json:"description"`
+			Hidden      bool   `json:"hidden"`
+			IsDefault   bool   `json:"isDefault"`
+		} `json:"data"`
+	}
+	if err := srv.call(ctx, "model/list", map[string]any{}, &res); err != nil {
+		return nil, err
+	}
+	var out []agent.Model
+	for _, m := range res.Data {
+		switch {
+		case m.Hidden:
+		case m.IsDefault:
+			out = append([]agent.Model{{Name: "默认（" + m.DisplayName + "）", Description: m.Description}}, out...)
+		default:
+			out = append(out, agent.Model{ID: m.ID, Name: m.DisplayName, Description: m.Description})
+		}
+	}
+	return out, nil
+}

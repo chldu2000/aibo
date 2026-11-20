@@ -14,12 +14,13 @@ import (
 // by its Agent ID.
 func itemKey(kind, id string) string { return kind + ":" + id }
 
-// handle records one event of a session's native session.
-func (w *Workbench) handle(id string, ev agent.Event) {
+// handle records one event of a session's native session from.
+func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 	now := w.now()
 	w.mu.Lock()
 	s := w.sessions[id]
-	if s == nil { // deleted
+	if s == nil || s.native != from {
+		// Deleted, or a native session let go (detach) still talking.
 		w.mu.Unlock()
 		return
 	}
@@ -174,7 +175,7 @@ func (w *Workbench) handle(id string, ev agent.Event) {
 		if s.restart && s.native != nil {
 			// A rule was revoked during the turn: start again without it.
 			s.restart = false
-			go s.native.Close()
+			go w.detach(id, s).Close()
 		}
 		end := model.Done
 		if e.Interrupted {

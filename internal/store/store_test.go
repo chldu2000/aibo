@@ -7,9 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/store"
 
 	_ "modernc.org/sqlite"
@@ -18,20 +16,15 @@ import (
 // A database of an older schema is backed up before it is upgraded.
 func TestBackupBeforeUpgrade(t *testing.T) {
 	dir := t.TempDir()
-	st, err := store.Open(dir)
-	if err != nil {
+	// A database one version back, with a workspace.
+	if err := store.OpenVersion(dir, store.SchemaVersion()-1); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
-	st.AddWorkspace(model.Workspace{ID: "w", Path: "/p", CreatedAt: now})
-	st.Close()
-	// Back one version: the last migration (the settings) not yet run.
 	db, _ := sql.Open("sqlite", "file:"+filepath.Join(dir, store.DBFile))
-	db.Exec(`DROP TABLE settings`)
-	db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, store.SchemaVersion()-1))
+	db.Exec(`INSERT INTO workspaces (id, path, created_at) VALUES ('w', '/p', 0)`)
 	db.Close()
 
-	st, err = store.Open(dir)
+	st, err := store.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +50,7 @@ func TestBackupBeforeUpgrade(t *testing.T) {
 		t.Errorf("backup has %d workspaces at version %d", n, v)
 	}
 	// The upgraded one works.
-	if err := st.SetSetting("k", 1); err != nil {
+	if _, err := st.Workspaces(); err != nil {
 		t.Errorf("after the upgrade: %v", err)
 	}
 

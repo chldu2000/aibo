@@ -76,16 +76,20 @@ const idleTimeout = 30 * time.Minute
 func (w *Workbench) reapIdle() {
 	now := w.now()
 	var stop []agent.Session
+	var ids []string
 	w.mu.Lock()
-	for _, s := range w.sessions {
+	for id, s := range w.sessions {
 		if s.native == nil || s.running || len(w.pending(s)) > 0 || now.Sub(s.lastActive) < w.idle {
 			continue
 		}
-		stop = append(stop, s.native)
+		stop, ids = append(stop, w.detach(id, s)), append(ids, id)
 	}
 	w.mu.Unlock()
 	for _, n := range stop {
 		n.Close()
+	}
+	for _, id := range ids {
+		w.notify(Change{SessionID: id})
 	}
 }
 
@@ -97,6 +101,7 @@ func (w *Workbench) watchIdle(every time.Duration) {
 		select {
 		case <-t.C:
 			w.reapIdle()
+			w.checkWorkspaces()
 		case <-w.done:
 			return
 		}
@@ -129,6 +134,10 @@ func (w *Workbench) Retry(id string) error {
 			w.mu.Unlock()
 			return err
 		}
+	}
+	if ws, _ := w.workspace(s.info.WorkspaceID); ws.Missing {
+		w.mu.Unlock()
+		return ErrWorkspaceMissing
 	}
 	if err := w.load(id, s); err != nil {
 		w.mu.Unlock()
@@ -169,4 +178,14 @@ func (w *Workbench) Retry(id string) error {
 		return err
 	}
 	return nil
+}
+
+// detach lets go of a session's native session, which the caller closes
+// once w.mu is released: from then on the session has none, and its next
+// message starts one, with a new token.
+func (w *Workbench) detach(id string, s *session) agent.Session {
+	n := s.native
+	s.native = nil
+	w.mcp.Revoke(id)
+	return n
 }

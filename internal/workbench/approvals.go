@@ -218,7 +218,7 @@ func (w *Workbench) RevokeRule(sessionID string, i int) error {
 		if s.running {
 			s.restart = true
 		} else {
-			stop = s.native
+			stop = w.detach(sessionID, s)
 		}
 	}
 	w.mu.Unlock()
