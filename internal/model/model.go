@@ -33,6 +33,10 @@ type Session struct {
 	NativeIDs []string
 	CreatedAt time.Time
 	ActiveAt  time.Time
+	// Level is the approval level; Rules what the user allowed for the
+	// rest of the session.
+	Level agent.ApprovalLevel
+	Rules []agent.Rule
 }
 
 // NativeID is the current native session's ID, or "".

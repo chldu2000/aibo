@@ -128,6 +128,7 @@ func lines(s string) []string {
 func options(raw []json.RawMessage) []agent.ApprovalOption {
 	opts := []agent.ApprovalOption{{ID: optOnce, Kind: agent.AllowOnce, Label: "批准本次"}}
 	var session, always []string
+	var rules []agent.Rule
 	where := ""
 	for _, r := range raw {
 		var s suggestion
@@ -135,13 +136,14 @@ func options(raw []json.RawMessage) []agent.ApprovalOption {
 			continue
 		}
 		session = append(session, describe(s))
+		rules = append(rules, agent.Rule{Label: describe(s), Data: r})
 		if f, ok := settingsFiles[s.Destination]; ok && s.Type == "addRules" {
 			always = append(always, describe(s))
 			where = f
 		}
 	}
 	if len(session) > 0 {
-		opts = append(opts, agent.ApprovalOption{ID: optSession, Kind: agent.AllowSession, Label: "本会话内始终允许（" + strings.Join(session, "、") + "）"})
+		opts = append(opts, agent.ApprovalOption{ID: optSession, Kind: agent.AllowSession, Label: "本会话内始终允许（" + strings.Join(session, "、") + "）", Rules: rules})
 	}
 	if len(always) > 0 {
 		opts = append(opts, agent.ApprovalOption{ID: optAlways, Kind: agent.AllowAlways, Label: "永久允许（" + strings.Join(always, "、") + "）", Where: where})
@@ -205,4 +207,44 @@ func response(r canUseTool, optionID, note string) (map[string]any, error) {
 		return map[string]any{"behavior": "deny", "message": note, "interrupt": optionID == optStop}, nil
 	}
 	return nil, errors.New("没有这个选项：" + optionID)
+}
+
+// modes are Claude Code's permission modes for the approval levels.
+var modes = map[agent.ApprovalLevel]string{
+	agent.AskAlways:   "manual",
+	agent.AcceptEdits: "acceptEdits",
+	agent.FullAuto:    "bypassPermissions",
+}
+
+// ruleArgs are the command line that applies a session's rules again:
+// rules of tools allowed, directories added, and the permission mode a
+// rule may raise the level's to.
+func ruleArgs(level agent.ApprovalLevel, rules []agent.Rule) (mode string, allowed, dirs []string) {
+	mode = modes[level]
+	if mode == "" {
+		mode = modes[agent.AskAlways]
+	}
+	for _, r := range rules {
+		var s suggestion
+		if json.Unmarshal(r.Data, &s) != nil {
+			continue
+		}
+		switch s.Type {
+		case "addRules":
+			for _, rule := range s.Rules {
+				if rule.RuleContent != "" {
+					allowed = append(allowed, rule.ToolName+"("+rule.RuleContent+")")
+				} else {
+					allowed = append(allowed, rule.ToolName)
+				}
+			}
+		case "addDirectories":
+			dirs = append(dirs, s.Directories...)
+		case "setMode":
+			if s.Mode == "acceptEdits" && mode == modes[agent.AskAlways] {
+				mode = s.Mode
+			}
+		}
+	}
+	return mode, allowed, dirs
 }

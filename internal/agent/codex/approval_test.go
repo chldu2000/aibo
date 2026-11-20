@@ -72,3 +72,44 @@ func TestApprovalRequests(t *testing.T) {
 		t.Error("a permissions request is asked")
 	}
 }
+
+// "For the session" answers carry rules that, after the thread started
+// again, answer the same requests without asking.
+func TestSessionRules(t *testing.T) {
+	th := newThread()
+	cmd, _, _ := th.approval("1", askCommand, json.RawMessage(`{"itemId":"c","command":"go test ./...","cwd":"/w"}`))
+	rules := cmd.Options[1].Rules
+	if cmd.Options[1].Kind != agent.AllowSession || len(rules) != 1 || rules[0].Label != "命令 go test ./..." {
+		t.Fatalf("session option = %+v", cmd.Options[1])
+	}
+	th.handle("item/started", json.RawMessage(`{"item":{"type":"fileChange","id":"f","changes":[{"path":"/w/a.go","kind":{"type":"update"},"diff":"x"}]}}`))
+	fc, _, _ := th.approval("2", askFileChange, json.RawMessage(`{"itemId":"f"}`))
+	rules = append(rules, fc.Options[1].Rules...)
+
+	same, _, _ := th.approval("3", askCommand, json.RawMessage(`{"itemId":"c2","command":"go test ./..."}`))
+	other, _, _ := th.approval("4", askCommand, json.RawMessage(`{"itemId":"c3","command":"go test ./... && rm -rf /"}`))
+	if !allowed(rules, same, askCommand) || allowed(rules, other, askCommand) {
+		t.Error("a command rule allows only that command")
+	}
+	th.handle("item/started", json.RawMessage(`{"item":{"type":"fileChange","id":"g","changes":[{"path":"/w/a.go","kind":{"type":"update"},"diff":"y"}]}}`))
+	th.handle("item/started", json.RawMessage(`{"item":{"type":"fileChange","id":"h","changes":[{"path":"/w/b.go","kind":{"type":"update"},"diff":"z"}]}}`))
+	again, _, _ := th.approval("5", askFileChange, json.RawMessage(`{"itemId":"g"}`))
+	elsewhere, _, _ := th.approval("6", askFileChange, json.RawMessage(`{"itemId":"h"}`))
+	if !allowed(rules, again, askFileChange) || allowed(rules, elsewhere, askFileChange) {
+		t.Error("a files rule allows only those files")
+	}
+	if allowed(rules, same, askFileChange) {
+		t.Error("a command rule allowed a file change")
+	}
+}
+
+func TestPolicies(t *testing.T) {
+	for level, want := range map[agent.ApprovalLevel]string{
+		agent.AskAlways: "on-request workspace-write", agent.AcceptEdits: "on-request workspace-write", agent.FullAuto: "never danger-full-access",
+	} {
+		p, s := policies(level)
+		if p+" "+s != want {
+			t.Errorf("%s → %s %s", level, p, s)
+		}
+	}
+}

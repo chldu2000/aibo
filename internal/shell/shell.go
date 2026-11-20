@@ -20,6 +20,10 @@ type Options struct {
 	// Wake asks for a frame after the workbench changed, from any
 	// goroutine (mygo.Window.Invalidate).
 	Wake func()
+	// Notify, when set, shows a desktop notification about a session:
+	// MyGo's, which the app wires to open the session when clicked
+	// (Shell.Open).
+	Notify func(sessionID, title, body string)
 	// ChooseFolder asks the user for a folder to add as a workspace,
 	// blocking until they choose; ok is false when they cancel. It runs
 	// off the main thread.
@@ -49,6 +53,11 @@ type Shell struct {
 	// refocus gives the composer the keyboard focus in the next frame
 	// that builds it.
 	refocus bool
+	// level is the approval control's popover.
+	level levelState
+	// seen counts each session's approval requests last seen, to notify
+	// of new ones.
+	seen map[string]int
 	// approvals are the approval cards' states, by request ID.
 	approvals map[string]*approvalUI
 	// openCards are the reference cards showing their briefs.
@@ -105,6 +114,7 @@ func (s *Shell) apply() {
 			v.upsert(*c.Message)
 		}
 	}
+	s.notifyApprovals(pending)
 }
 
 // upsert puts m in place of the message with its Seq, or at the end.
@@ -193,4 +203,34 @@ func sessionTitle(x model.Session) string {
 		return "新会话"
 	}
 	return x.Title
+}
+
+// notifyApprovals notifies of new approval requests in sessions not on
+// screen.
+func (s *Shell) notifyApprovals(changes []workbench.Change) {
+	if s.seen == nil {
+		s.seen = map[string]int{}
+	}
+	done := map[string]bool{}
+	for _, c := range changes {
+		id := c.SessionID
+		if id == "" || done[id] {
+			continue
+		}
+		done[id] = true
+		n := s.wb.Status(id).Approvals
+		if n > s.seen[id] && id != s.current && s.opts.Notify != nil {
+			x, _ := s.wb.Session(id)
+			s.opts.Notify(id, "「"+sessionTitle(x)+"」需要审批", s.agentName(x.Agent)+" 在等你批准一个操作")
+		}
+		s.seen[id] = n
+	}
+}
+
+// Open opens a session, as when its notification is clicked. It runs on
+// the main thread.
+func (s *Shell) Open(sessionID string) {
+	if _, ok := s.wb.Session(sessionID); ok {
+		s.current = sessionID
+	}
 }

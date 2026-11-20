@@ -124,6 +124,9 @@ func (w *Workbench) Approve(sessionID, approvalID, optionID, note string) error 
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		a.Answer, a.Note = answer, note
+		if answer != nil && answer.Kind == agent.AllowSession {
+			w.remember(sessionID, s, answer.Rules)
+		}
 		for i := range s.msgs {
 			if m := &s.msgs[i]; m.Tool != nil && m.Tool.Approval == a && !m.State.Ended() {
 				w.st.UpdateMessage(sessionID, *m)
@@ -140,5 +143,88 @@ func (w *Workbench) Approve(sessionID, approvalID, optionID, note string) error 
 		return err
 	}
 	w.notify(Change{SessionID: sessionID, Message: changed})
+	return nil
+}
+
+// remember adds rules the user allowed for the rest of the session.
+// w.mu is held.
+func (w *Workbench) remember(id string, s *session, rules []agent.Rule) {
+	added := false
+	for _, r := range rules {
+		dup := false
+		for _, have := range s.info.Rules {
+			dup = dup || have.Label == r.Label && string(have.Data) == string(r.Data)
+		}
+		if !dup {
+			s.info.Rules, added = append(s.info.Rules, r), true
+		}
+	}
+	if added {
+		w.st.SetApproval(id, s.info.Level, s.info.Rules)
+	}
+}
+
+// SetLevel sets a session's approval level, from its next request on.
+func (w *Workbench) SetLevel(sessionID string, level agent.ApprovalLevel) error {
+	switch level {
+	case agent.AskAlways, agent.AcceptEdits, agent.FullAuto:
+	default:
+		return ErrNoSuchLevel
+	}
+	w.mu.Lock()
+	s, ok := w.sessions[sessionID]
+	if !ok {
+		w.mu.Unlock()
+		return ErrNoSuchSession
+	}
+	if err := w.st.SetApproval(sessionID, level, s.info.Rules); err != nil {
+		w.mu.Unlock()
+		return err
+	}
+	s.info.Level = level
+	native := s.native
+	w.mu.Unlock()
+	if native != nil {
+		if err := native.SetLevel(context.Background(), level); err != nil {
+			return err
+		}
+	}
+	w.notify(Change{SessionID: sessionID})
+	return nil
+}
+
+// RevokeRule takes back a rule allowed for the rest of the session. The
+// Agent cannot forget it while it runs: its native session starts again
+// (resumed, without the rule) when idle.
+func (w *Workbench) RevokeRule(sessionID string, i int) error {
+	w.mu.Lock()
+	s, ok := w.sessions[sessionID]
+	if !ok {
+		w.mu.Unlock()
+		return ErrNoSuchSession
+	}
+	if i < 0 || i >= len(s.info.Rules) {
+		w.mu.Unlock()
+		return ErrNoSuchRule
+	}
+	rules := append(append([]agent.Rule(nil), s.info.Rules[:i]...), s.info.Rules[i+1:]...)
+	if err := w.st.SetApproval(sessionID, s.info.Level, rules); err != nil {
+		w.mu.Unlock()
+		return err
+	}
+	s.info.Rules = rules
+	var stop agent.Session
+	if s.native != nil {
+		if s.running {
+			s.restart = true
+		} else {
+			stop = s.native
+		}
+	}
+	w.mu.Unlock()
+	if stop != nil {
+		stop.Close()
+	}
+	w.notify(Change{SessionID: sessionID})
 	return nil
 }

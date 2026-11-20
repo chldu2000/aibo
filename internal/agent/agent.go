@@ -49,6 +49,33 @@ type StartOptions struct {
 	// MCP is the workbench's MCP server, which the Agent must be given
 	// (as the server named "aibo") so that it can read its references.
 	MCP *MCPServer
+	// Level is the session's approval level.
+	Level ApprovalLevel
+	// Rules are what the user allowed for the session, from earlier
+	// answers (ApprovalOption.Rules), to apply again.
+	Rules []Rule
+}
+
+// ApprovalLevel is how much the Agent may do without asking, mapped to
+// each Agent's own settings.
+type ApprovalLevel string
+
+const (
+	// AskAlways asks before anything the Agent asks about by default.
+	AskAlways ApprovalLevel = "ask"
+	// AcceptEdits lets the Agent change files in the workspace without
+	// asking.
+	AcceptEdits ApprovalLevel = "edits"
+	// FullAuto lets the Agent do anything without asking.
+	FullAuto ApprovalLevel = "auto"
+)
+
+// Rule is something the user allowed for the rest of a session, which
+// the Agent's adapter applies again when the session restarts. Data is
+// the adapter's own; the workbench only keeps it.
+type Rule struct {
+	Label string
+	Data  json.RawMessage
 }
 
 // Session is one running native session.
@@ -65,6 +92,8 @@ type Session interface {
 	// RespondApproval answers the approval request id with one of its
 	// options; note, for a denial, tells the Agent why.
 	RespondApproval(ctx context.Context, id string, optionID string, note string) error
+	// SetLevel changes the approval level, for the turns to come.
+	SetLevel(ctx context.Context, level ApprovalLevel) error
 	// Close ends the native session's process or connection.
 	Close() error
 }
@@ -183,6 +212,8 @@ type ApprovalOption struct {
 	Label string
 	// Where, for AllowAlways, is where the Agent writes the rule.
 	Where string
+	// Rules, for AllowSession, are what the session allows from then on.
+	Rules []Rule `json:",omitempty"`
 }
 
 // OptionKind is what an answer does.

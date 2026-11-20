@@ -124,6 +124,9 @@ var migrations = []string{
 	// What a message has besides text: a tool call, a plan, a subagent's
 	// messages.
 	`ALTER TABLE messages ADD COLUMN detail TEXT;`,
+	// Approval levels and the rules allowed for the rest of a session.
+	`ALTER TABLE sessions ADD COLUMN approval_level TEXT NOT NULL DEFAULT 'ask';
+	ALTER TABLE sessions ADD COLUMN rules TEXT;`,
 }
 
 // SchemaVersion is the schema version this build writes.
@@ -201,27 +204,35 @@ func (s *Store) Workspaces() ([]model.Workspace, error) {
 
 // CreateSession stores a new session, without native sessions or messages.
 func (s *Store) CreateSession(x model.Session) error {
-	_, err := s.db.Exec(`INSERT INTO sessions (id, workspace_id, agent, model, title, title_manual, created_at, active_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		x.ID, x.WorkspaceID, string(x.Agent), x.Model, x.Title, x.TitleManual, ms(x.CreatedAt), ms(x.ActiveAt))
+	level := x.Level
+	if level == "" {
+		level = agent.AskAlways
+	}
+	_, err := s.db.Exec(`INSERT INTO sessions (id, workspace_id, agent, model, title, title_manual, created_at, active_at, approval_level, rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		x.ID, x.WorkspaceID, string(x.Agent), x.Model, x.Title, x.TitleManual, ms(x.CreatedAt), ms(x.ActiveAt), string(level), rulesValue(x.Rules))
 	return err
 }
 
 // Sessions returns every session, most recently active first.
 func (s *Store) Sessions() ([]model.Session, error) {
-	rows, err := s.db.Query(`SELECT id, workspace_id, agent, model, title, title_manual, created_at, active_at FROM sessions ORDER BY active_at DESC, rowid DESC`)
+	rows, err := s.db.Query(`SELECT id, workspace_id, agent, model, title, title_manual, created_at, active_at, approval_level, rules FROM sessions ORDER BY active_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}
 	var out []model.Session
 	for rows.Next() {
 		var x model.Session
-		var kind string
+		var kind, level string
+		var rules sql.NullString
 		var created, active sql.NullInt64
-		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Title, &x.TitleManual, &created, &active); err != nil {
+		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Title, &x.TitleManual, &created, &active, &level, &rules); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		x.Agent = agent.Kind(kind)
+		x.Agent, x.Level = agent.Kind(kind), agent.ApprovalLevel(level)
+		if rules.Valid {
+			json.Unmarshal([]byte(rules.String), &x.Rules)
+		}
 		x.CreatedAt, x.ActiveAt = fromMS(created), fromMS(active)
 		out = append(out, x)
 	}
@@ -516,6 +527,23 @@ func detailOf(m model.Message) any {
 		return nil
 	}
 	b, err := json.Marshal(detail{Tool: m.Tool, Plan: m.Plan, Children: m.Children})
+	if err != nil {
+		return nil
+	}
+	return string(b)
+}
+
+// SetApproval sets a session's approval level and rules.
+func (s *Store) SetApproval(sessionID string, level agent.ApprovalLevel, rules []agent.Rule) error {
+	_, err := s.db.Exec(`UPDATE sessions SET approval_level = ?, rules = ? WHERE id = ?`, string(level), rulesValue(rules), sessionID)
+	return err
+}
+
+func rulesValue(rules []agent.Rule) any {
+	if len(rules) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(rules)
 	if err != nil {
 		return nil
 	}

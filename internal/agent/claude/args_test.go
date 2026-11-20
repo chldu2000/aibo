@@ -18,7 +18,7 @@ func TestArgsInjectTheWorkbenchServer(t *testing.T) {
 	if strings.Contains(line, "secret-token") {
 		t.Fatalf("the token is on the command line: %s", line)
 	}
-	for _, want := range []string{"--strict-mcp-config", "--resume s1", "--model haiku", "--allowedTools mcp__aibo__*"} {
+	for _, want := range []string{"--strict-mcp-config", "--resume s1", "--model haiku", "--allowedTools mcp__aibo__*", "--permission-mode manual"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("args lack %q: %s", want, line)
 		}
@@ -40,5 +40,26 @@ func TestArgsInjectTheWorkbenchServer(t *testing.T) {
 	}
 	if got := a.args(agent.StartOptions{}); slices.Contains(got, "--mcp-config") {
 		t.Errorf("a session without the server: %v", got)
+	}
+}
+
+// A session's level and rules are on its command line.
+func TestArgsApplyLevelAndRules(t *testing.T) {
+	a := New("claude")
+	raw := func(s string) json.RawMessage { return json.RawMessage(s) }
+	rules := []agent.Rule{
+		{Label: "Bash(go test ./...)", Data: raw(`{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"go test ./..."}],"behavior":"allow","destination":"localSettings"}`)},
+		{Label: "访问 /src", Data: raw(`{"type":"addDirectories","directories":["/src"],"destination":"session"}`)},
+		{Label: "自动接受修改", Data: raw(`{"type":"setMode","mode":"acceptEdits","destination":"session"}`)},
+	}
+	line := strings.Join(a.args(agent.StartOptions{Level: agent.AskAlways, Rules: rules, MCP: &agent.MCPServer{URL: "u", Token: "t"}}), " ")
+	for _, want := range []string{"--permission-mode acceptEdits", "--add-dir /src", "--allowedTools mcp__aibo__* Bash(go test ./...)"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("args lack %q: %s", want, line)
+		}
+	}
+	// A rule never lowers the level.
+	if line := strings.Join(a.args(agent.StartOptions{Level: agent.FullAuto, Rules: rules}), " "); !strings.Contains(line, "--permission-mode bypassPermissions") {
+		t.Errorf("full auto: %s", line)
 	}
 }

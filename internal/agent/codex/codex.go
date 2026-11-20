@@ -44,19 +44,27 @@ func (a *Agent) Name() string     { return "Codex" }
 // app-server's items name it <server>.<tool>; the model never sees that.)
 func (a *Agent) ToolName(tool string) string { return "mcp__aibo__" + tool }
 
-// Approval policy and sandbox until the approval levels (ticket 10): the
-// default level, every approval request declined.
-const (
-	approvalPolicy = "on-request"
-	sandbox        = "workspace-write"
-)
+// policies are Codex's approval policy and sandbox for a level. Codex
+// writes its workspace without asking under workspace-write, so asking
+// always and accepting edits are the same to it.
+func policies(level agent.ApprovalLevel) (policy, sandbox string) {
+	if level == agent.FullAuto {
+		return "never", "danger-full-access"
+	}
+	return "on-request", "workspace-write"
+}
+
+// sandboxPolicies are turn/start's sandbox policies for the sandbox
+// modes of thread/start.
+var sandboxPolicies = map[string]string{"workspace-write": "workspaceWrite", "danger-full-access": "dangerFullAccess"}
 
 func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Session, error) {
 	srv, err := a.server(ctx)
 	if err != nil {
 		return nil, err
 	}
-	params := map[string]any{"cwd": opts.Workspace, "approvalPolicy": approvalPolicy, "sandbox": sandbox}
+	policy, sandbox := policies(opts.Level)
+	params := map[string]any{"cwd": opts.Workspace, "approvalPolicy": policy, "sandbox": sandbox}
 	if opts.Model != "" {
 		params["model"] = opts.Model
 	}
@@ -76,7 +84,7 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	}
 	// Notifications before the session is attached (thread/started) are
 	// not needed: the call's result names the thread.
-	s := &session{srv: srv, events: make(chan agent.Event, 256), parse: newThread()}
+	s := &session{srv: srv, events: make(chan agent.Event, 256), parse: newThread(), rules: opts.Rules}
 	var res struct {
 		Thread struct {
 			ID string `json:"id"`
@@ -364,6 +372,11 @@ type session struct {
 	// note is what the user said denying a request, which Codex's answer
 	// cannot carry: it goes with the next message.
 	note string
+	// rules are the session's rules, which Codex forgot when the thread
+	// started again: aibo answers what they allow.
+	rules []agent.Rule
+	// level, when set, is a level to apply from the next turn.
+	level agent.ApprovalLevel
 }
 
 // ask passes an approval request to the user; ok is false for requests
@@ -380,6 +393,11 @@ func (s *session) ask(rpcID json.RawMessage, method string, params json.RawMessa
 		return false
 	}
 	k.rpcID = rpcID
+	if allowed(s.rules, a, method) {
+		// Answered for the session again, so that Codex remembers too.
+		go s.srv.send(map[string]any{"id": rpcID, "result": map[string]any{"decision": "acceptForSession"}})
+		return true
+	}
 	if s.asks == nil {
 		s.asks = map[string]ask{}
 	}
@@ -413,11 +431,12 @@ func (s *session) notify(method string, params json.RawMessage) {
 func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 	s.mu.Lock()
 	if s.closed || s.running {
-		s.mu.Unlock()
+		err := errors.New("Codex 会话已关闭")
 		if s.running {
-			return errors.New("Codex 正在回复")
+			err = errors.New("Codex 正在回复")
 		}
-		return errors.New("Codex 会话已关闭")
+		s.mu.Unlock()
+		return err
 	}
 	s.running = true
 	text := turn.Text
@@ -426,13 +445,19 @@ func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 		text = "（关于我刚才拒绝的操作，说明一下：" + s.note + "）\n\n" + text
 		s.note = ""
 	}
+	params := map[string]any{"threadId": s.id, "input": []any{map[string]any{"type": "text", "text": text}}}
+	if s.level != "" {
+		policy, sandbox := policies(s.level)
+		params["approvalPolicy"], params["sandboxPolicy"] = policy, map[string]any{"type": sandboxPolicies[sandbox]}
+		s.level = ""
+	}
 	s.mu.Unlock()
 	var res struct {
 		Turn struct {
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	err := s.srv.call(ctx, "turn/start", map[string]any{"threadId": s.id, "input": []any{map[string]any{"type": "text", "text": text}}}, &res)
+	err := s.srv.call(ctx, "turn/start", params, &res)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
@@ -534,4 +559,13 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 	}
 	s.mu.Unlock()
 	return s.srv.send(map[string]any{"id": k.rpcID, "result": result})
+}
+
+// SetLevel applies a level from the next turn: Codex takes policies with
+// turn/start.
+func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.level = level
+	return nil
 }

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -52,6 +53,10 @@ func find(name string) (string, bool) {
 	return "", false
 }
 
+// notificationPrefix starts the IDs of approval notifications, before
+// their sessions' IDs.
+const notificationPrefix = "approval:"
+
 func main() {
 	dir, err := dataDir()
 	if err != nil {
@@ -76,7 +81,15 @@ func main() {
 
 	// win is set on the main thread and read from the workbench's.
 	var win atomic.Pointer[mygo.Window]
+	// Notifications need a packaged app; a bare binary goes without.
+	var notify func(sessionID, title, body string)
+	if mygo.NotificationsSupported() {
+		notify = func(sessionID, title, body string) {
+			mygo.NewNotification(mygo.NotificationOptions{ID: notificationPrefix + sessionID, Title: title, Body: body, Group: sessionID}).Show()
+		}
+	}
 	sh := shell.New(wb, shell.Options{
+		Notify: notify,
 		Wake: func() {
 			if w := win.Load(); w != nil {
 				w.Invalidate()
@@ -89,6 +102,15 @@ func main() {
 			}
 			return paths[0], true
 		},
+	})
+	// A notification opens its session, also after aibo was relaunched.
+	mygo.App.OnNotificationClick(func(id string) {
+		if sessionID, ok := strings.CutPrefix(id, notificationPrefix); ok {
+			if w := win.Load(); w != nil {
+				w.Update(func() { sh.Open(sessionID) })
+				w.Focus()
+			}
+		}
 	})
 	mygo.App.WhenReady(func() {
 		win.Store(mygo.NewWindow(mygo.WindowOptions{

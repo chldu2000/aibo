@@ -50,6 +50,8 @@ var (
 	ErrNoSuchReference  = errors.New("引用不存在")
 	ErrBadRange         = errors.New("引用范围无效")
 	ErrNoSuchApproval   = errors.New("这个审批请求已经处理过或不存在")
+	ErrNoSuchLevel      = errors.New("没有这个审批档位")
+	ErrNoSuchRule       = errors.New("没有这条规则")
 	errWorkbenchClosing = errors.New("工作台正在关闭")
 )
 
@@ -111,6 +113,9 @@ type session struct {
 	// the keys of itemKey, to indexes in msgs.
 	items     map[string]int
 	lastFlush time.Time
+	// restart is set when the native session must start again, without
+	// a revoked rule, once its turn ends.
+	restart bool
 	// loose are approval requests whose tool call has not started, by
 	// the tool call's ID, in the order they came.
 	loose []looseApproval
@@ -280,7 +285,7 @@ func (w *Workbench) NewSession(workspaceID string, kind agent.Kind, modelName st
 		return model.Session{}, fmt.Errorf("%s：%w", kind, ErrUnknownAgent)
 	}
 	now := w.now()
-	x := model.Session{ID: newID("s_"), WorkspaceID: workspaceID, Agent: kind, Model: modelName, CreatedAt: now, ActiveAt: now}
+	x := model.Session{ID: newID("s_"), WorkspaceID: workspaceID, Agent: kind, Model: modelName, CreatedAt: now, ActiveAt: now, Level: agent.AskAlways}
 	w.mu.Lock()
 	if _, ok := w.workspace(workspaceID); !ok {
 		w.mu.Unlock()
@@ -459,7 +464,8 @@ func (w *Workbench) connect(id string, info model.Session, ws model.Workspace) (
 		return nil, fmt.Errorf("%s：%w", info.Agent, ErrUnknownAgent)
 	}
 	mcp := &agent.MCPServer{URL: w.mcp.URL(), Token: w.mcp.Issue(id)}
-	native, err := a.Start(context.Background(), agent.StartOptions{Workspace: ws.Path, Model: info.Model, ResumeID: info.NativeID(), MCP: mcp})
+	native, err := a.Start(context.Background(), agent.StartOptions{Workspace: ws.Path, Model: info.Model, ResumeID: info.NativeID(), MCP: mcp,
+		Level: info.Level, Rules: info.Rules})
 	if err != nil {
 		w.mcp.Revoke(id)
 		return nil, err

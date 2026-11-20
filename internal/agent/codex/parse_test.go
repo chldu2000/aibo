@@ -212,3 +212,5 @@ func TestPlansFileChangesReasoningAndErrors(t *testing.T) {
 }
 
 func (s *replaySession) RespondApproval(context.Context, string, string, string) error { return nil }
+
+func (s *replaySession) SetLevel(context.Context, agent.ApprovalLevel) error { return nil }

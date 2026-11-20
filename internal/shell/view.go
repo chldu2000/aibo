@@ -101,7 +101,10 @@ func (s *Shell) workspaceGroups(c *ui.Context) {
 			row := ui.Row(c).Key(x.ID).Gap(8).Padding(6, 8).Radius(7).AlignItems(ui.Center).Children(func() {
 				agentGlyph(c, x.Agent, 18)
 				ui.Text(c, sessionTitle(x)).TextColor(t.Text).NoWrap().Grow(1)
-				if s.wb.Status(x.ID).Running {
+				switch st := s.wb.Status(x.ID); {
+				case st.Approvals > 0:
+					ui.Text(c, fmt.Sprintf("待审批 %d", st.Approvals)).FontSize(11).Bold().TextColor(t.Warning)
+				case st.Running:
 					ui.Text(c, "运行中").FontSize(11).TextColor(t.TextMuted)
 				}
 			})
@@ -236,6 +239,16 @@ func (s *Shell) banners(c *ui.Context, id string) {
 	if s.notice != "" {
 		bar(s.notice, func() { s.notice = "" })
 	}
+	if x, ok := s.wb.Session(id); ok && x.Level == agent.FullAuto {
+		// A warning that stays while the level does.
+		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
+			sfsymbols.Symbol(c, "exclamationmark.shield").Size(14).Color(c.Theme().Warning)
+			ui.Text(c, "全部自动：这个会话里 Agent 的所有操作都不再询问").TextColor(c.Theme().Text).Grow(1)
+			if ui.Button(c, "改回每次询问").Clicked() {
+				s.setLevel(id, agent.AskAlways)
+			}
+		})
+	}
 	if v := s.views[id]; v != nil && v.highlight[0] > 0 {
 		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(40, 120, 255, 0.25))}).Children(func() {
 			ui.Text(c, "已高亮被引用的范围 "+refs.Range(v.highlight[0], v.highlight[1])).TextColor(c.Theme().Text).Grow(1)
@@ -292,6 +305,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			if iconButton(c, "at", "引用其他会话（@）").Clicked() {
 				s.openPull()
 			}
+			s.levelControl(c, x)
 			ui.Spacer(c)
 			if running {
 				if roundButton(c, "stop.fill", "停止", t.Text, t.Background).Clicked() {

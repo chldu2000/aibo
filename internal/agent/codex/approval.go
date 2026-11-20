@@ -51,6 +51,7 @@ func (t *thread) approval(id, method string, params json.RawMessage) (agent.Appr
 	switch method {
 	case askCommand:
 		a.Title, a.Command, a.Cwd = "执行命令", p.Command, p.Cwd
+		session.Rules = []agent.Rule{commandRule(p.Command)}
 		a.Options = []agent.ApprovalOption{once, session}
 		if len(p.Amendment) > 0 {
 			k.amendment = p.Amendment
@@ -72,6 +73,7 @@ func (t *thread) approval(id, method string, params json.RawMessage) (agent.Appr
 			}
 			a.Diff = strings.Join(diffs, "\n")
 		}
+		session.Rules = []agent.Rule{filesRule(a.Paths)}
 		a.Options = []agent.ApprovalOption{once, session, deny, stop}
 	case askElicitation:
 		a.Title = "调用 MCP 工具（" + p.ServerName + "）"
@@ -102,4 +104,53 @@ func (k ask) result(optionID string) (any, error) {
 		}
 	}
 	return nil, errors.New("没有这个选项：" + optionID)
+}
+
+// rule is what a session rule of Codex allows: a command as it was run,
+// or changes to some files.
+type rule struct {
+	Kind    string   `json:"kind"` // "command" or "files"
+	Command string   `json:"command,omitempty"`
+	Paths   []string `json:"paths,omitempty"`
+}
+
+func commandRule(cmd string) agent.Rule {
+	b, _ := json.Marshal(rule{Kind: "command", Command: cmd})
+	return agent.Rule{Label: "命令 " + cmd, Data: b}
+}
+
+func filesRule(paths []string) agent.Rule {
+	b, _ := json.Marshal(rule{Kind: "files", Paths: paths})
+	return agent.Rule{Label: "修改 " + strings.Join(paths, "、"), Data: b}
+}
+
+// allowed reports whether a session rule allows the request, which Codex
+// itself forgot when its thread started again.
+func allowed(rules []agent.Rule, a agent.ApprovalRequested, method string) bool {
+	for _, r := range rules {
+		var x rule
+		if json.Unmarshal(r.Data, &x) != nil {
+			continue
+		}
+		switch {
+		case method == askCommand && x.Kind == "command" && x.Command == a.Command:
+			return true
+		case method == askFileChange && x.Kind == "files" && len(a.Paths) > 0 && subset(a.Paths, x.Paths):
+			return true
+		}
+	}
+	return false
+}
+
+func subset(a, b []string) bool {
+	for _, p := range a {
+		found := false
+		for _, q := range b {
+			found = found || p == q
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }

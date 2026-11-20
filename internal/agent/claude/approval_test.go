@@ -45,6 +45,9 @@ func TestCanUseToolBecomesAnApproval(t *testing.T) {
 	if got := labels(a.Options); got != "once=批准本次 | session=本会话内始终允许（Bash(touch a.txt)、访问 /private/tmp/aibo-10/ws、自动接受修改） | always=永久允许（Bash(touch a.txt)） | deny=拒绝 | stop=拒绝并停止" {
 		t.Errorf("options: %s", got)
 	}
+	if r := a.Options[1].Rules; len(r) != 3 || r[0].Label != "Bash(touch a.txt)" || r[2].Label != "自动接受修改" {
+		t.Errorf("session option's rules = %+v", r)
+	}
 	if a.Options[2].Where != ".claude/settings.local.json" {
 		t.Errorf("always writes to %q", a.Options[2].Where)
 	}

@@ -55,7 +55,14 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 	if opts.ResumeID != "" {
 		args = append(args, "--resume", opts.ResumeID)
 	}
+	mode, allowed, dirs := ruleArgs(opts.Level, opts.Rules)
+	// The option lets the level rise to full auto later in the session.
+	args = append(args, "--permission-mode", mode, "--allow-dangerously-skip-permissions")
+	if len(dirs) > 0 {
+		args = append(append(args, "--add-dir"), dirs...)
+	}
 	if opts.MCP != nil {
+		allowed = append([]string{"mcp__aibo__*"}, allowed...)
 		// Only the workbench's server, its token read from the process's
 		// environment (tokenVar) so that it is not on the command line,
 		// and its tools need no approval.
@@ -64,7 +71,10 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 			"url":     opts.MCP.URL,
 			"headers": map[string]string{"Authorization": "Bearer ${" + tokenVar + "}"},
 		}}})
-		args = append(args, "--mcp-config", string(cfg), "--strict-mcp-config", "--allowedTools", "mcp__aibo__*")
+		args = append(args, "--mcp-config", string(cfg), "--strict-mcp-config")
+	}
+	if len(allowed) > 0 {
+		args = append(append(args, "--allowedTools"), allowed...)
 	}
 	return args
 }
@@ -258,4 +268,17 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 		s.parser.interrupting = true
 	}
 	return s.write(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": id, "response": resp}})
+}
+
+// SetLevel switches the permission mode of the running session.
+func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
+	mode, ok := modes[level]
+	if !ok {
+		return fmt.Errorf("没有这个审批档位：%s", level)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextReq++
+	return s.write(map[string]any{"type": "control_request", "request_id": fmt.Sprintf("mode-%d", s.nextReq),
+		"request": map[string]any{"subtype": "set_permission_mode", "mode": mode}})
 }

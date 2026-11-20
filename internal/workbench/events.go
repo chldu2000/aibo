@@ -171,6 +171,11 @@ func (w *Workbench) handle(id string, ev agent.Event) {
 		}
 		s.loose = append(s.loose, looseApproval{toolID: e.ToolID, a: a})
 	case agent.TurnEnded:
+		if s.restart && s.native != nil {
+			// A rule was revoked during the turn: start again without it.
+			s.restart = false
+			go s.native.Close()
+		}
 		end := model.Done
 		if e.Interrupted {
 			end = model.Interrupted

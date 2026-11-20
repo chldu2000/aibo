@@ -66,15 +66,15 @@ func TestContractApprovals(t *testing.T) {
 	for _, c := range []struct {
 		kind  agent.Kind
 		model string
-		// dir is where the files go: Codex writes its workspace without
-		// asking, so it is asked to write outside.
+		// dir is where the files go: Codex writes its workspace (and
+		// $TMPDIR) without asking, so it is asked to write outside.
 		outside bool
 	}{{claude.Kind, "haiku", false}, {codex.Kind, "", true}} {
 		t.Run(string(c.kind), func(t *testing.T) {
 			ws := t.TempDir()
 			dir := ws
 			if c.outside {
-				dir = t.TempDir()
+				dir = outsideDir(t)
 			}
 			first, second := filepath.Join(dir, "first.txt"), filepath.Join(dir, "second.txt")
 			wsp, _ := w.AddWorkspace(ws)
