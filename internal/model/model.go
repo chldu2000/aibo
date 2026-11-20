@@ -78,9 +78,59 @@ type Message struct {
 	Text string
 	// Thinking is the Agent's reasoning attached to a reply.
 	Thinking string
+	// Refs are the IDs of the references a user message delivered, in
+	// the order their blocks preceded its text.
+	Refs []string
 	// Raw is the Agent's own event the message came from, for internal
 	// use only.
 	Raw        json.RawMessage
 	CreatedAt  time.Time
 	FinishedAt time.Time
+}
+
+// ReferenceState is whether a reference has been delivered.
+type ReferenceState string
+
+const (
+	// Draft references wait in the receiving session's composer.
+	Draft ReferenceState = "draft"
+	// Delivered references were sent with a user message.
+	Delivered ReferenceState = "delivered"
+)
+
+// Reference is a session reference: a handle on a range of a source
+// session's messages, handed with its brief to a receiving session. It is
+// a snapshot, fixed when created.
+type Reference struct {
+	ID string
+	// SourceID is the referenced session, which may since have been
+	// deleted. SourceTitle, SourceAgent and SourceWorkspace are as they
+	// were when the reference was created.
+	SourceID        string
+	SourceTitle     string
+	SourceAgent     agent.Kind
+	SourceWorkspace string
+	// From and To are the first and last sequence numbers of the range,
+	// which holds Count messages.
+	From, To int
+	Count    int
+	// TargetID is the receiving session.
+	TargetID string
+	// Brief is the text the receiving Agent gets, fixed at creation.
+	Brief string
+	State ReferenceState
+	// MessageSeq is the receiving session's user message that delivered
+	// the reference, once delivered.
+	MessageSeq int
+	CreatedAt  time.Time
+	// Reads are the receiving Agent's reads of the reference, oldest
+	// first.
+	Reads []ReferenceRead
+}
+
+// ReferenceRead records that the receiving Agent read messages From..To
+// of a reference.
+type ReferenceRead struct {
+	From, To int
+	At       time.Time
 }

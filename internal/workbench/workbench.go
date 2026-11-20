@@ -18,7 +18,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/mcpserver"
 	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/refs"
 	"github.com/chldu2000/aibo/internal/store"
 )
 
@@ -41,6 +43,9 @@ var (
 	ErrUnknownAgent     = errors.New("没有这个 Agent")
 	ErrTurnRunning      = errors.New("Agent 正在回复，请先停止或等它完成")
 	ErrEmptyMessage     = errors.New("消息不能为空")
+	ErrNothingToRef     = errors.New("会话里还没有可以引用的消息")
+	ErrSelfReference    = errors.New("暂不支持把会话引用给它自己")
+	ErrNoSuchReference  = errors.New("引用不存在")
 	errWorkbenchClosing = errors.New("工作台正在关闭")
 )
 
@@ -72,6 +77,7 @@ type AgentInfo struct {
 // Workbench is the open workbench.
 type Workbench struct {
 	st     *store.Store
+	mcp    *mcpserver.Server
 	agents []agent.Agent
 	now    func() time.Time
 	pumps  sync.WaitGroup
@@ -80,6 +86,7 @@ type Workbench struct {
 	closing    bool
 	workspaces []model.Workspace
 	sessions   map[string]*session
+	refs       map[string]*model.Reference
 	listeners  map[int]func(Change)
 	nextL      int
 }
@@ -116,7 +123,7 @@ func Open(o Options) (*Workbench, error) {
 		st.Close()
 		return nil, err
 	}
-	w := &Workbench{st: st, agents: o.Agents, now: o.Now, sessions: map[string]*session{}, listeners: map[int]func(Change){}}
+	w := &Workbench{st: st, agents: o.Agents, now: o.Now, sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
 	if w.workspaces, err = st.Workspaces(); err != nil {
 		st.Close()
 		return nil, err
@@ -128,6 +135,18 @@ func Open(o Options) (*Workbench, error) {
 	}
 	for _, x := range all {
 		w.sessions[x.ID] = &session{info: x}
+	}
+	refs, err := st.References()
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
+	for i := range refs {
+		w.refs[refs[i].ID] = &refs[i]
+	}
+	if w.mcp, err = mcpserver.Start(reader{w}); err != nil {
+		st.Close()
+		return nil, err
 	}
 	return w, nil
 }
@@ -148,6 +167,7 @@ func (w *Workbench) Close() error {
 		n.Close()
 	}
 	w.pumps.Wait()
+	w.mcp.Close()
 	return w.st.Close()
 }
 
@@ -332,11 +352,12 @@ func (w *Workbench) load(id string, s *session) error {
 
 // Send sends the user's message to the session's Agent, starting or
 // resuming its native session first if none is running.
+//
+// The session's draft references are delivered with the message: their
+// blocks precede its text in what the Agent receives, and the message
+// may then have no text of its own.
 func (w *Workbench) Send(id, text string) error {
 	text = strings.TrimSpace(text)
-	if text == "" {
-		return ErrEmptyMessage
-	}
 	now := w.now()
 
 	w.mu.Lock()
@@ -348,7 +369,13 @@ func (w *Workbench) Send(id, text string) error {
 	case w.closing:
 		w.mu.Unlock()
 		return errWorkbenchClosing
-	case s.running:
+	}
+	drafts := w.drafts(id)
+	if text == "" && len(drafts) == 0 {
+		w.mu.Unlock()
+		return ErrEmptyMessage
+	}
+	if s.running {
 		w.mu.Unlock()
 		return ErrTurnRunning
 	}
@@ -363,8 +390,22 @@ func (w *Workbench) Send(id, text string) error {
 		return err
 	}
 	m.Seq = seq
+	var briefs []string
+	for _, r := range drafts {
+		m.Refs = append(m.Refs, r.ID)
+		briefs = append(briefs, r.Brief)
+	}
+	if len(drafts) > 0 {
+		if err := w.st.Deliver(m.Refs, seq); err != nil {
+			w.mu.Unlock()
+			return err
+		}
+		for _, r := range drafts {
+			r.State, r.MessageSeq = model.Delivered, seq
+		}
+	}
 	s.msgs = append(s.msgs, m)
-	if s.info.Title == "" && !s.info.TitleManual {
+	if s.info.Title == "" && !s.info.TitleManual && text != "" {
 		s.info.Title = defaultTitle(text)
 		w.st.SetTitle(id, s.info.Title, false)
 	}
@@ -385,7 +426,7 @@ func (w *Workbench) Send(id, text string) error {
 			return err
 		}
 	}
-	if err := native.Send(context.Background(), agent.Turn{Text: text}); err != nil {
+	if err := native.Send(context.Background(), agent.Turn{Text: refs.TurnText(briefs, text)}); err != nil {
 		w.fail(id, "发送失败："+err.Error())
 		return err
 	}
@@ -399,8 +440,10 @@ func (w *Workbench) connect(id string, info model.Session, ws model.Workspace) (
 	if a == nil {
 		return nil, fmt.Errorf("%s：%w", info.Agent, ErrUnknownAgent)
 	}
-	native, err := a.Start(context.Background(), agent.StartOptions{Workspace: ws.Path, Model: info.Model, ResumeID: info.NativeID()})
+	mcp := &agent.MCPServer{URL: w.mcp.URL(), Token: w.mcp.Issue(id)}
+	native, err := a.Start(context.Background(), agent.StartOptions{Workspace: ws.Path, Model: info.Model, ResumeID: info.NativeID(), MCP: mcp})
 	if err != nil {
+		w.mcp.Revoke(id)
 		return nil, err
 	}
 	w.mu.Lock()
@@ -450,8 +493,13 @@ func (w *Workbench) pump(id string, native agent.Session) {
 	}
 	w.mu.Lock()
 	s := w.sessions[id]
+	if s == nil { // deleted
+		w.mu.Unlock()
+		return
+	}
 	if s.native == native {
 		s.native = nil
+		w.mcp.Revoke(id)
 	}
 	changed := w.endTurn(id, s, model.Interrupted)
 	w.mu.Unlock()
@@ -465,6 +513,10 @@ func (w *Workbench) handle(id string, ev agent.Event) {
 	now := w.now()
 	w.mu.Lock()
 	s := w.sessions[id]
+	if s == nil { // deleted
+		w.mu.Unlock()
+		return
+	}
 	var changed []model.Message
 	switch e := ev.(type) {
 	case agent.NativeSessionStarted:

@@ -95,6 +95,32 @@ var migrations = []string{
 		finished_at INTEGER,
 		PRIMARY KEY (session_id, seq)
 	);`,
+	// References. A reference outlives its source session (reads then
+	// say the source was deleted), but not its receiving session.
+	`CREATE TABLE session_refs (
+		id               TEXT PRIMARY KEY,
+		source_id        TEXT NOT NULL,
+		source_title     TEXT NOT NULL,
+		source_agent     TEXT NOT NULL,
+		source_workspace TEXT NOT NULL,
+		from_seq         INTEGER NOT NULL,
+		to_seq           INTEGER NOT NULL,
+		count            INTEGER NOT NULL,
+		target_id        TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+		brief            TEXT NOT NULL,
+		state            TEXT NOT NULL,
+		message_seq      INTEGER,
+		position         INTEGER NOT NULL DEFAULT 0,
+		created_at       INTEGER NOT NULL
+	);
+	CREATE INDEX session_refs_target ON session_refs(target_id);
+	CREATE TABLE ref_reads (
+		ref_id   TEXT NOT NULL REFERENCES session_refs(id) ON DELETE CASCADE,
+		from_seq INTEGER NOT NULL,
+		to_seq   INTEGER NOT NULL,
+		at       INTEGER NOT NULL
+	);
+	CREATE INDEX ref_reads_ref ON ref_reads(ref_id);`,
 }
 
 // SchemaVersion is the schema version this build writes.
@@ -291,8 +317,34 @@ func (s *Store) InterruptStreaming(t time.Time) error {
 	return err
 }
 
-// Messages returns a session's messages in order.
+// Messages returns a session's messages in order, user messages with the
+// references they delivered.
 func (s *Store) Messages(sessionID string) ([]model.Message, error) {
+	msgs, err := s.messages(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT id, message_seq FROM session_refs WHERE target_id = ? AND state = ? ORDER BY message_seq, position`, sessionID, string(model.Delivered))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	bySeq := map[int][]string{}
+	for rows.Next() {
+		var id string
+		var seq int
+		if err := rows.Scan(&id, &seq); err != nil {
+			return nil, err
+		}
+		bySeq[seq] = append(bySeq[seq], id)
+	}
+	for i := range msgs {
+		msgs[i].Refs = bySeq[msgs[i].Seq]
+	}
+	return msgs, rows.Err()
+}
+
+func (s *Store) messages(sessionID string) ([]model.Message, error) {
 	rows, err := s.db.Query(`SELECT seq, kind, state, text, thinking, raw, created_at, finished_at FROM messages WHERE session_id = ? ORDER BY seq`, sessionID)
 	if err != nil {
 		return nil, err
@@ -329,4 +381,115 @@ func finished(m model.Message) any {
 		return nil
 	}
 	return ms(m.FinishedAt)
+}
+
+// DeleteSession deletes a session with its messages and the references
+// it received. References to it stay, to report it deleted.
+func (s *Store) DeleteSession(id string) error {
+	_, err := s.db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
+	return err
+}
+
+// MessageRange returns a session's messages from..to, in order, and
+// whether the session exists.
+func (s *Store) MessageRange(sessionID string, from, to int) ([]model.Message, bool, error) {
+	var n int
+	if err := s.db.QueryRow(`SELECT count(*) FROM sessions WHERE id = ?`, sessionID).Scan(&n); err != nil {
+		return nil, false, err
+	}
+	if n == 0 {
+		return nil, false, nil
+	}
+	all, err := s.messages(sessionID)
+	if err != nil {
+		return nil, true, err
+	}
+	var out []model.Message
+	for _, m := range all {
+		if m.Seq >= from && m.Seq <= to {
+			out = append(out, m)
+		}
+	}
+	return out, true, nil
+}
+
+// AddReference stores a new reference.
+func (s *Store) AddReference(r model.Reference) error {
+	_, err := s.db.Exec(`INSERT INTO session_refs (id, source_id, source_title, source_agent, source_workspace, from_seq, to_seq, count, target_id, brief, state, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.SourceID, r.SourceTitle, string(r.SourceAgent), r.SourceWorkspace, r.From, r.To, r.Count, r.TargetID, r.Brief, string(r.State), ms(r.CreatedAt))
+	return err
+}
+
+// DeleteDraft deletes a reference that has not been delivered.
+func (s *Store) DeleteDraft(id string) error {
+	_, err := s.db.Exec(`DELETE FROM session_refs WHERE id = ? AND state = ?`, id, string(model.Draft))
+	return err
+}
+
+// Deliver marks references, in order, as delivered by a user message.
+func (s *Store) Deliver(ids []string, messageSeq int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for i, id := range ids {
+		if _, err := tx.Exec(`UPDATE session_refs SET state = ?, message_seq = ?, position = ? WHERE id = ?`, string(model.Delivered), messageSeq, i, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// AddRead records a read of a reference.
+func (s *Store) AddRead(refID string, read model.ReferenceRead) error {
+	_, err := s.db.Exec(`INSERT INTO ref_reads (ref_id, from_seq, to_seq, at) VALUES (?, ?, ?, ?)`, refID, read.From, read.To, ms(read.At))
+	return err
+}
+
+// References returns every reference, with its reads, oldest first.
+func (s *Store) References() ([]model.Reference, error) {
+	rows, err := s.db.Query(`SELECT id, source_id, source_title, source_agent, source_workspace, from_seq, to_seq, count, target_id, brief, state, message_seq, created_at FROM session_refs ORDER BY created_at, rowid`)
+	if err != nil {
+		return nil, err
+	}
+	var out []model.Reference
+	index := map[string]int{}
+	for rows.Next() {
+		var r model.Reference
+		var agentKind, state string
+		var msgSeq sql.NullInt64
+		var created sql.NullInt64
+		if err := rows.Scan(&r.ID, &r.SourceID, &r.SourceTitle, &agentKind, &r.SourceWorkspace, &r.From, &r.To, &r.Count, &r.TargetID, &r.Brief, &state, &msgSeq, &created); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		r.SourceAgent, r.State = agent.Kind(agentKind), model.ReferenceState(state)
+		r.MessageSeq, r.CreatedAt = int(msgSeq.Int64), fromMS(created)
+		index[r.ID] = len(out)
+		out = append(out, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	reads, err := s.db.Query(`SELECT ref_id, from_seq, to_seq, at FROM ref_reads ORDER BY at, rowid`)
+	if err != nil {
+		return nil, err
+	}
+	defer reads.Close()
+	for reads.Next() {
+		var id string
+		var rd model.ReferenceRead
+		var at sql.NullInt64
+		if err := reads.Scan(&id, &rd.From, &rd.To, &at); err != nil {
+			return nil, err
+		}
+		rd.At = fromMS(at)
+		if i, ok := index[id]; ok {
+			out[i].Reads = append(out[i].Reads, rd)
+		}
+	}
+	return out, reads.Err()
 }

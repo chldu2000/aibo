@@ -24,6 +24,17 @@ type Agent interface {
 	// Start starts a native session, or resumes the one named by
 	// StartOptions.ResumeID.
 	Start(ctx context.Context, opts StartOptions) (Session, error)
+	// ToolName is how the Agent's model sees the workbench MCP server's
+	// tool, for the reference briefs to name it as the Agent sees it.
+	ToolName(tool string) string
+}
+
+// MCPServer is the workbench's MCP server as one session reaches it.
+type MCPServer struct {
+	// URL is the streamable HTTP endpoint.
+	URL string
+	// Token is the session's bearer token.
+	Token string
 }
 
 // StartOptions configures a native session.
@@ -35,6 +46,9 @@ type StartOptions struct {
 	Model string
 	// ResumeID is the native session to resume; empty starts a new one.
 	ResumeID string
+	// MCP is the workbench's MCP server, which the Agent must be given
+	// (as the server named "aibo") so that it can read its references.
+	MCP *MCPServer
 }
 
 // Session is one running native session.

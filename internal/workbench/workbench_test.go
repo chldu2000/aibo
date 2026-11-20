@@ -21,6 +21,18 @@ import (
 // one at a time so that they can look at the workbench between them.
 type script struct {
 	steps chan func(ctx context.Context, emit func(agent.Event))
+
+	mu    sync.Mutex
+	turns []agent.Turn
+	opts  agent.StartOptions
+}
+
+// received returns what the Agent got in its turns so far, and the
+// options of its native session.
+func (s *script) received() ([]agent.Turn, agent.StartOptions) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]agent.Turn(nil), s.turns...), s.opts
 }
 
 func newScript() *script {
@@ -28,7 +40,10 @@ func newScript() *script {
 }
 
 // respond runs steps until one is nil, which ends the turn.
-func (s *script) respond(ctx context.Context, _ agent.Turn, emit func(agent.Event)) {
+func (s *script) respond(ctx context.Context, opts agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
+	s.mu.Lock()
+	s.turns, s.opts = append(s.turns, turn), opts
+	s.mu.Unlock()
 	for {
 		select {
 		case <-ctx.Done():

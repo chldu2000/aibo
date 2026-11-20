@@ -1,11 +1,13 @@
 package shell
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/refs"
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
@@ -112,6 +114,11 @@ func (s *Shell) pane(c *ui.Context) {
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).NoWrap()
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).NoWrap()
 			ui.Spacer(c)
+			pick := iconButton(c, "arrowshape.turn.up.right", "引用整个会话…")
+			if pick.Clicked() {
+				s.picking = !s.picking
+			}
+			ui.Popover(c, pick, &s.picking, func() { s.targetPicker(c, x) })
 		})
 		ui.Column(c).Absolute().Bottom(16).Left(16).Right(16).Gap(8).Children(func() {
 			s.banners(c, x.ID)
@@ -133,12 +140,17 @@ func (s *Shell) messages(c *ui.Context, v *sessionView) ui.Element {
 	t := c.Theme()
 	return ui.List(c, &v.list, len(v.msgs), func(i int) {
 		m := v.msgs[i]
-		ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
+		row := ui.Row(c).Gap(10).AlignItems(ui.Start).Padding(4).Radius(10).Children(func() {
 			ui.Textf(c, "#%d", m.Seq).FontSize(11).TextColor(t.TextMuted).Width(34)
-			ui.Column(c).Grow(1).MaxWidth(820).Gap(4).Children(func() {
+			ui.Column(c).Grow(1).MaxWidth(820).Gap(6).Children(func() {
 				switch m.Kind {
 				case model.UserMessage:
-					ui.Text(c, m.Text).Selectable().TextColor(t.Text).Padding(8, 12).Radius(12).Background(t.Surface)
+					for _, id := range m.Refs {
+						s.referenceCard(c, id)
+					}
+					if m.Text != "" {
+						ui.Text(c, m.Text).Selectable().TextColor(t.Text).Padding(8, 12).Radius(12).Background(t.Surface)
+					}
 				default:
 					if m.State == model.Streaming {
 						markdown.Stream(c, m.Text, &s.md)
@@ -151,7 +163,10 @@ func (s *Shell) messages(c *ui.Context, v *sessionView) ui.Element {
 				}
 			})
 		})
-	}).Padding(76, 20, 170).Gap(14).Children(func() {
+		if v.highlight[0] > 0 && m.Seq >= v.highlight[0] && m.Seq <= v.highlight[1] {
+			row.Background(tinted(c, ui.RGBA(40, 120, 255, 0.16)))
+		}
+	}).Padding(76, 20, 170).Gap(10).Children(func() {
 		if len(v.msgs) == 0 {
 			ui.Text(c, "发一条消息开始对话").TextColor(t.TextMuted).Margin(ui.Auto)
 		}
@@ -174,6 +189,14 @@ func (s *Shell) banners(c *ui.Context, id string) {
 	if s.notice != "" {
 		bar(s.notice, func() { s.notice = "" })
 	}
+	if v := s.views[id]; v != nil && v.highlight[0] > 0 {
+		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(40, 120, 255, 0.25))}).Children(func() {
+			ui.Text(c, "已高亮被引用的范围 "+refs.Range(v.highlight[0], v.highlight[1])).TextColor(c.Theme().Text).Grow(1)
+			if iconButton(c, "xmark", "取消高亮").Clicked() {
+				v.highlight = [2]int{}
+			}
+		})
+	}
 }
 
 // composer is the glass input card: Enter sends, Shift+Enter breaks the
@@ -181,13 +204,29 @@ func (s *Shell) banners(c *ui.Context, id string) {
 func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 	t := c.Theme()
 	running := s.wb.Status(x.ID).Running
+	drafts := s.wb.Drafts(x.ID)
 	ui.Column(c).Gap(6).Padding(10, 12).Radius(18).Material(glass.Glass{}).Children(func() {
+		if len(drafts) > 0 {
+			ui.Row(c).Gap(6).Wrap().Children(func() {
+				for _, r := range drafts {
+					ui.Row(c).Key(r.ID).Gap(6).Padding(3, 4, 3, 8).Radius(8).AlignItems(ui.Center).BorderWidth(1).BorderColor(t.Accent).Children(func() {
+						sfsymbols.Symbol(c, "paperclip").Size(12).Color(t.Accent)
+						ui.Text(c, s.refLabel(r)).FontSize(12).TextColor(t.Text)
+						if iconButton(c, "xmark", "移除引用").Clicked() {
+							if err := s.wb.RemoveDraft(r.ID); err != nil {
+								s.notice = err.Error()
+							}
+						}
+					})
+				}
+			})
+		}
 		prompt := "给 " + s.agentName(x.Agent) + " 发消息"
 		ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).OnTextKey(func(k ui.TextKey) bool {
 			if k.Key != ui.KeyEnter || k.Mods != 0 {
 				return false
 			}
-			if !running && strings.TrimSpace(k.Text()) != "" && s.send(x.ID, k.Text()) {
+			if !running && (strings.TrimSpace(k.Text()) != "" || len(drafts) > 0) && s.send(x.ID, k.Text()) {
 				k.SetText("")
 			}
 			return true
@@ -203,7 +242,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 				return
 			}
 			bg := t.Accent
-			empty := strings.TrimSpace(v.draft) == ""
+			empty := strings.TrimSpace(v.draft) == "" && len(drafts) == 0
 			if empty {
 				bg = t.Border
 			}
@@ -266,4 +305,98 @@ func agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
 		name = "假 Agent"
 	}
 	return ui.Image(c, g).Size(size, size).Tooltip(name)
+}
+
+// targetPicker lists the sessions the open session can be referenced to.
+func (s *Shell) targetPicker(c *ui.Context, src model.Session) {
+	t := c.Theme()
+	ui.Column(c).Width(320).Gap(2).Padding(10).Children(func() {
+		ui.Text(c, "把整个会话引用给…").Bold().TextColor(t.Text).Padding(0, 6, 6)
+		found := false
+		for _, ws := range s.wb.Workspaces() {
+			for _, x := range s.wb.Sessions() {
+				if x.WorkspaceID != ws.ID || x.ID == src.ID {
+					continue
+				}
+				found = true
+				row := ui.Row(c).Key(x.ID).Gap(8).Padding(6, 8).Radius(7).AlignItems(ui.Center).Label("引用给 " + sessionTitle(x)).Children(func() {
+					agentGlyph(c, x.Agent, 16)
+					ui.Text(c, sessionTitle(x)).TextColor(t.Text).NoWrap().Grow(1)
+					ui.Text(c, workspaceName(ws)).FontSize(11).TextColor(t.TextMuted)
+				})
+				if row.Hovered() {
+					row.Background(t.SurfaceHover)
+				}
+				if row.Clicked() {
+					s.picking = false
+					if _, err := s.wb.ReferenceSession(src.ID, x.ID); err != nil {
+						s.notice = "引用失败：" + err.Error()
+					} else {
+						s.current = x.ID
+					}
+				}
+			}
+		}
+		if !found {
+			ui.Text(c, "没有其他会话。先在工作区上点“＋”新建一个。").FontSize(12).TextColor(t.TextMuted).Padding(0, 6)
+		}
+	})
+}
+
+// refLabel names a reference in one line: source, title and range.
+func (s *Shell) refLabel(r model.Reference) string {
+	return fmt.Sprintf("%s · %s · %s（%d 条）", s.agentName(r.SourceAgent), r.SourceTitle, refs.Range(r.From, r.To), r.Count)
+}
+
+// referenceCard shows a delivered reference in blue-tinted glass: one
+// line, and when opened, the text the Agent received and its reads.
+func (s *Shell) referenceCard(c *ui.Context, id string) {
+	t := c.Theme()
+	r, ok := s.wb.Reference(id)
+	if !ok {
+		return
+	}
+	_, sourceExists := s.wb.Session(r.SourceID)
+	ui.Column(c).Key(id).Gap(6).Padding(8, 10).Radius(14).Material(glass.Glass{Tint: tinted(c, ui.RGBA(40, 120, 255, 0.18))}).Children(func() {
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			sfsymbols.Symbol(c, "paperclip").Size(12).Color(t.Text)
+			ui.Text(c, s.refLabel(r)).FontSize(12).TextColor(t.Text).Grow(1)
+			label := "查看概要"
+			if s.openCards[id] {
+				label = "收起"
+			}
+			if ui.Button(c, label).Clicked() {
+				s.openCards[id] = !s.openCards[id]
+			}
+		})
+		if !sourceExists {
+			ui.Text(c, "源会话已被删除，这个引用已失效").FontSize(12).TextColor(t.Warning)
+		}
+		for i, rd := range r.Reads {
+			ui.Row(c).Key(i).Gap(6).AlignItems(ui.Center).Children(func() {
+				sfsymbols.Symbol(c, "eye").Size(11).Color(t.TextMuted)
+				ui.Text(c, "Agent 读取了 "+refs.Range(rd.From, rd.To)).FontSize(12).TextColor(t.TextMuted)
+				if sourceExists && ui.Button(c, "在源会话中查看").Clicked() {
+					s.reveal(r.SourceID, rd.From, rd.To)
+				}
+			})
+		}
+		if s.openCards[id] {
+			ui.Text(c, r.Brief).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
+		}
+	})
+}
+
+// reveal opens a session at messages from..to, highlighted.
+func (s *Shell) reveal(sessionID string, from, to int) {
+	s.current = sessionID
+	v := s.view(sessionID)
+	v.highlight = [2]int{from, to}
+	v.list.FollowEnd = false
+	for i, m := range v.msgs {
+		if m.Seq == from {
+			v.list.ScrollTo(i, ui.Start)
+			break
+		}
+	}
 }

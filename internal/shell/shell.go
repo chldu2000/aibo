@@ -40,6 +40,10 @@ type Shell struct {
 	views   map[string]*sessionView
 	notice  string // an error to show, until dismissed
 	md      markdown.Options
+	// picking shows the targets for referencing the open session.
+	picking bool
+	// openCards are the reference cards showing their briefs.
+	openCards map[string]bool
 }
 
 // sessionView is what the shell keeps of an open session.
@@ -48,6 +52,9 @@ type sessionView struct {
 	loaded bool
 	list   ui.ListState
 	draft  string
+	// highlight is the range of sequence numbers shown highlighted, as
+	// when jumping to what a reference covers; zero for none.
+	highlight [2]int
 }
 
 // New returns the shell of wb.
@@ -55,7 +62,7 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 	if o.Wake == nil {
 		o.Wake = func() {}
 	}
-	s := &Shell{wb: wb, opts: o, split: 260, views: map[string]*sessionView{}}
+	s := &Shell{wb: wb, opts: o, split: 260, views: map[string]*sessionView{}, openCards: map[string]bool{}}
 	wb.Subscribe(func(c workbench.Change) {
 		s.mu.Lock()
 		s.pending = append(s.pending, c)
