@@ -6,6 +6,7 @@ import (
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/claude"
+	"github.com/chldu2000/aibo/internal/agent/codex"
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
@@ -64,8 +65,33 @@ func (s *Shell) workspaceGroups(c *ui.Context) {
 	for _, ws := range workspaces {
 		ui.Row(c).Padding(10, 6, 4).Gap(6).AlignItems(ui.Center).Key(ws.ID).Children(func() {
 			ui.Text(c, workspaceName(ws)).FontSize(12).Bold().TextColor(t.TextMuted).Tooltip(ws.Path).Grow(1)
-			if iconButton(c, "plus", "在 "+workspaceName(ws)+" 新建会话").Clicked() {
-				s.newSession(ws)
+			plus := iconButton(c, "plus", "在 "+workspaceName(ws)+" 新建会话")
+			if plus.Clicked() {
+				if agents := s.wb.Agents(); len(agents) == 1 {
+					s.newSession(ws, agents[0].Kind)
+				} else {
+					s.choosingAgent = ws.ID
+				}
+			}
+			if s.choosingAgent == ws.ID {
+				open := true
+				ui.Popover(c, plus, &open, func() {
+					ui.Column(c).Width(220).Gap(2).Padding(8).Children(func() {
+						ui.Text(c, "新建会话").Bold().TextColor(t.Text).Padding(0, 6, 4)
+						for _, a := range s.wb.Agents() {
+							if pickRow(c, string(a.Kind), "用 "+a.Name+" 新建会话", func() {
+								agentGlyph(c, a.Kind, 16)
+								ui.Text(c, a.Name).TextColor(t.Text).Grow(1)
+							}).Clicked() {
+								s.newSession(ws, a.Kind)
+								open = false
+							}
+						}
+					})
+				})
+				if !open {
+					s.choosingAgent = ""
+				}
 			}
 		})
 		for _, x := range sessions {
@@ -326,6 +352,7 @@ func tinted(c *ui.Context, col ui.Color) ui.Color {
 // ui.Image so that they keep their colors.
 var (
 	claudeGlyph = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#c96442"/><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5.9 8.5l12.2 7"/><path d="M5.9 15.5l12.2-7"/></g></svg>`))
+	codexGlyph  = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#2f2f33" stroke="#5a5a62" stroke-width="1"/><g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l4 4-4 4"/><path d="M13 16h5"/></g></svg>`))
 	fakeGlyph   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#6e6e78"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="4"/><path d="M6 19c1.5-2.5 3.5-3.5 6-3.5s4.5 1 6 3.5"/></g></svg>`))
 )
 
@@ -336,6 +363,8 @@ func agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
 		name = "假 Agent"
 	case claude.Kind:
 		g, name = claudeGlyph, "Claude Code"
+	case codex.Kind:
+		g, name = codexGlyph, "Codex"
 	}
 	return ui.Image(c, g).Size(size, size).Tooltip(name)
 }

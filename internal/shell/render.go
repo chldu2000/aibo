@@ -84,7 +84,9 @@ func gist(input json.RawMessage) string {
 	if json.Unmarshal(input, &in) == nil {
 		for _, k := range []string{"command", "file_path", "path", "pattern", "url", "query", "description", "prompt"} {
 			if s, ok := in[k].(string); ok && s != "" {
-				return oneLine(s, 80)
+				// A line break shows, so that "ls⏎cat x" does not read
+				// as "ls cat x".
+				return oneLine(strings.ReplaceAll(strings.TrimSpace(s), "\n", " ↵ "), 80)
 			}
 		}
 	}

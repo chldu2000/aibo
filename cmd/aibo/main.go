@@ -15,6 +15,7 @@ import (
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/claude"
+	"github.com/chldu2000/aibo/internal/agent/codex"
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/shell"
 	"github.com/chldu2000/aibo/internal/workbench"
@@ -33,16 +34,17 @@ func dataDir() (string, error) {
 	return filepath.Join(home, "Library", "Application Support", "aibo"), nil
 }
 
-// findClaude finds the claude executable on PATH or where it is usually
+// find finds an Agent's executable on PATH or where it is usually
 // installed: an app launched from the Dock has no shell PATH. Agent
 // discovery proper (the login shell's PATH, versions, a chosen path) is
 // ticket 15's.
-func findClaude() (string, bool) {
-	if p, err := exec.LookPath("claude"); err == nil {
+func find(name string) (string, bool) {
+	if p, err := exec.LookPath(name); err == nil {
 		return p, true
 	}
 	home, _ := os.UserHomeDir()
-	for _, p := range []string{filepath.Join(home, ".local/bin/claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude"} {
+	for _, dir := range []string{filepath.Join(home, ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin"} {
+		p := filepath.Join(dir, name)
 		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
 			return p, true
 		}
@@ -56,8 +58,11 @@ func main() {
 		log.Fatal(err)
 	}
 	var agents []agent.Agent
-	if path, ok := findClaude(); ok {
+	if path, ok := find("claude"); ok {
 		agents = append(agents, claude.New(path))
+	}
+	if path, ok := find("codex"); ok {
+		agents = append(agents, codex.New(path))
 	}
 	// AIBO_DEMO=1 adds the scripted Agent, to try the workbench without
 	// a real one.

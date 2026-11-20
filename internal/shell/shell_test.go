@@ -474,3 +474,46 @@ func TestToolCallsAndPlans(t *testing.T) {
 	click("Bash · cat big.log · 出错")
 	shows("结果（出错）")
 }
+
+// named is a fake Agent of another kind and name.
+type named struct {
+	*fake.Agent
+	kind agent.Kind
+	name string
+}
+
+func (n named) Kind() agent.Kind { return n.kind }
+func (n named) Name() string     { return n.name }
+
+// With several Agents, "+" asks which one starts the session.
+func TestNewSessionChoosesAgent(t *testing.T) {
+	quiet := func(context.Context, agent.StartOptions, agent.Turn, func(agent.Event)) {}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{
+		named{fake.New(quiet), "alpha", "Alpha"}, named{fake.New(quiet), "beta", "Beta"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 760)
+	tt.Frame()
+	if err := tt.Click("在 " + filepath.Base(ws.Path) + " 新建会话"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(wb.Sessions()) != 0 {
+		t.Fatal("a session started before an Agent was chosen")
+	}
+	if err := tt.Click("用 Beta 新建会话"); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	tt.Frame()
+	got := wb.Sessions()
+	if len(got) != 1 || got[0].Agent != "beta" {
+		t.Fatalf("sessions = %+v", got)
+	}
+	if !tt.HasText("给 Beta 发消息") || tt.HasText("用 Alpha 新建会话") {
+		t.Errorf("after choosing: %q", tt.Texts())
+	}
+}

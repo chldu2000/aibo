@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/ui"
@@ -42,6 +43,9 @@ type Shell struct {
 	md      markdown.Options
 	// pull is the @ panel of the open session.
 	pull pull
+	// choosingAgent is the workspace whose "+" shows the Agents to start
+	// a session with.
+	choosingAgent string
 	// refocus gives the composer the keyboard focus in the next frame
 	// that builds it.
 	refocus bool
@@ -160,15 +164,10 @@ func (s *Shell) later(fn func()) {
 	s.opts.Wake()
 }
 
-// newSession creates a session in the workspace with the first Agent and
-// opens it.
-func (s *Shell) newSession(ws model.Workspace) {
-	agents := s.wb.Agents()
-	if len(agents) == 0 {
-		s.notice = "没有可用的 Agent"
-		return
-	}
-	x, err := s.wb.NewSession(ws.ID, agents[0].Kind, "")
+// newSession creates a session in the workspace with an Agent and opens
+// it.
+func (s *Shell) newSession(ws model.Workspace, kind agent.Kind) {
+	x, err := s.wb.NewSession(ws.ID, kind, "")
 	if err != nil {
 		s.notice = "新建会话失败：" + err.Error()
 		return
