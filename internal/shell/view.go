@@ -1,0 +1,269 @@
+package shell
+
+import (
+	"strings"
+
+	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/agent/fake"
+	"github.com/chldu2000/aibo/internal/model"
+	"github.com/egoist/mygo/plugins/glass"
+	"github.com/egoist/mygo/plugins/sfsymbols"
+	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
+)
+
+// View builds the window's content.
+func (s *Shell) View(c *ui.Context) {
+	s.apply()
+	ui.Split(c, &s.split, func() {
+		s.sidebar(c)
+	}, func() {
+		ui.Box(c).Fill().Margin(0, 0, 0, 4).Radius(14, 0, 0, 14).Clip().Background(c.Theme().Background).Children(func() {
+			s.pane(c)
+		})
+	}).Fill()
+}
+
+// sidebar is the floating Liquid Glass sidebar. Fill ignores margins, so
+// the gap around the glass is the outer box's padding.
+func (s *Shell) sidebar(c *ui.Context) {
+	t := c.Theme()
+	ui.Box(c).Fill().Padding(8).Children(func() {
+		ui.Column(c).Fill().Radius(16).Material(glass.Glass{Native: true}).Children(func() {
+			ui.Scroll(c).Grow(1).Children(func() {
+				ui.Column(c).Gap(2).Padding(40, 10, 10).Children(func() {
+					ui.Row(c).Padding(0, 6, 8).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "aibo").Bold().FontSize(15).TextColor(t.Text)
+						ui.Spacer(c)
+						if iconButton(c, "folder.badge.plus", "添加工作区").Clicked() {
+							s.addWorkspace()
+						}
+					})
+					s.workspaceGroups(c)
+				})
+			})
+		})
+	})
+}
+
+func (s *Shell) workspaceGroups(c *ui.Context) {
+	t := c.Theme()
+	workspaces := s.wb.Workspaces()
+	if len(workspaces) == 0 {
+		ui.Column(c).Gap(10).Padding(16, 6).Children(func() {
+			ui.Text(c, "还没有工作区。添加一个项目文件夹，就可以在里面和 Agent 对话。").FontSize(12).TextColor(t.TextMuted)
+			if ui.Button(c, "添加工作区…").Clicked() {
+				s.addWorkspace()
+			}
+		})
+		return
+	}
+	sessions := s.wb.Sessions()
+	for _, ws := range workspaces {
+		ui.Row(c).Padding(10, 6, 4).Gap(6).AlignItems(ui.Center).Key(ws.ID).Children(func() {
+			ui.Text(c, workspaceName(ws)).FontSize(12).Bold().TextColor(t.TextMuted).Tooltip(ws.Path).Grow(1)
+			if iconButton(c, "plus", "在 "+workspaceName(ws)+" 新建会话").Clicked() {
+				s.newSession(ws)
+			}
+		})
+		for _, x := range sessions {
+			if x.WorkspaceID != ws.ID {
+				continue
+			}
+			row := ui.Row(c).Key(x.ID).Gap(8).Padding(6, 8).Radius(7).AlignItems(ui.Center).Children(func() {
+				agentGlyph(c, x.Agent, 18)
+				ui.Text(c, sessionTitle(x)).TextColor(t.Text).NoWrap().Grow(1)
+				if s.wb.Status(x.ID).Running {
+					ui.Text(c, "运行中").FontSize(11).TextColor(t.TextMuted)
+				}
+			})
+			if x.ID == s.current {
+				row.Background(t.SurfacePressed)
+			} else if row.Hovered() {
+				row.Background(t.SurfaceHover)
+			}
+			if row.Clicked() {
+				s.current = x.ID
+			}
+		}
+	}
+}
+
+// pane is the session area: the messages under a floating glass header,
+// and the composer.
+func (s *Shell) pane(c *ui.Context) {
+	t := c.Theme()
+	x, ok := s.wb.Session(s.current)
+	if !ok {
+		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+			ui.Text(c, "在左侧选一个会话，或在工作区上点“＋”新建").TextColor(t.TextMuted)
+		})
+		return
+	}
+	v := s.view(x.ID)
+	ws := s.workspaceOf(x)
+	ui.Box(c).Fill().Children(func() {
+		ui.Column(c).Fill().Children(func() {
+			s.messages(c, v).Grow(1)
+		})
+		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(80).PassThrough().Material(glass.ScrollEdge{})
+		ui.Row(c).Absolute().Top(12).Left(16).Right(16).Height(46).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
+			agentGlyph(c, x.Agent, 20)
+			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).NoWrap()
+			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).NoWrap()
+			ui.Spacer(c)
+		})
+		ui.Column(c).Absolute().Bottom(16).Left(16).Right(16).Gap(8).Children(func() {
+			s.banners(c, x.ID)
+			s.composer(c, x, v)
+		})
+	})
+}
+
+func (s *Shell) workspaceOf(x model.Session) model.Workspace {
+	for _, ws := range s.wb.Workspaces() {
+		if ws.ID == x.WorkspaceID {
+			return ws
+		}
+	}
+	return model.Workspace{}
+}
+
+func (s *Shell) messages(c *ui.Context, v *sessionView) ui.Element {
+	t := c.Theme()
+	return ui.List(c, &v.list, len(v.msgs), func(i int) {
+		m := v.msgs[i]
+		ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
+			ui.Textf(c, "#%d", m.Seq).FontSize(11).TextColor(t.TextMuted).Width(34)
+			ui.Column(c).Grow(1).MaxWidth(820).Gap(4).Children(func() {
+				switch m.Kind {
+				case model.UserMessage:
+					ui.Text(c, m.Text).Selectable().TextColor(t.Text).Padding(8, 12).Radius(12).Background(t.Surface)
+				default:
+					if m.State == model.Streaming {
+						markdown.Stream(c, m.Text, &s.md)
+					} else {
+						markdown.View(c, m.Text, &s.md)
+					}
+				}
+				if m.State == model.Interrupted {
+					ui.Text(c, "已中断").FontSize(11).TextColor(t.TextMuted)
+				}
+			})
+		})
+	}).Padding(76, 20, 170).Gap(14).Children(func() {
+		if len(v.msgs) == 0 {
+			ui.Text(c, "发一条消息开始对话").TextColor(t.TextMuted).Margin(ui.Auto)
+		}
+	})
+}
+
+// banners are notices above the composer, in orange-tinted glass.
+func (s *Shell) banners(c *ui.Context, id string) {
+	bar := func(text string, dismiss func()) {
+		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
+			ui.Text(c, text).TextColor(c.Theme().Text).Grow(1)
+			if dismiss != nil && iconButton(c, "xmark", "关闭").Clicked() {
+				dismiss()
+			}
+		})
+	}
+	if e := s.wb.Status(id).Error; e != "" {
+		bar(e, nil)
+	}
+	if s.notice != "" {
+		bar(s.notice, func() { s.notice = "" })
+	}
+}
+
+// composer is the glass input card: Enter sends, Shift+Enter breaks the
+// line, and the round button sends or, while the Agent replies, stops.
+func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
+	t := c.Theme()
+	running := s.wb.Status(x.ID).Running
+	ui.Column(c).Gap(6).Padding(10, 12).Radius(18).Material(glass.Glass{}).Children(func() {
+		prompt := "给 " + s.agentName(x.Agent) + " 发消息"
+		ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).OnTextKey(func(k ui.TextKey) bool {
+			if k.Key != ui.KeyEnter || k.Mods != 0 {
+				return false
+			}
+			if !running && strings.TrimSpace(k.Text()) != "" && s.send(x.ID, k.Text()) {
+				k.SetText("")
+			}
+			return true
+		})
+		ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+			ui.Spacer(c)
+			if running {
+				if roundButton(c, "stop.fill", "停止", t.Text, t.Background).Clicked() {
+					if err := s.wb.Stop(x.ID); err != nil {
+						s.notice = err.Error()
+					}
+				}
+				return
+			}
+			bg := t.Accent
+			empty := strings.TrimSpace(v.draft) == ""
+			if empty {
+				bg = t.Border
+			}
+			if roundButton(c, "arrow.up", "发送（Enter）", bg, t.AccentText).Clicked() && !empty {
+				if s.send(x.ID, v.draft) {
+					v.draft = ""
+				}
+			}
+		})
+	})
+}
+
+func (s *Shell) agentName(kind agent.Kind) string {
+	for _, a := range s.wb.Agents() {
+		if a.Kind == kind {
+			return a.Name
+		}
+	}
+	return string(kind)
+}
+
+// iconButton is a borderless button showing an SF Symbol.
+func iconButton(c *ui.Context, symbol, tip string) ui.Element {
+	t := c.Theme()
+	b := ui.Box(c).Padding(5).Radius(7).Tooltip(tip).Label(tip).Children(func() {
+		sfsymbols.Symbol(c, symbol).Size(15).Color(t.Text)
+	})
+	if b.Hovered() {
+		b.Background(t.SurfaceHover)
+	}
+	return b
+}
+
+// roundButton is the composer's round send/stop button.
+func roundButton(c *ui.Context, symbol, tip string, bg, fg ui.Color) ui.Element {
+	return ui.Box(c).Size(30, 30).Radius(15).Background(bg).AlignItems(ui.Center).Justify(ui.Center).Tooltip(tip).Label(tip).Children(func() {
+		sfsymbols.Symbol(c, symbol).Size(13).Color(fg)
+	})
+}
+
+// tinted lightens a glass tint in the light appearance, where it is about
+// 45% as strong as in the dark one, so that theme text stays legible.
+func tinted(c *ui.Context, col ui.Color) ui.Color {
+	if c.Theme().Dark {
+		return col
+	}
+	return ui.RGBA(col.R, col.G, col.B, float32(col.A)/255*0.45)
+}
+
+// Self-drawn agent glyphs (never the vendors' logos), shown with
+// ui.Image so that they keep their colors.
+var (
+	fakeGlyph = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#6e6e78"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="4"/><path d="M6 19c1.5-2.5 3.5-3.5 6-3.5s4.5 1 6 3.5"/></g></svg>`))
+)
+
+func agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
+	g, name := fakeGlyph, string(kind)
+	switch kind {
+	case fake.Kind:
+		name = "假 Agent"
+	}
+	return ui.Image(c, g).Size(size, size).Tooltip(name)
+}

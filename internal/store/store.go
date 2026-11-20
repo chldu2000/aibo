@@ -1,0 +1,332 @@
+// Package store persists workspaces, sessions and messages in one SQLite
+// database inside the data directory. Sessions are append-only: a message
+// may only change while it is streaming.
+package store
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/model"
+
+	_ "modernc.org/sqlite"
+)
+
+// DBFile is the database's file name inside the data directory.
+const DBFile = "aibo.db"
+
+// ErrDuplicatePath is returned when a workspace's path is already added.
+var ErrDuplicatePath = errors.New("store: workspace path already added")
+
+// ErrMessageEnded is returned when updating a message that has ended.
+var ErrMessageEnded = errors.New("store: message has ended and can no longer change")
+
+// Store is the open database.
+type Store struct {
+	db *sql.DB
+}
+
+// Open opens (creating if needed) the database in dir and brings its
+// schema up to date.
+func Open(dir string) (*Store, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	dsn := "file:" + filepath.Join(dir, DBFile) + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	// One connection: SQLite serializes writers anyway, and this keeps
+	// the pragmas and transactions simple.
+	db.SetMaxOpenConns(1)
+	s := &Store{db: db}
+	if err := s.migrate(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// Close closes the database.
+func (s *Store) Close() error { return s.db.Close() }
+
+// migrations bring the schema from version i to i+1. Never edit one that
+// has shipped; append a new one.
+var migrations = []string{
+	`CREATE TABLE workspaces (
+		id         TEXT PRIMARY KEY,
+		path       TEXT NOT NULL UNIQUE,
+		created_at INTEGER NOT NULL
+	);
+	CREATE TABLE sessions (
+		id           TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+		agent        TEXT NOT NULL,
+		model        TEXT NOT NULL DEFAULT '',
+		title        TEXT NOT NULL DEFAULT '',
+		title_manual INTEGER NOT NULL DEFAULT 0,
+		created_at   INTEGER NOT NULL,
+		active_at    INTEGER NOT NULL,
+		next_seq     INTEGER NOT NULL DEFAULT 1
+	);
+	CREATE TABLE native_sessions (
+		session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+		idx        INTEGER NOT NULL,
+		native_id  TEXT NOT NULL,
+		started_at INTEGER NOT NULL,
+		PRIMARY KEY (session_id, idx)
+	);
+	CREATE TABLE messages (
+		session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+		seq         INTEGER NOT NULL,
+		kind        TEXT NOT NULL,
+		state       TEXT NOT NULL,
+		text        TEXT NOT NULL DEFAULT '',
+		thinking    TEXT NOT NULL DEFAULT '',
+		raw         TEXT,
+		created_at  INTEGER NOT NULL,
+		finished_at INTEGER,
+		PRIMARY KEY (session_id, seq)
+	);`,
+}
+
+// SchemaVersion is the schema version this build writes.
+func SchemaVersion() int { return len(migrations) }
+
+func (s *Store) migrate() error {
+	var v int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
+		return err
+	}
+	if v > len(migrations) {
+		return fmt.Errorf("store: database schema version %d is newer than this aibo understands (%d)", v, len(migrations))
+	}
+	for ; v < len(migrations); v++ {
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(migrations[v]); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("store: migration %d: %w", v+1, err)
+		}
+		if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, v+1)); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ms(t time.Time) int64 { return t.UnixMilli() }
+
+func fromMS(v sql.NullInt64) time.Time {
+	if !v.Valid {
+		return time.Time{}
+	}
+	return time.UnixMilli(v.Int64)
+}
+
+// AddWorkspace stores a new workspace.
+func (s *Store) AddWorkspace(w model.Workspace) error {
+	var n int
+	if err := s.db.QueryRow(`SELECT count(*) FROM workspaces WHERE path = ?`, w.Path).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrDuplicatePath
+	}
+	_, err := s.db.Exec(`INSERT INTO workspaces (id, path, created_at) VALUES (?, ?, ?)`, w.ID, w.Path, ms(w.CreatedAt))
+	return err
+}
+
+// Workspaces returns every workspace, oldest first.
+func (s *Store) Workspaces() ([]model.Workspace, error) {
+	rows, err := s.db.Query(`SELECT id, path, created_at FROM workspaces ORDER BY created_at, rowid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Workspace
+	for rows.Next() {
+		var w model.Workspace
+		var at sql.NullInt64
+		if err := rows.Scan(&w.ID, &w.Path, &at); err != nil {
+			return nil, err
+		}
+		w.CreatedAt = fromMS(at)
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+// CreateSession stores a new session, without native sessions or messages.
+func (s *Store) CreateSession(x model.Session) error {
+	_, err := s.db.Exec(`INSERT INTO sessions (id, workspace_id, agent, model, title, title_manual, created_at, active_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		x.ID, x.WorkspaceID, string(x.Agent), x.Model, x.Title, x.TitleManual, ms(x.CreatedAt), ms(x.ActiveAt))
+	return err
+}
+
+// Sessions returns every session, most recently active first.
+func (s *Store) Sessions() ([]model.Session, error) {
+	rows, err := s.db.Query(`SELECT id, workspace_id, agent, model, title, title_manual, created_at, active_at FROM sessions ORDER BY active_at DESC, rowid DESC`)
+	if err != nil {
+		return nil, err
+	}
+	var out []model.Session
+	for rows.Next() {
+		var x model.Session
+		var kind string
+		var created, active sql.NullInt64
+		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Title, &x.TitleManual, &created, &active); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		x.Agent = agent.Kind(kind)
+		x.CreatedAt, x.ActiveAt = fromMS(created), fromMS(active)
+		out = append(out, x)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		ids, err := s.nativeIDs(out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		out[i].NativeIDs = ids
+	}
+	return out, nil
+}
+
+func (s *Store) nativeIDs(sessionID string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT native_id FROM native_sessions WHERE session_id = ? ORDER BY idx`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// SetTitle sets a session's title; manual marks one the user chose.
+func (s *Store) SetTitle(sessionID, title string, manual bool) error {
+	_, err := s.db.Exec(`UPDATE sessions SET title = ?, title_manual = ? WHERE id = ?`, title, manual, sessionID)
+	return err
+}
+
+// Touch records activity in a session at t.
+func (s *Store) Touch(sessionID string, t time.Time) error {
+	_, err := s.db.Exec(`UPDATE sessions SET active_at = ? WHERE id = ?`, ms(t), sessionID)
+	return err
+}
+
+// AddNativeSession appends a native session to a session's history,
+// making it the current one.
+func (s *Store) AddNativeSession(sessionID, nativeID string, t time.Time) error {
+	_, err := s.db.Exec(`INSERT INTO native_sessions (session_id, idx, native_id, started_at)
+		VALUES (?, (SELECT count(*) FROM native_sessions WHERE session_id = ?), ?, ?)`, sessionID, sessionID, nativeID, ms(t))
+	return err
+}
+
+// AppendMessage adds a message at the end of a session, giving it the
+// session's next sequence number, which it returns.
+func (s *Store) AppendMessage(sessionID string, m model.Message) (int, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var seq int
+	if err := tx.QueryRow(`UPDATE sessions SET next_seq = next_seq + 1 WHERE id = ? RETURNING next_seq - 1`, sessionID).Scan(&seq); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("store: no session %q", sessionID)
+		}
+		return 0, err
+	}
+	if _, err := tx.Exec(`INSERT INTO messages (session_id, seq, kind, state, text, thinking, raw, created_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, seq, string(m.Kind), string(m.State), m.Text, m.Thinking, rawValue(m.Raw), ms(m.CreatedAt), finished(m)); err != nil {
+		return 0, err
+	}
+	return seq, tx.Commit()
+}
+
+// UpdateMessage replaces a streaming message's text, thinking, raw event
+// and state. It fails with ErrMessageEnded once the stored message has
+// ended.
+func (s *Store) UpdateMessage(sessionID string, m model.Message) error {
+	res, err := s.db.Exec(`UPDATE messages SET state = ?, text = ?, thinking = ?, raw = ?, finished_at = ? WHERE session_id = ? AND seq = ? AND state = ?`,
+		string(m.State), m.Text, m.Thinking, rawValue(m.Raw), finished(m), sessionID, m.Seq, string(model.Streaming))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrMessageEnded
+	}
+	return nil
+}
+
+// InterruptStreaming marks every message still streaming, left by a run
+// that ended without finishing them, as interrupted at t.
+func (s *Store) InterruptStreaming(t time.Time) error {
+	_, err := s.db.Exec(`UPDATE messages SET state = ?, finished_at = ? WHERE state = ?`, string(model.Interrupted), ms(t), string(model.Streaming))
+	return err
+}
+
+// Messages returns a session's messages in order.
+func (s *Store) Messages(sessionID string) ([]model.Message, error) {
+	rows, err := s.db.Query(`SELECT seq, kind, state, text, thinking, raw, created_at, finished_at FROM messages WHERE session_id = ? ORDER BY seq`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Message
+	for rows.Next() {
+		var m model.Message
+		var kind, state string
+		var raw sql.NullString
+		var created, fin sql.NullInt64
+		if err := rows.Scan(&m.Seq, &kind, &state, &m.Text, &m.Thinking, &raw, &created, &fin); err != nil {
+			return nil, err
+		}
+		m.Kind, m.State = model.MessageKind(kind), model.MessageState(state)
+		if raw.Valid {
+			m.Raw = json.RawMessage(raw.String)
+		}
+		m.CreatedAt, m.FinishedAt = fromMS(created), fromMS(fin)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func rawValue(r json.RawMessage) any {
+	if len(r) == 0 {
+		return nil
+	}
+	return string(r)
+}
+
+func finished(m model.Message) any {
+	if !m.State.Ended() || m.FinishedAt.IsZero() {
+		return nil
+	}
+	return ms(m.FinishedAt)
+}

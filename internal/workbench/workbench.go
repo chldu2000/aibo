@@ -1,0 +1,588 @@
+// Package workbench is the workbench's core: workspaces, sessions, and
+// the runtime that sends turns to Agents and records what they report.
+// The shell UI only calls the operations here, and tests drive the same
+// operations with the scripted fake Agent.
+package workbench
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+
+	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/store"
+)
+
+// Options configures Open.
+type Options struct {
+	// DataDir holds the database.
+	DataDir string
+	// Agents are the Agents sessions can use.
+	Agents []agent.Agent
+	// Now tells the time; nil uses time.Now.
+	Now func() time.Time
+}
+
+// Errors of the workbench's operations.
+var (
+	ErrNotDirectory     = errors.New("不是一个文件夹")
+	ErrWorkspaceExists  = errors.New("这个文件夹已经是工作区了")
+	ErrNoSuchWorkspace  = errors.New("工作区不存在")
+	ErrNoSuchSession    = errors.New("会话不存在")
+	ErrUnknownAgent     = errors.New("没有这个 Agent")
+	ErrTurnRunning      = errors.New("Agent 正在回复，请先停止或等它完成")
+	ErrEmptyMessage     = errors.New("消息不能为空")
+	errWorkbenchClosing = errors.New("工作台正在关闭")
+)
+
+// Change tells listeners that something changed. Message, when set, is
+// the new state of one message of SessionID, which a listener can apply
+// without reloading the session; otherwise the session's (or, with an
+// empty SessionID, the workbench's) state should be read again.
+type Change struct {
+	SessionID string
+	Message   *model.Message
+}
+
+// Status is a session's runtime state, which is not persisted.
+type Status struct {
+	// Connected is set while the session has a native session running.
+	Connected bool
+	// Running is set while a turn is running.
+	Running bool
+	// Error is the last error the Agent reported, until the next turn.
+	Error string
+}
+
+// AgentInfo describes an available Agent.
+type AgentInfo struct {
+	Kind agent.Kind
+	Name string
+}
+
+// Workbench is the open workbench.
+type Workbench struct {
+	st     *store.Store
+	agents []agent.Agent
+	now    func() time.Time
+	pumps  sync.WaitGroup
+
+	mu         sync.Mutex
+	closing    bool
+	workspaces []model.Workspace
+	sessions   map[string]*session
+	listeners  map[int]func(Change)
+	nextL      int
+}
+
+// session is a session's state in memory.
+type session struct {
+	info   model.Session
+	msgs   []model.Message // nil until loaded
+	loaded bool
+
+	native  agent.Session // nil while not connected
+	running bool
+	err     string
+	// replies maps the running turn's reply IDs to indexes in msgs.
+	replies   map[string]int
+	lastFlush time.Time
+}
+
+// flushEvery is how often a streaming message's text is written to the
+// database, so that a crash loses at most this much of it.
+const flushEvery = 500 * time.Millisecond
+
+// Open opens the workbench on the data directory.
+func Open(o Options) (*Workbench, error) {
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	st, err := store.Open(o.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	// Messages a previous run left streaming were cut off by it.
+	if err := st.InterruptStreaming(o.Now()); err != nil {
+		st.Close()
+		return nil, err
+	}
+	w := &Workbench{st: st, agents: o.Agents, now: o.Now, sessions: map[string]*session{}, listeners: map[int]func(Change){}}
+	if w.workspaces, err = st.Workspaces(); err != nil {
+		st.Close()
+		return nil, err
+	}
+	all, err := st.Sessions()
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
+	for _, x := range all {
+		w.sessions[x.ID] = &session{info: x}
+	}
+	return w, nil
+}
+
+// Close ends every native session, marking turns still running as
+// interrupted, and closes the database.
+func (w *Workbench) Close() error {
+	w.mu.Lock()
+	w.closing = true
+	var natives []agent.Session
+	for _, s := range w.sessions {
+		if s.native != nil {
+			natives = append(natives, s.native)
+		}
+	}
+	w.mu.Unlock()
+	for _, n := range natives {
+		n.Close()
+	}
+	w.pumps.Wait()
+	return w.st.Close()
+}
+
+// Subscribe calls fn after every change, from any goroutine, until the
+// returned function is called. fn must not block.
+func (w *Workbench) Subscribe(fn func(Change)) (unsubscribe func()) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	id := w.nextL
+	w.nextL++
+	w.listeners[id] = fn
+	return func() {
+		w.mu.Lock()
+		delete(w.listeners, id)
+		w.mu.Unlock()
+	}
+}
+
+func (w *Workbench) notify(c Change) {
+	w.mu.Lock()
+	fns := make([]func(Change), 0, len(w.listeners))
+	for _, fn := range w.listeners {
+		fns = append(fns, fn)
+	}
+	w.mu.Unlock()
+	for _, fn := range fns {
+		fn(c)
+	}
+}
+
+// Agents lists the Agents new sessions can use.
+func (w *Workbench) Agents() []AgentInfo {
+	out := make([]AgentInfo, len(w.agents))
+	for i, a := range w.agents {
+		out[i] = AgentInfo{Kind: a.Kind(), Name: a.Name()}
+	}
+	return out
+}
+
+func (w *Workbench) agent(kind agent.Kind) agent.Agent {
+	for _, a := range w.agents {
+		if a.Kind() == kind {
+			return a
+		}
+	}
+	return nil
+}
+
+// AddWorkspace adds the directory at path as a workspace, identified by
+// its absolute path.
+func (w *Workbench) AddWorkspace(path string) (model.Workspace, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return model.Workspace{}, err
+	}
+	if fi, err := os.Stat(abs); err != nil || !fi.IsDir() {
+		return model.Workspace{}, fmt.Errorf("%s：%w", abs, ErrNotDirectory)
+	}
+	ws := model.Workspace{ID: newID("w_"), Path: abs, CreatedAt: w.now()}
+	w.mu.Lock()
+	err = w.st.AddWorkspace(ws)
+	if err == nil {
+		w.workspaces = append(w.workspaces, ws)
+	}
+	w.mu.Unlock()
+	if errors.Is(err, store.ErrDuplicatePath) {
+		return model.Workspace{}, fmt.Errorf("%s：%w", abs, ErrWorkspaceExists)
+	}
+	if err != nil {
+		return model.Workspace{}, err
+	}
+	w.notify(Change{})
+	return ws, nil
+}
+
+// Workspaces returns the workspaces in the order they were added.
+func (w *Workbench) Workspaces() []model.Workspace {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]model.Workspace(nil), w.workspaces...)
+}
+
+func (w *Workbench) workspace(id string) (model.Workspace, bool) {
+	for _, ws := range w.workspaces {
+		if ws.ID == id {
+			return ws, true
+		}
+	}
+	return model.Workspace{}, false
+}
+
+// NewSession creates a session in a workspace with one Agent. No Agent
+// process starts until its first message is sent.
+func (w *Workbench) NewSession(workspaceID string, kind agent.Kind, modelName string) (model.Session, error) {
+	if w.agent(kind) == nil {
+		return model.Session{}, fmt.Errorf("%s：%w", kind, ErrUnknownAgent)
+	}
+	now := w.now()
+	x := model.Session{ID: newID("s_"), WorkspaceID: workspaceID, Agent: kind, Model: modelName, CreatedAt: now, ActiveAt: now}
+	w.mu.Lock()
+	if _, ok := w.workspace(workspaceID); !ok {
+		w.mu.Unlock()
+		return model.Session{}, ErrNoSuchWorkspace
+	}
+	err := w.st.CreateSession(x)
+	if err == nil {
+		w.sessions[x.ID] = &session{info: x, loaded: true}
+	}
+	w.mu.Unlock()
+	if err != nil {
+		return model.Session{}, err
+	}
+	w.notify(Change{SessionID: x.ID})
+	return x, nil
+}
+
+// Sessions returns every session, most recently active first.
+func (w *Workbench) Sessions() []model.Session {
+	w.mu.Lock()
+	out := make([]model.Session, 0, len(w.sessions))
+	for _, s := range w.sessions {
+		out = append(out, s.info)
+	}
+	w.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].ActiveAt.Equal(out[j].ActiveAt) {
+			return out[i].ActiveAt.After(out[j].ActiveAt)
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out
+}
+
+// Session returns one session.
+func (w *Workbench) Session(id string) (model.Session, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	s, ok := w.sessions[id]
+	if !ok {
+		return model.Session{}, false
+	}
+	return s.info, true
+}
+
+// Status returns a session's runtime state.
+func (w *Workbench) Status(id string) Status {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	s, ok := w.sessions[id]
+	if !ok {
+		return Status{}
+	}
+	return Status{Connected: s.native != nil, Running: s.running, Error: s.err}
+}
+
+// Messages returns a session's messages in order.
+func (w *Workbench) Messages(id string) ([]model.Message, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	s, ok := w.sessions[id]
+	if !ok {
+		return nil, ErrNoSuchSession
+	}
+	if err := w.load(id, s); err != nil {
+		return nil, err
+	}
+	return append([]model.Message(nil), s.msgs...), nil
+}
+
+// load reads a session's messages once. w.mu is held.
+func (w *Workbench) load(id string, s *session) error {
+	if s.loaded {
+		return nil
+	}
+	msgs, err := w.st.Messages(id)
+	if err != nil {
+		return err
+	}
+	s.msgs, s.loaded = msgs, true
+	return nil
+}
+
+// Send sends the user's message to the session's Agent, starting or
+// resuming its native session first if none is running.
+func (w *Workbench) Send(id, text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ErrEmptyMessage
+	}
+	now := w.now()
+
+	w.mu.Lock()
+	s, ok := w.sessions[id]
+	switch {
+	case !ok:
+		w.mu.Unlock()
+		return ErrNoSuchSession
+	case w.closing:
+		w.mu.Unlock()
+		return errWorkbenchClosing
+	case s.running:
+		w.mu.Unlock()
+		return ErrTurnRunning
+	}
+	if err := w.load(id, s); err != nil {
+		w.mu.Unlock()
+		return err
+	}
+	m := model.Message{Kind: model.UserMessage, State: model.Done, Text: text, CreatedAt: now, FinishedAt: now}
+	seq, err := w.st.AppendMessage(id, m)
+	if err != nil {
+		w.mu.Unlock()
+		return err
+	}
+	m.Seq = seq
+	s.msgs = append(s.msgs, m)
+	if s.info.Title == "" && !s.info.TitleManual {
+		s.info.Title = defaultTitle(text)
+		w.st.SetTitle(id, s.info.Title, false)
+	}
+	s.info.ActiveAt = now
+	w.st.Touch(id, now)
+	s.running, s.err, s.replies = true, "", map[string]int{}
+	native := s.native
+	info := s.info
+	ws, _ := w.workspace(info.WorkspaceID)
+	w.mu.Unlock()
+	w.notify(Change{SessionID: id, Message: &m})
+
+	if native == nil {
+		var err error
+		native, err = w.connect(id, info, ws)
+		if err != nil {
+			w.fail(id, "启动 Agent 失败："+err.Error())
+			return err
+		}
+	}
+	if err := native.Send(context.Background(), agent.Turn{Text: text}); err != nil {
+		w.fail(id, "发送失败："+err.Error())
+		return err
+	}
+	return nil
+}
+
+// connect starts or resumes the session's native session and pumps its
+// events.
+func (w *Workbench) connect(id string, info model.Session, ws model.Workspace) (agent.Session, error) {
+	a := w.agent(info.Agent)
+	if a == nil {
+		return nil, fmt.Errorf("%s：%w", info.Agent, ErrUnknownAgent)
+	}
+	native, err := a.Start(context.Background(), agent.StartOptions{Workspace: ws.Path, Model: info.Model, ResumeID: info.NativeID()})
+	if err != nil {
+		return nil, err
+	}
+	w.mu.Lock()
+	if w.closing {
+		w.mu.Unlock()
+		native.Close()
+		return nil, errWorkbenchClosing
+	}
+	w.sessions[id].native = native
+	w.pumps.Add(1)
+	w.mu.Unlock()
+	go w.pump(id, native)
+	return native, nil
+}
+
+// fail ends a turn that could not start.
+func (w *Workbench) fail(id, msg string) {
+	w.mu.Lock()
+	if s, ok := w.sessions[id]; ok {
+		s.running, s.err = false, msg
+	}
+	w.mu.Unlock()
+	w.notify(Change{SessionID: id})
+}
+
+// Stop interrupts the session's running turn.
+func (w *Workbench) Stop(id string) error {
+	w.mu.Lock()
+	s, ok := w.sessions[id]
+	if !ok {
+		w.mu.Unlock()
+		return ErrNoSuchSession
+	}
+	native := s.native
+	w.mu.Unlock()
+	if native == nil {
+		return nil
+	}
+	return native.Interrupt(context.Background())
+}
+
+// pump records a native session's events until it ends.
+func (w *Workbench) pump(id string, native agent.Session) {
+	defer w.pumps.Done()
+	for ev := range native.Events() {
+		w.handle(id, ev)
+	}
+	w.mu.Lock()
+	s := w.sessions[id]
+	if s.native == native {
+		s.native = nil
+	}
+	changed := w.endTurn(id, s, model.Interrupted)
+	w.mu.Unlock()
+	for _, m := range changed {
+		w.notify(Change{SessionID: id, Message: &m})
+	}
+	w.notify(Change{SessionID: id})
+}
+
+func (w *Workbench) handle(id string, ev agent.Event) {
+	now := w.now()
+	w.mu.Lock()
+	s := w.sessions[id]
+	var changed []model.Message
+	switch e := ev.(type) {
+	case agent.NativeSessionStarted:
+		if e.ID != "" && e.ID != s.info.NativeID() {
+			if err := w.st.AddNativeSession(id, e.ID, now); err == nil {
+				s.info.NativeIDs = append(s.info.NativeIDs, e.ID)
+			}
+		}
+	case agent.ReplyDelta:
+		i, ok := s.replies[e.ReplyID]
+		if !ok {
+			if s.replies == nil {
+				s.replies = map[string]int{}
+			}
+			m := model.Message{Kind: model.AgentReply, State: model.Streaming, Text: e.Text, Raw: e.Raw, CreatedAt: now}
+			seq, err := w.st.AppendMessage(id, m)
+			if err != nil {
+				s.err = "保存消息失败：" + err.Error()
+				break
+			}
+			m.Seq = seq
+			s.msgs = append(s.msgs, m)
+			s.replies[e.ReplyID] = len(s.msgs) - 1
+			s.lastFlush = now
+			changed = append(changed, m)
+			break
+		}
+		m := &s.msgs[i]
+		if m.State.Ended() {
+			break
+		}
+		m.Text += e.Text
+		if len(e.Raw) > 0 {
+			m.Raw = e.Raw
+		}
+		if now.Sub(s.lastFlush) >= flushEvery {
+			w.st.UpdateMessage(id, *m)
+			s.lastFlush = now
+		}
+		changed = append(changed, *m)
+	case agent.ReplyDone:
+		i, ok := s.replies[e.ReplyID]
+		if !ok || s.msgs[i].State.Ended() {
+			break
+		}
+		m := &s.msgs[i]
+		if e.Text != "" {
+			m.Text = e.Text
+		}
+		if len(e.Raw) > 0 {
+			m.Raw = e.Raw
+		}
+		m.State, m.FinishedAt = model.Done, now
+		w.st.UpdateMessage(id, *m)
+		changed = append(changed, *m)
+	case agent.TurnEnded:
+		end := model.Done
+		if e.Interrupted {
+			end = model.Interrupted
+		}
+		changed = w.endTurn(id, s, end)
+		s.info.ActiveAt = now
+		w.st.Touch(id, now)
+	case agent.Failed:
+		s.err = e.Message
+	}
+	w.mu.Unlock()
+	for _, m := range changed {
+		w.notify(Change{SessionID: id, Message: &m})
+	}
+	if len(changed) == 0 {
+		w.notify(Change{SessionID: id})
+	}
+}
+
+// endTurn ends the running turn, ending its replies still streaming as
+// state. w.mu is held. It returns the messages it changed.
+func (w *Workbench) endTurn(id string, s *session, state model.MessageState) []model.Message {
+	var changed []model.Message
+	now := w.now()
+	for _, i := range s.replies {
+		m := &s.msgs[i]
+		if m.State.Ended() {
+			continue
+		}
+		m.State, m.FinishedAt = state, now
+		w.st.UpdateMessage(id, *m)
+		changed = append(changed, *m)
+	}
+	sort.Slice(changed, func(i, j int) bool { return changed[i].Seq < changed[j].Seq })
+	s.running, s.replies = false, nil
+	return changed
+}
+
+// titleLen is how many characters of the first user message make the
+// default title.
+const titleLen = 40
+
+// defaultTitle is the start of the first line of a session's first user
+// message.
+func defaultTitle(text string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	line = strings.TrimSpace(line)
+	if utf8.RuneCountInString(line) <= titleLen {
+		return line
+	}
+	r := []rune(line)
+	return strings.TrimSpace(string(r[:titleLen])) + "…"
+}
+
+const idChars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+// newID returns prefix followed by 12 random base-62 characters.
+func newID(prefix string) string {
+	b := make([]byte, 12)
+	rand.Read(b)
+	for i := range b {
+		b[i] = idChars[int(b[i])%len(idChars)]
+	}
+	return prefix + string(b)
+}
