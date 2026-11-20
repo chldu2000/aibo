@@ -8,6 +8,7 @@ import (
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
+	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 )
@@ -172,7 +173,7 @@ func (s *Shell) selectionBar(c *ui.Context, x model.Session, v *sessionView) {
 func (s *Shell) targets(c *ui.Context, src model.Session, v *sessionView) {
 	t := c.Theme()
 	pick := func(tg target) {
-		brief, err := s.wb.PreviewBrief(src.ID, v.sel.from, v.sel.to, tg.agent, tg.workspaceID)
+		brief, err := s.wb.PreviewBrief(src.ID, v.sel.from, v.sel.to, workbench.Target{SessionID: tg.sessionID, Agent: tg.agent, WorkspaceID: tg.workspaceID})
 		if err != nil {
 			v.sel.sending = false
 			s.notice = "无法引用：" + err.Error()
@@ -183,6 +184,13 @@ func (s *Shell) targets(c *ui.Context, src model.Session, v *sessionView) {
 	}
 	ui.Column(c).Width(340).Gap(2).Padding(10).Children(func() {
 		ui.Text(c, fmt.Sprintf("把 %s 引用给…", refs.Range(v.sel.from, v.sel.to))).Bold().TextColor(t.Text).Padding(0, 6, 6)
+		// The session itself: to find again what its Agent compacted away.
+		if pickRow(c, "self", "引用给本会话", func() {
+			agentGlyph(c, src.Agent, 16)
+			ui.Text(c, "本会话（找回之前的内容）").TextColor(t.Text).Grow(1)
+		}).Clicked() {
+			pick(target{sessionID: src.ID, agent: src.Agent, workspaceID: src.WorkspaceID, label: "本会话"})
+		}
 		sessions := s.wb.Sessions()
 		for _, ws := range s.wb.Workspaces() {
 			ui.Text(c, workspaceName(ws)).FontSize(11).Bold().TextColor(t.TextMuted).Padding(8, 6, 2)

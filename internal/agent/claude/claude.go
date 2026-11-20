@@ -282,3 +282,9 @@ func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
 	return s.write(map[string]any{"type": "control_request", "request_id": fmt.Sprintf("mode-%d", s.nextReq),
 		"request": map[string]any{"subtype": "set_permission_mode", "mode": mode}})
 }
+
+// Compact sends /compact, which Claude Code runs as a turn reporting
+// compact_boundary.
+func (s *session) Compact(ctx context.Context) error {
+	return s.Send(ctx, agent.Turn{Text: "/compact"})
+}

@@ -142,7 +142,7 @@ func (s *Shell) pane(c *ui.Context) {
 		}
 		ui.Themed(c, &th).Fill().Children(func() {
 			ui.Column(c).Fill().Children(func() {
-				s.messages(c, v).Grow(1)
+				s.messages(c, v, s.wb.Markers(x.ID)).Grow(1)
 			})
 		})
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(80).PassThrough().Material(glass.ScrollEdge{})
@@ -184,10 +184,24 @@ func (s *Shell) workspaceOf(x model.Session) model.Workspace {
 	return model.Workspace{}
 }
 
-func (s *Shell) messages(c *ui.Context, v *sessionView) ui.Element {
+func (s *Shell) messages(c *ui.Context, v *sessionView, markers []model.Marker) ui.Element {
 	t := c.Theme()
+	after := map[int][]model.Marker{}
+	for _, mk := range markers {
+		after[mk.AfterSeq] = append(after[mk.AfterSeq], mk)
+	}
 	return ui.List(c, &v.list, len(v.msgs), func(i int) {
 		m := v.msgs[i]
+		if i == 0 {
+			for _, mk := range after[0] {
+				divider(c, mk)
+			}
+		}
+		defer func() {
+			for _, mk := range after[m.Seq] {
+				divider(c, mk)
+			}
+		}()
 		// In selection mode a press anywhere on a message chooses it,
 		// rather than selecting its text or pressing its buttons.
 		row := ui.Row(c).Gap(10).AlignItems(ui.Start).Padding(4).Radius(10).IgnoreInput(v.sel.on).Children(func() {
@@ -305,6 +319,11 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			if iconButton(c, "at", "引用其他会话（@）").Clicked() {
 				s.openPull()
 			}
+			if iconButton(c, "arrow.down.right.and.arrow.up.left", "压缩上下文").Clicked() {
+				if err := s.wb.Compact(x.ID); err != nil {
+					s.notice = err.Error()
+				}
+			}
 			s.levelControl(c, x)
 			ui.Spacer(c)
 			if running {
@@ -389,6 +408,9 @@ func agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
 
 // refLabel names a reference in one line: source, title and range.
 func (s *Shell) refLabel(r model.Reference) string {
+	if r.SourceID == r.TargetID {
+		return fmt.Sprintf("本会话 · %s（%d 条）", refs.Range(r.From, r.To), r.Count)
+	}
 	return fmt.Sprintf("%s · %s · %s（%d 条）", s.agentName(r.SourceAgent), r.SourceTitle, refs.Range(r.From, r.To), r.Count)
 }
 
@@ -443,4 +465,33 @@ func (s *Shell) reveal(sessionID string, from, to int) {
 			break
 		}
 	}
+}
+
+// divider shows a marker as a line across the session: where the Agent
+// compacted its context, or a new native session took over.
+func divider(c *ui.Context, mk model.Marker) {
+	t := c.Theme()
+	text := "已切换到新的 Agent 原生会话"
+	if mk.Kind == model.Compaction {
+		text = "上下文已压缩 · 自动"
+		if mk.Trigger == "manual" {
+			text = "上下文已压缩 · 手动"
+		}
+		if mk.PreTokens > 0 {
+			text += fmt.Sprintf(" · %s → %s tokens", kTokens(mk.PreTokens), kTokens(mk.PostTokens))
+		}
+	}
+	ui.Row(c).Gap(8).Padding(6, 0).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Height(1).Grow(1).Background(t.Border)
+		ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).NoWrap()
+		ui.Box(c).Height(1).Grow(1).Background(t.Border)
+	})
+}
+
+// kTokens writes a token count as 19.7k.
+func kTokens(n int) string {
+	if n < 1000 {
+		return fmt.Sprint(n)
+	}
+	return fmt.Sprintf("%.1fk", float64(n)/1000)
 }

@@ -22,9 +22,6 @@ func (w *Workbench) ReferenceSession(sourceID, targetID string) (model.Reference
 // composer. The reference is a snapshot: what the source says or is
 // called later does not change it.
 func (w *Workbench) ReferenceRange(sourceID string, from, to int, targetID string) (model.Reference, error) {
-	if sourceID == targetID {
-		return model.Reference{}, ErrSelfReference
-	}
 	w.mu.Lock()
 	src, ok := w.sessions[sourceID]
 	tgt, ok2 := w.sessions[targetID]
@@ -39,7 +36,7 @@ func (w *Workbench) ReferenceRange(sourceID string, from, to int, targetID strin
 	}
 	srcWS, _ := w.workspace(src.info.WorkspaceID)
 	tgtWS, _ := w.workspace(tgt.info.WorkspaceID)
-	r := w.newReference(newID("ref_"), src.info, srcWS, tgt.info.Agent, tgtWS, ms)
+	r := w.newReference(newID("ref_"), src.info, srcWS, Target{SessionID: targetID, Agent: tgt.info.Agent, WorkspaceID: tgtWS.ID}, tgtWS, ms)
 	r.TargetID = targetID
 	if err := w.st.AddReference(r); err != nil {
 		w.mu.Unlock()
@@ -51,10 +48,18 @@ func (w *Workbench) ReferenceRange(sourceID string, from, to int, targetID strin
 	return r, nil
 }
 
+// Target is where a reference goes: an existing session (SessionID), or
+// a new session of an Agent in a workspace.
+type Target struct {
+	SessionID   string
+	Agent       agent.Kind
+	WorkspaceID string
+}
+
 // PreviewBrief returns the brief a reference of the source's messages
-// from..to (0, 0 for all) would have for a session of the Agent kind in
-// the workspace, but for its ID, given when the reference is made.
-func (w *Workbench) PreviewBrief(sourceID string, from, to int, kind agent.Kind, workspaceID string) (string, error) {
+// from..to (0, 0 for all) would have for the target, but for its ID,
+// given when the reference is made.
+func (w *Workbench) PreviewBrief(sourceID string, from, to int, t Target) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	src, ok := w.sessions[sourceID]
@@ -66,11 +71,11 @@ func (w *Workbench) PreviewBrief(sourceID string, from, to int, kind agent.Kind,
 		return "", err
 	}
 	srcWS, _ := w.workspace(src.info.WorkspaceID)
-	tgtWS, ok := w.workspace(workspaceID)
+	tgtWS, ok := w.workspace(t.WorkspaceID)
 	if !ok {
 		return "", ErrNoSuchWorkspace
 	}
-	return w.newReference("ref_（发出时生成）", src.info, srcWS, kind, tgtWS, ms).Brief, nil
+	return w.newReference("ref_（发出时生成）", src.info, srcWS, t, tgtWS, ms).Brief, nil
 }
 
 // rangeOf returns a session's messages from..to, all of which must have
@@ -109,7 +114,7 @@ func (w *Workbench) rangeOf(id string, s *session, from, to int) ([]model.Messag
 
 // newReference makes a draft reference of messages ms of src, with its
 // brief for a session of the Agent kind in workspace tgtWS. w.mu is held.
-func (w *Workbench) newReference(id string, src model.Session, srcWS model.Workspace, kind agent.Kind, tgtWS model.Workspace, ms []model.Message) model.Reference {
+func (w *Workbench) newReference(id string, src model.Session, srcWS model.Workspace, t Target, tgtWS model.Workspace, ms []model.Message) model.Reference {
 	r := model.Reference{
 		ID:              id,
 		SourceID:        src.ID,
@@ -127,7 +132,8 @@ func (w *Workbench) newReference(id string, src model.Session, srcWS model.Works
 		SourceTitle: r.SourceTitle,
 		SourceAgent: w.agentDisplayName(src.Agent),
 		Messages:    ms,
-		ToolName:    w.toolNamer(kind),
+		ToolName:    w.toolNamer(t.Agent),
+		Self:        t.SessionID == src.ID,
 	}
 	if srcWS.Path != tgtWS.Path {
 		in.SourceWorkspace = srcWS.Path

@@ -112,7 +112,11 @@ func (s *session) Send(_ context.Context, turn agent.Turn) error {
 	s.turns.Add(1)
 	go func() {
 		defer s.turns.Done()
-		s.respond(ctx, s.opts, turn, func(e agent.Event) { s.events <- e })
+		if turn.Text == CompactTurn {
+			s.events <- agent.Compacted{Trigger: "manual", PreTokens: 1000, PostTokens: 100}
+		} else {
+			s.respond(ctx, s.opts, turn, func(e agent.Event) { s.events <- e })
+		}
 		s.mu.Lock()
 		s.cancel = nil
 		s.mu.Unlock()
@@ -135,6 +139,15 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 	s.decisions <- Decision{ID: id, OptionID: optionID, Note: note}
 	return nil
 }
+
+// Compact runs a turn that compacts: it reports Compacted, manual.
+func (s *session) Compact(ctx context.Context) error {
+	return s.Send(ctx, agent.Turn{Text: CompactTurn})
+}
+
+// CompactTurn is the text of the turns Compact runs, for Responders to
+// tell them apart; the default answer reports Compacted.
+const CompactTurn = "\x00compact"
 
 // SetLevel records the level, which Levels reports.
 func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {

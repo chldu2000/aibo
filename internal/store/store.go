@@ -127,6 +127,17 @@ var migrations = []string{
 	// Approval levels and the rules allowed for the rest of a session.
 	`ALTER TABLE sessions ADD COLUMN approval_level TEXT NOT NULL DEFAULT 'ask';
 	ALTER TABLE sessions ADD COLUMN rules TEXT;`,
+	// Markers of compactions and context resets, between messages.
+	`CREATE TABLE markers (
+		session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+		after_seq   INTEGER NOT NULL,
+		kind        TEXT NOT NULL,
+		trigger     TEXT NOT NULL DEFAULT '',
+		pre_tokens  INTEGER NOT NULL DEFAULT 0,
+		post_tokens INTEGER NOT NULL DEFAULT 0,
+		at          INTEGER NOT NULL
+	);
+	CREATE INDEX markers_session ON markers(session_id);`,
 }
 
 // SchemaVersion is the schema version this build writes.
@@ -548,4 +559,32 @@ func rulesValue(rules []agent.Rule) any {
 		return nil
 	}
 	return string(b)
+}
+
+// AddMarker adds a marker to a session.
+func (s *Store) AddMarker(sessionID string, m model.Marker) error {
+	_, err := s.db.Exec(`INSERT INTO markers (session_id, after_seq, kind, trigger, pre_tokens, post_tokens, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, m.AfterSeq, string(m.Kind), m.Trigger, m.PreTokens, m.PostTokens, ms(m.At))
+	return err
+}
+
+// Markers returns a session's markers in order.
+func (s *Store) Markers(sessionID string) ([]model.Marker, error) {
+	rows, err := s.db.Query(`SELECT after_seq, kind, trigger, pre_tokens, post_tokens, at FROM markers WHERE session_id = ? ORDER BY after_seq, rowid`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.Marker
+	for rows.Next() {
+		var m model.Marker
+		var kind string
+		var at sql.NullInt64
+		if err := rows.Scan(&m.AfterSeq, &kind, &m.Trigger, &m.PreTokens, &m.PostTokens, &at); err != nil {
+			return nil, err
+		}
+		m.Kind, m.At = model.MarkerKind(kind), fromMS(at)
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }

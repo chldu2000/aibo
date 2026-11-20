@@ -20,6 +20,8 @@ type thread struct {
 	// files are the file changes started, by item ID, for their
 	// approval requests to show.
 	files map[string]item
+	// compacting is set while a compaction asked for runs.
+	compacting bool
 }
 
 func newThread() *thread { return &thread{replies: map[string]bool{}, files: map[string]item{}} }
@@ -211,6 +213,7 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		}
 	case "turn/completed":
 		clear(t.files)
+		t.compacting = false
 		out := t.flushReasoning()
 		switch n.Turn.Status {
 		case "interrupted":
@@ -242,6 +245,13 @@ func (t *thread) completed(it item, raw json.RawMessage) []agent.Event {
 			return nil
 		}
 		return []agent.Event{agent.ReplyDone{ReplyID: it.ID, Text: it.Text, Raw: raw}}
+	case "contextCompaction":
+		trigger := "auto"
+		if t.compacting {
+			trigger = "manual"
+		}
+		// Codex does not say how many tokens.
+		return []agent.Event{agent.Compacted{Trigger: trigger}}
 	case "reasoning":
 		if t.reasoning.Len() == 0 {
 			// Not streamed: its text is in the item.

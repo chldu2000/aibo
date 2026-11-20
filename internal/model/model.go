@@ -216,3 +216,27 @@ func (m Message) Clone() Message {
 	m.Refs = append([]string(nil), m.Refs...)
 	return m
 }
+
+// MarkerKind is what a marker marks.
+type MarkerKind string
+
+const (
+	// Compaction marks where the Agent compacted its context.
+	Compaction MarkerKind = "compaction"
+	// Reset marks where a new native session took over.
+	Reset MarkerKind = "reset"
+)
+
+// Marker marks something that happened in a session after message
+// AfterSeq (0: before any). It is not a message: it has no sequence
+// number of its own and cannot be referenced.
+type Marker struct {
+	AfterSeq int
+	Kind     MarkerKind
+	// Trigger and the tokens are a compaction's: "auto" or "manual", and
+	// the context's size before and after, zero when unknown.
+	Trigger    string
+	PreTokens  int
+	PostTokens int
+	At         time.Time
+}

@@ -173,9 +173,6 @@ func TestOnlyEndedMessagesAreReferenced(t *testing.T) {
 	if _, err := b.ReferenceSession(src.ID, tgt.ID); !errors.Is(err, workbench.ErrNothingToRef) {
 		t.Errorf("referencing an empty session: %v", err)
 	}
-	if _, err := b.ReferenceSession(src.ID, src.ID); !errors.Is(err, workbench.ErrSelfReference) {
-		t.Errorf("referencing a session to itself: %v", err)
-	}
 	b.Send(src.ID, "写个长回复")
 	sc.emit(agent.ReplyDelta{ReplyID: "r", Text: "写到一半"})
 	b.waitFor(t, "the reply to start", func() bool { return len(b.messages(t, src.ID)) == 2 })

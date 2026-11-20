@@ -111,3 +111,21 @@ func TestDeniedAndStoppedIsAnInterruption(t *testing.T) {
 		t.Errorf("events = %#v", evs)
 	}
 }
+
+// As Claude Code 2.1.318 reported a /compact.
+func TestCompactBoundary(t *testing.T) {
+	p := newParser()
+	evs := p.line([]byte(`{"type": "system", "subtype": "compact_boundary", "session_id": "s", "compact_metadata": {"trigger": "manual", "pre_tokens": 19360, "post_tokens": 7030, "cumulative_dropped_tokens": 12330, "duration_ms": 2864}}`))
+	if len(evs) != 1 || evs[0] != (agent.Compacted{Trigger: "manual", PreTokens: 19360, PostTokens: 7030}) {
+		t.Errorf("events = %#v", evs)
+	}
+	// What follows is no message of the session's.
+	for _, l := range []string{
+		`{"type":"user","message":{"role":"user","content":"This session is being continued from a previous conversation..."}}`,
+		`{"type":"user","message":{"role":"user","content":"<local-command-stdout>Compacted </local-command-stdout>"}}`,
+	} {
+		if evs := p.line([]byte(l)); len(evs) != 0 {
+			t.Errorf("%s → %#v", l, evs)
+		}
+	}
+}

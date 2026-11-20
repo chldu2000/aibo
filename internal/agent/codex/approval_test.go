@@ -113,3 +113,20 @@ func TestPolicies(t *testing.T) {
 		}
 	}
 }
+
+// As codex app-server 0.169.0 reported compactions: its own, and asked for.
+func TestCompaction(t *testing.T) {
+	th := newThread()
+	item := json.RawMessage(`{"threadId":"T","turnId":"U","item":{"type":"contextCompaction","id":"c","startedAtMs":1,"completedAtMs":2}}`)
+	if evs := th.handle("item/completed", item); len(evs) != 1 || evs[0] != (agent.Compacted{Trigger: "auto"}) {
+		t.Errorf("auto: %#v", evs)
+	}
+	th.compacting = true
+	if evs := th.handle("item/completed", item); len(evs) != 1 || evs[0] != (agent.Compacted{Trigger: "manual"}) {
+		t.Errorf("manual: %#v", evs)
+	}
+	th.handle("turn/completed", json.RawMessage(`{"threadId":"T","turn":{"id":"U","status":"completed"}}`))
+	if th.compacting {
+		t.Error("still compacting after the turn")
+	}
+}

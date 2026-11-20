@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -46,7 +47,8 @@ var (
 	ErrTurnRunning      = errors.New("Agent 正在回复，请先停止或等它完成")
 	ErrEmptyMessage     = errors.New("消息不能为空")
 	ErrNothingToRef     = errors.New("会话里还没有可以引用的消息")
-	ErrSelfReference    = errors.New("暂不支持把会话引用给它自己")
+	ErrSlashCommand     = errors.New("暂不支持 Agent 自带的斜杠命令。要压缩上下文，请用输入框里的“压缩上下文”")
+	ErrNothingToCompact = errors.New("会话里还没有内容，无需压缩")
 	ErrNoSuchReference  = errors.New("引用不存在")
 	ErrBadRange         = errors.New("引用范围无效")
 	ErrNoSuchApproval   = errors.New("这个审批请求已经处理过或不存在")
@@ -102,9 +104,10 @@ type Workbench struct {
 
 // session is a session's state in memory.
 type session struct {
-	info   model.Session
-	msgs   []model.Message // nil until loaded
-	loaded bool
+	info    model.Session
+	msgs    []model.Message // nil until loaded
+	markers []model.Marker  // loaded with msgs
+	loaded  bool
 
 	native  agent.Session // nil while not connected
 	running bool
@@ -369,7 +372,11 @@ func (w *Workbench) load(id string, s *session) error {
 	if err != nil {
 		return err
 	}
-	s.msgs, s.loaded = msgs, true
+	markers, err := w.st.Markers(id)
+	if err != nil {
+		return err
+	}
+	s.msgs, s.markers, s.loaded = msgs, markers, true
 	return nil
 }
 
@@ -392,6 +399,11 @@ func (w *Workbench) Send(id, text string) error {
 	case w.closing:
 		w.mu.Unlock()
 		return errWorkbenchClosing
+	}
+	if slashCommand.MatchString(text) {
+		// aibo's record would no longer match the Agent's state.
+		w.mu.Unlock()
+		return ErrSlashCommand
 	}
 	drafts := w.drafts(id)
 	if text == "" && len(drafts) == 0 {
@@ -531,6 +543,77 @@ func (w *Workbench) pump(id string, native agent.Session) {
 		w.notify(Change{SessionID: id, Message: &m})
 	}
 	w.notify(Change{SessionID: id})
+}
+
+// slashCommand is an Agent's own slash command, as /clear or
+// /model sonnet: a word after the slash, not a path.
+var slashCommand = regexp.MustCompile(`^/[A-Za-z][\w:-]*(\s|$)`)
+
+// Markers returns a session's markers in order.
+func (w *Workbench) Markers(id string) []model.Marker {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	s, ok := w.sessions[id]
+	if !ok || w.load(id, s) != nil {
+		return nil
+	}
+	return append([]model.Marker(nil), s.markers...)
+}
+
+// addMarker marks something after the session's last message. w.mu is
+// held.
+func (w *Workbench) addMarker(id string, s *session, m model.Marker) {
+	if len(s.msgs) > 0 {
+		m.AfterSeq = s.msgs[len(s.msgs)-1].Seq
+	}
+	if err := w.st.AddMarker(id, m); err != nil {
+		s.err = "保存标记失败：" + err.Error()
+		return
+	}
+	s.markers = append(s.markers, m)
+}
+
+// Compact asks the session's Agent to compact its context, as a turn of
+// its own, starting or resuming its native session first if none runs.
+func (w *Workbench) Compact(id string) error {
+	w.mu.Lock()
+	s, ok := w.sessions[id]
+	switch {
+	case !ok:
+		w.mu.Unlock()
+		return ErrNoSuchSession
+	case w.closing:
+		w.mu.Unlock()
+		return errWorkbenchClosing
+	case s.running:
+		w.mu.Unlock()
+		return ErrTurnRunning
+	}
+	if err := w.load(id, s); err != nil {
+		w.mu.Unlock()
+		return err
+	}
+	if len(s.msgs) == 0 {
+		w.mu.Unlock()
+		return ErrNothingToCompact
+	}
+	s.running, s.err, s.items = true, "", map[string]int{}
+	native, info := s.native, s.info
+	ws, _ := w.workspace(info.WorkspaceID)
+	w.mu.Unlock()
+	w.notify(Change{SessionID: id})
+	if native == nil {
+		var err error
+		if native, err = w.connect(id, info, ws); err != nil {
+			w.fail(id, "启动 Agent 失败："+err.Error())
+			return err
+		}
+	}
+	if err := native.Compact(context.Background()); err != nil {
+		w.fail(id, "压缩失败："+err.Error())
+		return err
+	}
+	return nil
 }
 
 // titleLen is how many characters of the first user message make the

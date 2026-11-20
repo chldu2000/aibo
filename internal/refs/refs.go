@@ -41,6 +41,9 @@ type BriefInput struct {
 	Messages []model.Message
 	// ToolName gives a tool's name as the receiving Agent sees it.
 	ToolName func(tool string) string
+	// Self is set when the session receives part of itself: the brief
+	// reminds the Agent of what it may have forgotten.
+	Self bool
 }
 
 // Brief renders a reference's <aibo-reference> block.
@@ -57,11 +60,16 @@ func brief(in BriefInput, excerptLen int) string {
 	ms := in.Messages
 	var b strings.Builder
 	fmt.Fprintf(&b, "<aibo-reference id=%q>\n", in.ID)
-	b.WriteString("用户交给你一段来自另一个会话的引用（只读快照）。当用户的请求依赖其中的内容时，\n")
-	fmt.Fprintf(&b, "请先调用 %s 读取，不要凭概要猜测细节。\n", in.ToolName(ToolReadReference))
-	fmt.Fprintf(&b, "- 来源：「%s」· %s\n", in.SourceTitle, in.SourceAgent)
-	if in.SourceWorkspace != "" {
-		fmt.Fprintf(&b, "- 源工作区：%s（不是你当前的工作区；其中的相对路径都相对于它，你只能读取不能修改）\n", in.SourceWorkspace)
+	if in.Self {
+		b.WriteString("这是本会话较早的一段内容，你的上下文中可能已不再保留其细节。当用户的请求依赖其中的内容时，\n")
+		fmt.Fprintf(&b, "请先调用 %s 读取，不要凭记忆猜测细节。\n", in.ToolName(ToolReadReference))
+	} else {
+		b.WriteString("用户交给你一段来自另一个会话的引用（只读快照）。当用户的请求依赖其中的内容时，\n")
+		fmt.Fprintf(&b, "请先调用 %s 读取，不要凭概要猜测细节。\n", in.ToolName(ToolReadReference))
+		fmt.Fprintf(&b, "- 来源：「%s」· %s\n", in.SourceTitle, in.SourceAgent)
+		if in.SourceWorkspace != "" {
+			fmt.Fprintf(&b, "- 源工作区：%s（不是你当前的工作区；其中的相对路径都相对于它，你只能读取不能修改）\n", in.SourceWorkspace)
+		}
 	}
 	if len(ms) > 0 {
 		first, last := ms[0], ms[len(ms)-1]

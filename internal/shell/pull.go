@@ -6,6 +6,7 @@ import (
 
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
+	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -203,7 +204,7 @@ func (s *Shell) pullBrief(x model.Session) string {
 	if from != p.briefFrom || to != p.briefTo {
 		p.briefFrom, p.briefTo = from, to
 		p.brief, p.briefErr = "", ""
-		b, err := s.wb.PreviewBrief(p.source.ID, from, to, x.Agent, x.WorkspaceID)
+		b, err := s.wb.PreviewBrief(p.source.ID, from, to, workbench.Target{SessionID: x.ID, Agent: x.Agent, WorkspaceID: x.WorkspaceID})
 		if err != nil {
 			p.briefErr = err.Error()
 		}

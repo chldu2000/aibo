@@ -713,3 +713,71 @@ func TestApprovalLevelsRulesAndNotifications(t *testing.T) {
 		t.Errorf("notified for the session on screen: %q", notes)
 	}
 }
+
+// Compacting shows as a line across the session; slash commands are
+// refused; a session can reference its own messages.
+func TestCompactionSlashAndSelfReference(t *testing.T) {
+	respond := func(ctx context.Context, _ agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
+		emit(agent.ReplyDone{ReplyID: "r", Text: "回复：" + turn.Text})
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	wb.Send(s.ID, "暗号是 kestrel")
+	for wb.Status(s.ID).Running {
+		<-changes
+	}
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 900)
+	frame := func() {
+		for i := 0; i < 3; i++ {
+			tt.Frame()
+			tt.Advance(time.Second)
+		}
+	}
+	frame()
+	click := func(s string) {
+		t.Helper()
+		if err := tt.Click(s); err != nil {
+			t.Fatalf("%v; the window shows %q", err, tt.Texts())
+		}
+		frame()
+	}
+	shows := func(want ...string) {
+		t.Helper()
+		for _, w := range want {
+			if !tt.HasText(w) {
+				t.Errorf("the window lacks %q: %q", w, tt.Texts())
+			}
+		}
+	}
+
+	click("压缩上下文")
+	for wb.Status(s.ID).Running || len(wb.Markers(s.ID)) == 0 {
+		<-changes
+	}
+	frame()
+	shows("上下文已压缩 · 手动 · 1.0k → 100 tokens")
+
+	click("给 假 Agent 发消息")
+	tt.Type("/clear")
+	tt.Key(0, ui.KeyEnter)
+	frame()
+	shows("暂不支持 Agent 自带的斜杠命令")
+	if ms, _ := wb.Messages(s.ID); len(ms) != 2 {
+		t.Errorf("a slash command was sent: %+v", ms)
+	}
+
+	click("选择消息以引用或复制")
+	click("选中整个会话")
+	click("发给…")
+	click("引用给本会话")
+	shows("这是本会话较早的一段内容，你的上下文中可能已不再保留其细节。当用户的请求依赖其中的内容时，")
+	click("引用")
+	shows("本会话 · #1–#2（2 条）")
+}

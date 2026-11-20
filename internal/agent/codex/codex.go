@@ -569,3 +569,22 @@ func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
 	s.level = level
 	return nil
 }
+
+// Compact runs thread/compact/start: a turn of its own, with a
+// contextCompaction item.
+func (s *session) Compact(ctx context.Context) error {
+	s.mu.Lock()
+	if s.closed || s.running {
+		s.mu.Unlock()
+		return errors.New("Codex 正忙或会话已关闭")
+	}
+	s.running, s.parse.compacting = true, true
+	s.mu.Unlock()
+	if err := s.srv.call(ctx, "thread/compact/start", map[string]any{"threadId": s.id}, nil); err != nil {
+		s.mu.Lock()
+		s.running, s.parse.compacting = false, false
+		s.mu.Unlock()
+		return err
+	}
+	return nil
+}

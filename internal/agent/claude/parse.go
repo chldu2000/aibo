@@ -60,6 +60,12 @@ type envelope struct {
 	Result         string   `json:"result"`
 	Errors         []string `json:"errors"`
 	TerminalReason string   `json:"terminal_reason"`
+	// system/compact_boundary
+	CompactMetadata struct {
+		Trigger    string `json:"trigger"`
+		PreTokens  int    `json:"pre_tokens"`
+		PostTokens int    `json:"post_tokens"`
+	} `json:"compact_metadata"`
 	// control_request
 	RequestID string          `json:"request_id"`
 	Request   json.RawMessage `json:"request"`
@@ -118,6 +124,10 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 	case "system":
 		if e.Subtype == "init" && e.SessionID != "" {
 			return []agent.Event{agent.NativeSessionStarted{ID: e.SessionID}}
+		}
+		if e.Subtype == "compact_boundary" {
+			m := e.CompactMetadata
+			return []agent.Event{agent.Compacted{Trigger: m.Trigger, PreTokens: m.PreTokens, PostTokens: m.PostTokens}}
 		}
 	case "stream_event":
 		if e.ParentToolUseID == "" {

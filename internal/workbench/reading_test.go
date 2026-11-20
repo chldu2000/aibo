@@ -226,7 +226,7 @@ func TestReferenceRange(t *testing.T) {
 	}
 
 	// The preview is the brief to be, but for the ID.
-	preview, err := b.PreviewBrief(src.ID, 7, 10, fake.Kind, src.WorkspaceID)
+	preview, err := b.PreviewBrief(src.ID, 7, 10, workbench.Target{SessionID: tgt.ID, Agent: fake.Kind, WorkspaceID: src.WorkspaceID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestReferenceRange(t *testing.T) {
 		t.Errorf("preview:\n%s\nbrief:\n%s", preview, r.Brief)
 	}
 	other, _ := b.AddWorkspace(t.TempDir())
-	if p, _ := b.PreviewBrief(src.ID, 7, 10, fake.Kind, other.ID); !strings.Contains(p, "- 源工作区：") {
+	if p, _ := b.PreviewBrief(src.ID, 7, 10, workbench.Target{Agent: fake.Kind, WorkspaceID: other.ID}); !strings.Contains(p, "- 源工作区：") {
 		t.Errorf("preview for another workspace lacks it:\n%s", p)
 	}
 }

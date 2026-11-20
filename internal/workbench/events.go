@@ -183,6 +183,8 @@ func (w *Workbench) handle(id string, ev agent.Event) {
 		changed = w.endTurn(id, s, end)
 		s.info.ActiveAt = now
 		w.st.Touch(id, now)
+	case agent.Compacted:
+		w.addMarker(id, s, model.Marker{Kind: model.Compaction, Trigger: e.Trigger, PreTokens: e.PreTokens, PostTokens: e.PostTokens, At: now})
 	case agent.Failed:
 		s.err = e.Message
 	}

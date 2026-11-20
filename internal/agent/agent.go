@@ -92,6 +92,9 @@ type Session interface {
 	// RespondApproval answers the approval request id with one of its
 	// options; note, for a denial, tells the Agent why.
 	RespondApproval(ctx context.Context, id string, optionID string, note string) error
+	// Compact compacts the Agent's context, as a turn of its own, which
+	// reports Compacted and ends with TurnEnded.
+	Compact(ctx context.Context) error
 	// SetLevel changes the approval level, for the turns to come.
 	SetLevel(ctx context.Context, level ApprovalLevel) error
 	// Close ends the native session's process or connection.
@@ -227,6 +230,15 @@ const (
 	DenyStop     OptionKind = "deny_stop"
 )
 
+// Compacted reports that the Agent compacted its context. Tokens are
+// zero when the Agent does not say.
+type Compacted struct {
+	// Trigger is "manual" when asked for (Session.Compact), else "auto".
+	Trigger    string
+	PreTokens  int
+	PostTokens int
+}
+
 // TurnEnded ends the running turn.
 type TurnEnded struct {
 	// Interrupted is set when the turn was stopped before it finished.
@@ -247,5 +259,6 @@ func (ToolStarted) isEvent()          {}
 func (ToolFinished) isEvent()         {}
 func (PlanUpdated) isEvent()          {}
 func (ApprovalRequested) isEvent()    {}
+func (Compacted) isEvent()            {}
 func (TurnEnded) isEvent()            {}
 func (Failed) isEvent()               {}
