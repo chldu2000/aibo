@@ -47,6 +47,10 @@ func Open(dir string) (*Store, error) {
 	// the pragmas and transactions simple.
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
+	if err := s.backupBeforeUpgrade(dir); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err
@@ -138,6 +142,55 @@ var migrations = []string{
 		at          INTEGER NOT NULL
 	);
 	CREATE INDEX markers_session ON markers(session_id);`,
+	// The user's settings.
+	`CREATE TABLE settings (
+		key   TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);`,
+}
+
+// backupBeforeUpgrade copies the database of an older schema, before
+// it is upgraded, to aibo.db.v<version>-<time>.bak beside it.
+func (s *Store) backupBeforeUpgrade(dir string) error {
+	var v int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
+		return err
+	}
+	if v == 0 || v >= len(migrations) {
+		return nil
+	}
+	// The whole database in its file, the WAL emptied into it.
+	if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		return err
+	}
+	name := fmt.Sprintf("%s.v%d-%s.bak", DBFile, v, time.Now().Format("20060102-150405"))
+	if _, err := s.db.Exec(`VACUUM INTO ?`, filepath.Join(dir, name)); err != nil {
+		return fmt.Errorf("store: backing up before the upgrade: %w", err)
+	}
+	return nil
+}
+
+// Setting reads the setting key into v; ok is false when it is not set.
+func (s *Store) Setting(key string, v any) (ok bool, err error) {
+	var raw string
+	err = s.db.QueryRow(`SELECT value FROM settings WHERE key = ?`, key).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, json.Unmarshal([]byte(raw), v)
+}
+
+// SetSetting writes the setting key.
+func (s *Store) SetSetting(key string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, string(b))
+	return err
 }
 
 // SchemaVersion is the schema version this build writes.

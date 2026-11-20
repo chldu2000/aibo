@@ -25,6 +25,13 @@ type Options struct {
 	// MyGo's, which the app wires to open the session when clicked
 	// (Shell.Open).
 	Notify func(sessionID, title, body string)
+	// DataDir is the data directory in use, which the settings show.
+	DataDir string
+	// MoveDataDir moves the data to another directory and starts aibo
+	// again on it; nil leaves the data directory unchangeable.
+	MoveDataDir func(to string) error
+	// ShowInFinder reveals a path in Finder.
+	ShowInFinder func(path string)
 	// ChooseFolder asks the user for a folder to add as a workspace,
 	// blocking until they choose; ok is false when they cancel. It runs
 	// off the main thread.
@@ -54,6 +61,8 @@ type Shell struct {
 	// refocus gives the composer the keyboard focus in the next frame
 	// that builds it.
 	refocus bool
+	// settings is the global settings' modal.
+	settings settingsUI
 	// level is the approval control's popover.
 	level levelState
 	// seen counts each session's approval requests last seen, to notify
@@ -223,7 +232,7 @@ func (s *Shell) notifyApprovals(changes []workbench.Change) {
 		}
 		done[id] = true
 		n := s.wb.Status(id).Approvals
-		if n > s.seen[id] && id != s.current && s.opts.Notify != nil {
+		if n > s.seen[id] && id != s.current && s.opts.Notify != nil && s.wb.Settings().Notify {
 			x, _ := s.wb.Session(id)
 			s.opts.Notify(id, "「"+sessionTitle(x)+"」需要审批", s.agentName(x.Agent)+" 在等你批准一个操作")
 		}
@@ -238,3 +247,6 @@ func (s *Shell) Open(sessionID string) {
 		s.current = sessionID
 	}
 }
+
+// OpenSettings opens the global settings, as ⌘, does.
+func (s *Shell) OpenSettings() { s.openSettings() }

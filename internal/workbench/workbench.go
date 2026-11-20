@@ -97,14 +97,15 @@ type AgentInfo struct {
 
 // Workbench is the open workbench.
 type Workbench struct {
-	st      *store.Store
-	mcp     *mcpserver.Server
-	agents  []agent.Agent
-	now     func() time.Time
-	budgets refs.Budgets
-	idle    time.Duration
-	done    chan struct{} // closed when the workbench closes
-	pumps   sync.WaitGroup
+	st       *store.Store
+	mcp      *mcpserver.Server
+	agents   []agent.Agent
+	now      func() time.Time
+	budgets  refs.Budgets
+	idle     time.Duration
+	settings Settings
+	done     chan struct{} // closed when the workbench closes
+	pumps    sync.WaitGroup
 
 	mu         sync.Mutex
 	closing    bool
@@ -154,9 +155,7 @@ func Open(o Options) (*Workbench, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	if o.Budgets == (refs.Budgets{}) {
-		o.Budgets = refs.DefaultBudgets
-	}
+
 	st, err := store.Open(o.DataDir)
 	if err != nil {
 		return nil, err
@@ -166,13 +165,22 @@ func Open(o Options) (*Workbench, error) {
 		st.Close()
 		return nil, err
 	}
-	if o.IdleTimeout == 0 {
-		o.IdleTimeout = idleTimeout
+	// The user's settings, unless the options say otherwise (tests).
+	settings := DefaultSettings
+	if _, err := st.Setting(settingsKey, &settings); err != nil {
+		st.Close()
+		return nil, err
+	}
+	if o.Budgets != (refs.Budgets{}) {
+		settings.Budgets = o.Budgets
+	}
+	if o.IdleTimeout != 0 {
+		settings.IdleTimeout = o.IdleTimeout
 	}
 	if o.IdleCheck == 0 {
 		o.IdleCheck = time.Minute
 	}
-	w := &Workbench{st: st, agents: o.Agents, now: o.Now, budgets: o.Budgets, idle: o.IdleTimeout, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
+	w := &Workbench{st: st, agents: o.Agents, now: o.Now, budgets: settings.Budgets, idle: settings.IdleTimeout, settings: settings, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
 	if w.workspaces, err = st.Workspaces(); err != nil {
 		st.Close()
 		return nil, err
@@ -321,8 +329,9 @@ func (w *Workbench) NewSession(workspaceID string, kind agent.Kind, modelName st
 		return model.Session{}, fmt.Errorf("%s：%w", kind, ErrUnknownAgent)
 	}
 	now := w.now()
-	x := model.Session{ID: newID("s_"), WorkspaceID: workspaceID, Agent: kind, Model: modelName, CreatedAt: now, ActiveAt: now, Level: agent.AskAlways}
+	x := model.Session{ID: newID("s_"), WorkspaceID: workspaceID, Agent: kind, Model: modelName, CreatedAt: now, ActiveAt: now}
 	w.mu.Lock()
+	x.Level = w.settings.DefaultLevel
 	if _, ok := w.workspace(workspaceID); !ok {
 		w.mu.Unlock()
 		return model.Session{}, ErrNoSuchWorkspace

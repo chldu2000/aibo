@@ -19,6 +19,10 @@ import (
 // View builds the window's content.
 func (s *Shell) View(c *ui.Context) {
 	s.apply()
+	if c.Shortcut(ui.Super, ui.KeyComma) {
+		s.openSettings()
+	}
+	s.settingsModal(c)
 	ui.Split(c, &s.split, func() {
 		s.sidebar(c)
 	}, func() {
@@ -45,6 +49,12 @@ func (s *Shell) sidebar(c *ui.Context) {
 					})
 					s.workspaceGroups(c)
 				})
+			})
+			ui.Row(c).Padding(8, 10).AlignItems(ui.Center).Children(func() {
+				if iconButton(c, "gearshape", "设置（⌘,）").Clicked() {
+					s.openSettings()
+				}
+				ui.Spacer(c)
 			})
 		})
 	})
