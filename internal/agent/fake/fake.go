@@ -30,7 +30,8 @@ type Responder func(ctx context.Context, opts agent.StartOptions, turn agent.Tur
 
 // Agent is the scripted Agent.
 type Agent struct {
-	respond Responder
+	respond   Responder
+	decisions chan Decision
 
 	mu     sync.Mutex
 	starts []agent.StartOptions
@@ -38,7 +39,18 @@ type Agent struct {
 }
 
 // New returns a fake Agent answering every turn with respond.
-func New(respond Responder) *Agent { return &Agent{respond: respond} }
+func New(respond Responder) *Agent {
+	return &Agent{respond: respond, decisions: make(chan Decision, 64)}
+}
+
+// Decision is an answer to an approval request a Responder emitted.
+type Decision struct {
+	ID, OptionID, Note string
+}
+
+// Decisions delivers the answers to approval requests, for Responders to
+// wait on.
+func (a *Agent) Decisions() <-chan Decision { return a.decisions }
 
 func (a *Agent) Kind() agent.Kind { return Kind }
 func (a *Agent) Name() string     { return "假 Agent" }
@@ -62,15 +74,16 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 		id = fmt.Sprintf("fake-native-%d", a.nextID)
 	}
 	a.mu.Unlock()
-	s := &session{respond: a.respond, opts: opts, events: make(chan agent.Event, 256)}
+	s := &session{respond: a.respond, opts: opts, decisions: a.decisions, events: make(chan agent.Event, 256)}
 	s.events <- agent.NativeSessionStarted{ID: id}
 	return s, nil
 }
 
 type session struct {
-	respond Responder
-	opts    agent.StartOptions
-	events  chan agent.Event
+	respond   Responder
+	opts      agent.StartOptions
+	decisions chan Decision
+	events    chan agent.Event
 
 	mu     sync.Mutex
 	cancel context.CancelFunc // of the running turn
@@ -110,6 +123,11 @@ func (s *session) Interrupt(context.Context) error {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	return nil
+}
+
+func (s *session) RespondApproval(_ context.Context, id, optionID, note string) error {
+	s.decisions <- Decision{ID: id, OptionID: optionID, Note: note}
 	return nil
 }
 

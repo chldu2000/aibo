@@ -49,6 +49,8 @@ type Shell struct {
 	// refocus gives the composer the keyboard focus in the next frame
 	// that builds it.
 	refocus bool
+	// approvals are the approval cards' states, by request ID.
+	approvals map[string]*approvalUI
 	// openCards are the reference cards showing their briefs.
 	openCards map[string]bool
 }

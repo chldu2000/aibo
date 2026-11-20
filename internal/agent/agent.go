@@ -62,6 +62,9 @@ type Session interface {
 	// Interrupt stops the running turn, which then ends with
 	// TurnEnded{Interrupted: true}. Without a running turn it does nothing.
 	Interrupt(ctx context.Context) error
+	// RespondApproval answers the approval request id with one of its
+	// options; note, for a denial, tells the Agent why.
+	RespondApproval(ctx context.Context, id string, optionID string, note string) error
 	// Close ends the native session's process or connection.
 	Close() error
 }
@@ -152,6 +155,47 @@ const (
 	PlanCompleted  PlanStatus = "completed"
 )
 
+// ApprovalRequested asks the user to allow what the Agent is about to
+// do. It waits, without a time limit, for RespondApproval.
+type ApprovalRequested struct {
+	ID string
+	// ToolID is the tool call it gates, which may start after it.
+	ToolID string
+	// Title says what is asked, as "执行命令".
+	Title   string
+	Command string
+	Cwd     string
+	Reason  string
+	// Diff is the change a file edit makes, as a unified diff.
+	Diff string
+	// Paths are the files it writes.
+	Paths []string
+	// Input is the tool's input, for the other tools.
+	Input json.RawMessage
+	// Options are the Agent's own answers, in the order to show.
+	Options []ApprovalOption
+}
+
+// ApprovalOption is one answer to an approval request.
+type ApprovalOption struct {
+	ID    string
+	Kind  OptionKind
+	Label string
+	// Where, for AllowAlways, is where the Agent writes the rule.
+	Where string
+}
+
+// OptionKind is what an answer does.
+type OptionKind string
+
+const (
+	AllowOnce    OptionKind = "allow_once"
+	AllowSession OptionKind = "allow_session"
+	AllowAlways  OptionKind = "allow_always"
+	Deny         OptionKind = "deny"
+	DenyStop     OptionKind = "deny_stop"
+)
+
 // TurnEnded ends the running turn.
 type TurnEnded struct {
 	// Interrupted is set when the turn was stopped before it finished.
@@ -171,5 +215,6 @@ func (ReplyDone) isEvent()            {}
 func (ToolStarted) isEvent()          {}
 func (ToolFinished) isEvent()         {}
 func (PlanUpdated) isEvent()          {}
+func (ApprovalRequested) isEvent()    {}
 func (TurnEnded) isEvent()            {}
 func (Failed) isEvent()               {}

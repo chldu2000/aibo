@@ -107,6 +107,14 @@ func (w *Workbench) handle(id string, ev agent.Event) {
 			break
 		}
 		if i, _, ok := w.item(id, s, itemKey("t", e.ToolID), model.Message{Kind: model.ToolCall, Tool: tool, Raw: e.Raw, CreatedAt: now}); ok {
+			// An approval request that came first goes on its call.
+			for k, l := range s.loose {
+				if l.toolID == e.ToolID {
+					s.msgs[i].Tool.Approval = l.a
+					s.loose = append(s.loose[:k:k], s.loose[k+1:]...)
+					break
+				}
+			}
 			touch(i, true)
 		}
 	case agent.ToolFinished:
@@ -153,6 +161,15 @@ func (w *Workbench) handle(id string, ev agent.Event) {
 		if i, _, ok := w.item(id, s, key, model.Message{Kind: model.Plan, Plan: e.Items, Text: planText(e.Items), Raw: e.Raw, CreatedAt: now}); ok {
 			touch(i, true)
 		}
+	case agent.ApprovalRequested:
+		a := &model.Approval{ID: e.ID, Title: e.Title, Command: e.Command, Cwd: e.Cwd, Reason: e.Reason, Diff: e.Diff,
+			Paths: e.Paths, Input: e.Input, Options: e.Options, Outside: w.outside(s, e.Paths)}
+		if i, ok := s.items[itemKey("t", e.ToolID)]; ok && !s.msgs[i].State.Ended() && s.msgs[i].Tool != nil {
+			s.msgs[i].Tool.Approval = a
+			touch(i, true)
+			break
+		}
+		s.loose = append(s.loose, looseApproval{toolID: e.ToolID, a: a})
 	case agent.TurnEnded:
 		end := model.Done
 		if e.Interrupted {
@@ -177,7 +194,7 @@ func (w *Workbench) handle(id string, ev agent.Event) {
 				s.lastFlush = now
 			}
 		}
-		changed = append(changed, m)
+		changed = append(changed, m.Clone())
 	}
 	w.mu.Unlock()
 	for _, m := range changed {
@@ -240,6 +257,9 @@ func (w *Workbench) endTurn(id string, s *session, state model.MessageState) []m
 		if m.State.Ended() {
 			continue
 		}
+		if m.Tool != nil && m.Tool.Approval.Pending() {
+			m.Tool.Approval.Expired = true
+		}
 		m.State, m.FinishedAt = state, now
 		if m.Kind == model.ToolCall && state == model.Done {
 			// A tool call the turn ended without: it never finished.
@@ -251,10 +271,10 @@ func (w *Workbench) endTurn(id string, s *session, state model.MessageState) []m
 			}
 		}
 		w.st.UpdateMessage(id, *m)
-		changed = append(changed, *m)
+		changed = append(changed, m.Clone())
 	}
 	sort.Slice(changed, func(i, j int) bool { return changed[i].Seq < changed[j].Seq })
-	s.running, s.items = false, nil
+	s.running, s.items, s.loose = false, nil, nil
 	return changed
 }
 

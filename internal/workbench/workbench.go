@@ -49,6 +49,7 @@ var (
 	ErrSelfReference    = errors.New("暂不支持把会话引用给它自己")
 	ErrNoSuchReference  = errors.New("引用不存在")
 	ErrBadRange         = errors.New("引用范围无效")
+	ErrNoSuchApproval   = errors.New("这个审批请求已经处理过或不存在")
 	errWorkbenchClosing = errors.New("工作台正在关闭")
 )
 
@@ -69,6 +70,8 @@ type Status struct {
 	Running bool
 	// Error is the last error the Agent reported, until the next turn.
 	Error string
+	// Approvals counts the approval requests waiting for an answer.
+	Approvals int
 }
 
 // AgentInfo describes an available Agent.
@@ -108,6 +111,9 @@ type session struct {
 	// the keys of itemKey, to indexes in msgs.
 	items     map[string]int
 	lastFlush time.Time
+	// loose are approval requests whose tool call has not started, by
+	// the tool call's ID, in the order they came.
+	loose []looseApproval
 }
 
 // flushEvery is how often a streaming message's text is written to the
@@ -328,7 +334,7 @@ func (w *Workbench) Status(id string) Status {
 	if !ok {
 		return Status{}
 	}
-	return Status{Connected: s.native != nil, Running: s.running, Error: s.err}
+	return Status{Connected: s.native != nil, Running: s.running, Error: s.err, Approvals: len(w.pending(s))}
 }
 
 // Messages returns a session's messages in order.
@@ -342,7 +348,11 @@ func (w *Workbench) Messages(id string) ([]model.Message, error) {
 	if err := w.load(id, s); err != nil {
 		return nil, err
 	}
-	return append([]model.Message(nil), s.msgs...), nil
+	out := make([]model.Message, len(s.msgs))
+	for i, m := range s.msgs {
+		out[i] = m.Clone()
+	}
+	return out, nil
 }
 
 // load reads a session's messages once. w.mu is held.

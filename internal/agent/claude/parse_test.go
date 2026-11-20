@@ -233,3 +233,5 @@ func TestTodoWriteIsAPlanAndThinkingAttaches(t *testing.T) {
 }
 
 func sprint(e agent.Event) string { return fmt.Sprintf("%#v", e) }
+
+func (s *replaySession) RespondApproval(context.Context, string, string, string) error { return nil }

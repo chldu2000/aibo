@@ -107,7 +107,33 @@ type Tool struct {
 	Truncated bool
 	// Done is set once the result came.
 	Done bool
+	// Approval is the user's answer to the Agent's asking to run it.
+	Approval *Approval `json:",omitempty"`
 }
+
+// Approval is an approval request and, once answered, the answer.
+type Approval struct {
+	ID      string
+	Title   string
+	Command string `json:",omitempty"`
+	Cwd     string `json:",omitempty"`
+	Reason  string `json:",omitempty"`
+	Diff    string `json:",omitempty"`
+	Paths   []string
+	Input   json.RawMessage `json:",omitempty"`
+	// Outside is set when it writes outside the session's workspace.
+	Outside bool
+	Options []agent.ApprovalOption
+	// Answer is the option chosen; empty while pending. Note is what the
+	// user said with a denial.
+	Answer *agent.ApprovalOption `json:",omitempty"`
+	Note   string                `json:",omitempty"`
+	// Expired is set when the turn ended before an answer.
+	Expired bool `json:",omitempty"`
+}
+
+// Pending reports whether the request waits for an answer.
+func (a *Approval) Pending() bool { return a != nil && a.Answer == nil && !a.Expired }
 
 // MaxToolOutput is the most of a tool call's output kept.
 const MaxToolOutput = 1 << 20
@@ -157,4 +183,32 @@ type Reference struct {
 type ReferenceRead struct {
 	From, To int
 	At       time.Time
+}
+
+// Clone copies m deeply, so that the copy shares nothing that changes.
+func (m Message) Clone() Message {
+	if m.Tool != nil {
+		t := *m.Tool
+		if t.Approval != nil {
+			a := *t.Approval
+			if a.Answer != nil {
+				ans := *a.Answer
+				a.Answer = &ans
+			}
+			a.Options = append([]agent.ApprovalOption(nil), a.Options...)
+			a.Paths = append([]string(nil), a.Paths...)
+			t.Approval = &a
+		}
+		m.Tool = &t
+	}
+	m.Plan = append([]agent.PlanItem(nil), m.Plan...)
+	if m.Children != nil {
+		cs := make([]Message, len(m.Children))
+		for i, c := range m.Children {
+			cs[i] = c.Clone()
+		}
+		m.Children = cs
+	}
+	m.Refs = append([]string(nil), m.Refs...)
+	return m
 }

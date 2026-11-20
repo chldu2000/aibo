@@ -46,6 +46,8 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 	args := []string{"-p",
 		"--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
 		"--include-partial-messages", "--forward-subagent-text",
+		// Approvals come as can_use_tool control requests.
+		"--permission-prompt-tool", "stdio",
 	}
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)
@@ -238,4 +240,22 @@ func (t *tail) String() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return string(t.buf)
+}
+
+func (s *session) RespondApproval(_ context.Context, id, optionID, note string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.parser.asks[id]
+	if !ok {
+		return errors.New("Claude Code 没有在等这个审批")
+	}
+	resp, err := response(r, optionID, note)
+	if err != nil {
+		return err
+	}
+	delete(s.parser.asks, id)
+	if optionID == optStop {
+		s.parser.interrupting = true
+	}
+	return s.write(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": id, "response": resp}})
 }

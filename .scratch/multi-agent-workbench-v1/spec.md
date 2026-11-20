@@ -372,7 +372,7 @@ aibo 保存的会话记录，是“发生过什么”的完整、只追加的记
   1. ~~Codex 侧的模型看到的 MCP 工具名是什么样子，关系到概要里写哪个工具名。~~ 已实测（codex-cli 0.169.0，任务 08）：和 Claude 一样是 `mcp__aibo__<tool>`；app-server 的条目里写作 `aibo.<tool>`，但模型看不到这种写法。
   2. Claude 能否按路径禁止对源工作区执行 Edit/Write。
   3. 终端进程数和子 Agent 数能否从事件流里实时统计。如果做不到，徽标只显示“有 / 无”。
-  4. Claude `--permission-prompt-tool stdio` 的响应字段（`updatedPermissions`、`interrupt`）在当前版本上的完整行为。
+  4. ~~Claude `--permission-prompt-tool stdio` 的响应字段（`updatedPermissions`、`interrupt`）在当前版本上的完整行为。~~ 已实测（Claude Code 2.1.318，任务 10）：`updatedPermissions` 回传 destination 改为 `session` 的建议后，本会话内同类操作不再询问；拒绝时的 `message` 作为工具结果交给模型；带 `interrupt` 的拒绝让轮次以 `terminal_reason: aborted_tools` 结束。
   5. 系统材质（窗口 vibrancy、原生 Liquid Glass）在浅色和深色模式下，文字是否清晰。
   6. 代码块里的长行能否横向滚动。
 - **条款约束**：只调用用户本机未经修改的 `claude`；不提供 claude.ai 登录，不接触 `~/.claude` 里的凭据；不把 Claude Code 的名称或 logo 用作产品名。

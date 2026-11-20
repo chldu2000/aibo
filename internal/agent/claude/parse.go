@@ -31,6 +31,9 @@ type parser struct {
 	child int
 	// interrupting is set when the turn was asked to stop.
 	interrupting bool
+	// asks are the can_use_tool requests waiting for an answer, by their
+	// request IDs.
+	asks map[string]canUseTool
 	// held is the end of the reply streaming, until its block stops: an
 	// interruption comes between its whole text and its stop, and leaves
 	// it unfinished.
@@ -42,7 +45,7 @@ type parser struct {
 const interruptedNote = "[Request interrupted by user]"
 
 func newParser() *parser {
-	return &parser{started: map[string]bool{}, thought: map[string]string{}, plans: map[string]bool{}}
+	return &parser{started: map[string]bool{}, thought: map[string]string{}, plans: map[string]bool{}, asks: map[string]canUseTool{}}
 }
 
 type envelope struct {
@@ -57,6 +60,9 @@ type envelope struct {
 	Result         string   `json:"result"`
 	Errors         []string `json:"errors"`
 	TerminalReason string   `json:"terminal_reason"`
+	// control_request
+	RequestID string          `json:"request_id"`
+	Request   json.RawMessage `json:"request"`
 }
 
 type streamEvent struct {
@@ -123,6 +129,15 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 		return p.user(e, raw)
 	case "result":
 		return p.result(e)
+	case "control_request":
+		var r struct {
+			Subtype string `json:"subtype"`
+			canUseTool
+		}
+		if json.Unmarshal(e.Request, &r) == nil && r.Subtype == "can_use_tool" {
+			p.asks[e.RequestID] = r.canUseTool
+			return []agent.Event{approval(e.RequestID, r.canUseTool)}
+		}
 	}
 	return nil
 }
@@ -284,7 +299,8 @@ func resultText(content json.RawMessage) string {
 }
 
 func (p *parser) result(e envelope) []agent.Event {
-	interrupted := p.interrupting || e.TerminalReason == "aborted_streaming"
+	// aborted_streaming: interrupted; aborted_tools: denied and stopped.
+	interrupted := p.interrupting || strings.HasPrefix(e.TerminalReason, "aborted")
 	var out []agent.Event
 	if e.IsError && !interrupted {
 		msg := e.Result
@@ -301,5 +317,6 @@ func (p *parser) result(e envelope) []agent.Event {
 	p.child = 0
 	clear(p.started)
 	clear(p.thought)
+	clear(p.asks)
 	return out
 }

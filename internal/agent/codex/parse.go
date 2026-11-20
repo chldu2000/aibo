@@ -17,9 +17,12 @@ type thread struct {
 	reasoning   strings.Builder // not yet attached to a reply
 	reasoningID string
 	replies     map[string]bool // replies started, by item ID
+	// files are the file changes started, by item ID, for their
+	// approval requests to show.
+	files map[string]item
 }
 
-func newThread() *thread { return &thread{replies: map[string]bool{}} }
+func newThread() *thread { return &thread{replies: map[string]bool{}, files: map[string]item{}} }
 
 // item is the part of a ThreadItem the workbench reads.
 type item struct {
@@ -180,6 +183,9 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		t.reasoning.WriteString(n.Delta)
 		t.reasoningID = n.ItemID
 	case "item/started":
+		if n.Item.Type == "fileChange" {
+			t.files[n.Item.ID] = n.Item
+		}
 		if name, input, ok := tool(n.Item); ok {
 			b, _ := json.Marshal(input)
 			return []agent.Event{agent.ToolStarted{ToolID: n.Item.ID, Name: name, Input: b, Raw: params}}
@@ -204,6 +210,7 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 			return []agent.Event{agent.Failed{Message: "Codex 出错：" + n.Error.Message}}
 		}
 	case "turn/completed":
+		clear(t.files)
 		out := t.flushReasoning()
 		switch n.Turn.Status {
 		case "interrupted":

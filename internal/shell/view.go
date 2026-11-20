@@ -159,6 +159,10 @@ func (s *Shell) pane(c *ui.Context) {
 		s.pullPanel(c, x) // before the composer, which it may give the focus back to
 		ui.Column(c).Absolute().Bottom(16).Left(16).Right(16).Gap(8).Children(func() {
 			s.banners(c, x.ID)
+			// Approvals whose tool calls have not started yet.
+			for _, a := range s.wb.LooseApprovals(x.ID) {
+				s.approvalCard(c, x.ID, &a)
+			}
 			if v.sel.on {
 				s.selectionBar(c, x, v)
 			} else {

@@ -1,0 +1,74 @@
+package codex
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/chldu2000/aibo/internal/agent"
+)
+
+func labels(opts []agent.ApprovalOption) string {
+	var ls []string
+	for _, o := range opts {
+		ls = append(ls, o.ID+"="+o.Label)
+	}
+	return strings.Join(ls, " | ")
+}
+
+func answer(t *testing.T, k ask, opt string) string {
+	t.Helper()
+	r, err := k.result(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(r)
+	return string(b)
+}
+
+// Requests shaped as codex app-server 0.169.0's schema describes them.
+func TestApprovalRequests(t *testing.T) {
+	th := newThread()
+	cmd, k, ok := th.approval("codex-7", askCommand, json.RawMessage(`{"threadId":"T","turnId":"U","itemId":"c1","command":"npm install left-pad","cwd":"/w","reason":"needs network","proposedExecpolicyAmendment":["npm","install"]}`))
+	if !ok || cmd.ToolID != "c1" || cmd.Title != "执行命令" || cmd.Command != "npm install left-pad" || cmd.Cwd != "/w" || cmd.Reason != "needs network" {
+		t.Fatalf("command approval = %+v", cmd)
+	}
+	if got := labels(cmd.Options); got != "accept=批准本次 | acceptForSession=本会话内始终允许 | always=永久允许（以 npm install 开头的命令） | decline=拒绝 | cancel=拒绝并停止" {
+		t.Errorf("options: %s", got)
+	}
+	for opt, want := range map[string]string{
+		"accept":           `{"decision":"accept"}`,
+		"acceptForSession": `{"decision":"acceptForSession"}`,
+		"always":           `{"decision":{"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["npm","install"]}}}`,
+		"decline":          `{"decision":"decline"}`,
+		"cancel":           `{"decision":"cancel"}`,
+	} {
+		if got := answer(t, k, opt); got != want {
+			t.Errorf("%s → %s, want %s", opt, got, want)
+		}
+	}
+
+	// A file change shows the diff of the item it gates.
+	th.handle("item/started", json.RawMessage(`{"threadId":"T","turnId":"U","item":{"type":"fileChange","id":"f1","status":"inProgress","changes":[{"path":"/w/a.go","kind":{"type":"update"},"diff":"@@ -1 +1 @@\n-a\n+b\n"}]}}`))
+	fc, k, ok := th.approval("codex-8", askFileChange, json.RawMessage(`{"threadId":"T","turnId":"U","itemId":"f1","reason":null}`))
+	if !ok || fc.Title != "修改文件" || fc.Diff != "--- /w/a.go\n+++ /w/a.go\n@@ -1 +1 @@\n-a\n+b" || len(fc.Paths) != 1 || fc.Paths[0] != "/w/a.go" {
+		t.Errorf("file approval = %+v", fc)
+	}
+	if got := labels(fc.Options); got != "accept=批准本次 | acceptForSession=本会话内始终允许 | decline=拒绝 | cancel=拒绝并停止" {
+		t.Errorf("options: %s", got)
+	}
+	if _, err := k.result("always"); err == nil {
+		t.Error("a file change has no permanent option")
+	}
+
+	mcp, k, ok := th.approval("codex-9", askElicitation, json.RawMessage(`{"threadId":"T","turnId":"U","serverName":"github","message":"Allow create_issue?"}`))
+	if !ok || mcp.Title != "调用 MCP 工具（github）" || mcp.Reason != "Allow create_issue?" || labels(mcp.Options) != "accept=批准本次 | decline=拒绝 | cancel=拒绝并停止" {
+		t.Errorf("mcp approval = %+v", mcp)
+	}
+	if got := answer(t, k, "decline"); got != `{"action":"decline"}` {
+		t.Errorf("mcp decline → %s", got)
+	}
+	if _, _, ok := th.approval("x", "item/permissions/requestApproval", json.RawMessage(`{}`)); ok {
+		t.Error("a permissions request is asked")
+	}
+}

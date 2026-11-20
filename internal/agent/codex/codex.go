@@ -289,7 +289,7 @@ func (s *server) read(stdout io.Reader) {
 				ch <- r
 			}
 		case m.ID != nil: // a request of the server
-			s.answer(*m.ID, m.Method)
+			s.request(*m.ID, m.Method, m.Params)
 		default:
 			s.notify(m.Method, m.Params)
 		}
@@ -318,20 +318,20 @@ func (s *server) read(stdout io.Reader) {
 	}
 }
 
-// answer answers the server's requests. Approvals come with ticket 10:
-// until then, every one is declined.
-func (s *server) answer(id json.RawMessage, method string) {
-	var result any
-	switch method {
-	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
-		result = map[string]any{"decision": "decline"}
-	case "mcpServer/elicitation/request":
-		result = map[string]any{"action": "decline"}
-	default:
-		s.send(map[string]any{"id": id, "error": map[string]any{"code": -32601, "message": "aibo 不支持 " + method}})
+// request passes an approval request to the session of its thread;
+// those aibo does not ask the user about are declined.
+func (s *server) request(id json.RawMessage, method string, params json.RawMessage) {
+	var p struct {
+		ThreadID string `json:"threadId"`
+	}
+	json.Unmarshal(params, &p)
+	s.mu.Lock()
+	sess := s.sessions[p.ThreadID]
+	s.mu.Unlock()
+	if sess != nil && sess.ask(id, method, params) {
 		return
 	}
-	s.send(map[string]any{"id": id, "result": result})
+	s.send(map[string]any{"id": id, "error": map[string]any{"code": -32601, "message": "aibo 不支持 " + method}})
 }
 
 // notify passes a notification to the session of its thread.
@@ -359,6 +359,33 @@ type session struct {
 	turn    string // the running turn's ID
 	running bool
 	closed  bool
+	// asks are the approval requests waiting for an answer, by ID.
+	asks map[string]ask
+	// note is what the user said denying a request, which Codex's answer
+	// cannot carry: it goes with the next message.
+	note string
+}
+
+// ask passes an approval request to the user; ok is false for requests
+// that are not approvals the user answers.
+func (s *session) ask(rpcID json.RawMessage, method string, params json.RawMessage) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false
+	}
+	id := "codex-" + string(rpcID)
+	a, k, ok := s.parse.approval(id, method, params)
+	if !ok {
+		return false
+	}
+	k.rpcID = rpcID
+	if s.asks == nil {
+		s.asks = map[string]ask{}
+	}
+	s.asks[id] = k
+	s.events <- a
+	return true
 }
 
 func (s *session) Events() <-chan agent.Event { return s.events }
@@ -373,6 +400,7 @@ func (s *session) notify(method string, params json.RawMessage) {
 	for _, e := range evs {
 		if _, ok := e.(agent.TurnEnded); ok {
 			s.running, s.turn = false, ""
+			clear(s.asks)
 		}
 	}
 	// Under the lock, so that Close does not close events meanwhile.
@@ -392,13 +420,19 @@ func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 		return errors.New("Codex 会话已关闭")
 	}
 	s.running = true
+	text := turn.Text
+	if s.note != "" {
+		// Codex's decline carries no reason: it comes now.
+		text = "（关于我刚才拒绝的操作，说明一下：" + s.note + "）\n\n" + text
+		s.note = ""
+	}
 	s.mu.Unlock()
 	var res struct {
 		Turn struct {
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	err := s.srv.call(ctx, "turn/start", map[string]any{"threadId": s.id, "input": []any{map[string]any{"type": "text", "text": turn.Text}}}, &res)
+	err := s.srv.call(ctx, "turn/start", map[string]any{"threadId": s.id, "input": []any{map[string]any{"type": "text", "text": text}}}, &res)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
@@ -480,4 +514,24 @@ func (t *tail) String() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return string(t.buf)
+}
+
+func (s *session) RespondApproval(_ context.Context, id, optionID, note string) error {
+	s.mu.Lock()
+	k, ok := s.asks[id]
+	if !ok {
+		s.mu.Unlock()
+		return errors.New("Codex 没有在等这个审批")
+	}
+	result, err := k.result(optionID)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	delete(s.asks, id)
+	if note != "" && (optionID == "decline" || optionID == "cancel") {
+		s.note = note
+	}
+	s.mu.Unlock()
+	return s.srv.send(map[string]any{"id": k.rpcID, "result": result})
 }

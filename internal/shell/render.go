@@ -102,6 +102,12 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key string, m model.Message)
 		return
 	}
 	o := v.open.tools[key]
+	defer func() {
+		// The approval shows whether or not the call is open.
+		if a := m.Tool.Approval; a != nil {
+			s.approvalCard(c, s.current, a)
+		}
+	}()
 	ui.Collapsible(c, toolLabel(m), &o, func() {
 		ui.Column(c).Gap(6).Padding(4, 0, 4, 12).Children(func() {
 			ui.Text(c, "参数").FontSize(11).TextColor(t.TextMuted)

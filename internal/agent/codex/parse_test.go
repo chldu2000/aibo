@@ -210,3 +210,5 @@ func TestPlansFileChangesReasoningAndErrors(t *testing.T) {
 		t.Errorf("error = %q", st.Error)
 	}
 }
+
+func (s *replaySession) RespondApproval(context.Context, string, string, string) error { return nil }
