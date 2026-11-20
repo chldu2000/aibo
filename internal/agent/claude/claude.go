@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -65,6 +66,15 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 		args = append(args, "--resume", opts.ResumeID)
 	}
 	mode, allowed, dirs := ruleArgs(opts.Level, opts.Rules)
+	dirs = append(dirs, opts.ReadDirs...)
+	// Other workspaces it may read, not change: Claude Code denies Edit
+	// and Write there, and the shell's writes too, whatever the level.
+	var denied []string
+	for _, d := range opts.ReadDirs {
+		for _, p := range samePlaces(d) {
+			denied = append(denied, "Edit(/"+p+"/**)", "Write(/"+p+"/**)")
+		}
+	}
 	// The option lets the level rise to full auto later in the session.
 	args = append(args, "--permission-mode", mode, "--allow-dangerously-skip-permissions")
 	if len(dirs) > 0 {
@@ -84,6 +94,9 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 	}
 	if len(allowed) > 0 {
 		args = append(append(args, "--allowedTools"), allowed...)
+	}
+	if len(denied) > 0 {
+		args = append(append(args, "--disallowedTools"), denied...)
 	}
 	return args
 }
@@ -418,4 +431,19 @@ func (a *Agent) Models(ctx context.Context) ([]agent.Model, error) {
 		return out, nil
 	}
 	return nil, errors.New("Claude Code 没有说它有哪些模型")
+}
+
+// DirsAtStart: Claude Code takes --add-dir only as it starts.
+func (a *Agent) DirsAtStart() bool { return true }
+
+// samePlaces are a directory's path and, when a symbolic link leads
+// elsewhere (/tmp is /private/tmp), the path it resolves to: a rule must
+// name the one Claude Code sees.
+func samePlaces(dir string) []string {
+	dir = filepath.Clean(dir)
+	out := []string{dir}
+	if r, err := filepath.EvalSymlinks(dir); err == nil && r != dir {
+		out = append(out, r)
+	}
+	return out
 }

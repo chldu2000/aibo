@@ -45,6 +45,9 @@ type Session struct {
 	// rest of the session.
 	Level agent.ApprovalLevel
 	Rules []agent.Rule
+	// ReadDirs are other workspaces the session may read, not write: the
+	// source workspaces of references it received. It keeps them.
+	ReadDirs []string
 }
 
 // NativeID is the current native session's ID, or "".

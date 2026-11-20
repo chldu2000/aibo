@@ -202,7 +202,7 @@ aibo 保存的会话记录，是“发生过什么”的完整、只追加的记
 - **闲置断开**：会话闲置 30 分钟后断开（Claude 结束进程，Codex 卸载 thread）。有待审批请求的会话不会被断开。
 - **续接**：每次续接都重新生成 MCP token，注入新的端口和 token，旧 token 立即作废。同时重新带上额外可读目录和本会话的放行规则。
 - **跨工作区引用**：会话中途收到跨工作区的引用时，Claude 需要先用 `--resume` 加 `--add-dir` 重启进程，再发送消息。授权在会话的整个生命周期内有效。
-  - 源工作区只读：Codex 不把源工作区加入可写目录；Claude 增加一条按路径禁止 Edit/Write 的权限规则（**待验证**）。如果做不到，就在审批卡片上醒目标注“写入其他工作区”。
+  - 源工作区只读：Codex 不把源工作区加入可写目录；Claude 增加按路径禁止 Edit/Write 的权限规则（已在任务 09 实测可行）。审批卡片上仍会醒目标注“写入其他工作区”。
 - **续接失败**：Claude 的 `--resume` 报错或进程退出、Codex 的 `thread/resume` 返回错误，都判定为原生会话不可用，不预先检查 Agent 的本地存储。会话顶部显示横幅，附上错误原文，提供三个选项：
   1. 新开原生会话并带上自引用草稿（范围是重置之前的全部消息）；
   2. 新开原生会话，不带引用；
@@ -370,7 +370,7 @@ aibo 保存的会话记录，是“发生过什么”的完整、只追加的记
 
 - **待验证项**（实现时确认，并据结果补充规格）：
   1. ~~Codex 侧的模型看到的 MCP 工具名是什么样子，关系到概要里写哪个工具名。~~ 已实测（codex-cli 0.169.0，任务 08）：和 Claude 一样是 `mcp__aibo__<tool>`；app-server 的条目里写作 `aibo.<tool>`，但模型看不到这种写法。
-  2. Claude 能否按路径禁止对源工作区执行 Edit/Write。
+  2. ~~Claude 能否按路径禁止对源工作区执行 Edit/Write。~~ 已实测（Claude Code 2.1.318，任务 09）：能。`--disallowedTools "Edit(//<路径>/**)" "Write(//<路径>/**)"` 让 Edit/Write 被拒，往那里写文件的 Bash 命令也被拒；在全部自动（`bypassPermissions`）下依然有效。
   3. 终端进程数和子 Agent 数能否从事件流里实时统计。如果做不到，徽标只显示“有 / 无”。
   4. ~~Claude `--permission-prompt-tool stdio` 的响应字段（`updatedPermissions`、`interrupt`）在当前版本上的完整行为。~~ 已实测（Claude Code 2.1.318，任务 10）：`updatedPermissions` 回传 destination 改为 `session` 的建议后，本会话内同类操作不再询问；拒绝时的 `message` 作为工具结果交给模型；带 `interrupt` 的拒绝让轮次以 `terminal_reason: aborted_tools` 结束。
   5. 系统材质（窗口 vibrancy、原生 Liquid Glass）在浅色和深色模式下，文字是否清晰。

@@ -111,6 +111,13 @@ func (s *Shell) levelControl(c *ui.Context, x model.Session) {
 			if len(x.Rules) > 0 {
 				ui.Text(c, "撤销后，Agent 会在空闲时重新启动，以便不再带上这条规则。").FontSize(11).TextColor(t.TextMuted)
 			}
+			if len(x.ReadDirs) > 0 {
+				ui.Text(c, "可读的源工作区").Bold().TextColor(t.Text).Padding(8, 0, 0)
+				for i, d := range x.ReadDirs {
+					ui.Text(c, d+"（只读）").Key(i).Font("Menlo").FontSize(11).TextColor(t.Text)
+				}
+				ui.Text(c, "收到别的工作区的引用后，Agent 可以读那里的文件，但不能修改。").FontSize(11).TextColor(t.TextMuted)
+			}
 		})
 	})
 }

@@ -30,6 +30,9 @@ type Responder func(ctx context.Context, opts agent.StartOptions, turn agent.Tur
 
 // Agent is the scripted Agent.
 type Agent struct {
+	// RestartsForDirs makes it an agent.DirsAtStart, as Claude Code is.
+	RestartsForDirs bool
+
 	respond   Responder
 	decisions chan Decision
 	levels    chan agent.ApprovalLevel
@@ -70,6 +73,9 @@ func (a *Agent) FailResumes(why string) {
 	defer a.mu.Unlock()
 	a.resumeFails = why
 }
+
+// DirsAtStart says whether a session given ReadDirs must start again.
+func (a *Agent) DirsAtStart() bool { return a.RestartsForDirs }
 
 // Starts returns the options of every Start so far, in order.
 func (a *Agent) Starts() []agent.StartOptions {

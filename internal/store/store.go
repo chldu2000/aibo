@@ -150,6 +150,8 @@ var migrations = []string{
 	// Archived sessions, removed workspaces.
 	`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE workspaces ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;`,
+	// Other workspaces a session may read.
+	`ALTER TABLE sessions ADD COLUMN read_dirs TEXT;`,
 }
 
 // backupBeforeUpgrade copies the database of an older schema, before
@@ -286,7 +288,7 @@ func (s *Store) CreateSession(x model.Session) error {
 
 // Sessions returns every session, most recently active first.
 func (s *Store) Sessions() ([]model.Session, error) {
-	rows, err := s.db.Query(`SELECT id, workspace_id, agent, model, title, title_manual, created_at, active_at, approval_level, rules, archived FROM sessions ORDER BY active_at DESC, rowid DESC`)
+	rows, err := s.db.Query(`SELECT id, workspace_id, agent, model, title, title_manual, created_at, active_at, approval_level, rules, archived, read_dirs FROM sessions ORDER BY active_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -294,15 +296,18 @@ func (s *Store) Sessions() ([]model.Session, error) {
 	for rows.Next() {
 		var x model.Session
 		var kind, level string
-		var rules sql.NullString
+		var rules, dirs sql.NullString
 		var created, active sql.NullInt64
-		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Title, &x.TitleManual, &created, &active, &level, &rules, &x.Archived); err != nil {
+		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Title, &x.TitleManual, &created, &active, &level, &rules, &x.Archived, &dirs); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		x.Agent, x.Level = agent.Kind(kind), agent.ApprovalLevel(level)
 		if rules.Valid {
 			json.Unmarshal([]byte(rules.String), &x.Rules)
+		}
+		if dirs.Valid {
+			json.Unmarshal([]byte(dirs.String), &x.ReadDirs)
 		}
 		x.CreatedAt, x.ActiveAt = fromMS(created), fromMS(active)
 		out = append(out, x)
@@ -686,4 +691,14 @@ func (s *Store) SearchMessages(text string) (map[string]string, error) {
 		}
 	}
 	return out, rows.Err()
+}
+
+// SetReadDirs sets the other workspaces a session may read.
+func (s *Store) SetReadDirs(sessionID string, dirs []string) error {
+	b, err := json.Marshal(dirs)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE sessions SET read_dirs = ? WHERE id = ?`, string(b), sessionID)
+	return err
 }

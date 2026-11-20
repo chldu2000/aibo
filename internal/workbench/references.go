@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -421,4 +422,29 @@ func (rd reader) SearchReference(sessionID string, q mcpserver.SearchReference) 
 		Refs: searched, Query: q.Query, Regex: q.Regex, Thinking: q.IncludeThinking, Cursor: q.Cursor,
 		ToolName: w.receiverTools(sessionID),
 	})
+}
+
+// readDirs adds to the session's readable workspaces those of the
+// references about to be delivered from other workspaces, reporting
+// whether there were new ones. w.mu is held.
+func (w *Workbench) readDirs(id string, s *session, ws model.Workspace) bool {
+	added := false
+	for _, r := range w.drafts(id) {
+		d := r.SourceWorkspace
+		if d == "" || d == ws.Path || slices.Contains(s.info.ReadDirs, d) {
+			continue
+		}
+		s.info.ReadDirs, added = append(s.info.ReadDirs, d), true
+	}
+	if added {
+		w.st.SetReadDirs(id, s.info.ReadDirs)
+	}
+	return added
+}
+
+// dirsAtStart reports whether the Agent takes readable workspaces only
+// when a session starts.
+func (w *Workbench) dirsAtStart(kind agent.Kind) bool {
+	d, ok := w.agent(kind).(agent.DirsAtStart)
+	return ok && d.DirsAtStart()
 }

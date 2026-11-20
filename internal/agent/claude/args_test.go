@@ -2,6 +2,7 @@ package claude
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -61,5 +62,21 @@ func TestArgsApplyLevelAndRules(t *testing.T) {
 	// A rule never lowers the level.
 	if line := strings.Join(a.args(agent.StartOptions{Level: agent.FullAuto, Rules: rules}), " "); !strings.Contains(line, "--permission-mode bypassPermissions") {
 		t.Errorf("full auto: %s", line)
+	}
+}
+
+// Other workspaces it may read: added, and their changes denied, also
+// where a link leads (/tmp is /private/tmp).
+func TestArgsReadDirs(t *testing.T) {
+	dir := t.TempDir() // under /var/folders, a link to /private/var/folders
+	line := strings.Join(New("claude").args(agent.StartOptions{ReadDirs: []string{dir}}), " ")
+	real, _ := filepath.EvalSymlinks(dir)
+	for _, want := range []string{"--add-dir " + dir, "Edit(/" + dir + "/**)", "Write(/" + dir + "/**)", "Edit(/" + real + "/**)"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("args lack %q: %s", want, line)
+		}
+	}
+	if real == dir {
+		t.Log("the temp dir is no link here")
 	}
 }

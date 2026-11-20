@@ -507,9 +507,17 @@ func (w *Workbench) Send(id, text string) error {
 	}
 	// Running from here, so that nothing else starts meanwhile.
 	s.running, s.err, s.items, s.needsLogin = true, "", map[string]int{}, false
+	ws, _ := w.workspace(s.info.WorkspaceID)
+	var stop agent.Session
+	if w.readDirs(id, s, ws) && s.native != nil && w.dirsAtStart(s.info.Agent) {
+		// The Agent reads other workspaces only from its start.
+		stop = w.detach(id, s)
+	}
 	native, info := s.native, s.info
-	ws, _ := w.workspace(info.WorkspaceID)
 	w.mu.Unlock()
+	if stop != nil {
+		stop.Close()
+	}
 
 	// The native session first: if it cannot be resumed, nothing is
 	// recorded, and the user's words stay in the composer.
@@ -589,7 +597,7 @@ func (w *Workbench) connect(id string, info model.Session, ws model.Workspace) (
 	}
 	mcp := &agent.MCPServer{URL: w.mcp.URL(), Token: w.mcp.Issue(id)}
 	native, err := a.Start(context.Background(), agent.StartOptions{Workspace: ws.Path, Model: info.Model, ResumeID: info.NativeID(), MCP: mcp,
-		Level: info.Level, Rules: info.Rules})
+		Level: info.Level, Rules: info.Rules, ReadDirs: info.ReadDirs})
 	if err != nil {
 		w.mcp.Revoke(id)
 		return nil, err

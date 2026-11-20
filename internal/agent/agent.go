@@ -68,6 +68,15 @@ type StartOptions struct {
 	// Rules are what the user allowed for the session, from earlier
 	// answers (ApprovalOption.Rules), to apply again.
 	Rules []Rule
+	// ReadDirs are other workspaces the session may read, not write: the
+	// source workspaces of references it received.
+	ReadDirs []string
+}
+
+// DirsAtStart is an Agent that takes ReadDirs only when a session
+// starts: a session given another must start again (resumed).
+type DirsAtStart interface {
+	DirsAtStart() bool
 }
 
 // ApprovalLevel is how much the Agent may do without asking, mapped to
