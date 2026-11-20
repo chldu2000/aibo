@@ -81,22 +81,76 @@ type NativeSessionStarted struct {
 	ID string
 }
 
+// Parent, on the events of messages, is the ID of the tool call (a
+// subagent's) they belong to; empty for the session's own messages.
+
 // ReplyDelta appends text to the Agent's reply ReplyID, starting it on
 // its first delta. Raw is the Agent's own event, kept for later
 // inspection.
 type ReplyDelta struct {
 	ReplyID string
+	Parent  string
 	Text    string
 	Raw     json.RawMessage
+}
+
+// ThinkingDelta appends to the reasoning of the reply ReplyID, starting
+// the reply if it has not started.
+type ThinkingDelta struct {
+	ReplyID string
+	Parent  string
+	Text    string
 }
 
 // ReplyDone ends the reply ReplyID. Text, when not empty, is its full
 // text, replacing what the deltas built.
 type ReplyDone struct {
 	ReplyID string
+	Parent  string
 	Text    string
 	Raw     json.RawMessage
 }
+
+// ToolStarted reports a tool call the Agent made, with its input.
+type ToolStarted struct {
+	ToolID string
+	Parent string
+	Name   string
+	Input  json.RawMessage
+	Raw    json.RawMessage
+}
+
+// ToolFinished reports a tool call's result.
+type ToolFinished struct {
+	ToolID  string
+	Parent  string
+	Output  string
+	IsError bool
+	Raw     json.RawMessage
+}
+
+// PlanUpdated reports the Agent's plan, whole; a later update of the same
+// PlanID replaces it.
+type PlanUpdated struct {
+	PlanID string
+	Items  []PlanItem
+	Raw    json.RawMessage
+}
+
+// PlanItem is one step of a plan.
+type PlanItem struct {
+	Text   string
+	Status PlanStatus
+}
+
+// PlanStatus is where a step of a plan is.
+type PlanStatus string
+
+const (
+	PlanPending    PlanStatus = "pending"
+	PlanInProgress PlanStatus = "in_progress"
+	PlanCompleted  PlanStatus = "completed"
+)
 
 // TurnEnded ends the running turn.
 type TurnEnded struct {
@@ -112,6 +166,10 @@ type Failed struct {
 
 func (NativeSessionStarted) isEvent() {}
 func (ReplyDelta) isEvent()           {}
+func (ThinkingDelta) isEvent()        {}
 func (ReplyDone) isEvent()            {}
+func (ToolStarted) isEvent()          {}
+func (ToolFinished) isEvent()         {}
+func (PlanUpdated) isEvent()          {}
 func (TurnEnded) isEvent()            {}
 func (Failed) isEvent()               {}

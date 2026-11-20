@@ -192,21 +192,28 @@ func TestChangesCarryStreamingMessages(t *testing.T) {
 	b := open(t, t.TempDir(), sc.respond)
 	defer b.Close()
 	_, s := newSession(t, b)
+	carried := make(chan model.Message, 100)
+	b.Subscribe(func(c workbench.Change) {
+		if c.SessionID == s.ID && c.Message != nil {
+			carried <- *c.Message
+		}
+	})
 	b.Send(s.ID, "hi")
 	sc.emit(agent.ReplyDelta{ReplyID: "r", Text: "a"}, agent.ReplyDelta{ReplyID: "r", Text: "b"})
-	var last *model.Message
-	b.waitFor(t, "a change carrying \"ab\"", func() bool {
+	guard := time.After(time.Minute)
+	for {
 		select {
-		case c := <-b.changes:
-			if c.SessionID == s.ID && c.Message != nil {
-				last = c.Message
+		case m := <-carried:
+			if m.Text != "ab" {
+				continue
 			}
-		default:
+			if m.Seq != 2 || m.State != model.Streaming {
+				t.Errorf("change = %+v", m)
+			}
+		case <-guard:
+			t.Fatal(`no change carried "ab"`)
 		}
-		return last != nil && last.Text == "ab"
-	})
-	if last.Seq != 2 || last.State != model.Streaming {
-		t.Errorf("change = %+v", last)
+		break
 	}
 	sc.endTurn()
 	b.idle(t, s.ID)

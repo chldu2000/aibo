@@ -5,13 +5,13 @@ import (
 	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/agent/claude"
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/markdown"
 )
 
 // View builds the window's content.
@@ -168,14 +168,14 @@ func (s *Shell) messages(c *ui.Context, v *sessionView) ui.Element {
 					if m.Text != "" {
 						ui.Text(c, m.Text).Selectable().TextColor(t.Text).Padding(8, 12).Radius(12).Background(t.Surface)
 					}
+				case model.ToolCall:
+					s.tool(c, v, fmt.Sprint(m.Seq), m)
+				case model.Plan:
+					plan(c, m)
 				default:
-					if m.State == model.Streaming {
-						markdown.Stream(c, m.Text, &s.md)
-					} else {
-						markdown.View(c, m.Text, &s.md)
-					}
+					s.reply(c, v, m)
 				}
-				if m.State == model.Interrupted {
+				if m.State == model.Interrupted && m.Kind != model.ToolCall {
 					ui.Text(c, "已中断").FontSize(11).TextColor(t.TextMuted)
 				}
 			})
@@ -325,7 +325,8 @@ func tinted(c *ui.Context, col ui.Color) ui.Color {
 // Self-drawn agent glyphs (never the vendors' logos), shown with
 // ui.Image so that they keep their colors.
 var (
-	fakeGlyph = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#6e6e78"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="4"/><path d="M6 19c1.5-2.5 3.5-3.5 6-3.5s4.5 1 6 3.5"/></g></svg>`))
+	claudeGlyph = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#c96442"/><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5.9 8.5l12.2 7"/><path d="M5.9 15.5l12.2-7"/></g></svg>`))
+	fakeGlyph   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#6e6e78"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="4"/><path d="M6 19c1.5-2.5 3.5-3.5 6-3.5s4.5 1 6 3.5"/></g></svg>`))
 )
 
 func agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
@@ -333,6 +334,8 @@ func agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
 	switch kind {
 	case fake.Kind:
 		name = "假 Agent"
+	case claude.Kind:
+		g, name = claudeGlyph, "Claude Code"
 	}
 	return ui.Image(c, g).Size(size, size).Tooltip(name)
 }

@@ -60,6 +60,8 @@ type sessionView struct {
 	typed string
 	// sel is selection mode.
 	sel selection
+	// open is which disclosures of the messages are open.
+	open open
 	// highlight is the range of sequence numbers shown highlighted, as
 	// when jumping to what a reference covers; zero for none.
 	highlight [2]int

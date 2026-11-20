@@ -121,6 +121,9 @@ var migrations = []string{
 		at       INTEGER NOT NULL
 	);
 	CREATE INDEX ref_reads_ref ON ref_reads(ref_id);`,
+	// What a message has besides text: a tool call, a plan, a subagent's
+	// messages.
+	`ALTER TABLE messages ADD COLUMN detail TEXT;`,
 }
 
 // SchemaVersion is the schema version this build writes.
@@ -288,8 +291,8 @@ func (s *Store) AppendMessage(sessionID string, m model.Message) (int, error) {
 		}
 		return 0, err
 	}
-	if _, err := tx.Exec(`INSERT INTO messages (session_id, seq, kind, state, text, thinking, raw, created_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		sessionID, seq, string(m.Kind), string(m.State), m.Text, m.Thinking, rawValue(m.Raw), ms(m.CreatedAt), finished(m)); err != nil {
+	if _, err := tx.Exec(`INSERT INTO messages (session_id, seq, kind, state, text, thinking, raw, created_at, finished_at, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, seq, string(m.Kind), string(m.State), m.Text, m.Thinking, rawValue(m.Raw), ms(m.CreatedAt), finished(m), detailOf(m)); err != nil {
 		return 0, err
 	}
 	return seq, tx.Commit()
@@ -299,8 +302,8 @@ func (s *Store) AppendMessage(sessionID string, m model.Message) (int, error) {
 // and state. It fails with ErrMessageEnded once the stored message has
 // ended.
 func (s *Store) UpdateMessage(sessionID string, m model.Message) error {
-	res, err := s.db.Exec(`UPDATE messages SET state = ?, text = ?, thinking = ?, raw = ?, finished_at = ? WHERE session_id = ? AND seq = ? AND state = ?`,
-		string(m.State), m.Text, m.Thinking, rawValue(m.Raw), finished(m), sessionID, m.Seq, string(model.Streaming))
+	res, err := s.db.Exec(`UPDATE messages SET state = ?, text = ?, thinking = ?, raw = ?, finished_at = ?, detail = ? WHERE session_id = ? AND seq = ? AND state = ?`,
+		string(m.State), m.Text, m.Thinking, rawValue(m.Raw), finished(m), detailOf(m), sessionID, m.Seq, string(model.Streaming))
 	if err != nil {
 		return err
 	}
@@ -345,7 +348,7 @@ func (s *Store) Messages(sessionID string) ([]model.Message, error) {
 }
 
 func (s *Store) messages(sessionID string) ([]model.Message, error) {
-	rows, err := s.db.Query(`SELECT seq, kind, state, text, thinking, raw, created_at, finished_at FROM messages WHERE session_id = ? ORDER BY seq`, sessionID)
+	rows, err := s.db.Query(`SELECT seq, kind, state, text, thinking, raw, created_at, finished_at, detail FROM messages WHERE session_id = ? ORDER BY seq`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -354,10 +357,17 @@ func (s *Store) messages(sessionID string) ([]model.Message, error) {
 	for rows.Next() {
 		var m model.Message
 		var kind, state string
-		var raw sql.NullString
+		var raw, det sql.NullString
 		var created, fin sql.NullInt64
-		if err := rows.Scan(&m.Seq, &kind, &state, &m.Text, &m.Thinking, &raw, &created, &fin); err != nil {
+		if err := rows.Scan(&m.Seq, &kind, &state, &m.Text, &m.Thinking, &raw, &created, &fin, &det); err != nil {
 			return nil, err
+		}
+		if det.Valid {
+			var d detail
+			if err := json.Unmarshal([]byte(det.String), &d); err != nil {
+				return nil, fmt.Errorf("store: message #%d: %w", m.Seq, err)
+			}
+			m.Tool, m.Plan, m.Children = d.Tool, d.Plan, d.Children
 		}
 		m.Kind, m.State = model.MessageKind(kind), model.MessageState(state)
 		if raw.Valid {
@@ -492,4 +502,22 @@ func (s *Store) References() ([]model.Reference, error) {
 		}
 	}
 	return out, reads.Err()
+}
+
+// detail is what the detail column holds.
+type detail struct {
+	Tool     *model.Tool      `json:"tool,omitempty"`
+	Plan     []agent.PlanItem `json:"plan,omitempty"`
+	Children []model.Message  `json:"children,omitempty"`
+}
+
+func detailOf(m model.Message) any {
+	if m.Tool == nil && m.Plan == nil && m.Children == nil {
+		return nil
+	}
+	b, err := json.Marshal(detail{Tool: m.Tool, Plan: m.Plan, Children: m.Children})
+	if err != nil {
+		return nil
+	}
+	return string(b)
 }

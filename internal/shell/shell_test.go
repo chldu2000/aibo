@@ -407,3 +407,70 @@ func TestPullReferenceWithAt(t *testing.T) {
 	click("返回搜索")
 	shows("选择 问：迁移的风险")
 }
+
+// Thinking folds above its reply; tool calls fold into a line with their
+// input, a subagent's steps and their result; plans check off their steps.
+func TestToolCallsAndPlans(t *testing.T) {
+	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
+		emit(agent.ThinkingDelta{ReplyID: "m", Text: "先读 go.mod"})
+		emit(agent.ReplyDelta{ReplyID: "m", Text: "我来看看。"})
+		emit(agent.ReplyDone{ReplyID: "m"})
+		emit(agent.PlanUpdated{PlanID: "p", Items: []agent.PlanItem{{Text: "读代码", Status: agent.PlanCompleted}, {Text: "写总结", Status: agent.PlanInProgress}}})
+		emit(agent.ToolStarted{ToolID: "t", Name: "Read", Input: []byte(`{"file_path":"go.mod"}`)})
+		emit(agent.ToolFinished{ToolID: "t", Output: "module example.com/x"})
+		emit(agent.ToolStarted{ToolID: "a", Name: "Agent", Input: []byte(`{"description":"数文件","prompt":"..."}`)})
+		emit(agent.ToolStarted{ToolID: "c", Parent: "a", Name: "Bash", Input: []byte(`{"command":"ls | wc -l"}`)})
+		emit(agent.ToolFinished{ToolID: "c", Parent: "a", Output: "3"})
+		emit(agent.ToolFinished{ToolID: "a", Output: "3 个文件"})
+		emit(agent.ToolStarted{ToolID: "big", Name: "Bash", Input: []byte(`{"command":"cat big.log"}`)})
+		emit(agent.ToolFinished{ToolID: "big", Output: strings.Repeat("一行日志\n", 2000), IsError: true})
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	wb.Send(s.ID, "看看")
+	for wb.Status(s.ID).Running {
+		<-changes
+	}
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 1400)
+	settle := func() {
+		for i := 0; i < 4; i++ {
+			tt.Frame()
+			tt.Advance(time.Second)
+		}
+	}
+	settle()
+	click := func(s string) {
+		t.Helper()
+		if err := tt.Click(s); err != nil {
+			t.Fatalf("%v; the window shows %q", err, tt.Texts())
+		}
+		settle()
+	}
+	shows := func(want ...string) {
+		t.Helper()
+		for _, w := range want {
+			if !tt.HasText(w) {
+				t.Errorf("the window lacks %q: %q", w, tt.Texts())
+			}
+		}
+	}
+	shows("我来看看。", "思考", "计划", "读代码", "写总结", "Read · go.mod", "Agent · 数文件 · 子代理 1 步", "Bash · cat big.log · 出错")
+	if tt.HasText("先读 go.mod") || tt.HasText("module example.com/x") {
+		t.Error("folded content shows")
+	}
+	click("思考")
+	shows("先读 go.mod")
+	click("Read · go.mod")
+	shows("参数", "结果", "module example.com/x")
+	click("Agent · 数文件 · 子代理 1 步")
+	shows("Bash · ls | wc -l")
+	click("Bash · cat big.log · 出错")
+	shows("结果（出错）")
+}

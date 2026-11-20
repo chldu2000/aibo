@@ -78,6 +78,15 @@ type Message struct {
 	Text string
 	// Thinking is the Agent's reasoning attached to a reply.
 	Thinking string
+	// Tool is a tool call's name, input and result.
+	Tool *Tool
+	// Plan is a plan's steps.
+	Plan []agent.PlanItem
+	// Children are the messages of a subagent, inside the tool call that
+	// ran it. They have no sequence numbers of their own; AgentID, the
+	// Agent's ID of a child, is how later events find it.
+	Children []Message
+	AgentID  string `json:",omitempty"`
 	// Refs are the IDs of the references a user message delivered, in
 	// the order their blocks preceded its text.
 	Refs []string
@@ -87,6 +96,21 @@ type Message struct {
 	CreatedAt  time.Time
 	FinishedAt time.Time
 }
+
+// Tool is a tool call: what the Agent called, and what came back.
+type Tool struct {
+	Name  string
+	Input json.RawMessage
+	// Output is the result, cut to MaxToolOutput bytes (Truncated).
+	Output    string
+	IsError   bool
+	Truncated bool
+	// Done is set once the result came.
+	Done bool
+}
+
+// MaxToolOutput is the most of a tool call's output kept.
+const MaxToolOutput = 1 << 20
 
 // ReferenceState is whether a reference has been delivered.
 type ReferenceState string

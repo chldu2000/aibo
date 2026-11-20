@@ -163,9 +163,14 @@ func heading(m model.Message, agentName string) string {
 	return fmt.Sprintf("\n### [%d] %s · %s\n\n", m.Seq, role, m.CreatedAt.Local().Format("2006-01-02 15:04"))
 }
 
-// body is a message's text, after its reasoning when asked for.
+// body is a message's text, after its reasoning when asked for. A tool
+// call's is its name, a summary of its input and its result, with the
+// messages of the subagent it ran.
 func body(m model.Message, thinking bool) string {
 	text := strings.TrimRight(m.Text, "\n")
+	if m.Kind == model.ToolCall && m.Tool != nil {
+		text = toolText(m, thinking)
+	}
 	if thinking && strings.TrimSpace(m.Thinking) != "" {
 		quoted := "> " + strings.ReplaceAll(strings.TrimSpace(m.Thinking), "\n", "\n> ")
 		text = "> 思考：\n" + quoted + "\n\n" + text
@@ -246,4 +251,45 @@ func Normalize(seqs []int) (from, to int, filled bool) {
 		seen[s] = true
 	}
 	return from, to, len(seen) != to-from+1
+}
+
+// argsLen is about how much of a tool call's input its summary shows.
+const argsLen = 300
+
+func toolText(m model.Message, thinking bool) string {
+	t := m.Tool
+	var b strings.Builder
+	fmt.Fprintf(&b, "工具：%s\n参数：%s\n", t.Name, Args(t.Input, argsLen))
+	for _, c := range m.Children {
+		role := "子代理回复"
+		if c.Kind == model.ToolCall {
+			role = "子代理调用"
+		}
+		fmt.Fprintf(&b, "\n%s：%s\n", role, strings.ReplaceAll(body(c, thinking), "\n", "\n  "))
+	}
+	switch {
+	case !t.Done:
+		b.WriteString("结果：（没有结果）")
+	case t.IsError:
+		b.WriteString("结果（出错）：\n" + strings.TrimRight(t.Output, "\n"))
+	default:
+		b.WriteString("结果：\n" + strings.TrimRight(t.Output, "\n"))
+	}
+	if t.Truncated {
+		b.WriteString("\n……（输出超过 1 MB，之后的部分没有保存）")
+	}
+	return b.String()
+}
+
+// Args summarizes a tool call's input on one line: its JSON, cut to
+// about n characters.
+func Args(input []byte, n int) string {
+	s := strings.Join(strings.Fields(string(input)), " ")
+	if s == "" {
+		return "{}"
+	}
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "……"
+	}
+	return s
 }

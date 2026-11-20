@@ -3,16 +3,18 @@
 //	CGO_ENABLED=0 go build -o aibo ./cmd/aibo && ./aibo
 //
 // AIBO_DATA_DIR replaces the data directory, by default
-// ~/Library/Application Support/aibo.
+// ~/Library/Application Support/aibo. AIBO_DEMO=1 adds a scripted Agent.
 package main
 
 import (
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync/atomic"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/agent/claude"
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/shell"
 	"github.com/chldu2000/aibo/internal/workbench"
@@ -31,13 +33,37 @@ func dataDir() (string, error) {
 	return filepath.Join(home, "Library", "Application Support", "aibo"), nil
 }
 
+// findClaude finds the claude executable on PATH or where it is usually
+// installed: an app launched from the Dock has no shell PATH. Agent
+// discovery proper (the login shell's PATH, versions, a chosen path) is
+// ticket 15's.
+func findClaude() (string, bool) {
+	if p, err := exec.LookPath("claude"); err == nil {
+		return p, true
+	}
+	home, _ := os.UserHomeDir()
+	for _, p := range []string{filepath.Join(home, ".local/bin/claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude"} {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			return p, true
+		}
+	}
+	return "", false
+}
+
 func main() {
 	dir, err := dataDir()
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Until the real adapters land, the demo's scripted Agent answers.
-	agents := []agent.Agent{fake.New(fake.Demo)}
+	var agents []agent.Agent
+	if path, ok := findClaude(); ok {
+		agents = append(agents, claude.New(path))
+	}
+	// AIBO_DEMO=1 adds the scripted Agent, to try the workbench without
+	// a real one.
+	if os.Getenv("AIBO_DEMO") == "1" {
+		agents = append(agents, fake.New(fake.Demo))
+	}
 	wb, err := workbench.Open(workbench.Options{DataDir: dir, Agents: agents})
 	if err != nil {
 		log.Fatalf("打开数据目录 %s 失败：%v", dir, err)

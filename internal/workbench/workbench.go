@@ -104,8 +104,9 @@ type session struct {
 	native  agent.Session // nil while not connected
 	running bool
 	err     string
-	// replies maps the running turn's reply IDs to indexes in msgs.
-	replies   map[string]int
+	// items maps the running turn's replies, tool calls and plans, by
+	// the keys of itemKey, to indexes in msgs.
+	items     map[string]int
 	lastFlush time.Time
 }
 
@@ -418,7 +419,7 @@ func (w *Workbench) Send(id, text string) error {
 	}
 	s.info.ActiveAt = now
 	w.st.Touch(id, now)
-	s.running, s.err, s.replies = true, "", map[string]int{}
+	s.running, s.err, s.items = true, "", map[string]int{}
 	native := s.native
 	info := s.info
 	ws, _ := w.workspace(info.WorkspaceID)
@@ -514,108 +515,6 @@ func (w *Workbench) pump(id string, native agent.Session) {
 		w.notify(Change{SessionID: id, Message: &m})
 	}
 	w.notify(Change{SessionID: id})
-}
-
-func (w *Workbench) handle(id string, ev agent.Event) {
-	now := w.now()
-	w.mu.Lock()
-	s := w.sessions[id]
-	if s == nil { // deleted
-		w.mu.Unlock()
-		return
-	}
-	var changed []model.Message
-	switch e := ev.(type) {
-	case agent.NativeSessionStarted:
-		if e.ID != "" && e.ID != s.info.NativeID() {
-			if err := w.st.AddNativeSession(id, e.ID, now); err == nil {
-				s.info.NativeIDs = append(s.info.NativeIDs, e.ID)
-			}
-		}
-	case agent.ReplyDelta:
-		i, ok := s.replies[e.ReplyID]
-		if !ok {
-			if s.replies == nil {
-				s.replies = map[string]int{}
-			}
-			m := model.Message{Kind: model.AgentReply, State: model.Streaming, Text: e.Text, Raw: e.Raw, CreatedAt: now}
-			seq, err := w.st.AppendMessage(id, m)
-			if err != nil {
-				s.err = "保存消息失败：" + err.Error()
-				break
-			}
-			m.Seq = seq
-			s.msgs = append(s.msgs, m)
-			s.replies[e.ReplyID] = len(s.msgs) - 1
-			s.lastFlush = now
-			changed = append(changed, m)
-			break
-		}
-		m := &s.msgs[i]
-		if m.State.Ended() {
-			break
-		}
-		m.Text += e.Text
-		if len(e.Raw) > 0 {
-			m.Raw = e.Raw
-		}
-		if now.Sub(s.lastFlush) >= flushEvery {
-			w.st.UpdateMessage(id, *m)
-			s.lastFlush = now
-		}
-		changed = append(changed, *m)
-	case agent.ReplyDone:
-		i, ok := s.replies[e.ReplyID]
-		if !ok || s.msgs[i].State.Ended() {
-			break
-		}
-		m := &s.msgs[i]
-		if e.Text != "" {
-			m.Text = e.Text
-		}
-		if len(e.Raw) > 0 {
-			m.Raw = e.Raw
-		}
-		m.State, m.FinishedAt = model.Done, now
-		w.st.UpdateMessage(id, *m)
-		changed = append(changed, *m)
-	case agent.TurnEnded:
-		end := model.Done
-		if e.Interrupted {
-			end = model.Interrupted
-		}
-		changed = w.endTurn(id, s, end)
-		s.info.ActiveAt = now
-		w.st.Touch(id, now)
-	case agent.Failed:
-		s.err = e.Message
-	}
-	w.mu.Unlock()
-	for _, m := range changed {
-		w.notify(Change{SessionID: id, Message: &m})
-	}
-	if len(changed) == 0 {
-		w.notify(Change{SessionID: id})
-	}
-}
-
-// endTurn ends the running turn, ending its replies still streaming as
-// state. w.mu is held. It returns the messages it changed.
-func (w *Workbench) endTurn(id string, s *session, state model.MessageState) []model.Message {
-	var changed []model.Message
-	now := w.now()
-	for _, i := range s.replies {
-		m := &s.msgs[i]
-		if m.State.Ended() {
-			continue
-		}
-		m.State, m.FinishedAt = state, now
-		w.st.UpdateMessage(id, *m)
-		changed = append(changed, *m)
-	}
-	sort.Slice(changed, func(i, j int) bool { return changed[i].Seq < changed[j].Seq })
-	s.running, s.replies = false, nil
-	return changed
 }
 
 // titleLen is how many characters of the first user message make the
