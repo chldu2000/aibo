@@ -95,6 +95,11 @@ type Status struct {
 	ReadOnly     bool
 	// NeedsLogin is set when the last turn found the Agent signed out.
 	NeedsLogin bool
+	// Since is when the running turn started.
+	Since time.Time
+	// Retrying, while the turn runs, says why the Agent is trying again
+	// to reach its model (agent.Retrying), until it gets on.
+	Retrying string
 }
 
 // AgentInfo describes an available Agent.
@@ -147,6 +152,10 @@ type session struct {
 	readOnly     bool
 	// needsLogin is set when the last turn found the Agent signed out.
 	needsLogin bool
+	// since is when the running turn started; retrying is the Agent's
+	// last agent.Retrying, until anything else happens.
+	since    time.Time
+	retrying string
 	// lastActive is when the session last did something, for idle
 	// disconnection.
 	lastActive time.Time
@@ -418,7 +427,7 @@ func (w *Workbench) Status(id string) Status {
 		return Status{}
 	}
 	return Status{Connected: s.native != nil, Running: s.running, Error: s.err, Approvals: len(w.pending(s)),
-		ResumeFailed: s.resumeFailed, ReadOnly: s.readOnly, NeedsLogin: s.needsLogin}
+		ResumeFailed: s.resumeFailed, ReadOnly: s.readOnly, NeedsLogin: s.needsLogin, Since: s.since, Retrying: s.retrying}
 }
 
 // Messages returns a session's messages in order.
@@ -507,6 +516,7 @@ func (w *Workbench) Send(id, text string) error {
 	}
 	// Running from here, so that nothing else starts meanwhile.
 	s.running, s.err, s.items, s.needsLogin = true, "", map[string]int{}, false
+	s.since, s.retrying = w.now(), ""
 	ws, _ := w.workspace(s.info.WorkspaceID)
 	var stop agent.Session
 	if w.readDirs(id, s, ws) && s.native != nil && w.dirsAtStart(s.info.Agent) {

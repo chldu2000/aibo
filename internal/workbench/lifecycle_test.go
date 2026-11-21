@@ -154,3 +154,31 @@ func TestIdleSessionsDisconnect(t *testing.T) {
 	b.idle(t, s.ID)
 	b.waitFor(t, "the idle session to disconnect", func() bool { return !b.Status(s.ID).Connected })
 }
+
+// While the Agent cannot reach its model, the session says why, until the
+// Agent gets on.
+func TestRetryingStatus(t *testing.T) {
+	sc := newScript()
+	b := open(t, t.TempDir(), sc.respond)
+	defer b.Close()
+	_, s := newSession(t, b)
+	if err := b.Send(s.ID, "你好"); err != nil {
+		t.Fatal(err)
+	}
+	if st := b.Status(s.ID); !st.Running || st.Since.IsZero() || st.Retrying != "" {
+		t.Fatalf("status = %+v", st)
+	}
+	sc.emit(agent.Retrying{Message: "Reconnecting... 1/5"})
+	b.waitFor(t, "the retry", func() bool { return b.Status(s.ID).Retrying == "Reconnecting... 1/5" })
+	sc.emit(agent.Retrying{Message: "Reconnecting... 2/5"})
+	b.waitFor(t, "the next retry", func() bool { return b.Status(s.ID).Retrying == "Reconnecting... 2/5" })
+	sc.emit(agent.ReplyDelta{ReplyID: "r", Text: "好"})
+	b.waitFor(t, "the reply", func() bool { return b.Status(s.ID).Retrying == "" })
+	sc.emit(agent.Retrying{Message: "Reconnecting... 1/5"})
+	b.waitFor(t, "a retry later", func() bool { return b.Status(s.ID).Retrying != "" })
+	sc.endTurn()
+	b.idle(t, s.ID)
+	if st := b.Status(s.ID); st.Retrying != "" {
+		t.Errorf("still retrying after the turn: %+v", st)
+	}
+}

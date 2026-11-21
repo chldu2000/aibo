@@ -278,6 +278,13 @@ type Failed struct {
 	Message string
 }
 
+// Retrying reports that the Agent could not reach its model and tries
+// again by itself, as when the network drops: the turn goes on, silent
+// meanwhile. Message says why, in the Agent's own words.
+type Retrying struct {
+	Message string
+}
+
 func (NativeSessionStarted) isEvent() {}
 func (ReplyDelta) isEvent()           {}
 func (ThinkingDelta) isEvent()        {}
@@ -290,3 +297,4 @@ func (Compacted) isEvent()            {}
 func (NotLoggedIn) isEvent()          {}
 func (TurnEnded) isEvent()            {}
 func (Failed) isEvent()               {}
+func (Retrying) isEvent()             {}

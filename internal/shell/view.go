@@ -3,6 +3,7 @@ package shell
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/claude"
@@ -60,15 +61,14 @@ func (s *Shell) pane(c *ui.Context) {
 		}
 		ui.Themed(c, &th).Fill().Children(func() {
 			ui.Column(c).Fill().Children(func() {
-				s.messages(c, v, s.wb.Markers(x.ID)).Grow(1)
+				s.messages(c, x, v, s.wb.Markers(x.ID)).Grow(1)
 			})
 		})
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(80).PassThrough().Material(glass.ScrollEdge{})
 		ui.Row(c).Absolute().Top(12).Left(16).Right(16).Height(46).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
 			agentGlyph(c, x.Agent, 20)
-			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).NoWrap()
-			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).NoWrap()
-			ui.Spacer(c)
+			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1)
+			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Grow(1)
 			if iconButton(c, "arrowshape.turn.up.right", "选择消息以引用或复制").Clicked() {
 				if v.sel.on {
 					s.stopSelecting(v)
@@ -76,7 +76,14 @@ func (s *Shell) pane(c *ui.Context) {
 					s.startSelecting(v)
 				}
 			}
+			if s.opts.OpenWindow != nil && iconButton(c, "rectangle.on.rectangle", "在新窗口打开").Clicked() {
+				s.opts.OpenWindow(x.ID)
+			}
+			if iconButton(c, "sidebar.trailing", "会话详情").Clicked() {
+				s.detail.open, s.detail.confirming = !s.detail.open, false
+			}
 		})
+		s.details(c, x)
 		s.pullPanel(c, x) // before the composer, which it may give the focus back to
 		ui.Column(c).Absolute().Bottom(16).Left(16).Right(16).Gap(8).Children(func() {
 			s.banners(c, x.ID)
@@ -87,6 +94,7 @@ func (s *Shell) pane(c *ui.Context) {
 			if v.sel.on {
 				s.selectionBar(c, x, v)
 			} else {
+				s.badges(c, x, v)
 				s.composer(c, x, v)
 			}
 		})
@@ -98,13 +106,24 @@ func (s *Shell) workspaceOf(x model.Session) model.Workspace {
 	return ws
 }
 
-func (s *Shell) messages(c *ui.Context, v *sessionView, markers []model.Marker) ui.Element {
+func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers []model.Marker) ui.Element {
 	t := c.Theme()
 	after := map[int][]model.Marker{}
 	for _, mk := range markers {
 		after[mk.AfterSeq] = append(after[mk.AfterSeq], mk)
 	}
-	return ui.List(c, &v.list, len(v.msgs), func(i int) {
+	// While a turn runs, a last row says so (working), so that it shows
+	// where the reply comes, not only in the sidebar.
+	st := s.wb.Status(x.ID)
+	n := len(v.msgs)
+	if st.Running && !v.sel.on {
+		n++
+	}
+	return ui.List(c, &v.list, n, func(i int) {
+		if i >= len(v.msgs) {
+			s.working(c, x, st)
+			return
+		}
 		m := v.msgs[i]
 		if i == 0 {
 			for _, mk := range after[0] {
@@ -119,7 +138,7 @@ func (s *Shell) messages(c *ui.Context, v *sessionView, markers []model.Marker) 
 		// In selection mode a press anywhere on a message chooses it,
 		// rather than selecting its text or pressing its buttons.
 		row := ui.Row(c).Gap(10).AlignItems(ui.Start).Padding(4).Radius(10).IgnoreInput(v.sel.on).Children(func() {
-			ui.Textf(c, "#%d", m.Seq).FontSize(11).TextColor(t.TextMuted).Width(34)
+			ui.Textf(c, "#%d", m.Seq).FontSize(11).TextColor(t.TextMuted).Width(44).MaxLines(1)
 			ui.Column(c).Grow(1).MaxWidth(820).Gap(6).Children(func() {
 				switch m.Kind {
 				case model.UserMessage:
@@ -260,14 +279,19 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 		}
 		v.typed = v.draft
 		ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+			iconButton(c, "paperclip", "添加附件（暂不支持）").Opacity(0.4)
 			if iconButton(c, "at", "引用其他会话（@）").Clicked() {
 				s.openPull()
 			}
-			if iconButton(c, "arrow.down.right.and.arrow.up.left", "压缩上下文").Clicked() {
-				if err := s.wb.Compact(x.ID); err != nil {
-					s.notice = err.Error()
-				}
+			// The model, chosen when the session was made.
+			m := x.Model
+			if m == "" {
+				m = "默认模型"
 			}
+			ui.Row(c).Gap(4).Padding(4, 8).AlignItems(ui.Center).Tooltip("模型（新建会话时选择）").Children(func() {
+				sfsymbols.Symbol(c, "cpu").Size(13).Color(t.TextMuted)
+				ui.Text(c, m).FontSize(12).TextColor(t.TextMuted)
+			})
 			s.levelControl(c, x)
 			ui.Spacer(c)
 			if running {
@@ -470,4 +494,44 @@ func (s *Shell) resumeBanner(c *ui.Context, id string, st workbench.Status) {
 			}
 		})
 	})
+}
+
+// working is the last row of a session whose turn runs: who works and for
+// how long, or that it waits on the user, or why the Agent retries.
+func (s *Shell) working(c *ui.Context, x model.Session, st workbench.Status) {
+	t := c.Theme()
+	ui.Row(c).Gap(10).AlignItems(ui.Start).Padding(4).Children(func() {
+		ui.Box(c).Width(44)
+		ui.Column(c).Grow(1).MaxWidth(820).Gap(4).Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Spinner(c).Label("运行中")
+				what := s.agentName(x.Agent) + " 正在工作"
+				if st.Approvals > 0 {
+					what = s.agentName(x.Agent) + " 在等你审批"
+				}
+				if !st.Since.IsZero() {
+					what += " · " + elapsed(time.Since(st.Since))
+				}
+				ui.Text(c, what).FontSize(13).TextColor(t.TextMuted)
+			})
+			if st.Retrying != "" {
+				ui.Row(c).Gap(6).AlignItems(ui.Start).Children(func() {
+					sfsymbols.Symbol(c, "wifi.exclamationmark").Size(12).Color(t.Warning)
+					ui.Text(c, "连不上模型，正在自动重试："+st.Retrying).FontSize(12).TextColor(t.Warning).Selectable().Grow(1)
+				})
+			}
+		})
+	})
+}
+
+// elapsed is a duration as 1 分 05 秒.
+func elapsed(d time.Duration) string {
+	sec := int(d.Seconds())
+	if sec < 60 {
+		return fmt.Sprintf("%d 秒", max(sec, 0))
+	}
+	if sec < 3600 {
+		return fmt.Sprintf("%d 分 %02d 秒", sec/60, sec%60)
+	}
+	return fmt.Sprintf("%d 小时 %02d 分", sec/3600, sec/60%60)
 }

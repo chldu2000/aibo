@@ -34,6 +34,9 @@ type Options struct {
 	// OpenTerminal opens Terminal running an executable, for the user to
 	// sign in there.
 	OpenTerminal func(path string)
+	// OpenWindow opens a session in a window of its own; nil hides the
+	// header's button.
+	OpenWindow func(sessionID string)
 	// ChooseFile asks for an executable, blocking off the main thread.
 	ChooseFile func() (string, bool)
 	// DataDir is the data directory in use, which the settings show.
@@ -75,6 +78,8 @@ type Shell struct {
 	// side is the sidebar's state; models the models of each Agent.
 	side   sidebarUI
 	models map[agent.Kind]*models
+	// detail is the session details panel.
+	detail detailsUI
 	// settings is the global settings' modal.
 	settings settingsUI
 	// level is the approval control's popover.
@@ -160,7 +165,12 @@ func (s *Shell) view(id string) *sessionView {
 	v, ok := s.views[id]
 	if !ok {
 		v = &sessionView{}
-		v.list.Key = func(i int) any { return v.msgs[i].Seq }
+		v.list.Key = func(i int) any {
+			if i >= len(v.msgs) {
+				return "working" // the line saying the turn runs
+			}
+			return v.msgs[i].Seq
+		}
 		v.list.FollowEnd = true
 		v.list.FollowAnimation = &ui.Smooth
 		s.views[id] = v

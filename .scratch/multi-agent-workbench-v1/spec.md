@@ -371,10 +371,10 @@ aibo 保存的会话记录，是“发生过什么”的完整、只追加的记
 - **待验证项**（实现时确认，并据结果补充规格）：
   1. ~~Codex 侧的模型看到的 MCP 工具名是什么样子，关系到概要里写哪个工具名。~~ 已实测（codex-cli 0.169.0，任务 08）：和 Claude 一样是 `mcp__aibo__<tool>`；app-server 的条目里写作 `aibo.<tool>`，但模型看不到这种写法。
   2. ~~Claude 能否按路径禁止对源工作区执行 Edit/Write。~~ 已实测（Claude Code 2.1.318，任务 09）：能。`--disallowedTools "Edit(//<路径>/**)" "Write(//<路径>/**)"` 让 Edit/Write 被拒，往那里写文件的 Bash 命令也被拒；在全部自动（`bypassPermissions`）下依然有效。
-  3. 终端进程数和子 Agent 数能否从事件流里实时统计。如果做不到，徽标只显示“有 / 无”。
+  3. ~~终端进程数和子 Agent 数能否从事件流里实时统计。~~ 已确认（任务 17）：能，按数字显示。数的是还在运行的工具调用：终端是 Claude 的 `Bash` 和 Codex 的 `shell`（commandExecution），子 Agent 是 Claude 的 `Agent`/`Task` 和 Codex 的 `agent`（collabAgentToolCall）；子 Agent 自己启动的终端也算在内。不算后台运行的那些（例如 `run_in_background`）：工具调用一返回就不再计数，事件流里也没有它们结束的信号。
   4. ~~Claude `--permission-prompt-tool stdio` 的响应字段（`updatedPermissions`、`interrupt`）在当前版本上的完整行为。~~ 已实测（Claude Code 2.1.318，任务 10）：`updatedPermissions` 回传 destination 改为 `session` 的建议后，本会话内同类操作不再询问；拒绝时的 `message` 作为工具结果交给模型；带 `interrupt` 的拒绝让轮次以 `terminal_reason: aborted_tools` 结束。
-  5. 系统材质（窗口 vibrancy、原生 Liquid Glass）在浅色和深色模式下，文字是否清晰。
-  6. 代码块里的长行能否横向滚动。
+  5. 系统材质（窗口 vibrancy、原生 Liquid Glass）在浅色和深色模式下，文字是否清晰。任务 17 的无头渲染里，两种模式下的文字都清晰；但无头渲染只是近似系统材质，结论要等在真实窗口里看过才能下。
+  6. ~~代码块里的长行能否横向滚动。~~ 已确认（任务 17）：能。代码块不换行，可以横向滚动，并显示滚动条；一万条消息的会话里也一样。
 - **条款约束**：只调用用户本机未经修改的 `claude`；不提供 claude.ai 登录，不接触 `~/.claude` 里的凭据；不把 Claude Code 的名称或 logo 用作产品名。
 - **调研与原型**：
   - 调研结论在 `research/` 下（01、02、03、08、11、14 号）。

@@ -148,7 +148,8 @@ func TestSignedOut(t *testing.T) {
 	}
 	other := json.RawMessage(`{"threadId":"T","turnId":"U","error":{"message":"Reconnecting... 1/5","codexErrorInfo":{"responseStreamDisconnected":{"httpStatusCode":503}}},"willRetry":true}`)
 	th.handle("turn/completed", json.RawMessage(`{"threadId":"T","turn":{"id":"U","status":"failed"}}`))
-	if evs := th.handle("error", other); len(evs) != 0 {
+	evs = th.handle("error", other)
+	if len(evs) != 1 || evs[0] != (agent.Retrying{Message: "Reconnecting... 1/5"}) {
 		t.Errorf("a 503 being retried: %#v", evs)
 	}
 }

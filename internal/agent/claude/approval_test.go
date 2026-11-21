@@ -155,3 +155,16 @@ func TestSignedOut(t *testing.T) {
 		t.Errorf("event 3 = %#v", evs[3])
 	}
 }
+
+// As Claude Code 2.1.318 builds it from its API errors.
+func TestAPIRetry(t *testing.T) {
+	p := newParser()
+	evs := p.line([]byte(`{"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"retry_delay_ms":1200,"error_status":529,"error":"overloaded_error","session_id":"s"}`))
+	if len(evs) != 1 || evs[0] != (agent.Retrying{Message: "第 2/10 次重试（529 overloaded_error）"}) {
+		t.Errorf("events = %#v", evs)
+	}
+	evs = p.line([]byte(`{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":null,"error":"unknown","session_id":"s"}`))
+	if len(evs) != 1 || evs[0] != (agent.Retrying{Message: "第 1/10 次重试（unknown）"}) {
+		t.Errorf("events = %#v", evs)
+	}
+}

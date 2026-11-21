@@ -69,8 +69,12 @@ type envelope struct {
 		PostTokens int    `json:"post_tokens"`
 	} `json:"compact_metadata"`
 	// assistant: "authentication_failed" on the message Claude Code makes
-	// up when signed out
+	// up when signed out; system/api_retry: what went wrong
 	Error string `json:"error"`
+	// system/api_retry
+	Attempt     int  `json:"attempt"`
+	MaxRetries  int  `json:"max_retries"`
+	ErrorStatus *int `json:"error_status"`
 	// control_request
 	RequestID string          `json:"request_id"`
 	Request   json.RawMessage `json:"request"`
@@ -129,6 +133,16 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 	case "system":
 		if e.Subtype == "init" && e.SessionID != "" {
 			return []agent.Event{agent.NativeSessionStarted{ID: e.SessionID}}
+		}
+		if e.Subtype == "api_retry" {
+			msg := fmt.Sprintf("第 %d/%d 次重试", e.Attempt, e.MaxRetries)
+			switch {
+			case e.ErrorStatus != nil && e.Error != "":
+				msg += fmt.Sprintf("（%d %s）", *e.ErrorStatus, e.Error)
+			case e.Error != "":
+				msg += "（" + e.Error + "）"
+			}
+			return []agent.Event{agent.Retrying{Message: msg}}
 		}
 		if e.Subtype == "compact_boundary" {
 			m := e.CompactMetadata

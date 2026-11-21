@@ -162,6 +162,7 @@ func (w *Workbench) Retry(id string) error {
 	}
 	text := refs.TurnText(briefs, last.Text)
 	s.running, s.err, s.items, s.needsLogin = true, "", map[string]int{}, false
+	s.since, s.retrying = w.now(), ""
 	native, info := s.native, s.info
 	ws, _ := w.workspace(info.WorkspaceID)
 	w.mu.Unlock()

@@ -166,7 +166,7 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 			ui.List(c, &v.list, len(v.msgs), func(i int) {
 				m := v.msgs[i]
 				ui.Row(c).Gap(8).Padding(6, 8).IgnoreInput(true).Children(func() {
-					ui.Textf(c, "#%d", m.Seq).FontSize(11).TextColor(t.TextMuted).Width(30)
+					ui.Textf(c, "#%d", m.Seq).FontSize(11).TextColor(t.TextMuted).Width(44).MaxLines(1)
 					ui.Column(c).Grow(1).Gap(2).Children(func() {
 						ui.Text(c, s.roleOf(*p.source, m)).FontSize(11).TextColor(t.TextMuted)
 						ui.Text(c, oneLine(m.Text, 80)).FontSize(12).TextColor(t.Text).NoWrap()

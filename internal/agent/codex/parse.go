@@ -92,8 +92,9 @@ type notification struct {
 		} `json:"error"`
 	} `json:"turn"`
 	Error *struct {
-		Message        string          `json:"message"`
-		CodexErrorInfo json.RawMessage `json:"codexErrorInfo"`
+		Message           string          `json:"message"`
+		CodexErrorInfo    json.RawMessage `json:"codexErrorInfo"`
+		AdditionalDetails string          `json:"additionalDetails"`
 	} `json:"error"`
 	WillRetry bool `json:"willRetry"`
 }
@@ -225,6 +226,14 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		}
 		if n.Error != nil && !n.WillRetry {
 			return []agent.Event{agent.Failed{Message: "Codex 出错：" + n.Error.Message}}
+		}
+		if n.Error != nil {
+			// As "Reconnecting... 2/5", while the network is down.
+			msg := n.Error.Message
+			if d := strings.TrimSpace(n.Error.AdditionalDetails); d != "" {
+				msg += "（" + d + "）"
+			}
+			return []agent.Event{agent.Retrying{Message: msg}}
 		}
 	case "turn/completed":
 		clear(t.files)

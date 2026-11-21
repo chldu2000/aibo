@@ -1233,3 +1233,154 @@ func TestSidebarManagement(t *testing.T) {
 		t.Error("its session was not archived")
 	}
 }
+
+func TestStatusBadgesAndDetails(t *testing.T) {
+	release := make(chan struct{})
+	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
+		emit(agent.ToolStarted{ToolID: "a", Name: "Agent", Input: []byte(`{"description":"查"}`)})
+		emit(agent.ToolStarted{ToolID: "c", Parent: "a", Name: "Bash", Input: []byte(`{"command":"sleep 9"}`)})
+		emit(agent.ToolStarted{ToolID: "b", Name: "Bash", Input: []byte(`{"command":"make"}`)})
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return
+		}
+		emit(agent.ToolFinished{ToolID: "c", Parent: "a", Output: "ok"})
+		emit(agent.ToolFinished{ToolID: "a", Output: "ok"})
+		emit(agent.ToolFinished{ToolID: "b", Output: "ok"})
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	opened := ""
+	tt := ui.NewTester(shell.New(wb, shell.Options{OpenWindow: func(id string) { opened = id }}).View, 1100, 900)
+	settle := func() {
+		for i := 0; i < 4; i++ {
+			tt.Frame()
+			tt.Advance(time.Second)
+		}
+	}
+	settle()
+	if tt.HasText("个终端进程") || tt.HasText("运行中") {
+		t.Errorf("badges show at zero: %q", tt.Texts())
+	}
+	wb.Send(s.ID, "跑")
+	deadline := time.After(5 * time.Second)
+	for !tt.HasText("2 个终端进程") {
+		select {
+		case <-changes:
+		case <-deadline:
+			t.Fatalf("no terminal badge: %q", tt.Texts())
+		case <-time.After(50 * time.Millisecond):
+		}
+		settle()
+	}
+	if !tt.HasText("1 个子 Agent 运行中") {
+		t.Errorf("no subagent badge: %q", tt.Texts())
+	}
+	close(release)
+	for wb.Status(s.ID).Running {
+		<-changes
+	}
+	settle()
+	if tt.HasText("2 个终端进程") || tt.HasText("1 个子 Agent 运行中") {
+		t.Errorf("badges stay after the tools ended: %q", tt.Texts())
+	}
+	for _, w := range []string{"压缩上下文", "引用会话…"} {
+		if !tt.HasText(w) {
+			t.Errorf("no quick action %q: %q", w, tt.Texts())
+		}
+	}
+	click := func(s string) {
+		t.Helper()
+		if err := tt.Click(s); err != nil {
+			t.Fatalf("%v; the window shows %q", err, tt.Texts())
+		}
+		settle()
+	}
+	click("引用会话")
+	if !tt.HasText("取消") {
+		t.Errorf("quoting does not select: %q", tt.Texts())
+	}
+	click("取消")
+	click("在新窗口打开")
+	if opened != s.ID {
+		t.Errorf("opened %q in a window, want %q", opened, s.ID)
+	}
+	click("会话详情")
+	for _, w := range []string{"审批档位", "原生会话", "工作区", "归档"} {
+		if !tt.HasText(w) {
+			t.Errorf("details lack %q: %q", w, tt.Texts())
+		}
+	}
+	click("关闭会话详情")
+	if tt.HasText("原生会话") {
+		t.Error("details do not close")
+	}
+}
+
+func TestWorkingLineAndRetries(t *testing.T) {
+	steps := make(chan agent.Event)
+	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
+		for {
+			select {
+			case e, ok := <-steps:
+				if !ok {
+					return
+				}
+				emit(e)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 900)
+	frame := func() {
+		for i := 0; i < 3; i++ {
+			tt.Frame()
+			tt.Advance(100 * time.Millisecond)
+		}
+	}
+	until := func(what string, cond func() bool) {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for frame(); !cond(); frame() {
+			select {
+			case <-changes:
+			case <-deadline:
+				t.Fatalf("no %s: %q", what, tt.Texts())
+			case <-time.After(20 * time.Millisecond):
+			}
+		}
+	}
+	frame()
+	if tt.HasText("正在工作") {
+		t.Fatalf("working before any turn: %q", tt.Texts())
+	}
+	wb.Send(s.ID, "你好")
+	until("working line", func() bool { return tt.HasText("假 Agent 正在工作") })
+	steps <- agent.Retrying{Message: "Reconnecting... 2/5"}
+	until("retry notice", func() bool { return tt.HasText("正在自动重试：Reconnecting... 2/5") })
+	steps <- agent.ReplyDelta{ReplyID: "r", Text: "连上了"}
+	until("the retry notice gone", func() bool { return !tt.HasText("正在自动重试") })
+	if !tt.HasText("正在工作") {
+		t.Errorf("the working line went with the retry: %q", tt.Texts())
+	}
+	close(steps)
+	until("the working line gone", func() bool { return !wb.Status(s.ID).Running && !tt.HasText("正在工作") })
+}
