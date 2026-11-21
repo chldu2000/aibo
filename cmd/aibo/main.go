@@ -2,6 +2,10 @@
 //
 //	CGO_ENABLED=0 go build -o aibo ./cmd/aibo && ./aibo
 //
+// The app, as mygo.json describes it, with its disk image, in build/:
+//
+//	go tool mygo build -platform darwin/arm64
+//
 // AIBO_DATA_DIR replaces the data directory (and the config file's
 // choice), for development. AIBO_DEMO=1 adds a scripted Agent. The
 // Agents are found by package agents.

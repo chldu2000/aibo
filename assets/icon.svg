@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5b8cff"/>
+      <stop offset="1" stop-color="#7a4dff"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#e9edff" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <!-- back bubble -->
+  <path d="M430 250h300a90 90 0 0 1 90 90v170a90 90 0 0 1-90 90h-40l10 80-100-80H430a90 90 0 0 1-90-90V340a90 90 0 0 1 90-90z" fill="#ffffff" fill-opacity="0.35"/>
+  <!-- front bubble -->
+  <path d="M294 420h300a90 90 0 0 1 90 90v170a90 90 0 0 1-90 90H434l-100 80 10-80h-50a90 90 0 0 1-90-90V510a90 90 0 0 1 90-90z" fill="url(#glass)"/>
+  <!-- the reference passed on -->
+  <g fill="none" stroke="#6a5cff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M318 600h200"/>
+    <path d="M462 540l64 60-64 60"/>
+  </g>
+</svg>

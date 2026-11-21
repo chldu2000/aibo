@@ -1,0 +1,14 @@
+{
+  "name": "aibo",
+  "identifier": "io.github.chldu2000.aibo",
+  "version": "0.1.0",
+  "copyright": "© 2026 chldu2000",
+  "icon": "assets/icon.png",
+  "main": "./cmd/aibo",
+  "out": "build",
+  "macos": {
+    "infoPlist": {
+      "LSApplicationCategoryType": "public.app-category.developer-tools"
+    }
+  }
+}
