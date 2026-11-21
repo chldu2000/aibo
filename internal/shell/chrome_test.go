@@ -1,0 +1,277 @@
+package shell_test
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/agent/fake"
+	"github.com/chldu2000/aibo/internal/shell"
+	"github.com/chldu2000/aibo/internal/workbench"
+	"github.com/egoist/mygo/ui"
+)
+
+func TestStatusBadgesAndDetails(t *testing.T) {
+	release := make(chan struct{})
+	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
+		emit(agent.ToolStarted{ToolID: "a", Name: "Agent", Input: []byte(`{"description":"查"}`)})
+		emit(agent.ToolStarted{ToolID: "c", Parent: "a", Name: "Bash", Input: []byte(`{"command":"sleep 9"}`)})
+		emit(agent.ToolStarted{ToolID: "b", Name: "Bash", Input: []byte(`{"command":"make"}`)})
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return
+		}
+		emit(agent.ToolFinished{ToolID: "c", Parent: "a", Output: "ok"})
+		emit(agent.ToolFinished{ToolID: "a", Output: "ok"})
+		emit(agent.ToolFinished{ToolID: "b", Output: "ok"})
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	opened := ""
+	tt := ui.NewTester(shell.New(wb, shell.Options{OpenWindow: func(id string) { opened = id }}).View, 1100, 900)
+	settle := func() {
+		for i := 0; i < 4; i++ {
+			tt.Frame()
+			tt.Advance(time.Second)
+		}
+	}
+	settle()
+	if tt.HasText("个终端进程") || tt.HasText("运行中") {
+		t.Errorf("badges show at zero: %q", tt.Texts())
+	}
+	wb.Send(s.ID, "跑")
+	deadline := time.After(5 * time.Second)
+	for !tt.HasText("2 个终端进程") {
+		select {
+		case <-changes:
+		case <-deadline:
+			t.Fatalf("no terminal badge: %q", tt.Texts())
+		case <-time.After(50 * time.Millisecond):
+		}
+		settle()
+	}
+	if !tt.HasText("1 个子 Agent 运行中") {
+		t.Errorf("no subagent badge: %q", tt.Texts())
+	}
+	close(release)
+	for wb.Status(s.ID).Running {
+		<-changes
+	}
+	settle()
+	if tt.HasText("2 个终端进程") || tt.HasText("1 个子 Agent 运行中") {
+		t.Errorf("badges stay after the tools ended: %q", tt.Texts())
+	}
+	for _, w := range []string{"压缩上下文", "引用会话…"} {
+		if !tt.HasText(w) {
+			t.Errorf("no quick action %q: %q", w, tt.Texts())
+		}
+	}
+	click := func(s string) {
+		t.Helper()
+		if err := tt.Click(s); err != nil {
+			t.Fatalf("%v; the window shows %q", err, tt.Texts())
+		}
+		settle()
+	}
+	click("引用会话")
+	if !tt.HasText("取消") {
+		t.Errorf("quoting does not select: %q", tt.Texts())
+	}
+	click("取消")
+	click("在新窗口打开")
+	if opened != s.ID {
+		t.Errorf("opened %q in a window, want %q", opened, s.ID)
+	}
+	click("会话详情")
+	for _, w := range []string{"审批档位", "原生会话", "工作区", "归档"} {
+		if !tt.HasText(w) {
+			t.Errorf("details lack %q: %q", w, tt.Texts())
+		}
+	}
+	click("关闭会话详情")
+	if tt.HasText("原生会话") {
+		t.Error("details do not close")
+	}
+}
+
+func TestWorkingLineAndRetries(t *testing.T) {
+	steps := make(chan agent.Event)
+	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
+		for {
+			select {
+			case e, ok := <-steps:
+				if !ok {
+					return
+				}
+				emit(e)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 900)
+	frame := func() {
+		for i := 0; i < 3; i++ {
+			tt.Frame()
+			tt.Advance(100 * time.Millisecond)
+		}
+	}
+	until := func(what string, cond func() bool) {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for frame(); !cond(); frame() {
+			select {
+			case <-changes:
+			case <-deadline:
+				t.Fatalf("no %s: %q", what, tt.Texts())
+			case <-time.After(20 * time.Millisecond):
+			}
+		}
+	}
+	frame()
+	if tt.HasText("正在工作") {
+		t.Fatalf("working before any turn: %q", tt.Texts())
+	}
+	wb.Send(s.ID, "你好")
+	until("working line", func() bool { return tt.HasText("假 Agent 正在工作") })
+	steps <- agent.Retrying{Message: "Reconnecting... 2/5"}
+	until("retry notice", func() bool { return tt.HasText("正在自动重试：Reconnecting... 2/5") })
+	steps <- agent.ReplyDelta{ReplyID: "r", Text: "连上了"}
+	until("the retry notice gone", func() bool { return !tt.HasText("正在自动重试") })
+	if !tt.HasText("正在工作") {
+		t.Errorf("the working line went with the retry: %q", tt.Texts())
+	}
+	close(steps)
+	until("the working line gone", func() bool { return !wb.Status(s.ID).Running && !tt.HasText("正在工作") })
+}
+
+func TestSessionWindow(t *testing.T) {
+	var f *fake.Agent
+	respond := func(ctx context.Context, _ agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
+		emit(agent.ReplyDelta{ReplyID: "r", Text: "先改文件。"})
+		emit(agent.ReplyDone{ReplyID: "r"})
+		emit(agent.ToolStarted{ToolID: "w", Name: "Write", Input: []byte(`{"file_path":"a.txt"}`)})
+		emit(agent.ApprovalRequested{ID: "ap", ToolID: "w", Title: "修改文件", Paths: []string{"a.txt"},
+			Options: []agent.ApprovalOption{{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"}, {ID: "no", Kind: agent.Deny, Label: "拒绝"}}})
+		select {
+		case <-f.Decisions():
+			emit(agent.ToolFinished{ToolID: "w", Output: "ok"})
+		case <-ctx.Done():
+		}
+	}
+	f = fake.New(respond)
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{f}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	src, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	wb.Rename(src.ID, "源会话")
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	wb.Rename(s.ID, "拆出的会话")
+
+	opened := ""
+	mainShell := shell.New(wb, shell.Options{OpenWindow: func(id string) { opened = id }})
+	main := ui.NewTester(mainShell.View, 1100, 900)
+	var shown []any
+	own := shell.New(wb, shell.Options{Only: s.ID, ShowInMain: func(id string, from, to int) { shown = []any{id, from, to} }})
+	win := ui.NewTester(own.View, 900, 900)
+	frame := func() {
+		for _, tt := range []*ui.Tester{main, win} {
+			for i := 0; i < 3; i++ {
+				tt.Frame()
+				tt.Advance(time.Second)
+			}
+		}
+	}
+	frame()
+	if err := main.Click("拆出的会话"); err != nil {
+		t.Fatal(err)
+	}
+	frame()
+	if err := main.Click("在新窗口打开"); err != nil {
+		t.Fatal(err)
+	}
+	if opened != s.ID {
+		t.Fatalf("opened %q, want %q", opened, s.ID)
+	}
+	// The session's own window: its area alone.
+	for _, no := range []string{"搜索会话", "源会话", "在新窗口打开"} {
+		if win.HasText(no) {
+			t.Errorf("the session's window shows %q: %q", no, win.Texts())
+		}
+	}
+	if !win.HasText("拆出的会话") {
+		t.Errorf("the session's window lacks its title: %q", win.Texts())
+	}
+	// Both windows follow the session.
+	wb.Send(s.ID, "改文件")
+	for wb.Status(s.ID).Approvals == 0 {
+		<-changes
+	}
+	frame()
+	for name, tt := range map[string]*ui.Tester{"main": main, "own": win} {
+		for _, w := range []string{"先改文件。", "批准本次", "1 个待审批"} {
+			if !tt.HasText(w) {
+				t.Errorf("the %s window lacks %q: %q", name, w, tt.Texts())
+			}
+		}
+	}
+	// Answered in its own window, gone from both.
+	if err := win.Click("批准本次"); err != nil {
+		t.Fatal(err)
+	}
+	for wb.Status(s.ID).Running {
+		<-changes
+	}
+	frame()
+	for name, tt := range map[string]*ui.Tester{"main": main, "own": win} {
+		if _, asks := tt.Find("批准本次"); asks || tt.HasText("正在工作") {
+			t.Errorf("the %s window still asks: %q", name, tt.Texts())
+		}
+	}
+	// Another session is the main window's to show.
+	own.Open(src.ID)
+	if fmt.Sprint(shown) != fmt.Sprint([]any{src.ID, 0, 0}) {
+		t.Errorf("shown in the main window: %v", shown)
+	}
+	frame()
+	if !win.HasText("先改文件。") {
+		t.Errorf("the session's window left its session: %q", win.Texts())
+	}
+	// Closing the window leaves the session, which the main window shows.
+	own.Close()
+	if !main.HasText("拆出的会话") || wb.Status(s.ID).Error != "" {
+		t.Errorf("the main window lost the session: %q", main.Texts())
+	}
+	// Deleted, the session's window says so.
+	own2 := shell.New(wb, shell.Options{Only: s.ID})
+	win2 := ui.NewTester(own2.View, 900, 900)
+	wb.DeleteSession(s.ID)
+	win2.Frame()
+	if !win2.HasText("这个会话已被删除") {
+		t.Errorf("deleted: %q", win2.Texts())
+	}
+}
