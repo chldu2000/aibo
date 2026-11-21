@@ -44,6 +44,8 @@ type app struct {
 	// win is set on the main thread and read from others.
 	win      atomic.Pointer[mygo.Window]
 	quitting atomic.Bool
+	// own are the sessions' own windows, by session ID: the main thread's.
+	own map[string]*mygo.Window
 }
 
 func main() {
@@ -55,7 +57,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	a := &app{def: def, reg: agents.New(agents.Options{})}
+	a := &app{def: def, reg: agents.New(agents.Options{}), own: map[string]*mygo.Window{}}
 	a.agents = a.reg.Agents()
 	if os.Getenv("AIBO_DEMO") == "1" {
 		a.agents = append(a.agents, fake.New(fake.Demo))
@@ -67,12 +69,25 @@ func main() {
 	})
 	mygo.App.OnBeforeQuit(a.beforeQuit)
 	mygo.App.OnNotificationClick(func(id string) {
-		if sessionID, ok := strings.CutPrefix(id, notificationPrefix); ok && a.sh != nil {
+		sessionID, ok := strings.CutPrefix(id, notificationPrefix)
+		if !ok {
+			return
+		}
+		mygo.RunOnMain(func() {
+			if a.sh == nil {
+				return
+			}
+			// The session's own window, when it has one.
+			if w := a.own[sessionID]; w != nil && !w.IsDestroyed() {
+				w.Focus()
+				return
+			}
 			if w := a.win.Load(); w != nil {
-				w.Update(func() { a.sh.Open(sessionID) })
+				a.sh.Open(sessionID)
+				w.Invalidate()
 				w.Focus()
 			}
-		}
+		})
 	})
 	// The data directory is found, perhaps with the user's help, off the
 	// main thread, where the dialogs wait.
@@ -221,6 +236,7 @@ func (a *app) show() {
 			}
 			return paths[0], true
 		},
+		OpenWindow:   a.openWindow,
 		DataDir:      a.dir,
 		MoveDataDir:  a.moveDataDir,
 		ShowInFinder: mygo.Shell.ShowItemInFolder,
@@ -307,4 +323,61 @@ func (a *app) beforeQuit(e *mygo.QuitEvent) {
 			mygo.App.Quit()
 		}
 	}()
+}
+
+// openWindow shows a session in a window of its own, or brings the one it
+// has to the front. It runs on the main thread. Closing the window leaves
+// the session as it is: it runs on, and the main window shows it too.
+func (a *app) openWindow(sessionID string) {
+	if w := a.own[sessionID]; w != nil && !w.IsDestroyed() {
+		w.Focus()
+		return
+	}
+	x, ok := a.wb.Session(sessionID)
+	if !ok {
+		return
+	}
+	var win atomic.Pointer[mygo.Window]
+	sh := shell.New(a.wb, shell.Options{
+		Only:         sessionID,
+		Agents:       a.reg,
+		OpenURL:      func(u string) { mygo.Shell.OpenExternal(u) },
+		OpenTerminal: func(path string) { exec.Command("open", "-a", "Terminal", path).Start() },
+		ShowInFinder: mygo.Shell.ShowItemInFolder,
+		Wake: func() {
+			if w := win.Load(); w != nil {
+				w.Invalidate()
+			}
+		},
+		ShowInMain: func(id string, from, to int) {
+			if w := a.win.Load(); w != nil {
+				a.sh.Reveal(id, from, to)
+				w.Invalidate()
+				w.Focus()
+			}
+		},
+	})
+	title := x.Title
+	if title == "" {
+		title = "aibo"
+	}
+	w := mygo.NewWindow(mygo.WindowOptions{
+		Title:         title,
+		Width:         860,
+		Height:        760,
+		TitleBarStyle: mygo.TitleBarHiddenInset,
+		Transparent:   true,
+		Vibrancy:      mygo.VibrancySidebar,
+		Content:       ui.View(sh.View),
+	})
+	win.Store(w)
+	a.own[sessionID] = w
+	w.OnClosed(func() {
+		sh.Close()
+		mygo.RunOnMain(func() {
+			if a.own[sessionID] == w {
+				delete(a.own, sessionID)
+			}
+		})
+	})
 }

@@ -23,6 +23,15 @@ func (s *Shell) View(c *ui.Context) {
 	if c.Shortcut(ui.Super, ui.KeyComma) {
 		s.openSettings()
 	}
+	if s.opts.Only != "" {
+		// A session's own window: its area alone.
+		ui.Box(c).Fill().Background(c.Theme().Background).Children(func() {
+			s.pane(c)
+		})
+		s.renameDialog(c)
+		s.deleteDialog(c)
+		return
+	}
 	s.settingsModal(c)
 	root := ui.Split(c, &s.split, func() {
 		s.sidebar(c)
@@ -46,6 +55,10 @@ func (s *Shell) pane(c *ui.Context) {
 	x, ok := s.wb.Session(s.current)
 	if !ok {
 		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+			if s.opts.Only != "" {
+				ui.Text(c, "这个会话已被删除，可以关闭这个窗口").TextColor(t.TextMuted)
+				return
+			}
 			ui.Text(c, "在左侧选一个会话，或在工作区上点“＋”新建").TextColor(t.TextMuted)
 		})
 		return
@@ -65,7 +78,12 @@ func (s *Shell) pane(c *ui.Context) {
 			})
 		})
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(80).PassThrough().Material(glass.ScrollEdge{})
-		ui.Row(c).Absolute().Top(12).Left(16).Right(16).Height(46).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
+		// A session's own window has the traffic lights over its area.
+		left := float32(16)
+		if s.opts.Only != "" {
+			left = 84
+		}
+		ui.Row(c).Absolute().Top(12).Left(left).Right(16).Height(46).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
 			agentGlyph(c, x.Agent, 20)
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1)
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Grow(1)
@@ -411,7 +429,7 @@ func (s *Shell) referenceCard(c *ui.Context, id string) {
 				sfsymbols.Symbol(c, "eye").Size(11).Color(t.TextMuted)
 				ui.Text(c, "Agent 读取了 "+refs.Range(rd.From, rd.To)).FontSize(12).TextColor(t.TextMuted)
 				if sourceExists && ui.Button(c, "在源会话中查看").Clicked() {
-					s.reveal(r.SourceID, rd.From, rd.To)
+					s.goTo(r.SourceID, rd.From, rd.To)
 				}
 			})
 		}

@@ -50,6 +50,14 @@ type Options struct {
 	// blocking until they choose; ok is false when they cancel. It runs
 	// off the main thread.
 	ChooseFolder func() (path string, ok bool)
+	// Only, when set, makes the shell a session's own window: it shows
+	// that session's area alone, without the sidebar, and never notifies
+	// (the main window does).
+	Only string
+	// ShowInMain shows another session in the main window, messages
+	// from..to highlighted (none when zero), for a shell showing Only one:
+	// as when a reference's source is opened from it.
+	ShowInMain func(sessionID string, from, to int)
 }
 
 // Shell is the window's state.
@@ -91,6 +99,8 @@ type Shell struct {
 	approvals map[string]*approvalUI
 	// openCards are the reference cards showing their briefs.
 	openCards map[string]bool
+	// unsubscribe stops the workbench's changes coming (Close).
+	unsubscribe func()
 }
 
 // sessionView is what the shell keeps of an open session.
@@ -117,16 +127,50 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 		o.Wake = func() {}
 	}
 	s := &Shell{wb: wb, opts: o, split: 260, views: map[string]*sessionView{}, openCards: map[string]bool{}}
-	wb.Subscribe(func(c workbench.Change) {
+	if o.Only != "" {
+		o.Notify = nil
+	}
+	s.unsubscribe = wb.Subscribe(func(c workbench.Change) {
 		s.mu.Lock()
 		s.pending = append(s.pending, c)
 		s.mu.Unlock()
 		o.Wake()
 	})
-	if all := wb.Sessions(); len(all) > 0 {
+	if o.Only != "" {
+		s.current = o.Only
+	} else if all := wb.Sessions(); len(all) > 0 {
 		s.current = all[0].ID
 	}
 	return s
+}
+
+// Close stops the shell following the workbench, as when its window
+// closes.
+func (s *Shell) Close() { s.unsubscribe() }
+
+// goTo shows a session, messages from..to highlighted (none when zero).
+// A session's own window shows no other: the main window does.
+func (s *Shell) goTo(sessionID string, from, to int) {
+	if s.opts.Only != "" && sessionID != s.opts.Only {
+		if s.opts.ShowInMain != nil {
+			s.opts.ShowInMain(sessionID, from, to)
+		}
+		return
+	}
+	if from > 0 {
+		s.reveal(sessionID, from, to)
+		return
+	}
+	s.current = sessionID
+}
+
+// Reveal shows a session at messages from..to, highlighted, as for a
+// session's own window (ShowInMain). It runs on the main thread.
+func (s *Shell) Reveal(sessionID string, from, to int) {
+	if _, ok := s.wb.Session(sessionID); !ok {
+		return
+	}
+	s.goTo(sessionID, from, to)
 }
 
 // apply applies the changes the workbench reported since the last frame.
@@ -218,7 +262,7 @@ func (s *Shell) newSession(ws model.Workspace, kind agent.Kind, modelID string) 
 		s.notice = "新建会话失败：" + err.Error()
 		return
 	}
-	s.current = x.ID
+	s.goTo(x.ID, 0, 0)
 }
 
 // send sends the session's draft.
@@ -268,7 +312,7 @@ func (s *Shell) notifyApprovals(changes []workbench.Change) {
 // the main thread.
 func (s *Shell) Open(sessionID string) {
 	if _, ok := s.wb.Session(sessionID); ok {
-		s.current = sessionID
+		s.goTo(sessionID, 0, 0)
 	}
 }
 

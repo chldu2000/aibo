@@ -270,5 +270,5 @@ func (s *Shell) confirm(src model.Session, v *sessionView) {
 		return
 	}
 	s.stopSelecting(v)
-	s.current = targetID
+	s.goTo(targetID, 0, 0)
 }
