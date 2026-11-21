@@ -277,7 +277,10 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 		if blocked {
 			prompt = "原生会话无法续接，请先在上方选择怎么处理"
 		}
-		input := ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).Disabled(blocked).OnTextKey(func(k ui.TextKey) bool {
+		input := ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).Disabled(blocked).OnPaste(func(string) bool {
+			v.pasted = true
+			return false
+		}).OnTextKey(func(k ui.TextKey) bool {
 			if k.Key != ui.KeyEnter || k.Mods != 0 {
 				return false
 			}
@@ -290,16 +293,15 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			input.Focus()
 			s.refocus = false
 		}
-		// Typing "@" opens the @ panel instead.
-		if draft, at := typedAt(v.typed, v.draft); at {
-			v.draft = draft
-			s.openPull()
+		// Typing "@" opens the @ panel too; a paste with one does not.
+		if at, ok := typedAt(v.typed, v.draft); ok && !v.pasted {
+			s.openPull(x.ID, at)
 		}
-		v.typed = v.draft
+		v.typed, v.pasted = v.draft, false
 		ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 			iconButton(c, "paperclip", "添加附件（暂不支持）").Opacity(0.4)
 			if iconButton(c, "at", "引用其他会话（@）").Clicked() {
-				s.openPull()
+				s.openPull(x.ID, -1)
 			}
 			// The model, chosen when the session was made.
 			m := x.Model

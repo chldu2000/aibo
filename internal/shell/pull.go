@@ -3,6 +3,8 @@ package shell
 import (
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
@@ -16,6 +18,11 @@ import (
 type pull struct {
 	open  bool
 	query string
+	// at is where the "@" that opened the panel is in the draft of
+	// session in, replaced by the reference chosen; -1 when the @ button
+	// opened it.
+	at int
+	in string
 	// source is the session chosen, with its own view for choosing
 	// messages; nil while searching.
 	source *model.Session
@@ -26,12 +33,13 @@ type pull struct {
 	briefFrom, briefTo int
 }
 
-// typedAt reports whether the edit from before to after inserted text
-// ending with "@" (typed, or committed by an input method), and returns
-// after without that "@".
-func typedAt(before, after string) (string, bool) {
+// typedAt reports whether the edit from before to after typed an "@" that
+// opens the @ panel, and where it is in after: the text inserted (typed,
+// or committed by an input method) ends with "@", at the start of a line
+// or after a space. An "@" after anything else, as in a@b, is text.
+func typedAt(before, after string) (int, bool) {
 	if len(after) <= len(before) {
-		return after, false
+		return -1, false
 	}
 	p := 0
 	for p < len(before) && before[p] == after[p] {
@@ -41,16 +49,28 @@ func typedAt(before, after string) (string, bool) {
 	for q < len(before)-p && before[len(before)-1-q] == after[len(after)-1-q] {
 		q++
 	}
-	inserted := after[p : len(after)-q]
-	if !strings.HasSuffix(inserted, "@") {
-		return after, false
+	if !strings.HasSuffix(after[p:len(after)-q], "@") {
+		return -1, false
 	}
 	at := len(after) - q - 1
-	return after[:at] + after[at+1:], true
+	if r, _ := utf8.DecodeLastRuneInString(after[:at]); at > 0 && !unicode.IsSpace(r) {
+		return -1, false
+	}
+	return at, true
 }
 
-func (s *Shell) openPull() {
-	s.pull = pull{open: true}
+// dropAt is draft without the "@" at byte at, when it is still there.
+func dropAt(draft string, at int) string {
+	if at < 0 || at >= len(draft) || draft[at] != '@' {
+		return draft
+	}
+	return draft[:at] + draft[at+1:]
+}
+
+// openPull opens the @ panel: by the "@" at byte at of session id's
+// draft, or by the @ button when at is -1.
+func (s *Shell) openPull(id string, at int) {
+	s.pull = pull{open: true, at: at, in: id}
 }
 
 // pullPanel shows the @ panel, when open, for the receiving session x.
@@ -194,6 +214,11 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 			if _, err := s.wb.ReferenceRange(p.source.ID, v.sel.from, v.sel.to, x.ID); err != nil {
 				p.briefErr = err.Error()
 				return
+			}
+			// The chip takes the place of the "@" typed.
+			if v := s.views[p.in]; v != nil && p.in == x.ID {
+				v.draft = dropAt(v.draft, p.at)
+				v.typed = v.draft
 			}
 			s.pull = pull{}
 		}

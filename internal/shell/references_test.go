@@ -311,3 +311,73 @@ func TestPullReferenceWithAt(t *testing.T) {
 	click("返回搜索")
 	shows("选择 问：迁移的风险")
 }
+
+// "@" is text after a letter, in a paste, and while the panel it opened
+// closes without a choice; at the start or after a space it opens the
+// panel, typed or committed by an input method.
+func TestTypeLiteralAt(t *testing.T) {
+	var got []string
+	var mu sync.Mutex
+	respond := func(ctx context.Context, _ agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
+		mu.Lock()
+		got = append(got, turn.Text)
+		mu.Unlock()
+		emit(agent.ReplyDone{ReplyID: "r"})
+	}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(respond)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	wb.NewSession(ws.ID, fake.Kind, "")
+	sh := shell.New(wb, shell.Options{})
+	tt := ui.NewTester(sh.View, 1100, 800)
+	tt.Frame()
+	panelOpen := func() bool {
+		for _, s := range tt.Texts() {
+			if s == "引用其他会话" { // the @ panel's title
+				return true
+			}
+		}
+		return false
+	}
+	if err := tt.Click("给 假 Agent 发消息"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	step := func(what string, open bool, do func()) {
+		t.Helper()
+		do()
+		tt.Frame()
+		if panelOpen() != open {
+			t.Fatalf("after %s, the @ panel open = %v; the window shows %q", what, !open, tt.Texts())
+		}
+	}
+
+	step("a@b", false, func() { tt.Type("a"); tt.Frame(); tt.Type("@"); tt.Frame(); tt.Type("b") })
+	step("a space and @", true, func() { tt.Type(" "); tt.Frame(); tt.Type("@") })
+	step("Esc", false, func() { tt.Key(0, ui.KeyEscape) })
+	step("typing on", false, func() { tt.Type("x ") })
+	step("a paste ending in @", false, func() { tt.SetClipboard("c @"); tt.Command("paste") })
+	step("composing @", false, func() { tt.Type(" "); tt.Frame(); tt.Compose("＠", 1) })
+	step("committing @", true, func() { tt.Type("@") })
+	step("Esc", false, func() { tt.Key(0, ui.KeyEscape) })
+
+	tt.Key(0, ui.KeyEnter)
+	for i := 0; i < 100; i++ {
+		tt.Frame()
+		mu.Lock()
+		n := len(got)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if want := "a@b @x c @ @"; len(got) != 1 || got[0] != want {
+		t.Errorf("the Agent received %q; want %q", got, want)
+	}
+}

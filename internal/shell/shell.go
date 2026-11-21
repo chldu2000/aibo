@@ -112,6 +112,8 @@ type sessionView struct {
 	// typed is the draft as the composer last saw it, to notice an "@"
 	// typed into it.
 	typed string
+	// pasted is set by a paste into the draft, which is not typing.
+	pasted bool
 	// sel is selection mode.
 	sel selection
 	// open is which disclosures of the messages are open.
