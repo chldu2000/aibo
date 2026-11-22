@@ -21,6 +21,13 @@ import (
 // blocks precede its text in what the Agent receives, and the message
 // may then have no text of its own.
 func (w *Workbench) Send(id, text string) error {
+	return w.SendWithFiles(id, text, nil)
+}
+
+// SendWithFiles sends a message mentioning files: only their paths go to
+// the Agent, which reads them itself (ADR 0004). Each must be in the
+// session's workspace or a source workspace it may read (ErrNotReadable).
+func (w *Workbench) SendWithFiles(id, text string, mentions []model.Mention) error {
 	text = strings.TrimSpace(text)
 
 	w.mu.Lock()
@@ -41,7 +48,13 @@ func (w *Workbench) Send(id, text string) error {
 		w.mu.Unlock()
 		return ErrSlashCommand
 	}
-	if text == "" && len(w.drafts(id)) == 0 {
+	ws, _ := w.workspace(s.info.WorkspaceID)
+	files, ok := turnFiles(mentions, ws.Path, s.info.ReadDirs)
+	if !ok {
+		w.mu.Unlock()
+		return ErrNotReadable
+	}
+	if text == "" && len(w.drafts(id)) == 0 && len(mentions) == 0 {
 		w.mu.Unlock()
 		return ErrEmptyMessage
 	}
@@ -66,7 +79,6 @@ func (w *Workbench) Send(id, text string) error {
 	// Running from here, so that nothing else starts meanwhile.
 	s.running, s.err, s.items, s.needsLogin = true, "", map[string]int{}, false
 	s.since, s.retrying = w.now(), ""
-	ws, _ := w.workspace(s.info.WorkspaceID)
 	var stop agent.Session
 	if w.readDirs(id, s, ws) && s.native != nil && w.dirsAtStart(s.info.Agent) {
 		// The Agent reads other workspaces only from its start.
@@ -92,7 +104,7 @@ func (w *Workbench) Send(id, text string) error {
 	now := w.now()
 	w.mu.Lock()
 	drafts := w.drafts(id)
-	m := model.Message{Kind: model.UserMessage, State: model.Done, Text: text, CreatedAt: now, FinishedAt: now}
+	m := model.Message{Kind: model.UserMessage, State: model.Done, Text: text, Mentions: mentions, CreatedAt: now, FinishedAt: now}
 	seq, err := w.st.AppendMessage(id, m)
 	if err != nil {
 		s.running = false
@@ -125,7 +137,7 @@ func (w *Workbench) Send(id, text string) error {
 	w.mu.Unlock()
 	w.notify(Change{SessionID: id, Message: &m})
 
-	if err := native.Send(context.Background(), agent.Turn{Text: refs.TurnText(briefs, text)}); err != nil {
+	if err := native.Send(context.Background(), agent.Turn{Text: refs.TurnText(briefs, text), Files: files}); err != nil {
 		w.fail(id, "发送失败："+err.Error())
 		return err
 	}

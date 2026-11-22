@@ -173,6 +173,13 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 					for _, id := range m.Refs {
 						s.referenceCard(c, id)
 					}
+					if len(m.Mentions) > 0 {
+						ui.Row(c).Gap(6).Wrap().Children(func() {
+							for _, f := range m.Mentions {
+								s.mentionChip(c, x, f, nil)
+							}
+						})
+					}
 					if m.Text != "" {
 						ui.Text(c, m.Text).Selectable().TextColor(t.Text).Padding(8, 12).Radius(12).Background(t.Surface)
 					}
@@ -257,8 +264,9 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 	running := s.wb.Status(x.ID).Running
 	drafts := s.wb.Drafts(x.ID)
 	ui.Column(c).Gap(6).Padding(10, 12).Radius(18).Material(glass.Glass{}).Children(func() {
-		if len(drafts) > 0 {
+		if len(drafts) > 0 || len(v.mentions) > 0 {
 			ui.Row(c).Gap(6).Wrap().Children(func() {
+				s.draftMentions(c, x, v)
 				for _, r := range drafts {
 					ui.Row(c).Key(r.ID).Gap(6).Padding(3, 4, 3, 8).Radius(8).AlignItems(ui.Center).BorderWidth(1).BorderColor(t.Accent).Children(func() {
 						sfsymbols.Symbol(c, "paperclip").Size(12).Color(t.Accent)
@@ -284,7 +292,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			if k.Key != ui.KeyEnter || k.Mods != 0 {
 				return false
 			}
-			if !running && (strings.TrimSpace(k.Text()) != "" || len(drafts) > 0) && s.send(x.ID, k.Text()) {
+			if !running && (strings.TrimSpace(k.Text()) != "" || len(drafts) > 0 || len(v.mentions) > 0) && s.send(x.ID, k.Text()) {
 				k.SetText("")
 			}
 			return true
@@ -300,7 +308,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 		v.typed, v.pasted = v.draft, false
 		ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 			iconButton(c, "paperclip", "添加附件（暂不支持）").Opacity(0.4)
-			if iconButton(c, "at", "引用其他会话（@）").Clicked() {
+			if iconButton(c, "at", "引用文件或会话（@）").Clicked() {
 				s.openPull(x.ID, -1)
 			}
 			s.modelControls(c, x, running)
@@ -315,7 +323,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 				return
 			}
 			bg := t.Accent
-			empty := strings.TrimSpace(v.draft) == "" && len(drafts) == 0
+			empty := strings.TrimSpace(v.draft) == "" && len(drafts) == 0 && len(v.mentions) == 0
 			if empty {
 				bg = t.Border
 			}

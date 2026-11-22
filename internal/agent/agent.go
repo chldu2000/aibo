@@ -173,6 +173,26 @@ type Session interface {
 type Turn struct {
 	// Text is what the Agent receives.
 	Text string
+	// Files are the files and directories the user mentioned, which the
+	// adapter puts after Text as its Agent takes them (ADR 0004): only
+	// their paths, for the Agent to read itself.
+	Files []FileMention
+}
+
+// FileMention is a file or directory the user mentioned in a message.
+type FileMention struct {
+	// Path is absolute; Rel is relative to the session's workspace, ""
+	// when it is outside it (in a source workspace).
+	Path, Rel string
+	Dir       bool
+}
+
+// Name is how a mention is written to an Agent: Rel, or else Path.
+func (f FileMention) Name() string {
+	if f.Rel != "" {
+		return f.Rel
+	}
+	return f.Path
 }
 
 // Event is one thing a native session reports.

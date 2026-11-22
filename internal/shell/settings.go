@@ -159,6 +159,13 @@ func (s *Shell) generalSettings(c *ui.Context) {
 			}
 		}
 	})
+	field(c, "文件引用时包括被 .gitignore 忽略的文件", "在输入框里用 @ 引用文件时，也列出 git 忽略的文件（例如构建产物）。", func() {
+		on := st.MentionIgnored
+		if ui.Switch(c, &on).Label("文件引用时包括被忽略的文件（开关）").Changed() {
+			st.MentionIgnored = on
+			s.saveSettings(st)
+		}
+	})
 	field(c, "有待审批时发系统通知", "不在屏幕上的会话需要审批时提醒你。", func() {
 		on := st.Notify
 		if ui.Switch(c, &on).Label("有待审批时发系统通知（开关）").Changed() {

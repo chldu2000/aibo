@@ -263,7 +263,7 @@ func TestPullReferenceWithAt(t *testing.T) {
 	click("给 假 Agent 发消息")
 	tt.Type("按这个写 @")
 	tt.Frame()
-	shows("引用其他会话")
+	shows("引用文件或会话")
 	tt.Type("迁移") // the search has the focus
 	tt.Frame()
 	if tt.HasText("选择 新会话") {
@@ -306,7 +306,7 @@ func TestPullReferenceWithAt(t *testing.T) {
 
 	// The @ button opens the panel too, and Back returns to the search.
 	tt.Frame()
-	click("引用其他会话（@）")
+	click("引用文件或会话（@）")
 	click("选择 问：迁移的风险")
 	click("返回搜索")
 	shows("选择 问：迁移的风险")
@@ -336,7 +336,7 @@ func TestTypeLiteralAt(t *testing.T) {
 	tt.Frame()
 	panelOpen := func() bool {
 		for _, s := range tt.Texts() {
-			if s == "引用其他会话" { // the @ panel's title
+			if s == "引用文件或会话" { // the @ panel's title
 				return true
 			}
 		}

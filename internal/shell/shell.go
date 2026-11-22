@@ -122,6 +122,8 @@ type sessionView struct {
 	// typed is the draft as the composer last saw it, to notice an "@"
 	// typed into it.
 	typed string
+	// mentions are the files the draft mentions.
+	mentions []model.Mention
 	// pasted is set by a paste into the draft, which is not typing.
 	pasted bool
 	// sel is selection mode.
@@ -279,12 +281,19 @@ func (s *Shell) newSession(ws model.Workspace, kind agent.Kind) {
 
 // send sends the session's draft.
 func (s *Shell) send(id string, text string) bool {
-	if err := s.wb.Send(id, text); err != nil {
+	var mentions []model.Mention
+	if v := s.views[id]; v != nil {
+		mentions = v.mentions
+	}
+	if err := s.wb.SendWithFiles(id, text, mentions); err != nil {
 		// A native session that cannot be resumed has its own banner.
 		if !errors.Is(err, agent.ErrResumeFailed) && !errors.Is(err, workbench.ErrNeedsRecovery) && !errors.Is(err, agents.ErrNotLoggedIn) {
 			s.notice = err.Error()
 		}
 		return false
+	}
+	if v := s.views[id]; v != nil {
+		v.mentions = nil
 	}
 	return true
 }

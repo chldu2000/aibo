@@ -184,3 +184,19 @@ func TestRecordedMessagesAreKnown(t *testing.T) {
 		t.Errorf("logged as unknown:\n%s", buf.String())
 	}
 }
+
+// Files go after the text as Claude Code reads them itself: @path,
+// quoted with a space, absolute outside the workspace.
+func TestTurnWithFiles(t *testing.T) {
+	got := withFiles(agent.Turn{Text: "看看这些", Files: []agent.FileMention{
+		{Path: "/w/src/main.go", Rel: "src/main.go"},
+		{Path: "/w/my notes.txt", Rel: "my notes.txt"},
+		{Path: "/other/lib/", Dir: true},
+	}})
+	if want := "看看这些\n\n提到的文件：\n@src/main.go\n@\"my notes.txt\"\n@/other/lib/"; got != want {
+		t.Errorf("text = %q, want %q", got, want)
+	}
+	if withFiles(agent.Turn{Text: "hi"}) != "hi" {
+		t.Error("no files, other text")
+	}
+}

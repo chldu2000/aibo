@@ -496,7 +496,7 @@ func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 		text = "（关于我刚才拒绝的操作，说明一下：" + s.note + "）\n\n" + text
 		s.note = ""
 	}
-	params := s.turnParams(text)
+	params := s.turnParams(withFiles(text, turn.Files))
 	s.mu.Unlock()
 	var res struct {
 		Turn struct {
@@ -605,6 +605,25 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 	}
 	s.mu.Unlock()
 	return s.srv.send(map[string]any{"id": k.rpcID, "result": result})
+}
+
+// withFiles is text with the files the user mentioned after it: Codex
+// takes no file as input (a "mention" item shows the model nothing,
+// research/07), so it reads them itself.
+func withFiles(text string, files []agent.FileMention) string {
+	if len(files) == 0 {
+		return text
+	}
+	var b strings.Builder
+	b.WriteString(text)
+	b.WriteString("\n\n提到的文件（需要时请自己读取）：")
+	for _, f := range files {
+		b.WriteString("\n- " + f.Name())
+		if f.Dir {
+			b.WriteString("（目录）")
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // turnParams are turn/start's for text, with what changed since the last

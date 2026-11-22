@@ -120,6 +120,7 @@ type AgentInfo struct {
 type Workbench struct {
 	// log is the diagnostic log: never what the user or the Agent said.
 	log       *slog.Logger
+	fileLists fileLists
 	st        *store.Store
 	mcp       *mcpserver.Server
 	agents    []agent.Agent

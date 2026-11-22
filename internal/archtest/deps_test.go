@@ -22,11 +22,12 @@ var allowed = map[string][]string{
 	"internal/agents":       {"internal/agent", "internal/agent/claude", "internal/agent/codex"},
 	"internal/appdata":      {},
 	"internal/diag":         {},
+	"internal/files":        {},
 	"internal/model":        {"internal/agent"},
 	"internal/refs":         {"internal/agent", "internal/model"},
 	"internal/store":        {"internal/agent", "internal/model"},
 	"internal/mcpserver":    {"internal/refs"},
-	"internal/workbench":    {"internal/agent", "internal/mcpserver", "internal/model", "internal/refs", "internal/store"},
+	"internal/workbench":    {"internal/agent", "internal/files", "internal/mcpserver", "internal/model", "internal/refs", "internal/store"},
 	"internal/shell":        {"internal/agent", "internal/agents", "internal/appdata", "internal/model", "internal/refs", "internal/workbench"},
 	"internal/contract":     nil, // tests only
 	"internal/archtest":     nil, // tests only

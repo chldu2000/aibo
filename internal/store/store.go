@@ -460,7 +460,7 @@ func (s *Store) messages(sessionID string) ([]model.Message, error) {
 			if err := json.Unmarshal([]byte(det.String), &d); err != nil {
 				return nil, fmt.Errorf("store: message #%d: %w", m.Seq, err)
 			}
-			m.Tool, m.Plan, m.Children = d.Tool, d.Plan, d.Children
+			m.Tool, m.Plan, m.Children, m.Mentions = d.Tool, d.Plan, d.Children, d.Mentions
 		}
 		m.Kind, m.State = model.MessageKind(kind), model.MessageState(state)
 		if raw.Valid {
@@ -602,13 +602,14 @@ type detail struct {
 	Tool     *model.Tool      `json:"tool,omitempty"`
 	Plan     []agent.PlanItem `json:"plan,omitempty"`
 	Children []model.Message  `json:"children,omitempty"`
+	Mentions []model.Mention  `json:"mentions,omitempty"`
 }
 
 func detailOf(m model.Message) any {
-	if m.Tool == nil && m.Plan == nil && m.Children == nil {
+	if m.Tool == nil && m.Plan == nil && m.Children == nil && m.Mentions == nil {
 		return nil
 	}
-	b, err := json.Marshal(detail{Tool: m.Tool, Plan: m.Plan, Children: m.Children})
+	b, err := json.Marshal(detail{Tool: m.Tool, Plan: m.Plan, Children: m.Children, Mentions: m.Mentions})
 	if err != nil {
 		return nil
 	}

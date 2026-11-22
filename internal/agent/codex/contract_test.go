@@ -230,3 +230,22 @@ func TestContractModelAndEffort(t *testing.T) {
 		t.Errorf("resumed: %q %q, want %q %q", st.Model, st.Effort, m.ID, effort)
 	}
 }
+
+// A file mentioned reaches Codex as its path, which it reads itself.
+func TestContractFileMention(t *testing.T) {
+	path := contract(t)
+	ws := t.TempDir()
+	os.WriteFile(filepath.Join(ws, "notes.txt"), []byte("the secret word is pelican\n"), 0o644)
+	e := openEnv(t, t.TempDir(), path)
+	defer e.Close()
+	w, _ := e.AddWorkspace(ws)
+	s, _ := e.NewSession(w.ID, codex.Kind, "")
+	m := model.Mention{Path: filepath.Join(ws, "notes.txt"), WorkspaceID: w.ID}
+	if err := e.SendWithFiles(s.ID, "What is the secret word in the file I mention? Reply with only the word.", []model.Mention{m}); err != nil {
+		t.Fatal(err)
+	}
+	ms := e.idle(t, s.ID)
+	if r := lastReply(ms); !strings.Contains(strings.ToLower(r.Text), "pelican") {
+		t.Errorf("replied %q", r.Text)
+	}
+}

@@ -19,6 +19,8 @@ type Settings struct {
 	DefaultLevel string `json:",omitempty"`
 	// Notify notifies of approval requests of sessions not on screen.
 	Notify bool
+	// MentionIgnored lists the files git ignores too, for mentions.
+	MentionIgnored bool `json:",omitempty"`
 	// Budgets are the read tools' page sizes.
 	Budgets refs.Budgets
 	// IdleTimeout is how long a native session runs without a turn

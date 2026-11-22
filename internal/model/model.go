@@ -109,11 +109,23 @@ type Message struct {
 	// Refs are the IDs of the references a user message delivered, in
 	// the order their blocks preceded its text.
 	Refs []string
+	// Mentions are the files a user message mentioned (ADR 0004).
+	Mentions []Mention `json:",omitempty"`
 	// Raw is the Agent's own event the message came from, for internal
 	// use only.
 	Raw        json.RawMessage
 	CreatedAt  time.Time
 	FinishedAt time.Time
+}
+
+// Mention is a file or directory a user message mentioned: only its path,
+// which the Agent reads itself; not a snapshot, as a reference is.
+type Mention struct {
+	// Path is absolute. WorkspaceID is the workspace it is in: the
+	// session's own, or a source workspace it may read.
+	Path        string
+	WorkspaceID string
+	Dir         bool `json:",omitempty"`
 }
 
 // Tool is a tool call: what the Agent called, and what came back.

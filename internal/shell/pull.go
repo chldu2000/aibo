@@ -23,6 +23,8 @@ type pull struct {
 	// opened it.
 	at int
 	in string
+	// files are the files matching the search.
+	files fileSearch
 	// source is the session chosen, with its own view for choosing
 	// messages; nil while searching.
 	source *model.Session
@@ -93,14 +95,18 @@ func (s *Shell) pullPanel(c *ui.Context, x model.Session) {
 	}
 }
 
-// pullSearch finds the source session by its title.
+// pullSearch finds the files to mention by their paths, and the source
+// session by its title.
 func (s *Shell) pullSearch(c *ui.Context, x model.Session) {
 	t := c.Theme()
-	ui.Text(c, "引用其他会话").Bold().FontSize(15).TextColor(t.Text)
-	ui.TextInput(c, &s.pull.query).Placeholder("按标题搜索会话").Label("搜索会话").AutoFocus()
+	ui.Text(c, "引用文件或会话").Bold().FontSize(15).TextColor(t.Text)
+	ui.TextInput(c, &s.pull.query).Placeholder("按路径搜索文件，或按标题搜索会话").Label("搜索文件或会话").AutoFocus()
+	s.matchFiles(x.ID, strings.TrimSpace(s.pull.query))
 	q := strings.ToLower(strings.TrimSpace(s.pull.query))
 	ui.Scroll(c).Grow(1).Children(func() {
 		ui.Column(c).Gap(2).Children(func() {
+			s.pullFiles(c, x)
+			ui.Text(c, "会话").FontSize(11).Bold().TextColor(t.TextMuted).Padding(10, 8, 2)
 			found := false
 			// Every session, archived ones and those of removed
 			// workspaces too, the most recent first.

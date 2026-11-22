@@ -202,3 +202,29 @@ func TestContractModelAndEffort(t *testing.T) {
 		t.Errorf("resumed on %q %q", st.Model, st.Effort)
 	}
 }
+
+// A file mentioned reaches Claude Code as @path, which it reads by itself.
+func TestContractFileMention(t *testing.T) {
+	path := contract(t)
+	ws := t.TempDir()
+	os.WriteFile(filepath.Join(ws, "my notes.txt"), []byte("the secret word is pelican\n"), 0o644)
+	e := openEnv(t, t.TempDir(), path)
+	defer e.Close()
+	w, _ := e.AddWorkspace(ws)
+	s, _ := e.NewSession(w.ID, claude.Kind, contractModel)
+	m := model.Mention{Path: filepath.Join(ws, "my notes.txt"), WorkspaceID: w.ID}
+	if err := e.SendWithFiles(s.ID, "What is the secret word in the file I mention? Do not use any tools. Reply with only the word.", []model.Mention{m}); err != nil {
+		t.Fatal(err)
+	}
+	e.until(t, "the turn to end", func() bool { return !e.Status(s.ID).Running })
+	ms, _ := e.Messages(s.ID)
+	last := ms[len(ms)-1]
+	if !strings.Contains(strings.ToLower(last.Text), "pelican") {
+		t.Errorf("replied %q", last.Text)
+	}
+	for _, x := range ms {
+		if x.Kind == model.ToolCall {
+			t.Errorf("it used %s", x.Tool.Name)
+		}
+	}
+}

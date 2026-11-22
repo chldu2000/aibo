@@ -87,3 +87,11 @@ func TestTurnCarriesModelAndEffort(t *testing.T) {
 		t.Errorf("then: %v", p)
 	}
 }
+
+// Files go after the text as paths, for Codex to read itself.
+func TestTurnWithFiles(t *testing.T) {
+	got := withFiles("看看这些", []agent.FileMention{{Path: "/w/src/main.go", Rel: "src/main.go"}, {Path: "/other/lib/", Dir: true}})
+	if want := "看看这些\n\n提到的文件（需要时请自己读取）：\n- src/main.go\n- /other/lib/（目录）"; got != want {
+		t.Errorf("text = %q, want %q", got, want)
+	}
+}

@@ -237,7 +237,7 @@ func (s *session) Send(_ context.Context, turn agent.Turn) error {
 		return errors.New("Claude Code 正在回复")
 	}
 	s.running = true
-	err := s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": turn.Text}})
+	err := s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": withFiles(turn)}})
 	if err != nil {
 		s.running = false
 	}
@@ -434,6 +434,28 @@ func (s *session) SetModel(_ context.Context, model, effort string) error {
 		return err
 	}
 	return s.control("settings", map[string]any{"subtype": "get_settings"})
+}
+
+// withFiles is a turn's text with its files after it, as Claude Code
+// reads them itself: @path, quoted when it has a space (research/07).
+func withFiles(turn agent.Turn) string {
+	if len(turn.Files) == 0 {
+		return turn.Text
+	}
+	var b strings.Builder
+	b.WriteString(turn.Text)
+	// Each on a line of its own: Claude Code reads an @ only after a
+	// space or at the start of a line, not after "：".
+	b.WriteString("\n\n提到的文件：")
+	for _, f := range turn.Files {
+		b.WriteString("\n")
+		name := f.Name()
+		if strings.ContainsAny(name, " \t\"") {
+			name = `"` + strings.ReplaceAll(name, `"`, `\"`) + `"`
+		}
+		b.WriteString("@" + name)
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // Compact sends /compact, which Claude Code runs as a turn reporting
