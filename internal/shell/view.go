@@ -48,18 +48,26 @@ func (s *Shell) View(c *ui.Context) {
 	}
 }
 
+// The floating header of the session area spans these, from the top.
+const headerTop, headerBottom = 12, 58
+
 // pane is the session area: the messages under a floating glass header,
 // and the composer.
 func (s *Shell) pane(c *ui.Context) {
 	t := c.Theme()
+	bar := c.TitleBar()
 	x, ok := s.wb.Session(s.current)
 	if !ok {
-		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			if s.opts.Only != "" {
-				ui.Text(c, "这个会话已被删除，可以关闭这个窗口").TextColor(t.TextMuted)
-				return
-			}
-			ui.Text(c, "在左侧选一个会话，或在工作区上点“＋”新建").TextColor(t.TextMuted)
+		ui.Box(c).Fill().Children(func() {
+			ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+				if s.opts.Only != "" {
+					ui.Text(c, "这个会话已被删除，可以关闭这个窗口").TextColor(t.TextMuted)
+					return
+				}
+				ui.Text(c, "在左侧选一个会话，或在工作区上点“＋”新建").TextColor(t.TextMuted)
+			})
+			// Nothing to scroll here: the whole header band moves the window.
+			ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(max(bar.Height, headerBottom)).DragWindow()
 		})
 		return
 	}
@@ -78,12 +86,17 @@ func (s *Shell) pane(c *ui.Context) {
 			})
 		})
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(80).PassThrough().Material(glass.ScrollEdge{})
-		// A session's own window has the traffic lights over its area.
+		// The window moves by the floating header and the gap above it;
+		// a session's own window has the traffic lights over its area,
+		// left of the header, and moves by that corner too. The messages
+		// under the rest of the header's band still scroll.
 		left := float32(16)
 		if s.opts.Only != "" {
-			left = 84
+			left = max(left, bar.Left+12)
+			ui.Box(c).Absolute().Top(0).Left(0).Width(left).Height(headerBottom).DragWindow()
 		}
-		ui.Row(c).Absolute().Top(12).Left(left).Right(16).Height(46).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
+		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(headerTop).DragWindow()
+		ui.Row(c).Absolute().Top(headerTop).Left(left).Right(16).Height(headerBottom-headerTop).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).DragWindow().Children(func() {
 			agentGlyph(c, x.Agent, 20)
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1)
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Grow(1)

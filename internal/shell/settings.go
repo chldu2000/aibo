@@ -55,7 +55,8 @@ func (s *Shell) settingsModal(c *ui.Context) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.25))
 		panel.Radius(18).Shadow(0, 12, 40, 0, ui.RGBA(0, 0, 0, 0.3))
 		ui.Column(c).Width(620).Gap(14).Padding(20).Radius(18).Material(glass.Glass{}).Children(func() {
-			ui.Row(c).AlignItems(ui.Center).Children(func() {
+			// The window still moves while the settings cover it.
+			ui.Row(c).AlignItems(ui.Center).DragWindow().Children(func() {
 				ui.Text(c, "设置").Bold().FontSize(16).TextColor(t.Text).Grow(1)
 				if iconButton(c, "xmark", "关闭设置").Clicked() {
 					s.settings.open = false

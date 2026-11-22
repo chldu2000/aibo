@@ -30,7 +30,9 @@ func (s *Shell) sidebar(c *ui.Context) {
 	t := c.Theme()
 	ui.Box(c).Fill().Padding(8).Children(func() {
 		ui.Column(c).Fill().Radius(16).Material(glass.Glass{Native: true}).Children(func() {
-			ui.Column(c).Gap(6).Padding(40, 10, 4).Children(func() {
+			// The header, from under the traffic lights, moves the window;
+			// its search and buttons take their own presses.
+			ui.Column(c).Gap(6).Padding(max(c.TitleBar().Bottom+6, 10), 10, 4).DragWindow().Children(func() {
 				ui.Row(c).Padding(0, 6, 4).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, "aibo").Bold().FontSize(15).TextColor(t.Text)
 					ui.Spacer(c)

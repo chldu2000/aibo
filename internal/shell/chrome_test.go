@@ -275,3 +275,56 @@ func TestSessionWindow(t *testing.T) {
 		t.Errorf("deleted: %q", win2.Texts())
 	}
 }
+
+// The window moves by its title bar band: the sidebar's header, under the
+// traffic lights, and the session area's floating header, right of them
+// in a session's own window. What sits there still takes its presses.
+// (The Tester does not show the drags themselves: see issue 04.)
+func TestTitleBarBand(t *testing.T) {
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(nil)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	bar := ui.TitleBar{Height: 52, Left: 70, Bottom: 33}
+	find := func(tt *ui.Tester, label string) ui.Rect {
+		t.Helper()
+		r, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("no %q in %q", label, tt.Texts())
+		}
+		return r
+	}
+
+	main := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 800)
+	main.SetTitleBar(bar)
+	if r := find(main, "aibo"); r.Y < bar.Bottom {
+		t.Errorf("the sidebar's title at y=%v, under the traffic lights (to %v)", r.Y, bar.Bottom)
+	}
+	if err := main.Click("会话详情"); err != nil {
+		t.Fatal(err)
+	}
+	main.Frame()
+	if !main.HasText("关闭会话详情") {
+		t.Errorf("the header's button did nothing: %q", main.Texts())
+	}
+	if err := main.Click("搜索会话"); err != nil {
+		t.Fatal(err)
+	}
+	main.Type("无此会话")
+	main.Frame()
+	if !main.HasText("没有找到") {
+		t.Errorf("the sidebar's search took no text: %q", main.Texts())
+	}
+
+	own := ui.NewTester(shell.New(wb, shell.Options{Only: s.ID}).View, 860, 760)
+	own.SetTitleBar(bar)
+	if r := find(own, "会话详情"); r.X <= bar.Left {
+		t.Errorf("the header's button at x=%v, under the traffic lights (to %v)", r.X, bar.Left)
+	}
+	if r := find(own, "新会话"); r.X <= bar.Left {
+		t.Errorf("the session's title at x=%v, under the traffic lights (to %v)", r.X, bar.Left)
+	}
+}
