@@ -3,8 +3,10 @@ package shell
 import (
 	"fmt"
 
+	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/egoist/mygo/plugins/glass"
+	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -163,6 +165,11 @@ func (s *Shell) marks(c *ui.Context, x model.Session) {
 		ui.Text(c, "运行中").FontSize(11).TextColor(t.TextMuted)
 	case st.Error != "" || st.ResumeFailed != "" || st.NeedsLogin:
 		ui.Text(c, "出错").FontSize(11).Bold().TextColor(t.Danger).Tooltip(firstOf(st.ResumeFailed, st.Error, "Agent 未登录"))
+	}
+	if x.Level == agent.FullAuto {
+		ui.Box(c).Label("全部自动 · " + sessionTitle(x)).Tooltip("全部自动：Agent 的所有操作都不再询问").Children(func() {
+			sfsymbols.Symbol(c, "exclamationmark.shield").Size(12).Color(t.Warning)
+		})
 	}
 	if n := s.wb.Received(x.ID); n > 0 {
 		ui.Text(c, fmt.Sprintf("引用 %d", n)).FontSize(11).TextColor(t.TextMuted).Tooltip(fmt.Sprintf("收到 %d 个引用", n))

@@ -243,16 +243,6 @@ func (s *Shell) banners(c *ui.Context, id string) {
 	if s.notice != "" {
 		bar(s.notice, func() { s.notice = "" })
 	}
-	if x, ok := s.wb.Session(id); ok && x.Level == agent.FullAuto {
-		// A warning that stays while the level does.
-		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
-			sfsymbols.Symbol(c, "exclamationmark.shield").Size(14).Color(c.Theme().Warning)
-			ui.Text(c, "全部自动：这个会话里 Agent 的所有操作都不再询问").TextColor(c.Theme().Text).Grow(1)
-			if ui.Button(c, "改回每次询问").Clicked() {
-				s.setLevel(id, agent.AskAlways)
-			}
-		})
-	}
 	if v := s.views[id]; v != nil && v.highlight[0] > 0 {
 		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(40, 120, 255, 0.25))}).Children(func() {
 			ui.Text(c, "已高亮被引用的范围 "+refs.Range(v.highlight[0], v.highlight[1])).TextColor(c.Theme().Text).Grow(1)

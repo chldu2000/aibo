@@ -169,12 +169,33 @@ func TestApprovalLevelsRulesAndNotifications(t *testing.T) {
 		t.Error("full auto without confirming")
 	}
 	click("确定全部自动")
-	if level() != agent.FullAuto || !tt.HasText("全部自动：这个会话里 Agent 的所有操作都不再询问") {
-		t.Fatalf("level = %q; %q", level(), tt.Texts())
+	if level() != agent.FullAuto {
+		t.Fatalf("level = %q", level())
 	}
-	click("改回每次询问")
-	if level() != agent.AskAlways || tt.HasText("全部自动：这个会话里") {
+	// No banner: the level button and the sidebar's row warn instead.
+	if tt.HasText("这个会话里 Agent 的所有操作都不再询问") || tt.HasText("改回每次询问") {
+		t.Errorf("a banner for full auto: %q", tt.Texts())
+	}
+	for _, l := range []string{"审批档位：全部自动", "全部自动 · 新会话"} {
+		if _, ok := tt.Find(l); !ok {
+			t.Errorf("no %q: %q", l, tt.Texts())
+		}
+	}
+	if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
+		saveImage(t, tt.Image(), filepath.Join(p, "09-light.png"))
+		tt.SetDark(true)
+		frame()
+		saveImage(t, tt.Image(), filepath.Join(p, "09-dark.png"))
+		tt.SetDark(false)
+		frame()
+	}
+	click("审批档位：全部自动")
+	click("每次询问")
+	if level() != agent.AskAlways {
 		t.Errorf("after changing back: %q", level())
+	}
+	if _, ok := tt.Find("全部自动 · 新会话"); ok {
+		t.Error("the sidebar still warns")
 	}
 
 	// The background session asks: a badge and a notification.

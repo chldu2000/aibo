@@ -40,18 +40,26 @@ type levelState struct {
 func (s *Shell) levelControl(c *ui.Context, x model.Session) {
 	t := c.Theme()
 	st := &s.level
-	b := ui.Row(c).Gap(4).Padding(4, 8).Radius(8).AlignItems(ui.Center).Label("审批档位：" + levelName(x.Level)).Tooltip("审批档位：点击更改").Children(func() {
-		symbol := "checkmark.shield"
-		if x.Level == agent.FullAuto {
-			symbol = "exclamationmark.shield"
-		}
-		sfsymbols.Symbol(c, symbol).Size(13).Color(t.TextMuted)
-		ui.Text(c, levelName(x.Level)).FontSize(12).TextColor(t.TextMuted)
+	// Full auto warns here, in orange, rather than in a banner that would
+	// take the messages' room for as long as it lasts.
+	auto := x.Level == agent.FullAuto
+	symbol, color, tip := "checkmark.shield", t.TextMuted, "审批档位：点击更改"
+	if auto {
+		symbol, color, tip = "exclamationmark.shield", t.Warning, "全部自动：Agent 的所有操作都不再询问，包括工作区以外。点击更改"
+	}
+	b := ui.Row(c).Gap(4).Padding(4, 8).Radius(8).AlignItems(ui.Center).Label("审批档位：" + levelName(x.Level)).Tooltip(tip).Children(func() {
+		sfsymbols.Symbol(c, symbol).Size(13).Color(color)
+		ui.Text(c, levelName(x.Level)).FontSize(12).TextColor(color)
 		if n := len(x.Rules); n > 0 {
-			ui.Text(c, fmt.Sprintf("· %d 条规则", n)).FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, fmt.Sprintf("· %d 条规则", n)).FontSize(12).TextColor(color)
 		}
 	})
-	if b.Hovered() {
+	switch {
+	case auto && b.Hovered():
+		b.Background(tinted(c, ui.RGBA(255, 150, 0, 0.28)))
+	case auto:
+		b.Background(tinted(c, ui.RGBA(255, 150, 0, 0.18)))
+	case b.Hovered():
 		b.Background(t.SurfaceHover)
 	}
 	if b.Clicked() {
