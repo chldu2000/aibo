@@ -108,6 +108,9 @@ func (s *Shell) generalSettings(c *ui.Context) {
 			if s.opts.MoveDataDir != nil && ui.Button(c, "更改…").Disabled(s.settings.moving).Clicked() {
 				s.chooseDataDir()
 			}
+			if s.opts.OpenLogs != nil && ui.Button(c, "打开日志目录").Tooltip("诊断日志：会话和 Agent 发生了什么，不含对话内容").Clicked() {
+				s.opts.OpenLogs()
+			}
 		})
 		if s.settings.moving {
 			ui.Text(c, "正在搬移数据，完成后 aibo 会重新启动……").FontSize(12).TextColor(t.TextMuted)

@@ -28,6 +28,7 @@ func (w *Workbench) SetModel(sessionID, model, effort string) error {
 	}
 	s.info.Model, s.info.Effort = model, effort
 	native := s.native
+	w.log.Info("model set", "session", sessionID, "model", model, "effort", effort, "connected", native != nil)
 	if native == nil {
 		// What it last said no longer holds; it says again as it starts.
 		s.reported = agent.SettingsReported{}

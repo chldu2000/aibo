@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -32,7 +33,15 @@ type Agent struct {
 	// its process.
 	path string
 	env  []string
+	log  *slog.Logger
 	srv  *server // nil until the first session, or after it exited
+}
+
+// SetLog sets the diagnostic log of the app-servers to come.
+func (a *Agent) SetLog(log *slog.Logger) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.log = log
 }
 
 // Configure sets the executable and the environment of the app-server
@@ -122,7 +131,11 @@ func (a *Agent) server(ctx context.Context) (*server, error) {
 	if a.path == "" {
 		return nil, errors.New("没有找到 Codex")
 	}
-	srv, err := startServer(ctx, a.path, a.env, func(s *server) {
+	log := a.log
+	if log == nil {
+		log = agent.Discard
+	}
+	srv, err := startServer(ctx, a.path, a.env, log, func(s *server) {
 		a.mu.Lock()
 		if a.srv == s {
 			a.srv = nil
@@ -138,10 +151,14 @@ func (a *Agent) server(ctx context.Context) (*server, error) {
 
 // server is a running app-server.
 type server struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stderr tail
-	onIdle func(*server)
+	// log is the diagnostic log; unknown the notifications it did not
+	// know, logged once.
+	log     *slog.Logger
+	unknown map[string]bool
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	stderr  tail
+	onIdle  func(*server)
 	// onAccount gets the notifications of the account: sign-ins and
 	// their end.
 	onAccount func(method string, params json.RawMessage)
@@ -173,7 +190,7 @@ type message struct {
 	} `json:"error,omitempty"`
 }
 
-func startServer(ctx context.Context, path string, env []string, onIdle func(*server), onAccount func(string, json.RawMessage)) (*server, error) {
+func startServer(ctx context.Context, path string, env []string, log *slog.Logger, onIdle func(*server), onAccount func(string, json.RawMessage)) (*server, error) {
 	cmd := exec.Command(path, "app-server")
 	cmd.Env = append(os.Environ(), env...)
 	stdin, err := cmd.StdinPipe()
@@ -184,11 +201,14 @@ func startServer(ctx context.Context, path string, env []string, onIdle func(*se
 	if err != nil {
 		return nil, err
 	}
-	s := &server{cmd: cmd, stdin: stdin, onIdle: onIdle, onAccount: onAccount, pending: map[int]chan response{}, sessions: map[string]*session{}, exited: make(chan struct{})}
-	cmd.Stderr = &s.stderr
+	s := &server{log: log, cmd: cmd, stdin: stdin, onIdle: onIdle, onAccount: onAccount, pending: map[int]chan response{}, sessions: map[string]*session{}, exited: make(chan struct{})}
+	cmd.Stderr = io.MultiWriter(&s.stderr, &agent.LineLog{Log: log})
 	if err := cmd.Start(); err != nil {
+		log.Warn("app-server did not start", "error", err.Error())
 		return nil, fmt.Errorf("启动 Codex app-server 失败：%w", err)
 	}
+	s.log = log.With("pid", cmd.Process.Pid)
+	s.log.Info("app-server started")
 	go s.read(stdout)
 	init := map[string]any{"clientInfo": map[string]any{"name": "aibo", "version": "0.1"}, "capabilities": map[string]any{"experimentalApi": true}}
 	if err := s.call(ctx, "initialize", init, nil); err != nil {
@@ -319,6 +339,11 @@ func (s *server) read(stdout io.Reader) {
 		}
 	}
 	err := s.cmd.Wait()
+	exit := "ok"
+	if err != nil {
+		exit = err.Error()
+	}
+	s.log.Info("app-server exited", "exit", exit)
 	s.mu.Lock()
 	s.dead = true
 	sessions := s.sessions
@@ -355,12 +380,14 @@ func (s *server) request(id json.RawMessage, method string, params json.RawMessa
 	if sess != nil && sess.ask(id, method, params) {
 		return
 	}
+	s.log.Warn("unknown request", "method", method, "fields", agent.Shape(params))
 	s.send(map[string]any{"id": id, "error": map[string]any{"code": -32601, "message": "aibo 不支持 " + method}})
 }
 
 // notify passes a notification to the session of its thread, and those
 // of the account to the Agent.
 func (s *server) notify(method string, params json.RawMessage) {
+	s.logNotice(method, params)
 	if strings.HasPrefix(method, "account/") && s.onAccount != nil {
 		s.onAccount(method, params)
 		return

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +33,14 @@ type Agent struct {
 	// its processes.
 	path string
 	env  []string
+	log  *slog.Logger
+}
+
+// SetLog sets the diagnostic log of the sessions to come.
+func (a *Agent) SetLog(log *slog.Logger) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.log = log
 }
 
 // Configure sets the executable and the environment its sessions start
@@ -115,8 +124,11 @@ const tokenVar = "AIBO_MCP_TOKEN"
 
 func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Session, error) {
 	a.mu.Lock()
-	path, env := a.path, a.env
+	path, env, log := a.path, a.env, a.log
 	a.mu.Unlock()
+	if log == nil {
+		log = agent.Discard
+	}
 	if path == "" {
 		return nil, errors.New("没有找到 Claude Code")
 	}
@@ -135,10 +147,14 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 		return nil, err
 	}
 	s := &session{cmd: cmd, stdin: stdin, events: make(chan agent.Event, 256), parser: newParser(), exited: make(chan struct{}), ready: make(chan struct{})}
-	cmd.Stderr = &s.stderr
+	s.parser.log = log
+	cmd.Stderr = io.MultiWriter(&s.stderr, &agent.LineLog{Log: log})
 	if err := cmd.Start(); err != nil {
+		log.Warn("process did not start", "error", err.Error())
 		return nil, fmt.Errorf("启动 Claude Code 失败：%w", err)
 	}
+	s.log = log.With("pid", cmd.Process.Pid)
+	s.log.Info("process started", "resume", opts.ResumeID != "", "model", opts.Model, "mode", opts.Mode)
 	go s.read(stdout)
 	// The control protocol starts with initialize, which Claude Code
 	// answers once the session is ready: a session it cannot resume ends
@@ -190,6 +206,8 @@ type session struct {
 	// what it reported before, failing to start.
 	ready    chan struct{}
 	startErr string
+
+	log *slog.Logger
 
 	mu      sync.Mutex
 	parser  *parser
@@ -306,6 +324,11 @@ func (s *session) read(stdout io.Reader) {
 	err := s.cmd.Wait()
 	s.mu.Lock()
 	running, closing := s.running, s.closing
+	exit := "ok"
+	if err != nil {
+		exit = err.Error()
+	}
+	s.log.Info("process exited", "exit", exit, "closing", closing, "during_turn", running)
 	s.running = false
 	s.mu.Unlock()
 	if running {

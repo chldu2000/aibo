@@ -185,6 +185,7 @@ func (w *Workbench) SetMode(sessionID, mode string) error {
 	}
 	s.info.Mode = mode
 	native := s.native
+	w.log.Info("mode set", "session", sessionID, "mode", mode, "connected", native != nil)
 	w.mu.Unlock()
 	if native != nil && mode != "" {
 		if err := native.SetMode(context.Background(), mode); err != nil {

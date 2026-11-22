@@ -21,6 +21,7 @@ var allowed = map[string][]string{
 	"internal/agent/fake":   {"internal/agent"},
 	"internal/agents":       {"internal/agent", "internal/agent/claude", "internal/agent/codex"},
 	"internal/appdata":      {},
+	"internal/diag":         {},
 	"internal/model":        {"internal/agent"},
 	"internal/refs":         {"internal/agent", "internal/model"},
 	"internal/store":        {"internal/agent", "internal/model"},

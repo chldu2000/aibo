@@ -2,8 +2,11 @@ package claude
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -125,5 +128,59 @@ func TestModes(t *testing.T) {
 	}
 	if !ms[0].Default || ms[5].Risk != agent.Danger || !ms[2].ReadOnly {
 		t.Errorf("modes = %+v", ms)
+	}
+}
+
+// A message the adapter does not know goes to the diagnostic log as its
+// type and its fields' names; one it knows and ignores does not. (The
+// unknown ones are made up.)
+func TestUnknownMessagesLogged(t *testing.T) {
+	var buf bytes.Buffer
+	p := newParser()
+	p.log = slog.New(slog.NewTextHandler(&buf, nil))
+	for _, l := range []string{
+		`{"type":"brand_new","text":"the secret word is pelican"}`,
+		`{"type":"system","subtype":"brand_new_subtype","detail":"walrus"}`,
+		`{"type":"control_request","request_id":"r","request":{"subtype":"elicit","prompt":"walrus"}}`,
+		`{"type":"system","subtype":"status","status":"compacting"}`,
+		`{"type":"rate_limit_event","rate_limit_info":{}}`,
+		`{"type":"system","subtype":"commands_changed","commands":[]}`,
+	} {
+		if evs := p.line([]byte(l)); len(evs) != 0 {
+			t.Errorf("%s → %v", l, evs)
+		}
+	}
+	log := buf.String()
+	for _, want := range []string{"type=brand_new subtype=\"\" fields=text,type", "subtype=brand_new_subtype", "subtype=elicit"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("the log lacks %q:\n%s", want, log)
+		}
+	}
+	if strings.Count(log, "unknown message") != 3 || strings.Contains(log, "pelican") || strings.Contains(log, "walrus") {
+		t.Errorf("log:\n%s", log)
+	}
+}
+
+// Everything Claude Code was recorded saying is known: none of it goes to
+// the log as unknown.
+func TestRecordedMessagesAreKnown(t *testing.T) {
+	files, _ := filepath.Glob("testdata/*.jsonl")
+	var buf bytes.Buffer
+	p := newParser()
+	p.log = slog.New(slog.NewTextHandler(&buf, nil))
+	for _, name := range files {
+		f, err := os.Open(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sc := bufio.NewScanner(f)
+		sc.Buffer(nil, 1<<20)
+		for sc.Scan() {
+			p.line(sc.Bytes())
+		}
+		f.Close()
+	}
+	if buf.Len() > 0 {
+		t.Errorf("logged as unknown:\n%s", buf.String())
 	}
 }

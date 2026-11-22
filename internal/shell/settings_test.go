@@ -35,10 +35,12 @@ func TestSettingsModal(t *testing.T) {
 	defer wb.Close()
 	chosen := ""
 	var moved []string
+	logsOpened := 0
 	sh := shell.New(wb, shell.Options{
 		DataDir:      dataDir,
 		ChooseFolder: func() (string, bool) { return chosen, true },
 		MoveDataDir:  func(to string) error { moved = append(moved, to); return nil },
+		OpenLogs:     func() { logsOpened++ },
 	})
 	tt := ui.NewTester(sh.View, 1100, 900)
 	frame := func() {
@@ -66,6 +68,10 @@ func TestSettingsModal(t *testing.T) {
 
 	click("设置（⌘,）")
 	shows("数据目录", dataDir, "新会话的默认权限模式", "有待审批时发系统通知")
+	click("打开日志目录")
+	if logsOpened != 1 {
+		t.Errorf("the logs opened %d times", logsOpened)
+	}
 	for i := 0; i < 50 && !tt.HasText("新会话的默认权限模式：假 Agent"); i++ {
 		time.Sleep(5 * time.Millisecond) // the modes load off the main thread
 		frame()

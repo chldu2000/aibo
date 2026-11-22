@@ -42,6 +42,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 	}
 	switch e := ev.(type) {
 	case agent.Retrying:
+		w.log.Warn("agent retrying", "session", id, "message", e.Message)
 		if s.running {
 			s.retrying = e.Message
 		}
@@ -52,6 +53,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		// The Agent changed its mode itself, as Claude Code leaving plan
 		// mode: the session follows, and starts again in it.
 		if e.ID != "" && s.info.Mode != "" && e.ID != s.info.Mode {
+			w.log.Info("agent changed its mode", "session", id, "from", s.info.Mode, "to", e.ID)
 			if err := w.st.SetApproval(id, e.ID, s.info.Rules); err == nil {
 				s.info.Mode = e.ID
 			}
@@ -202,18 +204,22 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		if e.Interrupted {
 			end = model.Interrupted
 		}
+		w.log.Info("turn ended", "session", id, "interrupted", e.Interrupted, "took", now.Sub(s.since).Round(time.Millisecond))
 		changed = w.endTurn(id, s, end)
 		s.info.ActiveAt, s.lastActive = now, now
 		w.st.Touch(id, now)
 	case agent.Compacted:
+		w.log.Info("context compacted", "session", id, "trigger", e.Trigger, "before", e.PreTokens, "after", e.PostTokens)
 		w.addMarker(id, s, model.Marker{Kind: model.Compaction, Trigger: e.Trigger, PreTokens: e.PreTokens, PostTokens: e.PostTokens, At: now})
 	case agent.NotLoggedIn:
+		w.log.Warn("agent signed out", "session", id)
 		s.needsLogin = true
 		if w.loggedOut != nil {
 			kind := s.info.Agent
 			defer func() { go w.loggedOut(kind) }()
 		}
 	case agent.Failed:
+		w.log.Warn("agent failed", "session", id, "message", e.Message)
 		s.err = e.Message
 	}
 	idx := make([]int, 0, len(touched))

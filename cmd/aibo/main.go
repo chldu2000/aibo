@@ -26,6 +26,7 @@ import (
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/agents"
 	"github.com/chldu2000/aibo/internal/appdata"
+	"github.com/chldu2000/aibo/internal/diag"
 	"github.com/chldu2000/aibo/internal/shell"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo"
@@ -44,7 +45,10 @@ type app struct {
 	reg     *agents.Registry
 	agents  []agent.Agent
 	wb      *workbench.Workbench
-	sh      *shell.Shell
+	// diag is the diagnostic log in the data directory; nil when it
+	// could not be opened, which does not stop aibo.
+	diag *diag.Log
+	sh   *shell.Shell
 	// win is set on the main thread and read from others.
 	win      atomic.Pointer[mygo.Window]
 	quitting atomic.Bool
@@ -102,6 +106,7 @@ func main() {
 			log.Print(err)
 		}
 	}
+	a.closeDiag()
 	if a.release != nil {
 		a.release()
 	}
@@ -121,8 +126,16 @@ func (a *app) start() {
 			release, err = appdata.Lock(dir)
 		}
 		if err == nil {
-			a.wb, err = workbench.Open(workbench.Options{DataDir: dir, Agents: a.agents, Ready: a.ready, OnNotLoggedIn: a.reg.MarkNotLoggedIn})
+			o := workbench.Options{DataDir: dir, Agents: a.agents, Ready: a.ready, OnNotLoggedIn: a.reg.MarkNotLoggedIn}
+			if l, lerr := diag.Open(dir, nil); lerr == nil {
+				a.diag, o.Log = l, l.Logger
+				l.Logger.Info("aibo started", "data", dir)
+			} else {
+				log.Print("diagnostic log: ", lerr)
+			}
+			a.wb, err = workbench.Open(o)
 			if err != nil {
+				a.closeDiag()
 				release()
 			}
 		}
@@ -244,6 +257,7 @@ func (a *app) show() {
 		DataDir:      a.dir,
 		MoveDataDir:  a.moveDataDir,
 		ShowInFinder: mygo.Shell.ShowItemInFolder,
+		OpenLogs:     func() { mygo.Shell.OpenPath(filepath.Join(a.dir, diag.Dir)) },
 		Wake: func() {
 			if w := a.win.Load(); w != nil {
 				w.Invalidate()
@@ -273,6 +287,15 @@ func (a *app) show() {
 	}))
 }
 
+// closeDiag closes the diagnostic log, if open.
+func (a *app) closeDiag() {
+	if a.diag != nil {
+		a.diag.Logger.Info("aibo stopped")
+		a.diag.Close()
+		a.diag = nil
+	}
+}
+
 // moveDataDir moves the data to the directory to and starts aibo again
 // on it. The workbench closes first: the database must be closed.
 func (a *app) moveDataDir(to string) error {
@@ -282,6 +305,7 @@ func (a *app) moveDataDir(to string) error {
 	if err := a.wb.Close(); err != nil {
 		return err
 	}
+	a.closeDiag() // its files move with the data
 	a.release()
 	if err := appdata.Move(a.dir, to); err != nil {
 		// Nothing moved: aibo starts again where it was.

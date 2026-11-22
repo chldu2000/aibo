@@ -46,6 +46,8 @@ type Options struct {
 	MoveDataDir func(to string) error
 	// ShowInFinder reveals a path in Finder.
 	ShowInFinder func(path string)
+	// OpenLogs, when set, opens the diagnostic log's directory.
+	OpenLogs func()
 	// ChooseFolder asks the user for a folder to add as a workspace,
 	// blocking until they choose; ok is false when they cancel. It runs
 	// off the main thread.

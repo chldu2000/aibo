@@ -3,6 +3,7 @@ package claude
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -17,8 +18,12 @@ import (
 // ID and how many tool calls came before in it. A subagent's messages
 // (parent_tool_use_id) come only whole.
 type parser struct {
-	msg string // the API message streaming
-	seg int    // tool calls so far in msg
+	// log is the diagnostic log, for the messages it does not know;
+	// unknownSeen are those logged, once each.
+	log         *slog.Logger
+	unknownSeen map[string]bool
+	msg         string // the API message streaming
+	seg         int    // tool calls so far in msg
 	// started are the tool calls whose blocks started streaming, which
 	// counted in seg already.
 	started map[string]bool
@@ -47,7 +52,7 @@ type parser struct {
 const interruptedNote = "[Request interrupted by user]"
 
 func newParser() *parser {
-	return &parser{started: map[string]bool{}, thought: map[string]string{}, plans: map[string]bool{}, asks: map[string]canUseTool{}}
+	return &parser{log: agent.Discard, started: map[string]bool{}, thought: map[string]string{}, plans: map[string]bool{}, asks: map[string]canUseTool{}}
 }
 
 type envelope struct {
@@ -158,6 +163,13 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 			m := e.CompactMetadata
 			return []agent.Event{agent.Compacted{Trigger: m.Trigger, PreTokens: m.PreTokens, PostTokens: m.PostTokens}}
 		}
+		// status says what it is busy with (compacting); commands_changed
+		// lists its slash commands, which aibo does not offer.
+		if e.Subtype != "status" && e.Subtype != "commands_changed" {
+			p.unknown(e, raw)
+		}
+	case "rate_limit_event":
+		// Its plan's limits; a limit hit fails the turn, which says so.
 	case "stream_event":
 		if e.ParentToolUseID == "" {
 			return p.stream(e.Event)
@@ -192,8 +204,25 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 			p.asks[e.RequestID] = r.canUseTool
 			return []agent.Event{approval(e.RequestID, r.canUseTool)}
 		}
+		p.unknown(envelope{Type: e.Type, Subtype: r.Subtype}, e.Request)
+	default:
+		p.unknown(e, raw)
 	}
 	return nil
+}
+
+// unknown writes a message it does not know to the diagnostic log: its
+// type, subtype and fields' names, nothing they hold.
+func (p *parser) unknown(e envelope, raw []byte) {
+	if p.unknownSeen == nil {
+		p.unknownSeen = map[string]bool{}
+	}
+	k := e.Type + "/" + e.Subtype
+	if p.unknownSeen[k] {
+		return
+	}
+	p.unknownSeen[k] = true
+	p.log.Warn("unknown message", "type", e.Type, "subtype", e.Subtype, "fields", agent.Shape(raw))
 }
 
 func (p *parser) stream(raw json.RawMessage) []agent.Event {
