@@ -166,8 +166,8 @@ func (s *Shell) marks(c *ui.Context, x model.Session) {
 	case st.Error != "" || st.ResumeFailed != "" || st.NeedsLogin:
 		ui.Text(c, "出错").FontSize(11).Bold().TextColor(t.Danger).Tooltip(firstOf(st.ResumeFailed, st.Error, "Agent 未登录"))
 	}
-	if x.Level == agent.FullAuto {
-		ui.Box(c).Label("全部自动 · " + sessionTitle(x)).Tooltip("全部自动：Agent 的所有操作都不再询问").Children(func() {
+	if m := s.modeOf(x); m.Risk == agent.Danger {
+		ui.Box(c).Label(m.Name + " · " + sessionTitle(x)).Tooltip(m.Name + "：" + m.Description).Children(func() {
 			sfsymbols.Symbol(c, "exclamationmark.shield").Size(12).Color(t.Warning)
 		})
 	}

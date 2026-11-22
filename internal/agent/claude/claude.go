@@ -69,7 +69,7 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 	if opts.ResumeID != "" {
 		args = append(args, "--resume", opts.ResumeID)
 	}
-	mode, allowed, dirs := ruleArgs(opts.Level, opts.Rules)
+	mode, allowed, dirs := ruleArgs(opts.Mode, opts.Rules)
 	dirs = append(dirs, opts.ReadDirs...)
 	// Other workspaces it may read, not change: Claude Code denies Edit
 	// and Write there, and the shell's writes too, whatever the level.
@@ -79,8 +79,12 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 			denied = append(denied, "Edit(/"+p+"/**)", "Write(/"+p+"/**)")
 		}
 	}
-	// The option lets the level rise to full auto later in the session.
-	args = append(args, "--permission-mode", mode, "--allow-dangerously-skip-permissions")
+	if mode != "" {
+		args = append(args, "--permission-mode", mode)
+	}
+	// The option lets the mode go to bypassPermissions later in the
+	// session.
+	args = append(args, "--allow-dangerously-skip-permissions")
 	if len(dirs) > 0 {
 		args = append(append(args, "--add-dir"), dirs...)
 	}
@@ -269,12 +273,18 @@ func (s *session) read(stdout io.Reader) {
 				Errors   []string
 				Response struct {
 					RequestID string `json:"request_id"`
+					Response  struct {
+						Mode string `json:"current_permission_mode"`
+					} `json:"response"`
 				} `json:"response"`
 			}
 			json.Unmarshal(sc.Bytes(), &e)
 			switch {
 			case e.Type == "control_response" && e.Response.RequestID == "init":
 				started = true
+				if m := e.Response.Response.Mode; m != "" {
+					s.events <- agent.ModeReported{ID: m}
+				}
 				close(s.ready)
 			case e.Type == "result":
 				s.startErr = strings.Join(e.Errors, "\n")
@@ -357,17 +367,18 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 	return s.write(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": id, "response": resp}})
 }
 
-// SetLevel switches the permission mode of the running session.
-func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
-	mode, ok := modes[level]
-	if !ok {
-		return fmt.Errorf("没有这个审批档位：%s", level)
+// SetMode switches the permission mode of the running session, which
+// Claude Code reports with its next turn (system/init).
+func (s *session) SetMode(_ context.Context, mode string) error {
+	if !knownMode(mode) {
+		return fmt.Errorf("Claude Code 没有这个权限模式：%s", mode)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.nextReq++
-	return s.write(map[string]any{"type": "control_request", "request_id": fmt.Sprintf("mode-%d", s.nextReq),
-		"request": map[string]any{"subtype": "set_permission_mode", "mode": mode}})
+	return s.control("mode", map[string]any{"subtype": "set_permission_mode", "mode": mode})
+}
+
+// PermissionModes are Claude Code's own (Modes).
+func (a *Agent) PermissionModes(context.Context) ([]agent.PermissionMode, error) {
+	return append([]agent.PermissionMode(nil), Modes...), nil
 }
 
 // settingsReq starts the IDs of get_settings requests, whose answers say

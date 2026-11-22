@@ -2,9 +2,11 @@ package claude
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -71,5 +73,57 @@ func TestArgsEffort(t *testing.T) {
 	}
 	if slices.Contains(a.args(agent.StartOptions{}), "--effort") {
 		t.Error("--effort without an effort")
+	}
+}
+
+// Plan mode, as Claude Code 2.1.318 ran it (research/11, home rewritten
+// as ~): each turn says its mode, and ExitPlanMode asks to approve the
+// plan.
+func TestPlanMode(t *testing.T) {
+	f, err := os.Open("testdata/modes.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	p := newParser()
+	var got []agent.Event
+	sc := bufio.NewScanner(f)
+	sc.Buffer(nil, 1<<20)
+	for sc.Scan() {
+		got = append(got, p.line(sc.Bytes())...)
+	}
+	var modes []string
+	var plan *agent.ApprovalRequested
+	for _, e := range got {
+		switch e := e.(type) {
+		case agent.ModeReported:
+			modes = append(modes, e.ID)
+		case agent.ApprovalRequested:
+			plan = &e
+		}
+	}
+	if !slices.Equal(modes, []string{"plan"}) {
+		t.Errorf("modes = %v", modes)
+	}
+	if plan == nil || plan.Title != "按计划开始执行" || !strings.HasPrefix(plan.Plan, "# Plan: create a.txt") {
+		t.Fatalf("approval = %+v", plan)
+	}
+	if o := plan.Options; len(o) == 0 || o[0].Kind != agent.AllowOnce {
+		t.Errorf("options = %+v", o)
+	}
+}
+
+// Claude Code's modes: "manual" is not one, only another name of default.
+func TestModes(t *testing.T) {
+	ms, _ := New("claude").PermissionModes(context.Background())
+	var ids []string
+	for _, m := range ms {
+		ids = append(ids, m.ID)
+	}
+	if !slices.Equal(ids, []string{"default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"}) {
+		t.Errorf("modes = %v", ids)
+	}
+	if !ms[0].Default || ms[5].Risk != agent.Danger || !ms[2].ReadOnly {
+		t.Errorf("modes = %+v", ms)
 	}
 }

@@ -35,7 +35,7 @@ type Agent struct {
 
 	respond   Responder
 	decisions chan Decision
-	levels    chan agent.ApprovalLevel
+	modes     chan string
 
 	mu          sync.Mutex
 	resumeFails string
@@ -46,7 +46,7 @@ type Agent struct {
 
 // New returns a fake Agent answering every turn with respond.
 func New(respond Responder) *Agent {
-	return &Agent{respond: respond, decisions: make(chan Decision, 64), levels: make(chan agent.ApprovalLevel, 64)}
+	return &Agent{respond: respond, decisions: make(chan Decision, 64), modes: make(chan string, 64)}
 }
 
 // Decision is an answer to an approval request a Responder emitted.
@@ -58,8 +58,24 @@ type Decision struct {
 // wait on.
 func (a *Agent) Decisions() <-chan Decision { return a.decisions }
 
-// Levels delivers the approval levels set on running sessions.
-func (a *Agent) Levels() <-chan agent.ApprovalLevel { return a.levels }
+// Modes delivers the permission modes set on running sessions.
+func (a *Agent) Modes() <-chan string { return a.modes }
+
+// The fake's permission modes; ModeAsk is its default.
+const (
+	ModeAsk   = "ask"
+	ModeEdits = "edits"
+	ModeAuto  = "auto"
+)
+
+// PermissionModes are the fake's: one of each risk.
+func (a *Agent) PermissionModes(context.Context) ([]agent.PermissionMode, error) {
+	return []agent.PermissionMode{
+		{ID: ModeAsk, Name: "Ask", Description: "问过再做", Risk: agent.Safe, Default: true},
+		{ID: ModeEdits, Name: "Edits", Description: "改文件不问", Risk: agent.Caution},
+		{ID: ModeAuto, Name: "Auto", Description: "什么都不问", Risk: agent.Danger},
+	}, nil
+}
 
 func (a *Agent) Kind() agent.Kind { return Kind }
 func (a *Agent) Name() string     { return "假 Agent" }
@@ -99,9 +115,10 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 		id = fmt.Sprintf("fake-native-%d", a.nextID)
 	}
 	a.mu.Unlock()
-	s := &session{agent: a, respond: a.respond, opts: opts, decisions: a.decisions, levels: a.levels, events: make(chan agent.Event, 256)}
+	s := &session{agent: a, respond: a.respond, opts: opts, decisions: a.decisions, modes: a.modes, events: make(chan agent.Event, 256)}
 	s.events <- agent.NativeSessionStarted{ID: id}
 	s.events <- reported(opts.Model, opts.Effort)
+	s.events <- modeOf(opts.Mode)
 	return s, nil
 }
 
@@ -131,7 +148,7 @@ type session struct {
 	respond   Responder
 	opts      agent.StartOptions
 	decisions chan Decision
-	levels    chan agent.ApprovalLevel
+	modes     chan string
 	events    chan agent.Event
 
 	mu     sync.Mutex
@@ -194,10 +211,22 @@ func (s *session) Compact(ctx context.Context) error {
 // tell them apart; the default answer reports Compacted.
 const CompactTurn = "\x00compact"
 
-// SetLevel records the level, which Levels reports.
-func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
-	s.levels <- level
+// SetMode records the mode, which Modes delivers, and reports it.
+func (s *session) SetMode(_ context.Context, mode string) error {
+	s.mu.Lock()
+	s.opts.Mode = mode
+	s.mu.Unlock()
+	s.modes <- mode
+	s.events <- modeOf(mode)
 	return nil
+}
+
+// modeOf is the mode the fake says it is in: its default for none.
+func modeOf(mode string) agent.ModeReported {
+	if mode == "" {
+		mode = ModeAsk
+	}
+	return agent.ModeReported{ID: mode}
 }
 
 // SetModel applies to the turns to come, which see it in their options,

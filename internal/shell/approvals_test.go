@@ -156,45 +156,52 @@ func TestApprovalLevelsRulesAndNotifications(t *testing.T) {
 		}
 		frame()
 	}
-	level := func() agent.ApprovalLevel { x, _ := wb.Session(front.ID); return x.Level }
+	mode := func() string { x, _ := wb.Session(front.ID); return x.Mode }
 
-	click("审批档位：每次询问")
-	click("自动接受工作区内修改")
-	if level() != agent.AcceptEdits {
-		t.Fatalf("level = %q", level())
+	// The fake's own modes, under its own names.
+	click("权限模式：Ask")
+	click("Edits")
+	if mode() != fake.ModeEdits {
+		t.Fatalf("mode = %q", mode())
 	}
-	click("审批档位：自动接受工作区内修改")
-	click("全部自动")
-	if level() != agent.AcceptEdits {
-		t.Error("full auto without confirming")
+	click("权限模式：Edits")
+	if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
+		saveImage(t, tt.Image(), filepath.Join(p, "11-menu.png"))
 	}
-	click("确定全部自动")
-	if level() != agent.FullAuto {
-		t.Fatalf("level = %q", level())
+	click("Auto")
+	if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
+		saveImage(t, tt.Image(), filepath.Join(p, "11-confirm.png"))
 	}
-	// No banner: the level button and the sidebar's row warn instead.
+	if mode() != fake.ModeEdits {
+		t.Error("a dangerous mode without confirming")
+	}
+	click("确定切换到 Auto")
+	if mode() != fake.ModeAuto {
+		t.Fatalf("mode = %q", mode())
+	}
+	// No banner: the mode button and the sidebar's row warn instead.
 	if tt.HasText("这个会话里 Agent 的所有操作都不再询问") || tt.HasText("改回每次询问") {
-		t.Errorf("a banner for full auto: %q", tt.Texts())
+		t.Errorf("a banner for a dangerous mode: %q", tt.Texts())
 	}
-	for _, l := range []string{"审批档位：全部自动", "全部自动 · 新会话"} {
+	for _, l := range []string{"权限模式：Auto", "Auto · 新会话"} {
 		if _, ok := tt.Find(l); !ok {
 			t.Errorf("no %q: %q", l, tt.Texts())
 		}
 	}
 	if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
-		saveImage(t, tt.Image(), filepath.Join(p, "09-light.png"))
+		saveImage(t, tt.Image(), filepath.Join(p, "11-danger-light.png"))
 		tt.SetDark(true)
 		frame()
-		saveImage(t, tt.Image(), filepath.Join(p, "09-dark.png"))
+		saveImage(t, tt.Image(), filepath.Join(p, "11-danger-dark.png"))
 		tt.SetDark(false)
 		frame()
 	}
-	click("审批档位：全部自动")
-	click("每次询问")
-	if level() != agent.AskAlways {
-		t.Errorf("after changing back: %q", level())
+	click("权限模式：Auto")
+	click("Ask")
+	if mode() != fake.ModeAsk {
+		t.Errorf("after changing back: %q", mode())
 	}
-	if _, ok := tt.Find("全部自动 · 新会话"); ok {
+	if _, ok := tt.Find("Auto · 新会话"); ok {
 		t.Error("the sidebar still warns")
 	}
 
@@ -218,7 +225,7 @@ func TestApprovalLevelsRulesAndNotifications(t *testing.T) {
 		<-changes
 	}
 	frame()
-	click("审批档位：每次询问")
+	click("权限模式：Ask")
 	click("撤销 命令 go test ./...")
 	if x, _ := wb.Session(back.ID); len(x.Rules) != 0 {
 		t.Errorf("rules after revoking = %+v", x.Rules)
@@ -331,7 +338,7 @@ func TestLongCommandApprovalCard(t *testing.T) {
 	}
 	frame()
 	revoke := "撤销 " + string([]rune("Bash(" + cmd + ")")[:200]) + "…"
-	for _, open := range []string{"会话详情", "审批档位：每次询问"} {
+	for _, open := range []string{"会话详情", "权限模式：Ask"} {
 		if err := tt.Click(open); err != nil {
 			t.Fatal(err)
 		}
@@ -357,5 +364,41 @@ func saveImage(t *testing.T, img image.Image, path string) {
 	defer f.Close()
 	if err := png.Encode(f, img); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A plan to approve shows as Markdown, not as the tool's JSON input.
+func TestPlanApprovalCard(t *testing.T) {
+	var f *fake.Agent
+	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
+		emit(agent.ToolStarted{ToolID: "p", Name: "ExitPlanMode", Input: []byte(`{"plan":"# Plan\n\n1. Create a.txt"}`)})
+		emit(agent.ApprovalRequested{ID: "ap", ToolID: "p", Title: "按计划开始执行", Plan: "# Plan\n\n1. Create a.txt",
+			Input: []byte(`{"plan":"# Plan\n\n1. Create a.txt"}`), Options: []agent.ApprovalOption{{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"}}})
+		select {
+		case <-f.Decisions():
+		case <-ctx.Done():
+		}
+	}
+	f = fake.New(respond)
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{f}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	wb.Send(s.ID, "plan")
+	for wb.Status(s.ID).Approvals == 0 {
+		<-changes
+	}
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 800)
+	for i := 0; i < 3; i++ {
+		tt.Frame()
+		tt.Advance(time.Second)
+	}
+	if !tt.HasText("需要审批 · 按计划开始执行") || !tt.HasText("Create a.txt") || tt.HasText(`"plan"`) {
+		t.Errorf("the window shows %q", tt.Texts())
 	}
 }

@@ -1,7 +1,9 @@
 package codex
 
 import (
+	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -107,14 +109,39 @@ func TestSessionRules(t *testing.T) {
 	}
 }
 
-func TestPolicies(t *testing.T) {
-	for level, want := range map[agent.ApprovalLevel]string{
-		agent.AskAlways: "on-request workspace-write", agent.AcceptEdits: "on-request workspace-write", agent.FullAuto: "never danger-full-access",
-	} {
-		p, s := policies(level)
-		if p+" "+s != want {
-			t.Errorf("%s → %s %s", level, p, s)
+// What thread/start answered (codex-cli 0.169.0, research/11), asked for
+// each preset's settings, its default (in an untrusted folder: Read only)
+// and settings no preset has: each answer is its preset, or none.
+func TestPresets(t *testing.T) {
+	b, err := os.ReadFile("testdata/modes.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"read-only", "read-only", "ask-for-approval", "approve-for-me", "full-access", ""}
+	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		var rec struct{ Params, Result json.RawMessage }
+		json.Unmarshal([]byte(line), &rec)
+		if got := threadMode(rec.Result); got != want[i] {
+			t.Errorf("%s → %q, want %q", rec.Params, got, want[i])
 		}
+	}
+	// What a preset asks for at thread/start is what it is reported as.
+	for _, p := range presets {
+		if got := modeOf(p.policy, p.reviewer, sandboxTypes[p.sandbox]); got != p.mode.ID {
+			t.Errorf("%s comes back as %q", p.mode.ID, got)
+		}
+	}
+	s := &session{id: "T"}
+	if err := s.SetMode(context.Background(), "yolo"); err == nil {
+		t.Error("an unknown mode")
+	}
+	s.SetMode(context.Background(), "approve-for-me")
+	p := s.turnParams("x")
+	if p["approvalPolicy"] != "on-request" || p["approvalsReviewer"] != "auto_review" || p["sandboxPolicy"].(map[string]any)["type"] != "workspaceWrite" {
+		t.Errorf("turn/start after SetMode: %v", p)
+	}
+	if p := s.turnParams("y"); p["approvalPolicy"] != nil {
+		t.Errorf("then: %v", p)
 	}
 }
 

@@ -64,9 +64,9 @@ _Avoid_: 底层会话, Agent 会话
 Agent 在执行操作前向用户请求许可；其结果记为对应工具调用的属性。
 _Avoid_: 权限弹窗, permission prompt
 
-**审批档位 (Approval Level)**:
-会话级的审批策略，分“每次询问”“自动接受工作区内修改”“全部自动”三档，分别映射到各 Agent 的原生设置。
-_Avoid_: 权限模式, permission mode, 沙箱级别
+**权限模式 (Permission Mode)**:
+会话级的审批策略，用的是会话所属 Agent 自己的模式列表和名字（如 Claude Code 的 Accept edits、Codex 的 Ask for approval），见 ADR 0003。每种模式带风险等级（安全、注意、危险），危险的模式切换前要再确认。
+_Avoid_: 审批档位, approval level, 沙箱级别
 
 **归档 (Archive)**:
 会话从工作区分组中隐藏、但数据与引用都保持有效的状态；移除工作区时其会话转为归档。

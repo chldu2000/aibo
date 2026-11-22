@@ -93,7 +93,7 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 		t.Errorf("opened %q in a window, want %q", opened, s.ID)
 	}
 	click("会话详情")
-	for _, w := range []string{"审批档位", "原生会话", "工作区", "归档"} {
+	for _, w := range []string{"权限模式", "原生会话", "工作区", "归档"} {
 		if !tt.HasText(w) {
 			t.Errorf("details lack %q: %q", w, tt.Texts())
 		}

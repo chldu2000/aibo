@@ -79,8 +79,9 @@ type StartOptions struct {
 	// MCP is the workbench's MCP server, which the Agent must be given
 	// (as the server named "aibo") so that it can read its references.
 	MCP *MCPServer
-	// Level is the session's approval level.
-	Level ApprovalLevel
+	// Mode is the session's permission mode (PermissionMode.ID); empty
+	// is the one marked Default.
+	Mode string
 	// Rules are what the user allowed for the session, from earlier
 	// answers (ApprovalOption.Rules), to apply again.
 	Rules []Rule
@@ -95,19 +96,41 @@ type DirsAtStart interface {
 	DirsAtStart() bool
 }
 
-// ApprovalLevel is how much the Agent may do without asking, mapped to
-// each Agent's own settings.
-type ApprovalLevel string
+// PermissionMode is one of an Agent's own permission modes: how much it
+// does without asking, under the Agent's own name (ADR 0003).
+type PermissionMode struct {
+	// ID is the adapter's own, as StartOptions.Mode and SetMode take it.
+	ID string
+	// Name and Description are as the Agent shows them.
+	Name        string
+	Description string
+	Risk        Risk
+	// ReadOnly is set when the Agent cannot change files in it.
+	ReadOnly bool
+	// Default marks the mode of a session that has none: the Agent's
+	// own default, or, for Codex, what aibo always used.
+	Default bool
+	// Unavailable, when set, says why it cannot be chosen now.
+	Unavailable string
+}
+
+// Risk is how much a permission mode lets the Agent do unasked.
+type Risk int
 
 const (
-	// AskAlways asks before anything the Agent asks about by default.
-	AskAlways ApprovalLevel = "ask"
-	// AcceptEdits lets the Agent change files in the workspace without
-	// asking.
-	AcceptEdits ApprovalLevel = "edits"
-	// FullAuto lets the Agent do anything without asking.
-	FullAuto ApprovalLevel = "auto"
+	// Safe: it asks, or cannot change anything.
+	Safe Risk = iota
+	// Caution: it does some things unasked, as editing files.
+	Caution
+	// Danger: it does anything unasked, outside the workspace too.
+	Danger
 )
+
+// ModeLister is an Agent that tells its permission modes, in the order
+// the Agent shows them.
+type ModeLister interface {
+	PermissionModes(ctx context.Context) ([]PermissionMode, error)
+}
 
 // Rule is something the user allowed for the rest of a session, which
 // the Agent's adapter applies again when the session restarts. Data is
@@ -134,8 +157,10 @@ type Session interface {
 	// Compact compacts the Agent's context, as a turn of its own, which
 	// reports Compacted and ends with TurnEnded.
 	Compact(ctx context.Context) error
-	// SetLevel changes the approval level, for the turns to come.
-	SetLevel(ctx context.Context, level ApprovalLevel) error
+	// SetMode changes the permission mode, for the requests to come. The
+	// Agent then reports it (ModeReported), as it does when it changes
+	// its mode itself.
+	SetMode(ctx context.Context, mode string) error
 	// SetModel changes the model and the reasoning effort, empty for the
 	// Agent's own, for the turns to come; only between turns. The Agent
 	// then reports what it uses (SettingsReported).
@@ -152,6 +177,14 @@ type Turn struct {
 
 // Event is one thing a native session reports.
 type Event interface{ isEvent() }
+
+// ModeReported is the permission mode the Agent says it is in
+// (PermissionMode.ID): as it starts, after SetMode, and when it changes
+// mode itself, as Claude Code leaving plan mode once its plan is
+// approved.
+type ModeReported struct {
+	ID string
+}
 
 // SettingsReported is the model and the reasoning effort the Agent says
 // it uses, as it starts and after SetModel: what it really runs, not what
@@ -251,6 +284,9 @@ type ApprovalRequested struct {
 	Reason  string
 	// Diff is the change a file edit makes, as a unified diff.
 	Diff string
+	// Plan is the plan to approve before the Agent acts on it, in
+	// Markdown, as Claude Code's ExitPlanMode.
+	Plan string
 	// Paths are the files it writes.
 	Paths []string
 	// Input is the tool's input, for the other tools.
@@ -320,6 +356,7 @@ type Retrying struct {
 
 func (NativeSessionStarted) isEvent() {}
 func (SettingsReported) isEvent()     {}
+func (ModeReported) isEvent()         {}
 func (ReplyDelta) isEvent()           {}
 func (ThinkingDelta) isEvent()        {}
 func (ReplyDone) isEvent()            {}

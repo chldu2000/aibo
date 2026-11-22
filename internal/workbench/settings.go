@@ -11,8 +11,12 @@ import (
 // Settings are the user's settings that the workbench keeps with its
 // data.
 type Settings struct {
-	// DefaultLevel is the approval level of new sessions.
-	DefaultLevel agent.ApprovalLevel
+	// DefaultModes are the permission modes of new sessions, by Agent;
+	// none is the one the Agent marks Default.
+	DefaultModes map[agent.Kind]string `json:",omitempty"`
+	// DefaultLevel is the approval level settings saved before ADR 0003
+	// have; Open turns it into DefaultModes.
+	DefaultLevel string `json:",omitempty"`
 	// Notify notifies of approval requests of sessions not on screen.
 	Notify bool
 	// Budgets are the read tools' page sizes.
@@ -23,7 +27,7 @@ type Settings struct {
 }
 
 // DefaultSettings are the settings until the user changes them.
-var DefaultSettings = Settings{DefaultLevel: agent.AskAlways, Notify: true, Budgets: refs.DefaultBudgets, IdleTimeout: idleTimeout}
+var DefaultSettings = Settings{Notify: true, Budgets: refs.DefaultBudgets, IdleTimeout: idleTimeout}
 
 // settingsKey is the settings' key in the store.
 const settingsKey = "workbench"
@@ -41,11 +45,12 @@ func (w *Workbench) Settings() Settings {
 // SetSettings changes the settings, which apply at once: to new
 // sessions, the reads to come, and the idle sessions.
 func (w *Workbench) SetSettings(s Settings) error {
-	switch s.DefaultLevel {
-	case agent.AskAlways, agent.AcceptEdits, agent.FullAuto:
-	default:
-		return ErrBadSettings
+	for kind, mode := range s.DefaultModes {
+		if mode != "" && !w.hasMode(kind, mode) {
+			return ErrBadSettings
+		}
 	}
+	s.DefaultLevel = ""
 	b := s.Budgets
 	if b.Page < 1000 || b.Page > 200000 || b.ToolOutput < 200 || b.ToolOutput > b.Page || b.MessagePage < 1000 || b.MessagePage > 500000 ||
 		s.IdleTimeout < time.Minute || s.IdleTimeout > 24*time.Hour {
@@ -61,6 +66,31 @@ func (w *Workbench) SetSettings(s Settings) error {
 	w.mu.Unlock()
 	w.notify(Change{})
 	return nil
+}
+
+// legacyModes are the permission modes the approval levels before ADR
+// 0003 were, by Agent, as the store's migration has them too.
+var legacyModes = map[string]map[agent.Kind]string{
+	"ask":   {"claude": "default", "codex": "ask-for-approval"},
+	"edits": {"claude": "acceptEdits", "codex": "ask-for-approval"},
+	"auto":  {"claude": "bypassPermissions", "codex": "full-access"},
+}
+
+// upgrade turns the approval level of settings saved before ADR 0003
+// into permission modes.
+func (s *Settings) upgrade() {
+	if s.DefaultLevel == "" {
+		return
+	}
+	if s.DefaultModes == nil {
+		s.DefaultModes = map[agent.Kind]string{}
+	}
+	for kind, mode := range legacyModes[s.DefaultLevel] {
+		if _, set := s.DefaultModes[kind]; !set {
+			s.DefaultModes[kind] = mode
+		}
+	}
+	s.DefaultLevel = ""
 }
 
 // Pref reads a preference kept with the data, as the executables the

@@ -160,37 +160,66 @@ func (w *Workbench) remember(id string, s *session, rules []agent.Rule) {
 		}
 	}
 	if added {
-		w.st.SetApproval(id, s.info.Level, s.info.Rules)
+		w.st.SetApproval(id, s.info.Mode, s.info.Rules)
 	}
 }
 
-// SetLevel sets a session's approval level, from its next request on.
-func (w *Workbench) SetLevel(sessionID string, level agent.ApprovalLevel) error {
-	switch level {
-	case agent.AskAlways, agent.AcceptEdits, agent.FullAuto:
-	default:
-		return ErrNoSuchLevel
-	}
+// SetMode sets a session's permission mode, one of its Agent's own, from
+// its next request on; empty is the one the Agent marks Default.
+func (w *Workbench) SetMode(sessionID, mode string) error {
 	w.mu.Lock()
 	s, ok := w.sessions[sessionID]
 	if !ok {
 		w.mu.Unlock()
 		return ErrNoSuchSession
 	}
-	if err := w.st.SetApproval(sessionID, level, s.info.Rules); err != nil {
+	kind := s.info.Agent
+	w.mu.Unlock()
+	if mode != "" && !w.hasMode(kind, mode) {
+		return ErrNoSuchMode
+	}
+	w.mu.Lock()
+	if err := w.st.SetApproval(sessionID, mode, s.info.Rules); err != nil {
 		w.mu.Unlock()
 		return err
 	}
-	s.info.Level = level
+	s.info.Mode = mode
 	native := s.native
 	w.mu.Unlock()
-	if native != nil {
-		if err := native.SetLevel(context.Background(), level); err != nil {
+	if native != nil && mode != "" {
+		if err := native.SetMode(context.Background(), mode); err != nil {
 			return err
 		}
 	}
 	w.notify(Change{SessionID: sessionID})
 	return nil
+}
+
+// PermissionModes returns an Agent's permission modes, if it tells.
+func (w *Workbench) PermissionModes(ctx context.Context, kind agent.Kind) ([]agent.PermissionMode, error) {
+	if l, ok := w.agent(kind).(agent.ModeLister); ok {
+		return l.PermissionModes(ctx)
+	}
+	return nil, nil
+}
+
+// hasMode reports whether mode is one of an Agent's; any is, for an
+// Agent that does not tell.
+func (w *Workbench) hasMode(kind agent.Kind, mode string) bool {
+	l, ok := w.agent(kind).(agent.ModeLister)
+	if !ok {
+		return true
+	}
+	modes, err := l.PermissionModes(context.Background())
+	if err != nil {
+		return true // the Agent will say
+	}
+	for _, m := range modes {
+		if m.ID == mode {
+			return true
+		}
+	}
+	return false
 }
 
 // RevokeRule takes back a rule allowed for the rest of the session. The
@@ -208,7 +237,7 @@ func (w *Workbench) RevokeRule(sessionID string, i int) error {
 		return ErrNoSuchRule
 	}
 	rules := append(append([]agent.Rule(nil), s.info.Rules[:i]...), s.info.Rules[i+1:]...)
-	if err := w.st.SetApproval(sessionID, s.info.Level, rules); err != nil {
+	if err := w.st.SetApproval(sessionID, s.info.Mode, rules); err != nil {
 		w.mu.Unlock()
 		return err
 	}

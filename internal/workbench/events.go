@@ -36,7 +36,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 	}
 	// Anything but another retry, or what it uses: the Agent got on.
 	switch ev.(type) {
-	case agent.Retrying, agent.SettingsReported:
+	case agent.Retrying, agent.SettingsReported, agent.ModeReported:
 	default:
 		s.retrying = ""
 	}
@@ -47,6 +47,15 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		}
 	case agent.SettingsReported:
 		s.reported = e
+	case agent.ModeReported:
+		s.reportedMode = e.ID
+		// The Agent changed its mode itself, as Claude Code leaving plan
+		// mode: the session follows, and starts again in it.
+		if e.ID != "" && s.info.Mode != "" && e.ID != s.info.Mode {
+			if err := w.st.SetApproval(id, e.ID, s.info.Rules); err == nil {
+				s.info.Mode = e.ID
+			}
+		}
 	case agent.NativeSessionStarted:
 		if e.ID != "" && e.ID != s.info.NativeID() {
 			if err := w.st.AddNativeSession(id, e.ID, now); err == nil {
@@ -175,7 +184,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 			touch(i, true)
 		}
 	case agent.ApprovalRequested:
-		a := &model.Approval{ID: e.ID, Title: e.Title, Command: e.Command, Cwd: e.Cwd, Reason: e.Reason, Diff: e.Diff,
+		a := &model.Approval{ID: e.ID, Title: e.Title, Command: e.Command, Cwd: e.Cwd, Reason: e.Reason, Diff: e.Diff, Plan: e.Plan,
 			Paths: e.Paths, Input: e.Input, Options: e.Options, Outside: w.outside(s, e.Paths)}
 		if i, ok := s.items[itemKey("t", e.ToolID)]; ok && !s.msgs[i].State.Ended() && s.msgs[i].Tool != nil {
 			s.msgs[i].Tool.Approval = a

@@ -69,3 +69,44 @@ func TestBackupBeforeUpgrade(t *testing.T) {
 		t.Errorf("%d backups after reopening", count)
 	}
 }
+
+// The approval levels of sessions before ADR 0003 become each Agent's
+// own permission modes; Codex's ask and edits were the same.
+func TestLevelsBecomeModes(t *testing.T) {
+	dir := t.TempDir()
+	if err := store.OpenVersion(dir, store.SchemaVersion()-1); err != nil {
+		t.Fatal(err)
+	}
+	db, _ := sql.Open("sqlite", "file:"+filepath.Join(dir, store.DBFile))
+	db.Exec(`INSERT INTO workspaces (id, path, created_at) VALUES ('w', '/p', 0)`)
+	for i, s := range []struct{ agent, level string }{
+		{"claude", "ask"}, {"claude", "edits"}, {"claude", "auto"},
+		{"codex", "ask"}, {"codex", "edits"}, {"codex", "auto"}, {"fake", "auto"},
+	} {
+		if _, err := db.Exec(`INSERT INTO sessions (id, workspace_id, agent, approval_level, created_at, active_at) VALUES (?, 'w', ?, ?, ?, ?)`,
+			fmt.Sprint(i), s.agent, s.level, i, i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	xs, err := st.Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, x := range xs {
+		got[x.ID] = x.Mode
+	}
+	want := map[string]string{"0": "default", "1": "acceptEdits", "2": "bypassPermissions",
+		"3": "ask-for-approval", "4": "ask-for-approval", "5": "full-access", "6": "auto"}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("session %s: %q, want %q", id, got[id], w)
+		}
+	}
+}

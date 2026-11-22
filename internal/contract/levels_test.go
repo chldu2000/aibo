@@ -99,7 +99,7 @@ func outsideDir(t *testing.T) string {
 	return dir
 }
 
-func TestContractLevelsAndRules(t *testing.T) {
+func TestContractModesAndRules(t *testing.T) {
 	as := agents(t)
 	touch := func(p string) string {
 		return "Run exactly this shell command with your shell tool, nothing else: `touch " + p + "`. Then reply DONE."
@@ -110,7 +110,7 @@ func TestContractLevelsAndRules(t *testing.T) {
 		w, _ := e.AddWorkspace(ws)
 		s, _ := e.NewSession(w.ID, claude.Kind, "haiku")
 
-		e.SetLevel(s.ID, agent.AcceptEdits)
+		e.SetMode(s.ID, "acceptEdits")
 		write := func(name string) string {
 			return "Use the Write tool to create " + filepath.Join(ws, name) + " containing hi. Then reply DONE."
 		}
@@ -118,7 +118,7 @@ func TestContractLevelsAndRules(t *testing.T) {
 			t.Errorf("accepting edits: asked %d times, wrote %v", n, exists(filepath.Join(ws, "a.txt")))
 		}
 		// Back to asking, in the running session.
-		e.SetLevel(s.ID, agent.AskAlways)
+		e.SetMode(s.ID, "default")
 		if n := e.run(s.ID, write("b.txt"), agent.Deny); n == 0 || exists(filepath.Join(ws, "b.txt")) {
 			t.Errorf("asking always: asked %d times, wrote %v", n, exists(filepath.Join(ws, "b.txt")))
 		}
@@ -143,13 +143,20 @@ func TestContractLevelsAndRules(t *testing.T) {
 		w, _ := e.AddWorkspace(ws)
 		s, _ := e.NewSession(w.ID, codex.Kind, "")
 
-		e.SetLevel(s.ID, agent.FullAuto)
+		e.SetMode(s.ID, "full-access")
 		if n := e.run(s.ID, touch(filepath.Join(out, "a.txt")), agent.Deny); n != 0 || !exists(filepath.Join(out, "a.txt")) {
-			t.Errorf("full auto: asked %d times, wrote %v", n, exists(filepath.Join(out, "a.txt")))
+			t.Errorf("full access: asked %d times, wrote %v", n, exists(filepath.Join(out, "a.txt")))
 		}
-		e.SetLevel(s.ID, agent.AskAlways)
+		// Codex says it is in the preset (thread/settings/updated).
+		if m := e.Status(s.ID).Mode; m != "full-access" {
+			t.Errorf("reported %q", m)
+		}
+		e.SetMode(s.ID, "ask-for-approval")
 		if n := e.run(s.ID, touch(filepath.Join(out, "b.txt")), agent.Deny); n == 0 || exists(filepath.Join(out, "b.txt")) {
-			t.Errorf("asking always: asked %d times, wrote %v", n, exists(filepath.Join(out, "b.txt")))
+			t.Errorf("asking for approval: asked %d times, wrote %v", n, exists(filepath.Join(out, "b.txt")))
+		}
+		if m := e.Status(s.ID).Mode; m != "ask-for-approval" {
+			t.Errorf("reported %q", m)
 		}
 		cmd := touch(filepath.Join(out, "r.txt"))
 		if n := e.run(s.ID, cmd, agent.AllowSession); n == 0 {
@@ -165,4 +172,50 @@ func TestContractLevelsAndRules(t *testing.T) {
 			t.Errorf("after restart: asked %d times, ran %v", n, exists(filepath.Join(out, "r.txt")))
 		}
 	})
+}
+
+// Plan mode: the plan comes as an approval; approved, Claude Code leaves
+// plan mode, and the session follows.
+func TestContractClaudePlanMode(t *testing.T) {
+	as := agents(t)
+	ws := t.TempDir()
+	e := openEnv(t, t.TempDir(), as)
+	defer e.Close()
+	w, _ := e.AddWorkspace(ws)
+	s, _ := e.NewSession(w.ID, claude.Kind, "haiku")
+	if err := e.SetMode(s.ID, "plan"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Send(s.ID, "Make a plan to create a.txt containing hi. It is one step: present it right away with ExitPlanMode, without reading anything."); err != nil {
+		t.Fatal(err)
+	}
+	e.until(func() bool { return e.pending(s.ID) != nil || !e.Status(s.ID).Running })
+	a := e.pending(s.ID)
+	if a == nil || a.Plan == "" {
+		t.Fatalf("no plan to approve: %+v", a)
+	}
+	for _, o := range a.Options {
+		if o.Kind == agent.AllowOnce {
+			e.Approve(s.ID, a.ID, o.ID, "")
+		}
+	}
+	// Then it acts: answer what it asks, and see the mode it is in after.
+	for {
+		e.until(func() bool { return e.pending(s.ID) != nil || !e.Status(s.ID).Running })
+		p := e.pending(s.ID)
+		if p == nil {
+			break
+		}
+		for _, o := range p.Options {
+			if o.Kind == agent.AllowOnce {
+				e.Approve(s.ID, p.ID, o.ID, "")
+			}
+		}
+	}
+	e.run(s.ID, "Reply with just OK.", agent.Deny)
+	got, _ := e.Session(s.ID)
+	t.Logf("after the plan: %q, reported %q", got.Mode, e.Status(s.ID).Mode)
+	if got.Mode == "plan" {
+		t.Error("still in plan mode after the plan was approved")
+	}
 }

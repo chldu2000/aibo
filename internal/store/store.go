@@ -154,6 +154,14 @@ var migrations = []string{
 	`ALTER TABLE sessions ADD COLUMN read_dirs TEXT;`,
 	// A session's reasoning effort, beside its model.
 	`ALTER TABLE sessions ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT '';`,
+	// Approval levels become the Agents' own permission modes (ADR 0003):
+	// the column keeps its name. Codex's ask and edits were the same.
+	`UPDATE sessions SET approval_level = CASE approval_level
+		WHEN 'ask' THEN 'default' WHEN 'edits' THEN 'acceptEdits' WHEN 'auto' THEN 'bypassPermissions' ELSE approval_level END
+		WHERE agent = 'claude';
+	UPDATE sessions SET approval_level = CASE approval_level
+		WHEN 'ask' THEN 'ask-for-approval' WHEN 'edits' THEN 'ask-for-approval' WHEN 'auto' THEN 'full-access' ELSE approval_level END
+		WHERE agent = 'codex';`,
 }
 
 // backupBeforeUpgrade copies the database of an older schema, before
@@ -279,12 +287,8 @@ func (s *Store) Workspaces() ([]model.Workspace, error) {
 
 // CreateSession stores a new session, without native sessions or messages.
 func (s *Store) CreateSession(x model.Session) error {
-	level := x.Level
-	if level == "" {
-		level = agent.AskAlways
-	}
 	_, err := s.db.Exec(`INSERT INTO sessions (id, workspace_id, agent, model, reasoning_effort, title, title_manual, created_at, active_at, approval_level, rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		x.ID, x.WorkspaceID, string(x.Agent), x.Model, x.Effort, x.Title, x.TitleManual, ms(x.CreatedAt), ms(x.ActiveAt), string(level), rulesValue(x.Rules))
+		x.ID, x.WorkspaceID, string(x.Agent), x.Model, x.Effort, x.Title, x.TitleManual, ms(x.CreatedAt), ms(x.ActiveAt), x.Mode, rulesValue(x.Rules))
 	return err
 }
 
@@ -297,14 +301,14 @@ func (s *Store) Sessions() ([]model.Session, error) {
 	var out []model.Session
 	for rows.Next() {
 		var x model.Session
-		var kind, level string
+		var kind string
 		var rules, dirs sql.NullString
 		var created, active sql.NullInt64
-		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Effort, &x.Title, &x.TitleManual, &created, &active, &level, &rules, &x.Archived, &dirs); err != nil {
+		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Effort, &x.Title, &x.TitleManual, &created, &active, &x.Mode, &rules, &x.Archived, &dirs); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		x.Agent, x.Level = agent.Kind(kind), agent.ApprovalLevel(level)
+		x.Agent = agent.Kind(kind)
 		if rules.Valid {
 			json.Unmarshal([]byte(rules.String), &x.Rules)
 		}
@@ -611,9 +615,9 @@ func detailOf(m model.Message) any {
 	return string(b)
 }
 
-// SetApproval sets a session's approval level and rules.
-func (s *Store) SetApproval(sessionID string, level agent.ApprovalLevel, rules []agent.Rule) error {
-	_, err := s.db.Exec(`UPDATE sessions SET approval_level = ?, rules = ? WHERE id = ?`, string(level), rulesValue(rules), sessionID)
+// SetApproval sets a session's permission mode and rules.
+func (s *Store) SetApproval(sessionID string, mode string, rules []agent.Rule) error {
+	_, err := s.db.Exec(`UPDATE sessions SET approval_level = ?, rules = ? WHERE id = ?`, mode, rulesValue(rules), sessionID)
 	return err
 }
 

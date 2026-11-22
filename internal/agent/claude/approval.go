@@ -63,9 +63,14 @@ func approval(id string, r canUseTool) agent.ApprovalRequested {
 			Old string `json:"old_string"`
 			New string `json:"new_string"`
 		} `json:"edits"`
+		Plan string `json:"plan"`
 	}
 	json.Unmarshal(r.Input, &in)
 	switch r.ToolName {
+	case "ExitPlanMode":
+		// Plan mode's end: the plan, which Claude Code acts on once it
+		// is approved.
+		a.Title, a.Plan = "按计划开始执行", in.Plan
 	case "Bash":
 		a.Title, a.Command = "执行命令", in.Command
 	case "Edit", "MultiEdit", "Write", "NotebookEdit":
@@ -209,21 +214,31 @@ func response(r canUseTool, optionID, note string) (map[string]any, error) {
 	return nil, errors.New("没有这个选项：" + optionID)
 }
 
-// modes are Claude Code's permission modes for the approval levels.
-var modes = map[agent.ApprovalLevel]string{
-	agent.AskAlways:   "manual",
-	agent.AcceptEdits: "acceptEdits",
-	agent.FullAuto:    "bypassPermissions",
+// Modes are Claude Code's permission modes, in the order Shift+Tab goes
+// through them; "manual" is only another name of "default".
+var Modes = []agent.PermissionMode{
+	{ID: "default", Name: "Manual", Description: "执行命令、修改文件前照常询问", Risk: agent.Safe, Default: true},
+	{ID: "acceptEdits", Name: "Accept edits", Description: "修改文件不再询问，其余照常询问", Risk: agent.Caution},
+	{ID: "plan", Name: "Plan", Description: "只读：先拿出计划，你批准后才动手", Risk: agent.Safe, ReadOnly: true},
+	{ID: "auto", Name: "Auto", Description: "由分类器判断，大多数操作不再询问", Risk: agent.Caution},
+	{ID: "dontAsk", Name: "Don't Ask", Description: "不再询问：没有事先允许过的操作一律拒绝", Risk: agent.Safe},
+	{ID: "bypassPermissions", Name: "Bypass Permissions", Description: "所有操作都不再询问，包括工作区以外", Risk: agent.Danger},
+}
+
+func knownMode(id string) bool {
+	for _, m := range Modes {
+		if m.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // ruleArgs are the command line that applies a session's rules again:
 // rules of tools allowed, directories added, and the permission mode a
-// rule may raise the level's to.
-func ruleArgs(level agent.ApprovalLevel, rules []agent.Rule) (mode string, allowed, dirs []string) {
-	mode = modes[level]
-	if mode == "" {
-		mode = modes[agent.AskAlways]
-	}
+// rule may raise the session's to; empty leaves Claude Code's own.
+func ruleArgs(mode string, rules []agent.Rule) (string, []string, []string) {
+	var allowed, dirs []string
 	for _, r := range rules {
 		var s suggestion
 		if json.Unmarshal(r.Data, &s) != nil {
@@ -241,7 +256,7 @@ func ruleArgs(level agent.ApprovalLevel, rules []agent.Rule) (mode string, allow
 		case "addDirectories":
 			dirs = append(dirs, s.Directories...)
 		case "setMode":
-			if s.Mode == "acceptEdits" && mode == modes[agent.AskAlways] {
+			if s.Mode == "acceptEdits" && (mode == "" || mode == "default") {
 				mode = s.Mode
 			}
 		}

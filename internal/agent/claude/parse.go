@@ -80,6 +80,8 @@ type envelope struct {
 	Request   json.RawMessage `json:"request"`
 	// control_response
 	Response json.RawMessage `json:"response"`
+	// system/init
+	PermissionMode string `json:"permissionMode"`
 }
 
 type streamEvent struct {
@@ -134,7 +136,13 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 	switch e.Type {
 	case "system":
 		if e.Subtype == "init" && e.SessionID != "" {
-			return []agent.Event{agent.NativeSessionStarted{ID: e.SessionID}}
+			out := []agent.Event{agent.NativeSessionStarted{ID: e.SessionID}}
+			// The mode as the turn starts: the Agent may have changed it,
+			// leaving plan mode once its plan was approved.
+			if e.PermissionMode != "" {
+				out = append(out, agent.ModeReported{ID: e.PermissionMode})
+			}
+			return out
 		}
 		if e.Subtype == "api_retry" {
 			msg := fmt.Sprintf("第 %d/%d 次重试", e.Attempt, e.MaxRetries)

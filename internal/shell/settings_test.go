@@ -65,10 +65,15 @@ func TestSettingsModal(t *testing.T) {
 	}
 
 	click("设置（⌘,）")
-	shows("数据目录", dataDir, "新会话的默认审批档位", "有待审批时发系统通知")
-	click("自动接受工作区内修改")
-	if got := wb.Settings().DefaultLevel; got != agent.AcceptEdits {
-		t.Errorf("default level = %q", got)
+	shows("数据目录", dataDir, "新会话的默认权限模式", "有待审批时发系统通知")
+	for i := 0; i < 50 && !tt.HasText("新会话的默认权限模式：假 Agent"); i++ {
+		time.Sleep(5 * time.Millisecond) // the modes load off the main thread
+		frame()
+	}
+	click("新会话的默认权限模式：假 Agent")
+	click("Edits")
+	if got := wb.Settings().DefaultModes[fake.Kind]; got != fake.ModeEdits {
+		t.Errorf("default mode = %q", got)
 	}
 	click("有待审批时发系统通知（开关）")
 	if wb.Settings().Notify {

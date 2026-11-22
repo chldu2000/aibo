@@ -116,25 +116,46 @@ func (s *Shell) generalSettings(c *ui.Context) {
 			ui.Text(c, s.settings.moveErr).FontSize(12).TextColor(t.Warning)
 		}
 	})
-	field(c, "新会话的默认审批档位", "已有会话的档位不变，可以在会话的输入框里单独调整。", func() {
-		i := 0
-		for k, l := range levels {
-			if l.level == st.DefaultLevel {
-				i = k
+	field(c, "新会话的默认权限模式", "按 Agent 分别设置，没选过时是 Agent 标为默认的模式。已有会话的模式不变，可以在会话的输入框里单独调整。", func() {
+		for _, a := range s.wb.Agents() {
+			list := s.modesOf(a.Kind)
+			if list == nil {
+				continue
+			}
+			var names []string
+			byName := map[string]string{}
+			cur := ""
+			for _, m := range list {
+				if m.Unavailable != "" {
+					continue
+				}
+				names = append(names, m.Name)
+				byName[m.Name] = m.ID
+				// None chosen is the Agent's default.
+				if m.ID == st.DefaultModes[a.Kind] || cur == "" && st.DefaultModes[a.Kind] == "" && m.Default {
+					cur = m.Name
+				}
+			}
+			ui.Row(c).Key(string(a.Kind)).Gap(8).AlignItems(ui.Center).Children(func() {
+				s.agentGlyph(c, a.Kind, 16)
+				ui.Text(c, a.Name).FontSize(12).TextColor(t.Text).Width(110)
+				if ui.Select(c, &cur, names).Label("新会话的默认权限模式：" + a.Name).Changed() {
+					modes := map[agent.Kind]string{}
+					for k, v := range st.DefaultModes {
+						modes[k] = v
+					}
+					modes[a.Kind] = byName[cur]
+					st.DefaultModes = modes
+					s.saveSettings(st)
+				}
+			})
+			for _, m := range list {
+				if m.ID == st.DefaultModes[a.Kind] && m.Risk == agent.Danger {
+					ui.Text(c, "注意：新的 "+a.Name+" 会话里，"+m.Description+"。").FontSize(11).TextColor(t.Warning)
+				}
 			}
 		}
-		names := make([]string, len(levels))
-		for k, l := range levels {
-			names[k] = l.name
-		}
-		if ui.Segmented(c, &i, names...).Label("新会话的默认审批档位（选择）").Changed() {
-			st.DefaultLevel = levels[i].level
-			s.saveSettings(st)
-		}
 	})
-	if st.DefaultLevel == agent.FullAuto {
-		ui.Text(c, "注意：新会话里 Agent 的所有操作都不会询问。").FontSize(11).TextColor(t.Warning)
-	}
 	field(c, "有待审批时发系统通知", "不在屏幕上的会话需要审批时提醒你。", func() {
 		on := st.Notify
 		if ui.Switch(c, &on).Label("有待审批时发系统通知（开关）").Changed() {

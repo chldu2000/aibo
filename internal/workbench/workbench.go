@@ -64,7 +64,7 @@ var (
 	ErrNoSuchReference  = errors.New("引用不存在")
 	ErrBadRange         = errors.New("引用范围无效")
 	ErrNoSuchApproval   = errors.New("这个审批请求已经处理过或不存在")
-	ErrNoSuchLevel      = errors.New("没有这个审批档位")
+	ErrNoSuchMode       = errors.New("这个 Agent 没有这个权限模式")
 	ErrNoSuchRule       = errors.New("没有这条规则")
 	errWorkbenchClosing = errors.New("工作台正在关闭")
 )
@@ -101,8 +101,9 @@ type Status struct {
 	// to reach its model (agent.Retrying), until it gets on.
 	Retrying string
 	// Model and Effort are what the Agent last said it uses
-	// (agent.SettingsReported); empty until it says.
-	Model, Effort string
+	// (agent.SettingsReported), Mode the permission mode it last said it
+	// is in (agent.ModeReported); empty until it says.
+	Model, Effort, Mode string
 }
 
 // AgentInfo describes an available Agent.
@@ -159,8 +160,10 @@ type session struct {
 	// last agent.Retrying, until anything else happens.
 	since    time.Time
 	retrying string
-	// reported is the model and the effort the Agent last said it uses.
-	reported agent.SettingsReported
+	// reported is the model and the effort the Agent last said it uses;
+	// reportedMode the permission mode.
+	reported     agent.SettingsReported
+	reportedMode string
 	// lastActive is when the session last did something, for idle
 	// disconnection.
 	lastActive time.Time
@@ -197,6 +200,7 @@ func Open(o Options) (*Workbench, error) {
 		st.Close()
 		return nil, err
 	}
+	settings.upgrade()
 	if o.Budgets != (refs.Budgets{}) {
 		settings.Budgets = o.Budgets
 	}
@@ -378,7 +382,7 @@ func (w *Workbench) NewSession(workspaceID string, kind agent.Kind, modelName st
 	now := w.now()
 	x := model.Session{ID: newID("s_"), WorkspaceID: workspaceID, Agent: kind, Model: modelName, CreatedAt: now, ActiveAt: now}
 	w.mu.Lock()
-	x.Level = w.settings.DefaultLevel
+	x.Mode = w.settings.DefaultModes[kind]
 	if _, ok := w.workspace(workspaceID); !ok {
 		w.mu.Unlock()
 		return model.Session{}, ErrNoSuchWorkspace
@@ -433,7 +437,7 @@ func (w *Workbench) Status(id string) Status {
 	}
 	return Status{Connected: s.native != nil, Running: s.running, Error: s.err, Approvals: len(w.pending(s)),
 		ResumeFailed: s.resumeFailed, ReadOnly: s.readOnly, NeedsLogin: s.needsLogin, Since: s.since, Retrying: s.retrying,
-		Model: s.reported.Model, Effort: s.reported.Effort}
+		Model: s.reported.Model, Effort: s.reported.Effort, Mode: s.reportedMode}
 }
 
 // Messages returns a session's messages in order.
@@ -613,7 +617,7 @@ func (w *Workbench) connect(id string, info model.Session, ws model.Workspace) (
 	}
 	mcp := &agent.MCPServer{URL: w.mcp.URL(), Token: w.mcp.Issue(id)}
 	native, err := a.Start(context.Background(), agent.StartOptions{Workspace: ws.Path, Model: info.Model, Effort: info.Effort, ResumeID: info.NativeID(), MCP: mcp,
-		Level: info.Level, Rules: info.Rules, ReadDirs: info.ReadDirs})
+		Mode: info.Mode, Rules: info.Rules, ReadDirs: info.ReadDirs})
 	if err != nil {
 		w.mcp.Revoke(id)
 		return nil, err

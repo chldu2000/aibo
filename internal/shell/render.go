@@ -82,7 +82,7 @@ func toolLabel(m model.Message) string {
 func gist(input json.RawMessage) string {
 	var in map[string]any
 	if json.Unmarshal(input, &in) == nil {
-		for _, k := range []string{"command", "file_path", "path", "pattern", "url", "query", "description", "prompt"} {
+		for _, k := range []string{"command", "file_path", "path", "pattern", "url", "query", "description", "prompt", "plan"} {
 			if s, ok := in[k].(string); ok && s != "" {
 				// A line break shows, so that "ls⏎cat x" does not read
 				// as "ls cat x".

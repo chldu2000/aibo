@@ -96,7 +96,10 @@ type Shell struct {
 	// settings is the global settings' modal.
 	settings settingsUI
 	// level is the approval control's popover.
-	level levelState
+	// modes are the permission modes each Agent told; modeMenu the
+	// composer's popover of them.
+	modes    map[agent.Kind]*modes
+	modeMenu modeState
 	// seen counts each session's approval requests last seen, to notify
 	// of new ones.
 	seen map[string]int

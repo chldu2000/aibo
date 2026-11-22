@@ -11,35 +11,61 @@ import (
 	"github.com/chldu2000/aibo/internal/workbench"
 )
 
-func TestApprovalLevel(t *testing.T) {
+// A session's permission mode is one of its Agent's own: none at first,
+// the Agent's default, which it reports; set before it starts or while it
+// runs; changed by the Agent itself; kept after a restart.
+func TestPermissionMode(t *testing.T) {
 	dir := t.TempDir()
 	sc := newScript()
 	b := open(t, dir, sc.respond)
 	_, s := newSession(t, b)
-	if s.Level != agent.AskAlways {
-		t.Errorf("new session's level = %q", s.Level)
+	if s.Mode != "" {
+		t.Errorf("new session's mode = %q", s.Mode)
 	}
-	if err := b.SetLevel(s.ID, "yolo"); !errors.Is(err, workbench.ErrNoSuchLevel) {
-		t.Errorf("an unknown level: %v", err)
+	if err := b.SetMode(s.ID, "yolo"); !errors.Is(err, workbench.ErrNoSuchMode) {
+		t.Errorf("a mode the Agent does not have: %v", err)
 	}
-	b.SetLevel(s.ID, agent.AcceptEdits)
 	converse(t, b, sc, s.ID, "hi")
-	if st := b.fake.Starts(); st[0].Level != agent.AcceptEdits {
-		t.Errorf("started with %q", st[0].Level)
+	if st := b.Status(s.ID); st.Mode != fake.ModeAsk {
+		t.Errorf("reported %q", st.Mode)
 	}
-	// A running session changes at once.
-	if err := b.SetLevel(s.ID, agent.FullAuto); err != nil {
+	if got, _ := b.Session(s.ID); got.Mode != "" {
+		t.Errorf("the Agent's default became the session's: %q", got.Mode)
+	}
+	b.Close()
+
+	// Set before it starts: it starts in it.
+	b = open(t, dir, sc.respond)
+	if err := b.SetMode(s.ID, fake.ModeEdits); err != nil {
 		t.Fatal(err)
 	}
-	if l := <-b.fake.Levels(); l != agent.FullAuto {
-		t.Errorf("the session got %q", l)
+	converse(t, b, sc, s.ID, "again")
+	if st := b.fake.Starts(); st[0].Mode != fake.ModeEdits {
+		t.Errorf("started in %q", st[0].Mode)
+	}
+	// Running: it changes at once.
+	if err := b.SetMode(s.ID, fake.ModeAuto); err != nil {
+		t.Fatal(err)
+	}
+	if m := <-b.fake.Modes(); m != fake.ModeAuto {
+		t.Errorf("the session got %q", m)
+	}
+	// The Agent changes it itself, as Claude Code leaving plan mode.
+	if err := b.Send(s.ID, "plan done"); err != nil {
+		t.Fatal(err)
+	}
+	sc.emit(agent.ModeReported{ID: fake.ModeEdits})
+	sc.endTurn()
+	b.idle(t, s.ID)
+	if got, _ := b.Session(s.ID); got.Mode != fake.ModeEdits {
+		t.Errorf("after the Agent changed it: %q", got.Mode)
 	}
 	b.Close()
 
 	b2 := open(t, dir, newScript().respond)
 	defer b2.Close()
-	if got, _ := b2.Session(s.ID); got.Level != agent.FullAuto {
-		t.Errorf("after restart: %q", got.Level)
+	if got, _ := b2.Session(s.ID); got.Mode != fake.ModeEdits {
+		t.Errorf("after restart: %q", got.Mode)
 	}
 }
 

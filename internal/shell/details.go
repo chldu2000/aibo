@@ -12,8 +12,8 @@ import (
 // detailsUI is the session details panel.
 type detailsUI struct {
 	open bool
-	// confirming is set while full auto waits for a second click.
-	confirming bool
+	// confirming is a dangerous mode waiting for a second click.
+	confirming string
 }
 
 // details is the session details panel, floating in glass from the
@@ -82,8 +82,8 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 				}
 				ui.Text(c, state).FontSize(11).TextColor(t.TextMuted)
 			})
-			kv("审批档位", func() {
-				s.detailsLevel(c, x)
+			kv("权限模式", func() {
+				s.detailsMode(c, x)
 			})
 			kv("始终允许", func() {
 				if len(x.Rules) == 0 {
@@ -127,41 +127,32 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 	})
 }
 
-// detailsLevel chooses the approval level, full auto after asking again.
-func (s *Shell) detailsLevel(c *ui.Context, x model.Session) {
-	t := c.Theme()
-	if s.detail.confirming {
-		ui.Text(c, "全部自动后，Agent 执行命令、修改文件（包括工作区以外）都不再询问。确定吗？").FontSize(12).TextColor(t.Text)
-		ui.Row(c).Gap(6).Children(func() {
-			if ui.PrimaryButton(c, "确定全部自动").Clicked() {
-				s.setLevel(x.ID, agent.FullAuto)
-				s.detail.confirming = false
-			}
-			if ui.Button(c, "取消").Clicked() {
-				s.detail.confirming = false
-			}
-		})
+// detailsMode chooses the permission mode, among those that can be, a
+// dangerous one after asking again.
+func (s *Shell) detailsMode(c *ui.Context, x model.Session) {
+	if s.modeConfirm(c, x, &s.detail.confirming) || s.detail.confirming != "" {
 		return
 	}
-	i := 0
-	names := make([]string, len(levels))
-	// Short names: the panel is narrow. What the level means is under them.
-	short := map[agent.ApprovalLevel]string{agent.AcceptEdits: "自动改工作区", agent.FullAuto: "全部自动"}
-	for k, l := range levels {
-		names[k] = l.name
-		if n, ok := short[l.level]; ok {
-			names[k] = n
-		}
-		if l.level == x.Level {
-			i = k
+	cur := s.modeOf(x)
+	var names []string
+	byName := map[string]agent.PermissionMode{}
+	for _, m := range s.modesOf(x.Agent) {
+		if m.Unavailable == "" {
+			names = append(names, m.Name)
+			byName[m.Name] = m
 		}
 	}
-	if ui.Segmented(c, &i, names...).Label("审批档位（选择）").Changed() {
-		if levels[i].level == agent.FullAuto {
-			s.detail.confirming = true
+	name := cur.Name
+	if len(names) == 0 {
+		ui.Text(c, name).FontSize(12).TextColor(c.Theme().Text)
+		return
+	}
+	if ui.Select(c, &name, names).Label("权限模式（选择）").Changed() {
+		if m := byName[name]; m.Risk == agent.Danger {
+			s.detail.confirming = m.ID
 		} else {
-			s.setLevel(x.ID, levels[i].level)
+			s.setMode(x.ID, m.ID)
 		}
 	}
-	ui.Text(c, levels[i].what).FontSize(11).TextColor(c.Theme().TextMuted)
+	ui.Text(c, cur.Description).FontSize(11).TextColor(c.Theme().TextMuted)
 }

@@ -108,7 +108,7 @@ func (s *Shell) pane(c *ui.Context) {
 				s.opts.OpenWindow(x.ID)
 			}
 			if iconButton(c, "sidebar.trailing", "会话详情").Clicked() {
-				s.detail.open, s.detail.confirming = !s.detail.open, false
+				s.detail.open, s.detail.confirming = !s.detail.open, ""
 			}
 		})
 		s.details(c, x)
@@ -304,7 +304,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 				s.openPull(x.ID, -1)
 			}
 			s.modelControls(c, x, running)
-			s.levelControl(c, x)
+			s.modeControl(c, x)
 			ui.Spacer(c)
 			if running {
 				if roundButton(c, "stop.fill", "停止", t.Text, t.Background).Clicked() {

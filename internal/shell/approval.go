@@ -7,6 +7,7 @@ import (
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
 )
 
 // approvalUI is what an approval card is in the middle of: confirming a
@@ -81,7 +82,15 @@ func (s *Shell) approvalCard(c *ui.Context, sessionID string, a *model.Approval)
 		if a.Diff != "" {
 			diffView(c, a.Diff)
 		}
-		if len(a.Input) > 0 && a.Command == "" && a.Diff == "" {
+		if a.Plan != "" {
+			// The plan to act on, as the Agent wrote it.
+			ui.Scroll(c).MaxHeight(320).MinWidth(0).Radius(8).Background(t.Surface).Children(func() {
+				ui.Column(c).Padding(8, 10).Children(func() {
+					markdown.View(c, a.Plan, &s.md)
+				})
+			})
+		}
+		if len(a.Input) > 0 && a.Command == "" && a.Diff == "" && a.Plan == "" {
 			longText(c, pretty(a.Input), 200)
 		}
 		switch {

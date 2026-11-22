@@ -54,27 +54,20 @@ func (a *Agent) Name() string     { return "Codex" }
 // app-server's items name it <server>.<tool>; the model never sees that.)
 func (a *Agent) ToolName(tool string) string { return "mcp__aibo__" + tool }
 
-// policies are Codex's approval policy and sandbox for a level. Codex
-// writes its workspace without asking under workspace-write, so asking
-// always and accepting edits are the same to it.
-func policies(level agent.ApprovalLevel) (policy, sandbox string) {
-	if level == agent.FullAuto {
-		return "never", "danger-full-access"
-	}
-	return "on-request", "workspace-write"
-}
-
-// sandboxPolicies are turn/start's sandbox policies for the sandbox
-// modes of thread/start.
-var sandboxPolicies = map[string]string{"workspace-write": "workspaceWrite", "danger-full-access": "dangerFullAccess"}
-
 func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Session, error) {
 	srv, err := a.server(ctx)
 	if err != nil {
 		return nil, err
 	}
-	policy, sandbox := policies(opts.Level)
-	params := map[string]any{"cwd": opts.Workspace, "approvalPolicy": policy, "sandbox": sandbox}
+	params := map[string]any{"cwd": opts.Workspace}
+	// No mode is the default preset, Ask for approval: not Codex's own
+	// default, which the project's trust decides (Read only in a folder
+	// Codex does not trust).
+	p, ok := presetOf(opts.Mode)
+	if !ok {
+		p, _ = presetOf(defaultPreset)
+	}
+	params["sandbox"], params["approvalPolicy"], params["approvalsReviewer"] = p.sandbox, p.policy, p.reviewer
 	if opts.Model != "" {
 		params["model"] = opts.Model
 	}
@@ -113,18 +106,10 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	srv.attach(s)
 	s.events <- agent.NativeSessionStarted{ID: s.id}
 	s.events <- threadSettings(raw)
-	return s, nil
-}
-
-// threadSettings is what a thread uses, as thread/start and thread/resume
-// answer: Codex's own defaults, and the user's config, included.
-func threadSettings(result json.RawMessage) agent.SettingsReported {
-	var r struct {
-		Model  string `json:"model"`
-		Effort string `json:"reasoningEffort"`
+	if m := threadMode(raw); m != "" {
+		s.events <- agent.ModeReported{ID: m}
 	}
-	json.Unmarshal(result, &r)
-	return agent.SettingsReported{Model: r.Model, Effort: r.Effort}
+	return s, nil
 }
 
 // server returns the running app-server, starting one if none runs.
@@ -411,10 +396,8 @@ type session struct {
 	// rules are the session's rules, which Codex forgot when the thread
 	// started again: aibo answers what they allow.
 	rules []agent.Rule
-	// level, when set, is a level to apply from the next turn; model and
-	// effort, when set, the same.
-	level         agent.ApprovalLevel
-	model, effort string
+	// mode, model and effort, when set, apply from the next turn.
+	mode, model, effort string
 }
 
 // ask passes an approval request to the user; ok is false for requests
@@ -601,10 +584,10 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 // turn, which Codex keeps from then on. Called with s.mu held.
 func (s *session) turnParams(text string) map[string]any {
 	params := map[string]any{"threadId": s.id, "input": []any{map[string]any{"type": "text", "text": text}}}
-	if s.level != "" {
-		policy, sandbox := policies(s.level)
-		params["approvalPolicy"], params["sandboxPolicy"] = policy, map[string]any{"type": sandboxPolicies[sandbox]}
-		s.level = ""
+	if p, ok := presetOf(s.mode); ok {
+		params["approvalPolicy"], params["approvalsReviewer"] = p.policy, p.reviewer
+		params["sandboxPolicy"] = map[string]any{"type": sandboxTypes[p.sandbox]}
+		s.mode = ""
 	}
 	if s.model != "" {
 		params["model"], s.model = s.model, ""
@@ -615,7 +598,7 @@ func (s *session) turnParams(text string) map[string]any {
 	return params
 }
 
-// SetModel applies a model and an effort from the next turn, as SetLevel
+// SetModel applies a model and an effort from the next turn, as SetMode
 // does; Codex then reports them (thread/settings/updated). Empty ones
 // leave what the thread uses: Codex's own cannot be asked for by name.
 func (s *session) SetModel(_ context.Context, model, effort string) error {
@@ -625,12 +608,15 @@ func (s *session) SetModel(_ context.Context, model, effort string) error {
 	return nil
 }
 
-// SetLevel applies a level from the next turn: Codex takes policies with
-// turn/start.
-func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
+// SetMode applies a preset from the next turn: Codex takes its settings
+// with turn/start, and reports them (thread/settings/updated).
+func (s *session) SetMode(_ context.Context, mode string) error {
+	if _, ok := presetOf(mode); !ok {
+		return fmt.Errorf("Codex 没有这个权限模式：%s", mode)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.level = level
+	s.mode = mode
 	return nil
 }
 
@@ -726,56 +712,4 @@ func (a *Agent) CancelLogin(ctx context.Context, id string) error {
 		return err
 	}
 	return srv.call(ctx, "account/login/cancel", map[string]any{"loginId": id}, nil)
-}
-
-// Models asks the app-server which models Codex offers (model/list), its
-// default first.
-func (a *Agent) Models(ctx context.Context) ([]agent.Model, error) {
-	srv, err := a.server(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var res json.RawMessage
-	if err := srv.call(ctx, "model/list", map[string]any{}, &res); err != nil {
-		return nil, err
-	}
-	return listModels(res)
-}
-
-// listModels reads model/list's result. Each model keeps its own ID, the
-// default's too, which turn/start can ask for again; the user's config
-// may run another (SettingsReported says).
-func listModels(result json.RawMessage) ([]agent.Model, error) {
-	var res struct {
-		Data []struct {
-			ID            string `json:"id"`
-			DisplayName   string `json:"displayName"`
-			Description   string `json:"description"`
-			Hidden        bool   `json:"hidden"`
-			IsDefault     bool   `json:"isDefault"`
-			DefaultEffort string `json:"defaultReasoningEffort"`
-			Efforts       []struct {
-				Effort string `json:"reasoningEffort"`
-			} `json:"supportedReasoningEfforts"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(result, &res); err != nil {
-		return nil, err
-	}
-	var out []agent.Model
-	for _, m := range res.Data {
-		if m.Hidden {
-			continue
-		}
-		x := agent.Model{ID: m.ID, Name: m.DisplayName, Description: m.Description, DefaultEffort: m.DefaultEffort}
-		for _, e := range m.Efforts {
-			x.Efforts = append(x.Efforts, e.Effort)
-		}
-		if m.IsDefault {
-			out = append([]agent.Model{x}, out...)
-		} else {
-			out = append(out, x)
-		}
-	}
-	return out, nil
 }

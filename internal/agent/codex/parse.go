@@ -185,12 +185,21 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 	case "thread/settings/updated":
 		var p struct {
 			Settings struct {
-				Model  string `json:"model"`
-				Effort string `json:"effort"`
+				Model    string `json:"model"`
+				Effort   string `json:"effort"`
+				Policy   string `json:"approvalPolicy"`
+				Reviewer string `json:"approvalsReviewer"`
+				Sandbox  struct {
+					Type string `json:"type"`
+				} `json:"sandboxPolicy"`
 			} `json:"threadSettings"`
 		}
 		if json.Unmarshal(params, &p) == nil {
-			return []agent.Event{agent.SettingsReported{Model: p.Settings.Model, Effort: p.Settings.Effort}}
+			out := []agent.Event{agent.SettingsReported{Model: p.Settings.Model, Effort: p.Settings.Effort}}
+			if m := modeOf(p.Settings.Policy, p.Settings.Reviewer, p.Settings.Sandbox.Type); m != "" {
+				out = append(out, agent.ModeReported{ID: m})
+			}
+			return out
 		}
 	case "item/agentMessage/delta":
 		if n.Delta == "" {

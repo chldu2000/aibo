@@ -44,9 +44,10 @@ type Session struct {
 	// Archived hides the session from its workspace's group; it can still
 	// be read, searched and referenced.
 	Archived bool
-	// Level is the approval level; Rules what the user allowed for the
-	// rest of the session.
-	Level agent.ApprovalLevel
+	// Mode is the permission mode (agent.PermissionMode.ID), empty for
+	// the one the Agent marks Default; Rules what the user allowed for the rest
+	// of the session.
+	Mode  string
 	Rules []agent.Rule
 	// ReadDirs are other workspaces the session may read, not write: the
 	// source workspaces of references it received. It keeps them.
@@ -137,6 +138,7 @@ type Approval struct {
 	Cwd     string `json:",omitempty"`
 	Reason  string `json:",omitempty"`
 	Diff    string `json:",omitempty"`
+	Plan    string `json:",omitempty"`
 	Paths   []string
 	Input   json.RawMessage `json:",omitempty"`
 	// Outside is set when it writes outside the session's workspace.
