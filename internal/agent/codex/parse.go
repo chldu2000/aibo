@@ -182,6 +182,16 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		return nil
 	}
 	switch method {
+	case "thread/settings/updated":
+		var p struct {
+			Settings struct {
+				Model  string `json:"model"`
+				Effort string `json:"effort"`
+			} `json:"threadSettings"`
+		}
+		if json.Unmarshal(params, &p) == nil {
+			return []agent.Event{agent.SettingsReported{Model: p.Settings.Model, Effort: p.Settings.Effort}}
+		}
 	case "item/agentMessage/delta":
 		if n.Delta == "" {
 			return nil

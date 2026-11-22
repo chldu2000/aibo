@@ -41,11 +41,18 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 				}
 			})
 			kv("Agent", func() {
-				m := x.Model
-				if m == "" {
-					m = "默认模型"
+				text(s.agentName(x.Agent))
+			})
+			kv("模型", func() {
+				u := s.using(x)
+				line := u.name
+				if u.effort != "" {
+					line += " · 推理强度 " + u.effort
 				}
-				text(s.agentName(x.Agent) + " · " + m)
+				text(line)
+				if st.Running {
+					ui.Text(c, "这一轮结束后可以在输入框底部更换").FontSize(11).TextColor(t.TextMuted)
+				}
 			})
 			kv("工作区", func() {
 				text(ws.Path)

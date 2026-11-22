@@ -216,3 +216,5 @@ func (s *replaySession) RespondApproval(context.Context, string, string, string)
 func (s *replaySession) SetLevel(context.Context, agent.ApprovalLevel) error { return nil }
 
 func (s *replaySession) Compact(context.Context) error { return nil }
+
+func (s *replaySession) SetModel(context.Context, string, string) error { return nil }

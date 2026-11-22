@@ -316,15 +316,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			if iconButton(c, "at", "引用其他会话（@）").Clicked() {
 				s.openPull(x.ID, -1)
 			}
-			// The model, chosen when the session was made.
-			m := x.Model
-			if m == "" {
-				m = "默认模型"
-			}
-			ui.Row(c).Gap(4).Padding(4, 8).AlignItems(ui.Center).Tooltip("模型（新建会话时选择）").Children(func() {
-				sfsymbols.Symbol(c, "cpu").Size(13).Color(t.TextMuted)
-				ui.Text(c, m).FontSize(12).TextColor(t.TextMuted)
-			})
+			s.modelControls(c, x, running)
 			s.levelControl(c, x)
 			ui.Spacer(c)
 			if running {

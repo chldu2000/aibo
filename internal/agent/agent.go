@@ -41,6 +41,21 @@ type Model struct {
 	ID          string
 	Name        string
 	Description string
+	// Resolved is the model ID runs as, as the Agent reports what it uses
+	// (SettingsReported): "claude-opus-5-5" for "opus". Empty when it is
+	// ID itself.
+	Resolved string
+	// Efforts are the reasoning efforts the model takes, in order; none
+	// when it takes none. DefaultEffort is its default, when the Agent
+	// tells.
+	Efforts       []string
+	DefaultEffort string
+}
+
+// Runs reports whether m is the model id runs as, as an Agent reports
+// it.
+func (m Model) Runs(id string) bool {
+	return id != "" && (m.ID == id || m.Resolved == id)
 }
 
 // MCPServer is the workbench's MCP server as one session reaches it.
@@ -55,9 +70,10 @@ type MCPServer struct {
 type StartOptions struct {
 	// Workspace is the absolute path the Agent runs in.
 	Workspace string
-	// Model is the model chosen when the session was created; empty
-	// leaves the Agent's default.
-	Model string
+	// Model is the session's model, Effort its reasoning effort; empty
+	// leaves the Agent's own.
+	Model  string
+	Effort string
 	// ResumeID is the native session to resume; empty starts a new one.
 	ResumeID string
 	// MCP is the workbench's MCP server, which the Agent must be given
@@ -120,6 +136,10 @@ type Session interface {
 	Compact(ctx context.Context) error
 	// SetLevel changes the approval level, for the turns to come.
 	SetLevel(ctx context.Context, level ApprovalLevel) error
+	// SetModel changes the model and the reasoning effort, empty for the
+	// Agent's own, for the turns to come; only between turns. The Agent
+	// then reports what it uses (SettingsReported).
+	SetModel(ctx context.Context, model, effort string) error
 	// Close ends the native session's process or connection.
 	Close() error
 }
@@ -132,6 +152,14 @@ type Turn struct {
 
 // Event is one thing a native session reports.
 type Event interface{ isEvent() }
+
+// SettingsReported is the model and the reasoning effort the Agent says
+// it uses, as it starts and after SetModel: what it really runs, not what
+// was asked. Either is empty when the Agent does not say.
+type SettingsReported struct {
+	Model  string
+	Effort string
+}
 
 // NativeSessionStarted reports the ID of the native session, once known,
 // so that it can be resumed later.
@@ -291,6 +319,7 @@ type Retrying struct {
 }
 
 func (NativeSessionStarted) isEvent() {}
+func (SettingsReported) isEvent()     {}
 func (ReplyDelta) isEvent()           {}
 func (ThinkingDelta) isEvent()        {}
 func (ReplyDone) isEvent()            {}

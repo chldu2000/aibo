@@ -1,0 +1,5 @@
+{"type": "control_response", "response": {"subtype": "success", "request_id": "settings-1", "response": {"applied": {"model": "claude-haiku-5-5", "effort": "low", "advisor": null, "ultracode": false, "ultracodeRequested": false, "ultracodeAvailable": false, "ultrathinkAvailable": false}}}}
+{"type": "user", "message": {"role": "user", "content": "<local-command-stdout>Set model to `sonnet (claude-sonnet-5-5)`</local-command-stdout>"}, "session_id": "95ce163c-a507-482f-9056-8cd73aeb4f08", "parent_tool_use_id": null, "uuid": "f98fd94a-cec6-4eb1-a922-ed7b38aa1346", "timestamp": "2026-11-21T08:02:31.926Z", "isReplay": true}
+{"type": "control_response", "response": {"subtype": "success", "request_id": "model-1", "response": {"model": "claude-sonnet-5-5"}}}
+{"type": "control_response", "response": {"subtype": "success", "request_id": "effort-1"}}
+{"type": "control_response", "response": {"subtype": "success", "request_id": "settings-2", "response": {"applied": {"model": "claude-sonnet-5-5", "effort": "high", "advisor": null, "ultracode": false, "ultracodeRequested": false, "ultracodeAvailable": false, "ultrathinkAvailable": false}}}}

@@ -85,6 +85,10 @@ type Shell struct {
 	refocus bool
 	// side is the sidebar's state.
 	side sidebarUI
+	// models are the models each Agent told; modelMenu the composer's
+	// model and effort menus.
+	models    map[agent.Kind]*models
+	modelMenu modelState
 	// detail is the session details panel.
 	detail detailsUI
 	// settings is the global settings' modal.

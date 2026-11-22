@@ -180,3 +180,53 @@ func TestContractResumeFailure(t *testing.T) {
 	}
 	t.Logf("error: %v", err)
 }
+
+// The model and the effort go with the next turn, and the thread keeps
+// them, resumed too.
+func TestContractModelAndEffort(t *testing.T) {
+	path := contract(t)
+	dir := t.TempDir()
+	e := openEnv(t, dir, path)
+	ms, err := e.Models(context.Background(), codex.Kind)
+	if err != nil || len(ms) < 2 {
+		t.Fatalf("models = %+v, %v", ms, err)
+	}
+	// Another model than the default, at an effort other than its default.
+	m := ms[1]
+	effort := ""
+	for _, x := range m.Efforts {
+		if x != m.DefaultEffort {
+			effort = x
+		}
+	}
+	w, _ := e.AddWorkspace(t.TempDir())
+	s, _ := e.NewSession(w.ID, codex.Kind, "")
+	if err := e.Send(s.ID, "Reply with just OK."); err != nil {
+		t.Fatal(err)
+	}
+	e.idle(t, s.ID)
+	if st := e.Status(s.ID); st.Model == "" {
+		t.Error("Codex said nothing of its model")
+	}
+	if err := e.SetModel(s.ID, m.ID, effort); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Send(s.ID, "Reply with just OK again."); err != nil {
+		t.Fatal(err)
+	}
+	e.idle(t, s.ID)
+	if st := e.Status(s.ID); st.Model != m.ID || st.Effort != effort {
+		t.Errorf("after the change: %q %q, want %q %q", st.Model, st.Effort, m.ID, effort)
+	}
+	e.Close()
+
+	e2 := openEnv(t, dir, path)
+	defer e2.Close()
+	if err := e2.Send(s.ID, "Reply with just OK once more."); err != nil {
+		t.Fatal(err)
+	}
+	e2.idle(t, s.ID)
+	if st := e2.Status(s.ID); st.Model != m.ID || st.Effort != effort {
+		t.Errorf("resumed: %q %q, want %q %q", st.Model, st.Effort, m.ID, effort)
+	}
+}

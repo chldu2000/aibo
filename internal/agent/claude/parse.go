@@ -78,6 +78,8 @@ type envelope struct {
 	// control_request
 	RequestID string          `json:"request_id"`
 	Request   json.RawMessage `json:"request"`
+	// control_response
+	Response json.RawMessage `json:"response"`
 }
 
 type streamEvent struct {
@@ -158,6 +160,21 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 		return p.user(e, raw)
 	case "result":
 		return p.result(e)
+	case "control_response":
+		// Only get_settings' answers say anything: what the session uses.
+		// The others (initialize, set_model, interrupt…) only acknowledge.
+		var r struct {
+			RequestID string `json:"request_id"`
+			Response  struct {
+				Applied *struct {
+					Model  string `json:"model"`
+					Effort string `json:"effort"`
+				} `json:"applied"`
+			} `json:"response"`
+		}
+		if json.Unmarshal(e.Response, &r) == nil && strings.HasPrefix(r.RequestID, settingsReq) && r.Response.Applied != nil {
+			return []agent.Event{agent.SettingsReported{Model: r.Response.Applied.Model, Effort: r.Response.Applied.Effort}}
+		}
 	case "control_request":
 		var r struct {
 			Subtype string `json:"subtype"`

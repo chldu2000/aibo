@@ -29,3 +29,18 @@
   - Claude：会话空闲时发 `set_model`、`apply_flag_settings`；启动和续接时把存下来的推理强度作为 `--effort` 传进去（续接不保留推理强度）。
   - Codex：把存下来的模型和推理强度放进下一次 `turn/start`；续接时可以不传。
 - 会话里要把“实际生效的”模型和推理强度读回来显示（Claude 用 `get_settings`，Codex 用 `thread/start` 或 `thread/resume` 的回包，以及 `thread/settings/updated`）。这样用户没换过时，看到的也是 Agent 真正在用的值，而不只是“默认”。
+
+## 补充实测（2026-11-22，实现任务 06 时）
+
+Claude Code 2.1.318，只发控制请求、不跑轮次（不花钱），探针是 `06-probes/claude_ctl.py`：
+
+- `initialize` 回包的每个模型带 `resolvedModel`（例如 `default` 和 `opus` 都是 `claude-opus-5-5`），以及 `supportsEffort`、`supportedEffortLevels`。`get_settings` 报的是解析后的 ID，所以界面要用 `resolvedModel` 把它对回列表里的名字。
+- `set_model` 的 `model` 可以是 `"default"`：回包给出解析后的 ID（`claude-opus-5-5`），之后 `get_settings` 报的也是它。
+- `apply_flag_settings {"effortLevel": null}` 让推理强度回到默认（`get_settings` 报 `medium`）。
+- `set_model` 之后，stdout 上会出一条 `isReplay: true` 的 `user` 消息（`<local-command-stdout>Set model to …`），内容是字符串，不是工具结果。解析器本来就不处理这种消息。
+
+抓取数据整理进了适配器的 `testdata/`：
+
+- `claude/testdata/settings.jsonl`：`get_settings` 的回包只留 `applied`（`effective` 里是用户自己的设置）；请求 ID 改成了适配器自己用的前缀。
+- `claude/testdata/models.json`：模型列表，去掉了 `description`。
+- `codex/testdata/settings.jsonl`：`model/list` 回包、`thread/start` 和 `thread/resume` 回包（只留读的字段）、`thread/settings/updated` 推送。

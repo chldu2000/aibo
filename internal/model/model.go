@@ -27,7 +27,10 @@ type Session struct {
 	ID          string
 	WorkspaceID string
 	Agent       agent.Kind
-	Model       string
+	// Model and Effort are the model and the reasoning effort chosen for
+	// the session; empty leaves the Agent's own.
+	Model  string
+	Effort string
 	// Title is the session's title: one the user set (TitleManual), or
 	// else the start of its first user message; empty until then.
 	Title       string

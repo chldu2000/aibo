@@ -40,6 +40,7 @@ type Agent struct {
 	mu          sync.Mutex
 	resumeFails string
 	starts      []agent.StartOptions
+	modelSets   []ModelSet
 	nextID      int
 }
 
@@ -98,12 +99,35 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 		id = fmt.Sprintf("fake-native-%d", a.nextID)
 	}
 	a.mu.Unlock()
-	s := &session{respond: a.respond, opts: opts, decisions: a.decisions, levels: a.levels, events: make(chan agent.Event, 256)}
+	s := &session{agent: a, respond: a.respond, opts: opts, decisions: a.decisions, levels: a.levels, events: make(chan agent.Event, 256)}
 	s.events <- agent.NativeSessionStarted{ID: id}
+	s.events <- reported(opts.Model, opts.Effort)
 	return s, nil
 }
 
+// DefaultModel is the model the fake says it uses when given none.
+const DefaultModel = "fake-default"
+
+// reported is what the fake says it uses.
+func reported(model, effort string) agent.SettingsReported {
+	if model == "" {
+		model = DefaultModel
+	}
+	return agent.SettingsReported{Model: model, Effort: effort}
+}
+
+// ModelSet is a SetModel on one of the fake's sessions.
+type ModelSet struct{ Model, Effort string }
+
+// ModelSets returns every SetModel so far, in order.
+func (a *Agent) ModelSets() []ModelSet {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]ModelSet(nil), a.modelSets...)
+}
+
 type session struct {
+	agent     *Agent
 	respond   Responder
 	opts      agent.StartOptions
 	decisions chan Decision
@@ -130,12 +154,13 @@ func (s *session) Send(_ context.Context, turn agent.Turn) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.turns.Add(1)
+	opts := s.opts
 	go func() {
 		defer s.turns.Done()
 		if turn.Text == CompactTurn {
 			s.events <- agent.Compacted{Trigger: "manual", PreTokens: 1000, PostTokens: 100}
 		} else {
-			s.respond(ctx, s.opts, turn, func(e agent.Event) { s.events <- e })
+			s.respond(ctx, opts, turn, func(e agent.Event) { s.events <- e })
 		}
 		s.mu.Lock()
 		s.cancel = nil
@@ -172,6 +197,23 @@ const CompactTurn = "\x00compact"
 // SetLevel records the level, which Levels reports.
 func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
 	s.levels <- level
+	return nil
+}
+
+// SetModel applies to the turns to come, which see it in their options,
+// and reports it as what the fake uses.
+func (s *session) SetModel(_ context.Context, model, effort string) error {
+	s.mu.Lock()
+	if s.cancel != nil {
+		s.mu.Unlock()
+		return errors.New("fake: a turn is running")
+	}
+	s.opts.Model, s.opts.Effort = model, effort
+	s.mu.Unlock()
+	s.agent.mu.Lock()
+	s.agent.modelSets = append(s.agent.modelSets, ModelSet{model, effort})
+	s.agent.mu.Unlock()
+	s.events <- reported(model, effort)
 	return nil
 }
 

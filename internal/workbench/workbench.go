@@ -100,6 +100,9 @@ type Status struct {
 	// Retrying, while the turn runs, says why the Agent is trying again
 	// to reach its model (agent.Retrying), until it gets on.
 	Retrying string
+	// Model and Effort are what the Agent last said it uses
+	// (agent.SettingsReported); empty until it says.
+	Model, Effort string
 }
 
 // AgentInfo describes an available Agent.
@@ -156,6 +159,8 @@ type session struct {
 	// last agent.Retrying, until anything else happens.
 	since    time.Time
 	retrying string
+	// reported is the model and the effort the Agent last said it uses.
+	reported agent.SettingsReported
 	// lastActive is when the session last did something, for idle
 	// disconnection.
 	lastActive time.Time
@@ -427,7 +432,8 @@ func (w *Workbench) Status(id string) Status {
 		return Status{}
 	}
 	return Status{Connected: s.native != nil, Running: s.running, Error: s.err, Approvals: len(w.pending(s)),
-		ResumeFailed: s.resumeFailed, ReadOnly: s.readOnly, NeedsLogin: s.needsLogin, Since: s.since, Retrying: s.retrying}
+		ResumeFailed: s.resumeFailed, ReadOnly: s.readOnly, NeedsLogin: s.needsLogin, Since: s.since, Retrying: s.retrying,
+		Model: s.reported.Model, Effort: s.reported.Effort}
 }
 
 // Messages returns a session's messages in order.
@@ -606,7 +612,7 @@ func (w *Workbench) connect(id string, info model.Session, ws model.Workspace) (
 		return nil, fmt.Errorf("%s：%w", info.Agent, ErrUnknownAgent)
 	}
 	mcp := &agent.MCPServer{URL: w.mcp.URL(), Token: w.mcp.Issue(id)}
-	native, err := a.Start(context.Background(), agent.StartOptions{Workspace: ws.Path, Model: info.Model, ResumeID: info.NativeID(), MCP: mcp,
+	native, err := a.Start(context.Background(), agent.StartOptions{Workspace: ws.Path, Model: info.Model, Effort: info.Effort, ResumeID: info.NativeID(), MCP: mcp,
 		Level: info.Level, Rules: info.Rules, ReadDirs: info.ReadDirs})
 	if err != nil {
 		w.mcp.Revoke(id)

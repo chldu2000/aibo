@@ -163,3 +163,42 @@ func TestContractResumeFailure(t *testing.T) {
 	}
 	t.Logf("error: %v", err)
 }
+
+// The model and the effort change between turns without a new process,
+// and hold when the session resumes: Claude Code forgets the effort then,
+// which goes again on the command line.
+func TestContractModelAndEffort(t *testing.T) {
+	path := contract(t)
+	dir := t.TempDir()
+	e := openEnv(t, dir, path)
+	w, _ := e.AddWorkspace(t.TempDir())
+	s, _ := e.NewSession(w.ID, claude.Kind, contractModel)
+	if err := e.SetModel(s.ID, contractModel, "low"); err != nil {
+		t.Fatal(err)
+	}
+	e.turn(t, s.ID, "Reply with just OK.")
+	if st := e.Status(s.ID); !strings.Contains(st.Model, "haiku") || st.Effort != "low" {
+		t.Errorf("started on %q %q", st.Model, st.Effort)
+	}
+	first, _ := e.Session(s.ID)
+	if err := e.SetModel(s.ID, "sonnet", "high"); err != nil {
+		t.Fatal(err)
+	}
+	e.until(t, "Claude Code to report", func() bool {
+		st := e.Status(s.ID)
+		return strings.Contains(st.Model, "sonnet") && st.Effort == "high"
+	})
+	e.turn(t, s.ID, "Reply with just OK again.")
+	again, _ := e.Session(s.ID)
+	if len(again.NativeIDs) != len(first.NativeIDs) {
+		t.Errorf("a new native session: %v → %v", first.NativeIDs, again.NativeIDs)
+	}
+	e.Close()
+
+	e2 := openEnv(t, dir, path)
+	defer e2.Close()
+	e2.turn(t, s.ID, "Reply with just OK once more.")
+	if st := e2.Status(s.ID); !strings.Contains(st.Model, "sonnet") || st.Effort != "high" {
+		t.Errorf("resumed on %q %q", st.Model, st.Effort)
+	}
+}

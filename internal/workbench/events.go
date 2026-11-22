@@ -34,8 +34,10 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 	touch := func(i int, flush bool) {
 		touched[i] = touched[i] || flush
 	}
-	// Anything but another retry: the Agent got on.
-	if _, ok := ev.(agent.Retrying); !ok {
+	// Anything but another retry, or what it uses: the Agent got on.
+	switch ev.(type) {
+	case agent.Retrying, agent.SettingsReported:
+	default:
 		s.retrying = ""
 	}
 	switch e := ev.(type) {
@@ -43,6 +45,8 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		if s.running {
 			s.retrying = e.Message
 		}
+	case agent.SettingsReported:
+		s.reported = e
 	case agent.NativeSessionStarted:
 		if e.ID != "" && e.ID != s.info.NativeID() {
 			if err := w.st.AddNativeSession(id, e.ID, now); err == nil {

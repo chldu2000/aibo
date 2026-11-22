@@ -152,6 +152,8 @@ var migrations = []string{
 	ALTER TABLE workspaces ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;`,
 	// Other workspaces a session may read.
 	`ALTER TABLE sessions ADD COLUMN read_dirs TEXT;`,
+	// A session's reasoning effort, beside its model.
+	`ALTER TABLE sessions ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT '';`,
 }
 
 // backupBeforeUpgrade copies the database of an older schema, before
@@ -281,14 +283,14 @@ func (s *Store) CreateSession(x model.Session) error {
 	if level == "" {
 		level = agent.AskAlways
 	}
-	_, err := s.db.Exec(`INSERT INTO sessions (id, workspace_id, agent, model, title, title_manual, created_at, active_at, approval_level, rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		x.ID, x.WorkspaceID, string(x.Agent), x.Model, x.Title, x.TitleManual, ms(x.CreatedAt), ms(x.ActiveAt), string(level), rulesValue(x.Rules))
+	_, err := s.db.Exec(`INSERT INTO sessions (id, workspace_id, agent, model, reasoning_effort, title, title_manual, created_at, active_at, approval_level, rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		x.ID, x.WorkspaceID, string(x.Agent), x.Model, x.Effort, x.Title, x.TitleManual, ms(x.CreatedAt), ms(x.ActiveAt), string(level), rulesValue(x.Rules))
 	return err
 }
 
 // Sessions returns every session, most recently active first.
 func (s *Store) Sessions() ([]model.Session, error) {
-	rows, err := s.db.Query(`SELECT id, workspace_id, agent, model, title, title_manual, created_at, active_at, approval_level, rules, archived, read_dirs FROM sessions ORDER BY active_at DESC, rowid DESC`)
+	rows, err := s.db.Query(`SELECT id, workspace_id, agent, model, reasoning_effort, title, title_manual, created_at, active_at, approval_level, rules, archived, read_dirs FROM sessions ORDER BY active_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +300,7 @@ func (s *Store) Sessions() ([]model.Session, error) {
 		var kind, level string
 		var rules, dirs sql.NullString
 		var created, active sql.NullInt64
-		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Title, &x.TitleManual, &created, &active, &level, &rules, &x.Archived, &dirs); err != nil {
+		if err := rows.Scan(&x.ID, &x.WorkspaceID, &kind, &x.Model, &x.Effort, &x.Title, &x.TitleManual, &created, &active, &level, &rules, &x.Archived, &dirs); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -694,6 +696,12 @@ func (s *Store) SearchMessages(text string) (map[string]string, error) {
 }
 
 // SetReadDirs sets the other workspaces a session may read.
+// SetModel sets a session's model and reasoning effort.
+func (s *Store) SetModel(sessionID, model, effort string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET model = ?, reasoning_effort = ? WHERE id = ?`, model, effort, sessionID)
+	return err
+}
+
 func (s *Store) SetReadDirs(sessionID string, dirs []string) error {
 	b, err := json.Marshal(dirs)
 	if err != nil {

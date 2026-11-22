@@ -62,6 +62,10 @@ func (a *Agent) args(opts agent.StartOptions) []string {
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)
 	}
+	// Resumed, Claude Code forgets the effort: it goes again each time.
+	if opts.Effort != "" {
+		args = append(args, "--effort", opts.Effort)
+	}
 	if opts.ResumeID != "" {
 		args = append(args, "--resume", opts.ResumeID)
 	}
@@ -141,6 +145,11 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	}
 	select {
 	case <-s.ready:
+		// What it uses, which the options may not say: its default.
+		if err := s.control("settings", map[string]any{"subtype": "get_settings"}); err != nil {
+			s.Close()
+			return nil, err
+		}
 		return s, nil
 	case <-s.exited:
 	case <-ctx.Done():
@@ -361,6 +370,38 @@ func (s *session) SetLevel(_ context.Context, level agent.ApprovalLevel) error {
 		"request": map[string]any{"subtype": "set_permission_mode", "mode": mode}})
 }
 
+// settingsReq starts the IDs of get_settings requests, whose answers say
+// what the session uses (agent.SettingsReported).
+const settingsReq = "settings-"
+
+// control sends a control request whose ID starts with prefix.
+func (s *session) control(prefix string, request map[string]any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextReq++
+	return s.write(map[string]any{"type": "control_request", "request_id": fmt.Sprintf("%s-%d", prefix, s.nextReq), "request": request})
+}
+
+// SetModel switches the model (set_model; "default" is Claude Code's own)
+// and the effort (apply_flag_settings; null is its default), then asks
+// what it uses now (get_settings).
+func (s *session) SetModel(_ context.Context, model, effort string) error {
+	if model == "" {
+		model = "default"
+	}
+	var level any
+	if effort != "" {
+		level = effort
+	}
+	if err := s.control("model", map[string]any{"subtype": "set_model", "model": model}); err != nil {
+		return err
+	}
+	if err := s.control("effort", map[string]any{"subtype": "apply_flag_settings", "settings": map[string]any{"effortLevel": level}}); err != nil {
+		return err
+	}
+	return s.control("settings", map[string]any{"subtype": "get_settings"})
+}
+
 // Compact sends /compact, which Claude Code runs as a turn reporting
 // compact_boundary.
 func (s *session) Compact(ctx context.Context) error {
@@ -404,33 +445,47 @@ func (a *Agent) Models(ctx context.Context) ([]agent.Model, error) {
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 64*1024), 16<<20)
 	for sc.Scan() {
-		var e struct {
-			Type     string `json:"type"`
-			Response struct {
-				RequestID string `json:"request_id"`
-				Response  struct {
-					Models []struct {
-						Value       string `json:"value"`
-						DisplayName string `json:"displayName"`
-						Description string `json:"description"`
-					} `json:"models"`
-				} `json:"response"`
-			} `json:"response"`
+		if out, ok := models(sc.Bytes()); ok {
+			return out, nil
 		}
-		if json.Unmarshal(sc.Bytes(), &e) != nil || e.Type != "control_response" || e.Response.RequestID != "models" {
-			continue
-		}
-		var out []agent.Model
-		for _, m := range e.Response.Response.Models {
-			id := m.Value
-			if id == "default" {
-				id = ""
-			}
-			out = append(out, agent.Model{ID: id, Name: m.DisplayName, Description: m.Description})
-		}
-		return out, nil
 	}
 	return nil, errors.New("Claude Code 没有说它有哪些模型")
+}
+
+// models reads initialize's answer, if line is it: its models, its
+// "default" as the empty ID, each with the efforts it takes.
+func models(line []byte) ([]agent.Model, bool) {
+	var e struct {
+		Type     string `json:"type"`
+		Response struct {
+			RequestID string `json:"request_id"`
+			Response  struct {
+				Models []struct {
+					Value          string   `json:"value"`
+					Resolved       string   `json:"resolvedModel"`
+					DisplayName    string   `json:"displayName"`
+					Description    string   `json:"description"`
+					SupportsEffort bool     `json:"supportsEffort"`
+					Efforts        []string `json:"supportedEffortLevels"`
+				} `json:"models"`
+			} `json:"response"`
+		} `json:"response"`
+	}
+	if json.Unmarshal(line, &e) != nil || e.Type != "control_response" || e.Response.RequestID != "models" {
+		return nil, false
+	}
+	var out []agent.Model
+	for _, m := range e.Response.Response.Models {
+		x := agent.Model{ID: m.Value, Name: m.DisplayName, Description: m.Description, Resolved: m.Resolved}
+		if x.ID == "default" {
+			x.ID = ""
+		}
+		if m.SupportsEffort {
+			x.Efforts = m.Efforts
+		}
+		out = append(out, x)
+	}
+	return out, true
 }
 
 // DirsAtStart: Claude Code takes --add-dir only as it starts.
