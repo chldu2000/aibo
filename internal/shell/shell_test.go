@@ -211,16 +211,9 @@ func TestNewSessionChoosesAgent(t *testing.T) {
 	if err := tt.Click("用 Beta 新建会话"); err != nil {
 		t.Fatalf("%v: %q", err, tt.Texts())
 	}
-	for i := 0; i < 50 && !tt.HasText("使用模型 默认"); i++ {
-		time.Sleep(10 * time.Millisecond) // the models load off the main thread
-		tt.Frame()
-	}
-	if err := tt.Click("使用模型 默认"); err != nil {
-		t.Fatalf("%v: %q", err, tt.Texts())
-	}
 	tt.Frame()
 	got := wb.Sessions()
-	if len(got) != 1 || got[0].Agent != "beta" {
+	if len(got) != 1 || got[0].Agent != "beta" || got[0].Model != "" {
 		t.Fatalf("sessions = %+v", got)
 	}
 	if !tt.HasText("给 Beta 发消息") || tt.HasText("用 Alpha 新建会话") {

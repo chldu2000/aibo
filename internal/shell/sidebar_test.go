@@ -127,23 +127,19 @@ func TestSidebarManagement(t *testing.T) {
 		t.Errorf("workspaces after dropping = %+v", got)
 	}
 
-	// A new session, with a model of the Agent's.
+	// A lone Agent: "+" starts a session at once, on the Agent's own
+	// default model.
 	click("在 " + filepath.Base(dropped) + " 新建会话")
-	for i := 0; i < 50 && !tt.HasText("使用模型 Opus"); i++ {
-		time.Sleep(10 * time.Millisecond)
-		frame()
-	}
-	shows("默认（Sonnet）", "最强")
-	click("使用模型 Opus")
 	var made model.Session
 	for _, x := range wb.Sessions() {
 		if x.WorkspaceID != ws.ID {
 			made = x
 		}
 	}
-	if made.Model != "opus" {
+	if made.ID == "" || made.Model != "" {
 		t.Errorf("new session = %+v", made)
 	}
+	shows("默认模型")
 
 	// The folder moved away: the session says so, and can be pointed at
 	// where it went.

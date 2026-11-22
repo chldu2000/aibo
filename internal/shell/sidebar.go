@@ -1,10 +1,8 @@
 package shell
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
@@ -18,9 +16,6 @@ type sidebarUI struct {
 	// the one whose deletion waits for confirmation.
 	renaming, newTitle string
 	deleting           string
-	// choosingModel is the Agent of the new session, its models listed,
-	// for the workspace choosingAgent.
-	choosingModel agent.Kind
 }
 
 // sidebar is the floating Liquid Glass sidebar: search, the workspaces
@@ -218,22 +213,18 @@ func (s *Shell) searchResults(c *ui.Context) {
 	}
 }
 
-// newSessionButton is a workspace's "+": the Agent, then its model, of
-// the new session.
+// newSessionButton is a workspace's "+": the Agent of the new session,
+// which starts with the Agent's own default model. A lone Agent that can
+// start needs no choosing.
 func (s *Shell) newSessionButton(c *ui.Context, ws model.Workspace) {
 	t := c.Theme()
 	plus := iconButton(c, "plus", "在 "+workspaceName(ws)+" 新建会话")
 	if plus.Clicked() {
 		all := s.wb.Agents()
-		switch {
-		case len(all) == 1 && s.opts.Agents == nil && !s.wb.TellsModels(all[0].Kind):
-			// Nothing to choose.
-			s.newSession(ws, all[0].Kind, "")
-		case len(all) == 1 && s.opts.Agents == nil:
-			s.choosingAgent, s.side.choosingModel = ws.ID, all[0].Kind
-			s.loadModels(all[0].Kind)
-		default:
-			s.choosingAgent, s.side.choosingModel = ws.ID, ""
+		if ok, _ := s.agentOK(all[0].Kind); len(all) == 1 && ok {
+			s.newSession(ws, all[0].Kind)
+		} else {
+			s.choosingAgent = ws.ID
 		}
 	}
 	if s.choosingAgent != ws.ID {
@@ -242,10 +233,6 @@ func (s *Shell) newSessionButton(c *ui.Context, ws model.Workspace) {
 	open := true
 	ui.Popover(c, plus, &open, func() {
 		ui.Column(c).Width(280).Gap(2).Padding(8).Children(func() {
-			if kind := s.side.choosingModel; kind != "" {
-				s.modelPicker(c, ws, kind, &open)
-				return
-			}
 			ui.Text(c, "新建会话").Bold().TextColor(t.Text).Padding(0, 6, 4)
 			for _, a := range s.wb.Agents() {
 				if ok, why := s.agentOK(a.Kind); !ok {
@@ -262,82 +249,15 @@ func (s *Shell) newSessionButton(c *ui.Context, ws model.Workspace) {
 				if pickRow(c, string(a.Kind), "用 "+a.Name+" 新建会话", func() {
 					agentGlyph(c, a.Kind, 16)
 					ui.Text(c, a.Name).TextColor(t.Text).Grow(1)
-					ui.Text(c, "›").TextColor(t.TextMuted)
 				}).Clicked() {
-					s.side.choosingModel = a.Kind
-					s.loadModels(a.Kind)
+					s.newSession(ws, a.Kind)
+					open = false
 				}
 			}
 		})
 	})
 	if !open {
-		s.choosingAgent, s.side.choosingModel = "", ""
-	}
-}
-
-// models are the models each Agent told, loaded once.
-type models struct {
-	list    []agent.Model
-	loading bool
-	err     string
-}
-
-func (s *Shell) loadModels(kind agent.Kind) {
-	if s.models == nil {
-		s.models = map[agent.Kind]*models{}
-	}
-	if m, ok := s.models[kind]; ok && (m.loading || m.list != nil) {
-		return
-	}
-	m := &models{loading: true}
-	s.models[kind] = m
-	go func() {
-		list, err := s.wb.Models(context.Background(), kind)
-		s.later(func() {
-			m.loading, m.list = false, list
-			if err != nil {
-				m.err = err.Error()
-			}
-		})
-	}()
-}
-
-// modelPicker chooses the model of the new session: the Agent's default
-// first.
-func (s *Shell) modelPicker(c *ui.Context, ws model.Workspace, kind agent.Kind, open *bool) {
-	t := c.Theme()
-	ui.Row(c).Gap(6).AlignItems(ui.Center).Padding(0, 0, 4).Children(func() {
-		if iconButton(c, "chevron.left", "返回选择 Agent").Clicked() {
-			s.side.choosingModel = ""
-		}
-		agentGlyph(c, kind, 16)
-		ui.Text(c, s.agentName(kind)+" 的模型").Bold().TextColor(t.Text)
-	})
-	m := s.models[kind]
-	start := func(id string) {
-		s.newSession(ws, kind, id)
-		*open = false
-	}
-	if m == nil || m.loading {
-		ui.Text(c, "正在读取模型列表……").FontSize(12).TextColor(t.TextMuted).Padding(4, 6)
-	} else if m.err != "" {
-		ui.Text(c, "读不到模型列表："+m.err).FontSize(11).TextColor(t.Warning).Padding(4, 6)
-	}
-	list := []agent.Model{{Name: "默认"}}
-	if m != nil && len(m.list) > 0 {
-		list = m.list
-	}
-	for _, x := range list {
-		if pickRow(c, "m"+x.ID, "使用模型 "+x.Name, func() {
-			ui.Column(c).Grow(1).Children(func() {
-				ui.Text(c, x.Name).TextColor(t.Text)
-				if x.Description != "" {
-					ui.Text(c, x.Description).FontSize(11).TextColor(t.TextMuted).MaxLines(1)
-				}
-			})
-		}).Clicked() {
-			start(x.ID)
-		}
+		s.choosingAgent = ""
 	}
 }
 

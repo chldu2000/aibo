@@ -83,9 +83,8 @@ type Shell struct {
 	// refocus gives the composer the keyboard focus in the next frame
 	// that builds it.
 	refocus bool
-	// side is the sidebar's state; models the models of each Agent.
-	side   sidebarUI
-	models map[agent.Kind]*models
+	// side is the sidebar's state.
+	side sidebarUI
 	// detail is the session details panel.
 	detail detailsUI
 	// settings is the global settings' modal.
@@ -258,8 +257,8 @@ func (s *Shell) later(fn func()) {
 
 // newSession creates a session in the workspace with an Agent and opens
 // it.
-func (s *Shell) newSession(ws model.Workspace, kind agent.Kind, modelID string) {
-	x, err := s.wb.NewSession(ws.ID, kind, modelID)
+func (s *Shell) newSession(ws model.Workspace, kind agent.Kind) {
+	x, err := s.wb.NewSession(ws.ID, kind, "")
 	if err != nil {
 		s.notice = "新建会话失败：" + err.Error()
 		return

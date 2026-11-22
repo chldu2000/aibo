@@ -205,11 +205,6 @@ esac
 		t.Error("an unavailable Agent can start a session")
 	}
 	click("用 Claude Code 新建会话")
-	for i := 0; i < 50 && !tt.HasText("使用模型 默认"); i++ {
-		time.Sleep(10 * time.Millisecond)
-		frame()
-	}
-	click("使用模型 默认")
 
 	// Claude Code is signed out: the session says so, and how to sign in.
 	shows("Claude Code 未登录。")
