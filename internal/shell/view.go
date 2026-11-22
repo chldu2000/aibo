@@ -170,7 +170,7 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 		// rather than selecting its text or pressing its buttons.
 		row := ui.Row(c).Gap(10).AlignItems(ui.Start).Padding(4).Radius(10).IgnoreInput(v.sel.on).Children(func() {
 			ui.Textf(c, "#%d", m.Seq).FontSize(11).TextColor(t.TextMuted).Width(44).MaxLines(1)
-			ui.Column(c).Grow(1).MaxWidth(820).Gap(6).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).MaxWidth(820).Gap(6).Children(func() {
 				switch m.Kind {
 				case model.UserMessage:
 					for _, id := range m.Refs {

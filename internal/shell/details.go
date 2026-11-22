@@ -28,7 +28,7 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 	kv := func(k string, v func()) {
 		ui.Row(c).Gap(8).AlignItems(ui.Start).Children(func() {
 			ui.Text(c, k).FontSize(12).TextColor(t.TextMuted).Width(84)
-			ui.Column(c).Grow(1).Gap(2).Children(v)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(v)
 		})
 	}
 	text := func(s string) { ui.Text(c, s).FontSize(12).TextColor(t.Text).Selectable() }
@@ -83,14 +83,7 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 					text("无")
 				}
 				for i, r := range x.Rules {
-					ui.Row(c).Key(i).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, r.Label).FontSize(12).TextColor(t.Text).Grow(1)
-						if ui.Button(c, "撤销").Label("撤销 " + r.Label).Clicked() {
-							if err := s.wb.RevokeRule(x.ID, i); err != nil {
-								s.notice = err.Error()
-							}
-						}
-					})
+					s.ruleRow(c, x.ID, i, r)
 				}
 			})
 			kv("可读的源工作区", func() {

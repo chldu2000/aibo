@@ -143,10 +143,10 @@ func options(raw []json.RawMessage) []agent.ApprovalOption {
 		}
 	}
 	if len(session) > 0 {
-		opts = append(opts, agent.ApprovalOption{ID: optSession, Kind: agent.AllowSession, Label: "本会话内始终允许（" + strings.Join(session, "、") + "）", Rules: rules})
+		opts = append(opts, agent.ApprovalOption{ID: optSession, Kind: agent.AllowSession, Label: "本会话内始终允许", Detail: session, Rules: rules})
 	}
 	if len(always) > 0 {
-		opts = append(opts, agent.ApprovalOption{ID: optAlways, Kind: agent.AllowAlways, Label: "永久允许（" + strings.Join(always, "、") + "）", Where: where})
+		opts = append(opts, agent.ApprovalOption{ID: optAlways, Kind: agent.AllowAlways, Label: "永久允许", Detail: always, Where: where})
 	}
 	return append(opts,
 		agent.ApprovalOption{ID: optDeny, Kind: agent.Deny, Label: "拒绝"},

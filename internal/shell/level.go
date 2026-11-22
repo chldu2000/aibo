@@ -99,14 +99,7 @@ func (s *Shell) levelControl(c *ui.Context, x model.Session) {
 				ui.Text(c, "无").FontSize(12).TextColor(t.TextMuted)
 			}
 			for i, r := range x.Rules {
-				ui.Row(c).Key(i).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, r.Label).FontSize(12).TextColor(t.Text).Grow(1)
-					if ui.Button(c, "撤销").Label("撤销 " + r.Label).Clicked() {
-						if err := s.wb.RevokeRule(x.ID, i); err != nil {
-							s.notice = err.Error()
-						}
-					}
-				})
+				s.ruleRow(c, x.ID, i, r)
 			}
 			if len(x.Rules) > 0 {
 				ui.Text(c, "撤销后，Agent 会在空闲时重新启动，以便不再带上这条规则。").FontSize(11).TextColor(t.TextMuted)
@@ -126,4 +119,19 @@ func (s *Shell) setLevel(id string, l agent.ApprovalLevel) {
 	if err := s.wb.SetLevel(id, l); err != nil {
 		s.notice = "更改审批档位失败：" + err.Error()
 	}
+}
+
+// ruleRow is a rule the session allows, in one line however long, its
+// middle cut and the whole of it on hover, with its revoke button always
+// in sight.
+func (s *Shell) ruleRow(c *ui.Context, sessionID string, i int, r agent.Rule) {
+	t := c.Theme()
+	ui.Row(c).Key(i).Gap(6).AlignItems(ui.Center).MinWidth(0).Children(func() {
+		ui.Text(c, r.Label).FontSize(12).TextColor(t.Text).MaxLines(1).TruncateMiddle().Tooltip(oneLine(r.Label, 300)).Grow(1).Shrink(1).MinWidth(0)
+		if ui.Button(c, "撤销").Label("撤销 " + oneLine(r.Label, 200)).Shrink(0).Clicked() {
+			if err := s.wb.RevokeRule(sessionID, i); err != nil {
+				s.notice = err.Error()
+			}
+		}
+	})
 }

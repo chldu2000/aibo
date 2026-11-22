@@ -233,9 +233,14 @@ type ApprovalRequested struct {
 
 // ApprovalOption is one answer to an approval request.
 type ApprovalOption struct {
-	ID    string
-	Kind  OptionKind
+	ID   string
+	Kind OptionKind
+	// Label is the action alone, short enough for a button: "永久允许",
+	// not the rule it writes.
 	Label string
+	// Detail, for AllowSession and AllowAlways, says what the option
+	// allows, one line for each rule; it may be as long as a command.
+	Detail []string `json:",omitempty"`
 	// Where, for AllowAlways, is where the Agent writes the rule.
 	Where string
 	// Rules, for AllowSession, are what the session allows from then on.

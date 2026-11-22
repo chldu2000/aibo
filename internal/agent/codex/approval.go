@@ -52,11 +52,12 @@ func (t *thread) approval(id, method string, params json.RawMessage) (agent.Appr
 	case askCommand:
 		a.Title, a.Command, a.Cwd = "执行命令", p.Command, p.Cwd
 		session.Rules = []agent.Rule{commandRule(p.Command)}
+		session.Detail = []string{session.Rules[0].Label}
 		a.Options = []agent.ApprovalOption{once, session}
 		if len(p.Amendment) > 0 {
 			k.amendment = p.Amendment
 			a.Options = append(a.Options, agent.ApprovalOption{ID: "always", Kind: agent.AllowAlways,
-				Label: "永久允许（以 " + strings.Join(p.Amendment, " ") + " 开头的命令）", Where: "Codex 的执行策略规则"})
+				Label: "永久允许", Detail: []string{"以 " + strings.Join(p.Amendment, " ") + " 开头的命令"}, Where: "Codex 的执行策略规则"})
 		}
 		a.Options = append(a.Options, deny, stop)
 	case askFileChange:
@@ -74,6 +75,7 @@ func (t *thread) approval(id, method string, params json.RawMessage) (agent.Appr
 			a.Diff = strings.Join(diffs, "\n")
 		}
 		session.Rules = []agent.Rule{filesRule(a.Paths)}
+		session.Detail = []string{session.Rules[0].Label}
 		a.Options = []agent.ApprovalOption{once, session, deny, stop}
 	case askElicitation:
 		a.Title = "调用 MCP 工具（" + p.ServerName + "）"

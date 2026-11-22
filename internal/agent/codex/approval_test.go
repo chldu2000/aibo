@@ -11,7 +11,11 @@ import (
 func labels(opts []agent.ApprovalOption) string {
 	var ls []string
 	for _, o := range opts {
-		ls = append(ls, o.ID+"="+o.Label)
+		l := o.ID + "=" + o.Label
+		if len(o.Detail) > 0 {
+			l += "[" + strings.Join(o.Detail, "; ") + "]"
+		}
+		ls = append(ls, l)
 	}
 	return strings.Join(ls, " | ")
 }
@@ -33,7 +37,7 @@ func TestApprovalRequests(t *testing.T) {
 	if !ok || cmd.ToolID != "c1" || cmd.Title != "执行命令" || cmd.Command != "npm install left-pad" || cmd.Cwd != "/w" || cmd.Reason != "needs network" {
 		t.Fatalf("command approval = %+v", cmd)
 	}
-	if got := labels(cmd.Options); got != "accept=批准本次 | acceptForSession=本会话内始终允许 | always=永久允许（以 npm install 开头的命令） | decline=拒绝 | cancel=拒绝并停止" {
+	if got := labels(cmd.Options); got != "accept=批准本次 | acceptForSession=本会话内始终允许[命令 npm install left-pad] | always=永久允许[以 npm install 开头的命令] | decline=拒绝 | cancel=拒绝并停止" {
 		t.Errorf("options: %s", got)
 	}
 	for opt, want := range map[string]string{
@@ -54,7 +58,7 @@ func TestApprovalRequests(t *testing.T) {
 	if !ok || fc.Title != "修改文件" || fc.Diff != "--- /w/a.go\n+++ /w/a.go\n@@ -1 +1 @@\n-a\n+b" || len(fc.Paths) != 1 || fc.Paths[0] != "/w/a.go" {
 		t.Errorf("file approval = %+v", fc)
 	}
-	if got := labels(fc.Options); got != "accept=批准本次 | acceptForSession=本会话内始终允许 | decline=拒绝 | cancel=拒绝并停止" {
+	if got := labels(fc.Options); got != "accept=批准本次 | acceptForSession=本会话内始终允许[修改 /w/a.go] | decline=拒绝 | cancel=拒绝并停止" {
 		t.Errorf("options: %s", got)
 	}
 	if _, err := k.result("always"); err == nil {

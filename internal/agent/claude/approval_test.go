@@ -30,7 +30,11 @@ func ask(t *testing.T, p *parser, line string) agent.ApprovalRequested {
 func labels(opts []agent.ApprovalOption) string {
 	var ls []string
 	for _, o := range opts {
-		ls = append(ls, o.ID+"="+o.Label)
+		l := o.ID + "=" + o.Label
+		if len(o.Detail) > 0 {
+			l += "[" + strings.Join(o.Detail, "; ") + "]"
+		}
+		ls = append(ls, l)
 	}
 	return strings.Join(ls, " | ")
 }
@@ -42,7 +46,7 @@ func TestCanUseToolBecomesAnApproval(t *testing.T) {
 		len(a.Paths) != 1 || a.Paths[0] != "/private/tmp/aibo-10/ws/a.txt" {
 		t.Errorf("bash approval = %+v", a)
 	}
-	if got := labels(a.Options); got != "once=批准本次 | session=本会话内始终允许（Bash(touch a.txt)、访问 /private/tmp/aibo-10/ws、自动接受修改） | always=永久允许（Bash(touch a.txt)） | deny=拒绝 | stop=拒绝并停止" {
+	if got := labels(a.Options); got != "once=批准本次 | session=本会话内始终允许[Bash(touch a.txt); 访问 /private/tmp/aibo-10/ws; 自动接受修改] | always=永久允许[Bash(touch a.txt)] | deny=拒绝 | stop=拒绝并停止" {
 		t.Errorf("options: %s", got)
 	}
 	if r := a.Options[1].Rules; len(r) != 3 || r[0].Label != "Bash(touch a.txt)" || r[2].Label != "自动接受修改" {
@@ -57,7 +61,7 @@ func TestCanUseToolBecomesAnApproval(t *testing.T) {
 		t.Errorf("write approval = %+v", w)
 	}
 	// No rule for a settings file: no permanent option.
-	if got := labels(w.Options); got != "once=批准本次 | session=本会话内始终允许（自动接受修改） | deny=拒绝 | stop=拒绝并停止" {
+	if got := labels(w.Options); got != "once=批准本次 | session=本会话内始终允许[自动接受修改] | deny=拒绝 | stop=拒绝并停止" {
 		t.Errorf("options: %s", got)
 	}
 }

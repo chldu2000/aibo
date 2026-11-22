@@ -3,6 +3,10 @@ package shell_test
 import (
 	"context"
 	"fmt"
+	"image"
+	"image/png"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -206,5 +210,131 @@ func TestApprovalLevelsRulesAndNotifications(t *testing.T) {
 	frame()
 	if len(notes) != 1 {
 		t.Errorf("notified for the session on screen: %q", notes)
+	}
+}
+
+// However long the command, the card stays in the session area with every
+// button in sight: the buttons say what they do, and the rules they allow
+// show apart from them, in full.
+func TestLongCommandApprovalCard(t *testing.T) {
+	cmd := strings.Repeat("x", 10000)
+	opts := []agent.ApprovalOption{
+		{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"},
+		{ID: "session", Kind: agent.AllowSession, Label: "本会话内始终允许", Detail: []string{"Bash(" + cmd + ")"},
+			Rules: []agent.Rule{{Label: "Bash(" + cmd + ")"}}},
+		{ID: "always", Kind: agent.AllowAlways, Label: "永久允许", Detail: []string{"以 " + cmd + " 开头的命令"}, Where: "Codex 的执行策略规则"},
+		{ID: "no", Kind: agent.Deny, Label: "拒绝"},
+		{ID: "stop", Kind: agent.DenyStop, Label: "拒绝并停止"},
+	}
+	var f *fake.Agent
+	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
+		emit(agent.ToolStarted{ToolID: "1", Name: "Bash", Input: []byte(`{"command":"` + cmd + `"}`)})
+		emit(agent.ApprovalRequested{ID: "ap", ToolID: "1", Title: "执行命令", Command: cmd, Cwd: "/" + cmd, Options: opts})
+		select {
+		case <-f.Decisions():
+			emit(agent.ToolFinished{ToolID: "1", Output: "ok"})
+		case <-ctx.Done():
+		}
+	}
+	f = fake.New(respond)
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{f}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	changes := make(chan struct{}, 1024)
+	wb.Subscribe(func(workbench.Change) { changes <- struct{}{} })
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	wb.Send(s.ID, "跑")
+	for wb.Status(s.ID).Approvals == 0 {
+		<-changes
+	}
+	const w, h = 1100, 800
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, w, h)
+	frame := func() {
+		for i := 0; i < 3; i++ {
+			tt.Frame()
+			tt.Advance(time.Second)
+		}
+	}
+	frame()
+	inSight := func(labels ...string) {
+		t.Helper()
+		for _, l := range labels {
+			r, ok := tt.Find(l)
+			if !ok {
+				t.Errorf("no %q in the window", l)
+				continue
+			}
+			if r.X < 0 || r.Y < 0 || r.X+r.W > w || r.Y+r.H > h {
+				t.Errorf("%q at %+v, outside the %dx%d window", l, r, w, h)
+			}
+		}
+	}
+	inSight("审批卡片：执行命令", "需要审批 · 执行命令", "批准本次", "本会话内始终允许", "永久允许…", "拒绝…", "拒绝并停止", "查看将允许的规则")
+	if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
+		saveImage(t, tt.Image(), filepath.Join(p, "10-long-command.png"))
+	}
+
+	// The rules show in full, the card still in the window.
+	if err := tt.Click("查看将允许的规则"); err != nil {
+		t.Fatal(err)
+	}
+	frame()
+	inSight("审批卡片：执行命令", "批准本次", "拒绝并停止", "本会话内始终允许：", "永久允许：")
+	if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
+		saveImage(t, tt.Image(), filepath.Join(p, "10-long-command-rules.png"))
+	}
+
+	// The permanent rule's confirmation names it.
+	if err := tt.Click("永久允许…"); err != nil {
+		t.Fatal(err)
+	}
+	frame()
+	inSight("确定永久允许", "取消")
+	if !tt.HasText("以 xxxx") {
+		t.Errorf("the confirmation does not name the rule: %q", tt.Texts())
+	}
+
+	// Allowed for the session, the rule shows in one line in the lists,
+	// its revoke button in sight.
+	for _, l := range []string{"取消", "本会话内始终允许"} {
+		if err := tt.Click(l); err != nil {
+			t.Fatal(err)
+		}
+		frame()
+	}
+	for len(wb.Sessions()[0].Rules) == 0 {
+		<-changes
+	}
+	frame()
+	revoke := "撤销 " + string([]rune("Bash(" + cmd + ")")[:200]) + "…"
+	for _, open := range []string{"会话详情", "审批档位：每次询问"} {
+		if err := tt.Click(open); err != nil {
+			t.Fatal(err)
+		}
+		frame()
+		inSight(revoke)
+		if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
+			saveImage(t, tt.Image(), filepath.Join(p, "10-rules-"+open+".png"))
+		}
+		tt.Key(0, ui.KeyEscape)
+		if err := tt.Click(open); err == nil && open == "会话详情" {
+			frame() // the details close by their button
+		}
+		frame()
+	}
+}
+
+func saveImage(t *testing.T, img image.Image, path string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
 	}
 }
