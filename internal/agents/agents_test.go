@@ -150,3 +150,30 @@ func TestShellPathTimesOut(t *testing.T) {
 		t.Errorf("waited %v", d)
 	}
 }
+
+// Each supported Agent is described for the shell, which knows no Agent
+// by name: its icon, how it signs in, whether signed out it holds a
+// message. Only an in-app one signs in in aibo.
+func TestDescribe(t *testing.T) {
+	cl, ok1 := agents.Describe(claude.Kind)
+	cx, ok2 := agents.Describe(codex.Kind)
+	if !ok1 || !ok2 {
+		t.Fatal("a supported Agent is not described")
+	}
+	if cl.Login != agents.LoginTerminal || cl.HoldsSignedOut || len(cl.Glyph) == 0 || cl.Command != "claude" {
+		t.Errorf("Claude Code = %+v", cl)
+	}
+	if cx.Login != agents.LoginInApp || !cx.HoldsSignedOut || len(cx.Glyph) == 0 {
+		t.Errorf("Codex = %+v", cx)
+	}
+	if _, ok := agents.Describe("fake"); ok {
+		t.Error("an unsupported Agent is described")
+	}
+	r := agents.New(agents.Options{})
+	if _, err := r.StartLogin(context.Background(), claude.Kind, false); !errors.Is(err, agents.ErrNoInAppLogin) {
+		t.Errorf("signing in to Claude Code in aibo: %v", err)
+	}
+	if l := r.AppLogin(claude.Kind); l.Waiting || l.Error != "" {
+		t.Errorf("a sign-in to Claude Code: %+v", l)
+	}
+}

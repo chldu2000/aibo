@@ -121,7 +121,7 @@ func (s *Shell) workspaceGroups(c *ui.Context) {
 func (s *Shell) sessionRow(c *ui.Context, x model.Session) {
 	t := c.Theme()
 	row := ui.Row(c).Key(x.ID).Gap(8).Padding(6, 8).Radius(7).AlignItems(ui.Center).Children(func() {
-		agentGlyph(c, x.Agent, 18)
+		s.agentGlyph(c, x.Agent, 18)
 		ui.Text(c, sessionTitle(x)).TextColor(t.Text).MaxLines(1).Grow(1)
 		s.marks(c, x)
 	})
@@ -201,7 +201,7 @@ func (s *Shell) searchResults(c *ui.Context) {
 		x := f.Session
 		row := ui.Column(c).Key(x.ID).Gap(2).Padding(6, 8).Radius(7).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				agentGlyph(c, x.Agent, 16)
+				s.agentGlyph(c, x.Agent, 16)
 				ui.Text(c, sessionTitle(x)).TextColor(t.Text).MaxLines(1).Grow(1)
 				if x.Archived {
 					ui.Text(c, "已归档").FontSize(11).TextColor(t.TextMuted)
@@ -245,7 +245,7 @@ func (s *Shell) newSessionButton(c *ui.Context, ws model.Workspace) {
 				if ok, why := s.agentOK(a.Kind); !ok {
 					// Unavailable: grayed, with why.
 					ui.Row(c).Key(string(a.Kind)).Gap(8).Padding(6, 8).Opacity(0.5).Children(func() {
-						agentGlyph(c, a.Kind, 16)
+						s.agentGlyph(c, a.Kind, 16)
 						ui.Column(c).Grow(1).Children(func() {
 							ui.Text(c, a.Name).TextColor(t.Text)
 							ui.Text(c, why).FontSize(11).TextColor(t.TextMuted)
@@ -254,7 +254,7 @@ func (s *Shell) newSessionButton(c *ui.Context, ws model.Workspace) {
 					continue
 				}
 				if pickRow(c, string(a.Kind), "用 "+a.Name+" 新建会话", func() {
-					agentGlyph(c, a.Kind, 16)
+					s.agentGlyph(c, a.Kind, 16)
 					ui.Text(c, a.Name).TextColor(t.Text).Grow(1)
 				}).Clicked() {
 					s.newSession(ws, a.Kind)

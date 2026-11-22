@@ -85,6 +85,8 @@ type Shell struct {
 	refocus bool
 	// side is the sidebar's state.
 	side sidebarUI
+	// glyphs are the Agents' icons, parsed once.
+	glyphs map[agent.Kind]*ui.SVG
 	// models are the models each Agent told; modelMenu the composer's
 	// model and effort menus.
 	models    map[agent.Kind]*models

@@ -111,7 +111,7 @@ func (s *Shell) pullSearch(c *ui.Context, x model.Session) {
 				found = true
 				ws := s.workspaceOf(src)
 				row := pickRow(c, src.ID, "选择 "+sessionTitle(src), func() {
-					agentGlyph(c, src.Agent, 16)
+					s.agentGlyph(c, src.Agent, 16)
 					ui.Text(c, sessionTitle(src)).TextColor(t.Text).MaxLines(1).Grow(1)
 					if src.Archived {
 						ui.Text(c, "已归档").FontSize(11).TextColor(t.TextMuted)
@@ -155,7 +155,7 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 	back := false
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		back = iconButton(c, "chevron.left", "返回搜索").Clicked()
-		agentGlyph(c, src.Agent, 18)
+		s.agentGlyph(c, src.Agent, 18)
 		ui.Text(c, sessionTitle(src)).Bold().TextColor(t.Text).NoWrap().Grow(1)
 	})
 	if back {

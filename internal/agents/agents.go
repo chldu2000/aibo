@@ -34,12 +34,47 @@ type Spec struct {
 	MinVersion string
 	// InstallURL is the official install instructions.
 	InstallURL string
+	// Glyph is its icon, an SVG drawn for aibo: never the vendor's logo.
+	Glyph []byte
+	// Login is how the user signs in to it.
+	Login Login
+	// HoldsSignedOut is set when a message does not go to it signed out
+	// (Ready), and stays in the composer: it would only retry for long.
+	// Otherwise it takes the message, and says it is signed out.
+	HoldsSignedOut bool
 }
+
+// Login is how the user signs in to an Agent.
+type Login int
+
+const (
+	// LoginNone: it needs no sign-in, or aibo cannot tell.
+	LoginNone Login = iota
+	// LoginTerminal: in the Agent's own flow, by running its executable
+	// in a terminal; aibo does not stand in for it.
+	LoginTerminal
+	// LoginInApp: in aibo, through the Agent's own flow (StartLogin).
+	LoginInApp
+)
 
 // Specs are the Agents aibo supports.
 var Specs = []Spec{
-	{Kind: claude.Kind, Name: "Claude Code", Command: "claude", MinVersion: "2.1.318", InstallURL: "https://code.claude.com/docs/en/setup"},
-	{Kind: codex.Kind, Name: "Codex", Command: "codex", MinVersion: "0.169.0", InstallURL: "https://github.com/openai/codex#installation"},
+	{Kind: claude.Kind, Name: "Claude Code", Command: "claude", MinVersion: "2.1.318", InstallURL: "https://code.claude.com/docs/en/setup",
+		Glyph: []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#c96442"/><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5.9 8.5l12.2 7"/><path d="M5.9 15.5l12.2-7"/></g></svg>`),
+		Login: LoginTerminal},
+	{Kind: codex.Kind, Name: "Codex", Command: "codex", MinVersion: "0.169.0", InstallURL: "https://github.com/openai/codex#installation",
+		Glyph: []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#2f2f33" stroke="#5a5a62" stroke-width="1"/><g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l4 4-4 4"/><path d="M13 16h5"/></g></svg>`),
+		Login: LoginInApp, HoldsSignedOut: true},
+}
+
+// Describe returns what aibo knows of an Agent, if it supports it.
+func Describe(kind agent.Kind) (Spec, bool) {
+	for _, s := range Specs {
+		if s.Kind == kind {
+			return s, true
+		}
+	}
+	return Spec{}, false
 }
 
 // State is how an Agent stands.
@@ -126,7 +161,11 @@ func New(o Options) *Registry {
 	return r
 }
 
-// LoginState is a sign-in to Codex started in aibo.
+// ErrNoInAppLogin is StartLogin's error for an Agent signed in to
+// otherwise (Spec.Login).
+var ErrNoInAppLogin = errors.New("这个 Agent 不能在 aibo 里登录")
+
+// LoginState is a sign-in started in aibo (LoginInApp).
 type LoginState struct {
 	codex.Login
 	// Waiting is set until it ends; Error says why it failed.
@@ -134,10 +173,13 @@ type LoginState struct {
 	Error   string
 }
 
-// StartCodexLogin starts signing in to Codex with ChatGPT: in the
-// browser (open AuthURL), or with a device code (show UserCode and
-// VerificationURL).
-func (r *Registry) StartCodexLogin(ctx context.Context, deviceCode bool) (LoginState, error) {
+// StartLogin starts signing in to an Agent in aibo (LoginInApp), as
+// Codex with ChatGPT: in the browser (open AuthURL), or with a device
+// code (show UserCode and VerificationURL).
+func (r *Registry) StartLogin(ctx context.Context, kind agent.Kind, deviceCode bool) (LoginState, error) {
+	if kind != codex.Kind {
+		return LoginState{}, ErrNoInAppLogin
+	}
 	l, err := r.codex.Login(ctx, deviceCode)
 	if err != nil {
 		r.mu.Lock()
@@ -154,8 +196,11 @@ func (r *Registry) StartCodexLogin(ctx context.Context, deviceCode bool) (LoginS
 	return st, nil
 }
 
-// CancelCodexLogin cancels the sign-in started.
-func (r *Registry) CancelCodexLogin(ctx context.Context) {
+// CancelLogin cancels the sign-in to an Agent started in aibo.
+func (r *Registry) CancelLogin(ctx context.Context, kind agent.Kind) {
+	if kind != codex.Kind {
+		return
+	}
 	r.mu.Lock()
 	id := r.login.ID
 	r.login = LoginState{}
@@ -166,8 +211,11 @@ func (r *Registry) CancelCodexLogin(ctx context.Context) {
 	r.changed()
 }
 
-// CodexLogin returns the sign-in to Codex started in aibo, if any.
-func (r *Registry) CodexLogin() LoginState {
+// AppLogin returns the sign-in to an Agent started in aibo, if any.
+func (r *Registry) AppLogin(kind agent.Kind) LoginState {
+	if kind != codex.Kind {
+		return LoginState{}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.login
@@ -267,9 +315,8 @@ func (r *Registry) SetPath(ctx context.Context, kind agent.Kind, path string) {
 	r.Check(ctx, kind)
 }
 
-// Ready says why a message cannot go to the Agent now, or nil. Claude
-// Code signed out still takes it, and says so; Codex would retry for
-// long, so it does not go.
+// Ready says why a message cannot go to the Agent now, or nil. Signed
+// out, it goes only to an Agent that says so (Spec.HoldsSignedOut).
 func (r *Registry) Ready(kind agent.Kind) error {
 	s := r.Status(kind)
 	switch {
@@ -277,8 +324,10 @@ func (r *Registry) Ready(kind agent.Kind) error {
 		return nil // its own errors will tell
 	case !s.Usable():
 		return errors.New(s.Reason)
-	case s.State == NotLoggedIn && kind == codex.Kind:
-		return ErrNotLoggedIn
+	case s.State == NotLoggedIn:
+		if spec, _ := Describe(kind); spec.HoldsSignedOut {
+			return ErrNotLoggedIn
+		}
 	}
 	return nil
 }

@@ -26,13 +26,10 @@ var allowed = map[string][]string{
 	"internal/store":        {"internal/agent", "internal/model"},
 	"internal/mcpserver":    {"internal/refs"},
 	"internal/workbench":    {"internal/agent", "internal/mcpserver", "internal/model", "internal/refs", "internal/store"},
-	"internal/shell": {"internal/agent", "internal/agents", "internal/appdata", "internal/model", "internal/refs", "internal/workbench",
-		// Temporary: the shell tells the Agents apart by their Kinds, until
-		// the registry describes them (.scratch/aibo-v1-followups/issues/02).
-		"internal/agent/claude", "internal/agent/codex", "internal/agent/fake"},
-	"internal/contract": nil, // tests only
-	"internal/archtest": nil, // tests only
-	"cmd/aibo":          {"*"},
+	"internal/shell":        {"internal/agent", "internal/agents", "internal/appdata", "internal/model", "internal/refs", "internal/workbench"},
+	"internal/contract":     nil, // tests only
+	"internal/archtest":     nil, // tests only
+	"cmd/aibo":              {"*"},
 }
 
 func TestLayers(t *testing.T) {

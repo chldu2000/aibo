@@ -6,9 +6,6 @@ import (
 	"time"
 
 	"github.com/chldu2000/aibo/internal/agent"
-	"github.com/chldu2000/aibo/internal/agent/claude"
-	"github.com/chldu2000/aibo/internal/agent/codex"
-	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
 	"github.com/chldu2000/aibo/internal/workbench"
@@ -97,7 +94,7 @@ func (s *Shell) pane(c *ui.Context) {
 		}
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(headerTop).DragWindow()
 		ui.Row(c).Absolute().Top(headerTop).Left(left).Right(16).Height(headerBottom-headerTop).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).DragWindow().Children(func() {
-			agentGlyph(c, x.Agent, 20)
+			s.agentGlyph(c, x.Agent, 20)
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1)
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Grow(1)
 			if iconButton(c, "arrowshape.turn.up.right", "选择消息以引用或复制").Clicked() {
@@ -368,25 +365,23 @@ func tinted(c *ui.Context, col ui.Color) ui.Color {
 	return ui.RGBA(col.R, col.G, col.B, float32(col.A)/255*0.45)
 }
 
-// Self-drawn agent glyphs (never the vendors' logos), shown with
-// ui.Image so that they keep their colors.
-var (
-	claudeGlyph = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#c96442"/><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5.9 8.5l12.2 7"/><path d="M5.9 15.5l12.2-7"/></g></svg>`))
-	codexGlyph  = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#2f2f33" stroke="#5a5a62" stroke-width="1"/><g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l4 4-4 4"/><path d="M13 16h5"/></g></svg>`))
-	fakeGlyph   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#6e6e78"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="4"/><path d="M6 19c1.5-2.5 3.5-3.5 6-3.5s4.5 1 6 3.5"/></g></svg>`))
-)
+// genericGlyph is the icon of an Agent aibo has none for, as the fake.
+var genericGlyph = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#6e6e78"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="4"/><path d="M6 19c1.5-2.5 3.5-3.5 6-3.5s4.5 1 6 3.5"/></g></svg>`))
 
-func agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
-	g, name := fakeGlyph, string(kind)
-	switch kind {
-	case fake.Kind:
-		name = "假 Agent"
-	case claude.Kind:
-		g, name = claudeGlyph, "Claude Code"
-	case codex.Kind:
-		g, name = codexGlyph, "Codex"
+// agentGlyph is an Agent's icon (agents.Spec.Glyph), its name on hover.
+func (s *Shell) agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
+	g, ok := s.glyphs[kind]
+	if !ok {
+		g = genericGlyph
+		if d := s.describe(kind); d.Glyph != nil {
+			g = ui.MustParseSVG(d.Glyph)
+		}
+		if s.glyphs == nil {
+			s.glyphs = map[agent.Kind]*ui.SVG{}
+		}
+		s.glyphs[kind] = g
 	}
-	return ui.Image(c, g).Size(size, size).Tooltip(name)
+	return ui.Image(c, g).Size(size, size).Tooltip(s.agentName(kind))
 }
 
 // refLabel names a reference in one line: source, title and range.

@@ -5,8 +5,6 @@ import (
 	"errors"
 
 	"github.com/chldu2000/aibo/internal/agent"
-	"github.com/chldu2000/aibo/internal/agent/claude"
-	"github.com/chldu2000/aibo/internal/agent/codex"
 	"github.com/chldu2000/aibo/internal/agents"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/workbench"
@@ -35,6 +33,15 @@ func stateText(s agents.Status) string {
 }
 
 // agentOK tells whether a session can start with the Agent, and why not.
+// describe is what aibo knows of an Agent (agents.Spec); for one it does
+// not support, as the fake, its name alone.
+func (s *Shell) describe(kind agent.Kind) agents.Spec {
+	if d, ok := agents.Describe(kind); ok {
+		return d
+	}
+	return agents.Spec{Kind: kind, Name: s.agentName(kind)}
+}
+
 func (s *Shell) agentOK(kind agent.Kind) (bool, string) {
 	if s.opts.Agents == nil {
 		return true, ""
@@ -58,7 +65,7 @@ func (s *Shell) agentSettings(c *ui.Context) {
 	for _, st := range r.Statuses() {
 		ui.Column(c).Key(string(st.Kind)).Gap(6).Padding(12).Radius(12).Background(t.Surface).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				agentGlyph(c, st.Kind, 18)
+				s.agentGlyph(c, st.Kind, 18)
 				ui.Text(c, st.Name).Bold().TextColor(t.Text).Grow(1)
 				color := t.Success
 				if st.State != agents.Ready {
@@ -79,11 +86,13 @@ func (s *Shell) agentSettings(c *ui.Context) {
 			if st.Reason != "" && st.State != agents.Checking {
 				ui.Text(c, st.Reason).FontSize(12).TextColor(t.Warning)
 			}
-			switch {
-			case st.State == agents.NotLoggedIn && st.Kind == claude.Kind:
-				s.claudeLogin(c, st)
-			case st.State == agents.NotLoggedIn && st.Kind == codex.Kind:
-				s.codexLogin(c)
+			if st.State == agents.NotLoggedIn {
+				switch s.describe(st.Kind).Login {
+				case agents.LoginTerminal:
+					s.terminalLogin(c, st)
+				case agents.LoginInApp:
+					s.appLogin(c, st.Kind)
+				}
 			}
 			ui.Row(c).Gap(6).Wrap().Children(func() {
 				if st.State == agents.NotInstalled && s.opts.OpenURL != nil && ui.Button(c, "查看安装说明").Clicked() {
@@ -104,30 +113,31 @@ func (s *Shell) agentSettings(c *ui.Context) {
 	ui.Text(c, "aibo 只运行你本机安装的 Agent，不替你安装，也不经手它们的登录凭据。").FontSize(11).TextColor(t.TextMuted)
 }
 
-// claudeLogin says how to sign in to Claude Code: in its own terminal
+// terminalLogin says how to sign in to an Agent in its own terminal
 // flow, which aibo does not stand in for.
-func (s *Shell) claudeLogin(c *ui.Context, st agents.Status) {
+func (s *Shell) terminalLogin(c *ui.Context, st agents.Status) {
 	t := c.Theme()
-	ui.Text(c, "请在终端里运行 claude 完成登录（或在 Claude Code 里输入 /login），完成后回来点“重新检测”。").FontSize(12).TextColor(t.Text)
+	d := s.describe(st.Kind)
+	ui.Text(c, "请在终端里运行 "+d.Command+" 完成登录（或在 "+d.Name+" 里输入 /login），完成后回来点“重新检测”。").FontSize(12).TextColor(t.Text)
 	ui.Row(c).Gap(6).Children(func() {
 		if ui.Button(c, "复制命令").Clicked() {
 			c.WriteClipboard(st.Path)
 		}
-		if s.opts.OpenTerminal != nil && ui.Button(c, "在终端中打开 claude").Clicked() {
+		if s.opts.OpenTerminal != nil && ui.Button(c, "在终端中打开 "+d.Command).Clicked() {
 			s.opts.OpenTerminal(st.Path)
 		}
 	})
 }
 
-// codexLogin signs in to Codex with ChatGPT, through Codex's own flow:
-// in the browser, or with a device code.
-func (s *Shell) codexLogin(c *ui.Context) {
+// appLogin signs in to an Agent in aibo, through its own flow, as Codex
+// with ChatGPT: in the browser, or with a device code.
+func (s *Shell) appLogin(c *ui.Context, kind agent.Kind) {
 	t := c.Theme()
 	r := s.opts.Agents
-	l := r.CodexLogin()
+	l := r.AppLogin(kind)
 	start := func(device bool) {
 		go func() {
-			st, err := r.StartCodexLogin(context.Background(), device)
+			st, err := r.StartLogin(context.Background(), kind, device)
 			if err == nil && !device && s.opts.OpenURL != nil {
 				s.opts.OpenURL(st.AuthURL)
 			}
@@ -139,7 +149,7 @@ func (s *Shell) codexLogin(c *ui.Context) {
 		ui.Text(c, l.VerificationURL).Font("Menlo").FontSize(12).TextColor(t.Text).Selectable()
 		ui.Text(c, l.UserCode).Font("Menlo").FontSize(18).Bold().TextColor(t.Text).Selectable()
 		if ui.Button(c, "取消登录").Clicked() {
-			go r.CancelCodexLogin(context.Background())
+			go r.CancelLogin(context.Background(), kind)
 		}
 	case l.Waiting:
 		ui.Text(c, "正在等待你在浏览器里完成登录……").FontSize(12).TextColor(t.Text)
@@ -148,7 +158,7 @@ func (s *Shell) codexLogin(c *ui.Context) {
 				s.opts.OpenURL(l.AuthURL)
 			}
 			if ui.Button(c, "取消登录").Clicked() {
-				go r.CancelCodexLogin(context.Background())
+				go r.CancelLogin(context.Background(), kind)
 			}
 		})
 	default:
@@ -206,13 +216,14 @@ func (s *Shell) loginBanner(c *ui.Context, x model.Session, st workbench.Status)
 	t := c.Theme()
 	name := s.agentName(x.Agent)
 	ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
+		d := s.describe(x.Agent)
 		text := name + " 未登录。"
-		if x.Agent == codex.Kind {
+		if d.HoldsSignedOut {
 			text += "消息不会发出，输入的内容会保留。"
 		}
 		ui.Text(c, text).TextColor(t.Text).Grow(1)
-		if x.Agent == claude.Kind && r != nil && s.opts.OpenTerminal != nil {
-			if ui.Button(c, "在终端中打开 claude").Clicked() {
+		if d.Login == agents.LoginTerminal && r != nil && s.opts.OpenTerminal != nil {
+			if ui.Button(c, "在终端中打开 "+d.Command).Clicked() {
 				s.opts.OpenTerminal(r.Status(x.Agent).Path)
 			}
 		}

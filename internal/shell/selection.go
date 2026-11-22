@@ -186,7 +186,7 @@ func (s *Shell) targets(c *ui.Context, src model.Session, v *sessionView) {
 		ui.Text(c, fmt.Sprintf("把 %s 引用给…", refs.Range(v.sel.from, v.sel.to))).Bold().TextColor(t.Text).Padding(0, 6, 6)
 		// The session itself: to find again what its Agent compacted away.
 		if pickRow(c, "self", "引用给本会话", func() {
-			agentGlyph(c, src.Agent, 16)
+			s.agentGlyph(c, src.Agent, 16)
 			ui.Text(c, "本会话（找回之前的内容）").TextColor(t.Text).Grow(1)
 		}).Clicked() {
 			pick(target{sessionID: src.ID, agent: src.Agent, workspaceID: src.WorkspaceID, label: "本会话"})
@@ -197,7 +197,7 @@ func (s *Shell) targets(c *ui.Context, src model.Session, v *sessionView) {
 			for _, a := range s.wb.Agents() {
 				label := "新建 " + a.Name + " 会话"
 				row := pickRow(c, ws.ID+string(a.Kind), "引用给 "+workspaceName(ws)+" 的新 "+a.Name+" 会话", func() {
-					agentGlyph(c, a.Kind, 16)
+					s.agentGlyph(c, a.Kind, 16)
 					ui.Text(c, label).TextColor(t.Text).Grow(1)
 				})
 				if row.Clicked() {
@@ -209,7 +209,7 @@ func (s *Shell) targets(c *ui.Context, src model.Session, v *sessionView) {
 					continue
 				}
 				row := pickRow(c, x.ID, "引用给 "+sessionTitle(x), func() {
-					agentGlyph(c, x.Agent, 16)
+					s.agentGlyph(c, x.Agent, 16)
 					ui.Text(c, sessionTitle(x)).TextColor(t.Text).NoWrap().Grow(1)
 				})
 				if row.Clicked() {
