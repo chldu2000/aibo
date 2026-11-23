@@ -95,9 +95,9 @@ func TestContractApprovals(t *testing.T) {
 						t.Logf("%s: %q", m.Kind, m.Text)
 					}
 				}
-				t.Fatalf("no approval was asked; error: %q", w.Status(s.ID).Error)
+				t.Fatalf("no approval was asked; error: %v", w.Status(s.ID).Error)
 			}
-			t.Logf("first request: %s %q outside=%v options=%v", a.Title, a.Command, a.Outside, a.Options)
+			t.Logf("first request: %s %q outside=%v options=%v", a.Action, a.Command, a.Outside, a.Options)
 			if a.Outside != c.outside && a.Command == "" {
 				t.Errorf("outside = %v", a.Outside)
 			}
@@ -106,7 +106,7 @@ func TestContractApprovals(t *testing.T) {
 			}
 			wait(func() bool { p := pending(s.ID); return p != nil && p.ID != a.ID || !w.Status(s.ID).Running })
 			if b := pending(s.ID); b != nil {
-				t.Logf("second request: %s %q", b.Title, b.Command)
+				t.Logf("second request: %s %q", b.Action, b.Command)
 				if err := w.Approve(s.ID, b.ID, option(b, agent.Deny), "不需要第二个文件"); err != nil {
 					t.Fatal(err)
 				}

@@ -1,0 +1,523 @@
+{
+  "@@locale": "en",
+  "withDetail": "{head}: {detail}",
+  "theAgent": "The Agent",
+  "errNotDirectory": "That is not a folder.",
+  "errWorkspaceExists": "This folder is a workspace already.",
+  "errNoSuchWorkspace": "The workspace does not exist.",
+  "errNoSuchSession": "The session does not exist.",
+  "errUnknownAgent": "aibo does not know this Agent.",
+  "errTurnRunning": "The Agent is replying. Stop it, or wait until it finishes.",
+  "errEmptyMessage": "The message is empty.",
+  "errNothingToRef": "The session has no messages to reference yet.",
+  "errSlashCommand": "The Agent's own slash commands are not supported yet. To compact the context, use “Compact context” in the composer.",
+  "errNothingToCompact": "The session is empty: there is nothing to compact.",
+  "errNeedsRecovery": "The native session cannot be resumed. Choose a new native session first, or leave it for now.",
+  "errNoSuchReference": "The reference does not exist.",
+  "errBadRange": "The range of the reference is not valid",
+  "errNoSuchApproval": "This approval request was answered already, or does not exist.",
+  "errNoSuchMode": "This Agent has no such permission mode.",
+  "errNoSuchRule": "There is no such rule.",
+  "errWorkspaceMissing": "The workspace's folder is missing: its sessions can be read and referenced, but not continued. Relocate the workspace.",
+  "errPathInUse": "This folder is another workspace already.",
+  "errNothingToRetry": "There is no message to retry.",
+  "errBadSettings": "A setting is out of the allowed range.",
+  "errNotReadable": "This file is not in the session's workspace, nor in a source workspace it can read.",
+  "errResumeFailed": "The native session cannot be resumed",
+  "errAgentNotFound": "The Agent's executable was not found.",
+  "errAgentStartFailed": "The Agent did not start",
+  "errAgentBusy": "The Agent is busy replying.",
+  "errAgentClosed": "The Agent's session has closed",
+  "errNotLoggedIn": "The Agent is signed out.",
+  "errNoInAppLogin": "This Agent cannot sign in in aibo.",
+  "errDataUnavailable": "The data directory is unavailable",
+  "errDataLocked": "Another aibo is using the data directory.",
+  "errFolderNotEmpty": "The folder holds other things. Choose an empty folder, or one with aibo's data",
+  "failAgent": "{agent} failed",
+  "failAgentExited": "{agent}'s process ended unexpectedly",
+  "failSend": "Sending failed",
+  "failStart": "Starting the Agent failed",
+  "failCompact": "Compacting failed",
+  "failSave": "Saving failed",
+  "agentUnknown": "aibo does not know this Agent.",
+  "agentBadPath": "The chosen executable does not exist or cannot run: {path}",
+  "agentNotFound": "{agent} was not found. Install it as its instructions say, or choose its executable in the settings.",
+  "agentNoVersion": "Its version could not be read",
+  "agentBadVersion": "Its version was not understood",
+  "agentTooOld": "Version {version} is too old. Upgrade to {min} or later.",
+  "agentNoLogin": "How it is signed in could not be read",
+  "agentBadLogin": "How it is signed in was not understood",
+  "agentSignedOut": "{agent} is signed out.",
+  "agentChecking": "Checking…",
+  "addWorkspaceFailed": "Adding the workspace failed",
+  "sessionDeleted": "This session was deleted. You can close this window.",
+  "noSessionOpen": "Choose a session on the left, or click “+” on a workspace to start one",
+  "selectMessages": "Select messages to reference or copy",
+  "openInWindow": "Open in a new window",
+  "sessionDetails": "Session details",
+  "interrupted": "Interrupted",
+  "startConversation": "Send a message to start the conversation",
+  "close": "Close",
+  "workspaceMissing": "The workspace's folder is missing: {path}. Its sessions can be read and referenced, but not continued.",
+  "relocate": "Relocate…",
+  "archivedNote": "This session is archived: it is not listed in its workspace, and can still be continued, searched and referenced.",
+  "unarchive": "Unarchive",
+  "highlighted": "Highlighted the referenced range {range}",
+  "clearHighlight": "Clear the highlight",
+  "removeReference": "Remove the reference",
+  "messageAgent": "Message {agent}",
+  "composerBlocked": "The native session cannot be resumed. Choose what to do above first",
+  "attach": "Add attachments (not supported yet)",
+  "mentionButton": "Reference a file or session (@)",
+  "stop": "Stop",
+  "send": "Send (Enter)",
+  "refThisSession": "This session · {range} ({count, plural, one {# message} other {# messages}})",
+  "@refThisSession": {
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "refOtherSession": "{agent} · {title} · {range} ({count, plural, one {# message} other {# messages}})",
+  "@refOtherSession": {
+    "placeholders": {
+      "agent": {
+        "type": "String"
+      },
+      "title": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "showBrief": "Show the brief",
+  "hideBrief": "Hide",
+  "refSourceDeleted": "The source session was deleted: this reference no longer works",
+  "agentRead": "The Agent read {range}",
+  "showInSource": "Show in the source session",
+  "newNativeSession": "Switched to a new native session of the Agent",
+  "compactedAuto": "Context compacted · automatically",
+  "compactedManual": "Context compacted · on request",
+  "compactedTokens": "{text} · {before} → {after} tokens",
+  "readOnlyResume": "Read only: the native session cannot be resumed",
+  "cannotResume": "Cannot resume the native session",
+  "resumeExplain": "aibo's record of the session is all there. A new native session continues it, but the Agent's context starts afresh; with a reference, it can read back what came before as it needs.",
+  "freshWithReference": "New native session referencing what came before (recommended)",
+  "freshPlain": "New native session (no reference)",
+  "later": "Not now",
+  "running": "Running",
+  "agentWorking": "{agent} is working",
+  "agentWaiting": "{agent} is waiting for your approval",
+  "retrying": "Cannot reach the model; retrying",
+  "retryingCount": "Cannot reach the model; retry {attempt} of {max}",
+  "@retryingCount": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "seconds": "{s}s",
+  "minutes": "{m}m {s}s",
+  "hours": "{h}h {m}m",
+  "addWorkspace": "Add a workspace",
+  "searchSessions": "Search sessions",
+  "settingsButton": "Settings (⌘,)",
+  "noWorkspaces": "No workspaces yet. Add a project folder (or drop one on the window) to talk with an Agent in it.",
+  "addWorkspaceMenu": "Add a workspace…",
+  "folderMissing": "Folder missing",
+  "showInFinder": "Show in Finder",
+  "removeWorkspace": "Remove the workspace (its sessions are archived)",
+  "archivedCount": "Archived · {count}",
+  "@archivedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "renameMenu": "Rename…",
+  "archive": "Archive",
+  "deleteMenu": "Delete…",
+  "pendingCount": "{count} pending",
+  "@pendingCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "failedMark": "Failed",
+  "refsCount": "{count, plural, one {# reference} other {# references}}",
+  "@refsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "refsReceived": "{count, plural, one {Received # reference} other {Received # references}}",
+  "@refsReceived": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noSessionsFound": "No sessions found",
+  "archived": "Archived",
+  "newSessionIn": "New session in {workspace}",
+  "newSession": "New session",
+  "newSessionWith": "New session with {agent}",
+  "relocateFailed": "Relocating failed",
+  "renameSession": "Rename the session",
+  "sessionTitle": "Session title",
+  "titlePlaceholder": "Empty: the start of the first message",
+  "cancel": "Cancel",
+  "ok": "OK",
+  "deleteSession": "Delete “{title}”?",
+  "deleteExplain": "All the session's messages will be deleted, for good. To keep it out of the sidebar only, archive it instead.",
+  "deleteRefs": "{count, plural, one {# reference uses this session: it will stop working.} other {# references use this session: they will stop working.}}",
+  "@deleteRefs": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "delete": "Delete",
+  "confirmDelete": "Confirm deleting",
+  "untitledSession": "Untitled session",
+  "newSessionFailed": "Creating the session failed",
+  "notifyTitle": "“{title}” needs approval",
+  "notifyBody": "{agent} is waiting for you to allow an action",
+  "settings": "Settings",
+  "closeSettings": "Close the settings",
+  "tabGeneral": "General",
+  "tabAgents": "Agents",
+  "tabAdvanced": "Advanced",
+  "dataDir": "Data directory",
+  "dataDirExplain": "Sessions, messages and references are kept here. Move it where you find it easily, and aibo moves the data there.",
+  "change": "Change…",
+  "openLogs": "Open the log directory",
+  "openLogsTip": "The diagnostic log: what happened to sessions and Agents, without what was said",
+  "moving": "Moving the data. aibo will start again when it is done…",
+  "defaultModes": "Default permission mode for new sessions",
+  "defaultModesExplain": "Set for each Agent; until chosen, it is the mode the Agent marks as its default. Existing sessions keep their modes, which their composers change.",
+  "defaultModeOf": "Default permission mode for new sessions: {agent}",
+  "defaultModeWarning": "Note: in new {agent} sessions, {mode}.",
+  "mentionIgnored": "List files .gitignore ignores when mentioning files",
+  "mentionIgnoredExplain": "When you mention a file with @ in the composer, also list the files git ignores (as build products).",
+  "mentionIgnoredSwitch": "List ignored files when mentioning files (switch)",
+  "notify": "Notify when an approval is waiting",
+  "notifyExplain": "Tells you when a session off screen needs your approval.",
+  "notifySwitch": "Notify when an approval is waiting (switch)",
+  "moveWhileRunning": "A session is running. Wait until it finishes, or stop it, before changing the data directory.",
+  "moveTo": "Move to: {path}",
+  "moveHasData": "This folder holds aibo's data already: aibo will use it as it is, and leave the current data where it is.",
+  "moveCopies": "aibo will copy the data there, check it, then delete it here, and start again.",
+  "moveSynced": "This folder is in {service}. Sync software syncing the database while aibo writes it can damage the data: better not keep it here.",
+  "moveSyncedUnknown": "This folder is in a cloud storage service's folder. Sync software syncing the database while aibo writes it can damage the data: better not keep it here.",
+  "confirmChange": "Confirm the change",
+  "moveFailed": "Changing the data directory failed",
+  "numberField": "{name} (number)",
+  "budgetPage": "read_reference page",
+  "budgetPageExplain": "How much of a reference a receiving Agent reads at a time (estimated).",
+  "budgetToolOutput": "One tool output in a page",
+  "budgetToolOutputExplain": "The most of each tool call's output a page keeps; read_message reads the rest.",
+  "budgetMessagePage": "read_message page",
+  "budgetMessagePageExplain": "How much of a long message is read at a time.",
+  "idleTimeout": "Disconnect when idle",
+  "idleTimeoutExplain": "After this long without activity, the Agent's process ends; not while an approval is waiting.",
+  "unitMinutes": "minutes",
+  "restoreDefaults": "Restore defaults",
+  "save": "Save",
+  "budgetRanges": "{error} Allowed: a page 1000–200000, one output from 200 to the page's size, read_message a page 1000–500000, idle 1–1440 minutes.",
+  "saveSettingsFailed": "Saving the settings failed",
+  "stateChecking": "Checking",
+  "stateNotInstalled": "Not installed",
+  "stateTooOld": "Too old",
+  "stateBroken": "Unusable",
+  "stateSignedOut": "Signed out",
+  "stateReady": "Ready",
+  "noDetection": "Agents are not detected here.",
+  "sourceSettings": "chosen in the settings",
+  "sourceCommon": "a usual install location",
+  "sourcePath": "the login shell's PATH",
+  "pathFrom": "{path} ({source})",
+  "agentVersion": "Version {version}",
+  "agentSignedIn": "{line} · Signed in: {auth}",
+  "installGuide": "Installation instructions",
+  "choosePath": "Choose another executable…",
+  "autoPath": "Find it automatically again",
+  "recheck": "Check again",
+  "recheckAgent": "Check {agent} again",
+  "agentsNote": "aibo only runs the Agents installed on this Mac: it does not install them, nor handle their credentials.",
+  "terminalLogin": "Run {command} in a terminal to sign in (or type /login in {agent}), then come back and click “Check again”.",
+  "copyCommand": "Copy the command",
+  "openInTerminal": "Open {command} in Terminal",
+  "deviceCodeHint": "Open this address in the browser, and enter the code to sign in:",
+  "cancelLogin": "Cancel signing in",
+  "waitingBrowser": "Waiting for you to sign in in the browser…",
+  "openBrowserAgain": "Open the browser again",
+  "loginFailed": "Signing in did not finish",
+  "loginChatGPT": "Sign in with ChatGPT (browser)",
+  "loginDeviceCode": "Sign in with a device code",
+  "apiKeyHint": "For an API key, run codex login --with-api-key in a terminal.",
+  "signedOutHeld": "{agent} is signed out. Messages are not sent; what you typed stays.",
+  "goSignIn": "Sign in",
+  "recheckLogin": "Check the sign-in again",
+  "retry": "Retry",
+  "roleUser": "User",
+  "selectHint": "Click a message to start, Shift-click to extend, or drag",
+  "selected": "Selected {range} · {count, plural, one {# message} other {# messages}}",
+  "@selected": {
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "filledGaps": "Filled in the messages between",
+  "selectAll": "Select the whole session",
+  "selectTurns": "Select whole turns",
+  "copy": "Copy",
+  "sendTo": "Send to…",
+  "cannotReference": "Cannot reference",
+  "referenceRangeTo": "Reference {range} in…",
+  "refTo": "Reference in {target}",
+  "thisSession": "this session",
+  "thisSessionRow": "This session (find what came before)",
+  "newAgentSession": "New {agent} session",
+  "newSessionOf": "a new {agent} session in {workspace}",
+  "quotedTitle": "“{title}”",
+  "previewExplain": "The receiving Agent gets this brief, and reads what it references with its tools when it needs the details:",
+  "back": "Back",
+  "reference": "Reference",
+  "referenceFailed": "Referencing failed",
+  "detailsClose": "Close the session details",
+  "detailModel": "Model",
+  "effortLine": "{model} · Reasoning effort {effort}",
+  "changeAfterTurn": "Change it at the bottom of the composer once this turn ends",
+  "detailWorkspace": "Workspace",
+  "detailNative": "Native session",
+  "notStarted": "Not started yet",
+  "nativeCount": "Number {count} (those before cannot be resumed)",
+  "@nativeCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "processIdle": "No process running: it resumes when you send a message",
+  "processRunning": "Process running",
+  "detailMode": "Permission mode",
+  "detailRules": "Always allowed",
+  "none": "None",
+  "detailReadDirs": "Source workspaces it reads",
+  "readOnlyDir": "{path} (read only)",
+  "compact": "Compact context",
+  "modeSelect": "Permission mode (choose)",
+  "defaultMode": "Default mode",
+  "modeTip": "Permission mode: click to change",
+  "modeDangerTip": "{mode}: {description}. Click to change",
+  "modeLabel": "Permission mode: {mode}",
+  "rulesCount": "{count, plural, one {· # rule} other {· # rules}}",
+  "@rulesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "modesOf": "{agent}'s permission modes",
+  "loading": "Loading…",
+  "sessionRules": "Always allowed in this session",
+  "revokeNote": "Once a rule is revoked, the Agent starts again when idle, without it.",
+  "readDirsNote": "Given a reference from another workspace, the Agent can read its files, but not change them.",
+  "modeDefault": "Default",
+  "modeConfirm": "{mode}: {description}. Are you sure?",
+  "modeSwitch": "Switch to {mode}",
+  "modeFailed": "Changing the permission mode failed",
+  "revoke": "Revoke",
+  "revokeRule": "Revoke {rule}",
+  "listSep": ", ",
+  "grantAcceptEdits": "Accept edits automatically",
+  "grantMode": "Switch to the {mode} mode",
+  "grantDirectories": "Access {dirs}",
+  "grantCommand": "The command {command}",
+  "grantCommandPrefix": "Commands starting with {prefix}",
+  "grantEdits": "Changes to {paths}",
+  "claudeModeDefault": "Asks before running commands or changing files",
+  "claudeModeAcceptEdits": "Changes files unasked; asks for the rest",
+  "claudeModePlan": "Read only: makes a plan first, and acts once you approve it",
+  "claudeModeAuto": "A classifier decides: most actions go unasked",
+  "claudeModeDontAsk": "Never asks: denies whatever was not allowed beforehand",
+  "claudeModeBypass": "Asks for nothing, outside the workspace too",
+  "codexModeReadOnly": "Read only: changes no files, and asks to",
+  "codexModeAsk": "Changes and commands in the workspace go unasked; asks outside it, and for the network",
+  "codexModeApprove": "A model approves what would be asked",
+  "codexModeFull": "Asks for nothing, outside the workspace too",
+  "codexReviewerOff": "Codex's automatic review is off (feature guardian_approval)",
+  "answerExpired": "Approval: not answered; the turn ended",
+  "answerWithNote": "Approval: {answer} ({note})",
+  "answer": "Approval: {answer}",
+  "approveFailed": "Answering failed",
+  "approvalCard": "Approval card: {title}",
+  "needsApproval": "Needs approval · {title}",
+  "writesElsewhere": "Writes in another workspace",
+  "workingDir": "Working directory: {path}",
+  "touches": "Touches: {paths}",
+  "writeRoot": "Asks to write in {path} for the rest of the session",
+  "confirmAlways": "Writes it in {where}: the Agent will not ask again for the like. Are you sure?",
+  "confirmAlwaysButton": "Allow for good",
+  "denyPlaceholder": "Why you deny it (optional): the Agent is told",
+  "denyNote": "Why denied",
+  "confirmDeny": "Deny",
+  "alwaysTip": "Writes in {where}: {rules}",
+  "sessionTip": "Will allow: {rules}",
+  "ruleSep": "; ",
+  "showRules": "Show the rules it will allow",
+  "agentRules": "{agent}'s own rules",
+  "optionMore": "{option}…",
+  "optionAllowOnce": "Allow once",
+  "optionAllowSession": "Always allow in this session",
+  "optionAllowAlways": "Always allow",
+  "optionDeny": "Deny",
+  "optionDenyStop": "Deny and stop",
+  "actionCommand": "Run a command",
+  "actionEdit": "Change files",
+  "actionPlan": "Act on the plan",
+  "actionMCP": "Call the MCP tool {tool}",
+  "actionTool": "Use the tool {tool}",
+  "labelColon": "{label}:",
+  "diffCut": "… (only the first 400 lines show)",
+  "mentionPanel": "Reference a file or session",
+  "mentionSearch": "Search files by path, or sessions by title",
+  "mentionSearchLabel": "Search files or sessions",
+  "sessionsHeading": "Sessions",
+  "chooseSession": "Choose {title}",
+  "backToSearch": "Back to the search",
+  "pullHint": "Click a message to start, Shift-click to end",
+  "briefHeading": "The brief the receiving Agent gets",
+  "briefPending": "The brief shows here once a range is chosen.",
+  "insertReference": "Insert the reference",
+  "cannotReferenceRange": "Cannot reference this range",
+  "defaultModel": "Default model",
+  "changeAfter": "Change the {what} once this turn ends",
+  "clickToChange": "{what}: click to change",
+  "modelWord": "model",
+  "effortWord": "reasoning effort",
+  "modelLabel": "Model: {model}",
+  "modelHeading": "Model",
+  "modelsLoading": "Loading the models…",
+  "modelsFailed": "Cannot read the models",
+  "useModel": "Use the model {model}",
+  "effortLabel": "Reasoning effort: {effort}",
+  "effortHeading": "Reasoning effort",
+  "effortRow": "Reasoning effort {effort}",
+  "modelFailed": "Changing the model failed",
+  "thinking": "Thinking",
+  "toolRunning": "{label} · running",
+  "toolInterrupted": "{label} · interrupted",
+  "toolFailed": "{label} · failed",
+  "toolSteps": "{label} · {count, plural, one {subagent # step} other {subagent # steps}}",
+  "@toolSteps": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toolArgs": "Arguments",
+  "toolResult": "Result",
+  "toolResultError": "Result (error)",
+  "toolTruncated": "{label} · over 1 MB: the rest was not kept",
+  "planHeading": "Plan",
+  "filesHeading": "Files",
+  "filesFailed": "Cannot list the files",
+  "filesLoading": "Listing the files…",
+  "noFiles": "No files found",
+  "chooseFile": "Choose the file {path}",
+  "sourceWorkspace": "{name} (source workspace)",
+  "removeFile": "Remove the file {name}",
+  "badgeTerminals": "{count, plural, one {# terminal process} other {# terminal processes}}",
+  "@badgeTerminals": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "badgeTerminalsLabel": "Terminal processes",
+  "badgeSubagents": "{count, plural, one {# subagent running} other {# subagents running}}",
+  "@badgeSubagents": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "badgeSubagentsLabel": "Subagents",
+  "badgeApprovals": "{count, plural, one {# approval pending} other {# approvals pending}}",
+  "@badgeApprovals": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "badgeApprovalsLabel": "Pending approvals",
+  "badgeRefs": "{count, plural, one {Received # reference} other {Received # references}}",
+  "@badgeRefs": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "badgeRefsLabel": "References received",
+  "referenceSession": "Reference a session…",
+  "referenceSessionLabel": "Reference a session",
+  "dataRetry": "Retry",
+  "dataReselect": "Choose where it is",
+  "quit": "Quit",
+  "dataMissingDetail": "aibo does not make an empty data directory elsewhere. Check that the disk is connected, or choose where the data directory is now.",
+  "dataLockedDetail": "Only one aibo at a time can use a data directory. Quit the other aibo first.",
+  "chooseDataDir": "Choose the data directory",
+  "useFolder": "Use this folder",
+  "noDataHere": "This folder holds no aibo data",
+  "noDataHereDetail": "{path}\n\nWith it, aibo starts empty: the data it had is not here.",
+  "startEmpty": "Start empty",
+  "chooseExecutable": "Choose the executable",
+  "dataDirFromEnv": "The environment variable AIBO_DATA_DIR sets the data directory: it cannot change here.",
+  "quitRunning": "{count, plural, one {# session is running. Quit anyway?} other {# sessions are running. Quit anyway?}}",
+  "@quitRunning": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quitRunningDetail": "Quitting interrupts them: replies under way are kept as interrupted, and approvals not answered count as denied.",
+  "refToThis": "Reference in this session"
+}

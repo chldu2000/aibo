@@ -149,7 +149,7 @@ func TestRecordedCommandThenInterrupt(t *testing.T) {
 	if r := ms[5]; r.Kind != model.AgentReply || r.State != model.Interrupted || !strings.HasPrefix(r.Text, "1\n2\n") {
 		t.Errorf("interrupted reply = %s %q", r.State, r.Text)
 	}
-	if st.Error != "" {
+	if st.Error != nil {
 		t.Errorf("error = %q", st.Error)
 	}
 	if string(ms[2].Tool.Input) != `{"command":"/bin/zsh -lc 'cat notes.txt'","cwd":"/tmp/aibo-03/ws"}` {
@@ -206,7 +206,7 @@ func TestPlansFileChangesReasoningAndErrors(t *testing.T) {
 		`tool done shell → "（命令被拒绝执行）" error=true`,
 		`reply done "" thinking="最后想想"`,
 	)
-	if st.Error != "Codex 出错：usage limit reached" {
+	if fmt.Sprint(st.Error) != "agent: usage limit reached" {
 		t.Errorf("error = %q", st.Error)
 	}
 }

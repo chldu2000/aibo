@@ -19,13 +19,13 @@ type preset struct {
 // presets are Codex's /permissions, in its order (research/11): Ask for
 // approval is what aibo always set before ADR 0003, its default.
 var presets = []preset{
-	{agent.PermissionMode{ID: "read-only", Name: "Read only", Description: "只读：不改文件，要改时先问", Risk: agent.Safe, ReadOnly: true},
+	{agent.PermissionMode{ID: "read-only", Name: "Read only", Description: "Read only: changes no files, and asks to", Risk: agent.Safe, ReadOnly: true},
 		"read-only", "on-request", "user"},
-	{agent.PermissionMode{ID: "ask-for-approval", Name: "Ask for approval", Description: "工作区内的修改和命令不问；工作区以外、联网时先问", Risk: agent.Safe, Default: true},
+	{agent.PermissionMode{ID: "ask-for-approval", Name: "Ask for approval", Description: "Changes and commands in the workspace go unasked; asks outside it, and for the network", Risk: agent.Safe, Default: true},
 		"workspace-write", "on-request", "user"},
-	{agent.PermissionMode{ID: "approve-for-me", Name: "Approve for me", Description: "要问的操作由模型代为审批", Risk: agent.Caution},
+	{agent.PermissionMode{ID: "approve-for-me", Name: "Approve for me", Description: "A model approves what would be asked", Risk: agent.Caution},
 		"workspace-write", "on-request", "auto_review"},
-	{agent.PermissionMode{ID: "full-access", Name: "Full access", Description: "所有操作都不再询问，包括工作区以外", Risk: agent.Danger},
+	{agent.PermissionMode{ID: "full-access", Name: "Full access", Description: "Asks for nothing, outside the workspace too", Risk: agent.Danger},
 		"danger-full-access", "never", "user"},
 }
 
@@ -83,7 +83,7 @@ func (a *Agent) PermissionModes(ctx context.Context) ([]agent.PermissionMode, er
 		if f.Name == reviewerFlag && !f.Enabled {
 			for i := range out {
 				if out[i].ID == "approve-for-me" {
-					out[i].Unavailable = "Codex 没有开启自动审批（feature " + reviewerFlag + "）"
+					out[i].Unavailable = "Codex's automatic review is off (feature " + reviewerFlag + ")"
 				}
 			}
 		}

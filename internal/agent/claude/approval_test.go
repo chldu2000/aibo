@@ -30,9 +30,13 @@ func ask(t *testing.T, p *parser, line string) agent.ApprovalRequested {
 func labels(opts []agent.ApprovalOption) string {
 	var ls []string
 	for _, o := range opts {
-		l := o.ID + "=" + o.Label
-		if len(o.Detail) > 0 {
-			l += "[" + strings.Join(o.Detail, "; ") + "]"
+		l := o.ID + "=" + string(o.Kind)
+		var gs []string
+		for _, g := range o.Grants {
+			gs = append(gs, strings.TrimSpace(string(g.Kind)+" "+strings.Join(g.Items, " ")))
+		}
+		if len(gs) > 0 {
+			l += "[" + strings.Join(gs, "; ") + "]"
 		}
 		ls = append(ls, l)
 	}
@@ -42,14 +46,14 @@ func labels(opts []agent.ApprovalOption) string {
 func TestCanUseToolBecomesAnApproval(t *testing.T) {
 	p := newParser()
 	a := ask(t, p, bashAsk)
-	if a.ID != "r1" || a.ToolID != "toolu_01A" || a.Title != "执行命令" || a.Command != "touch a.txt" || a.Reason != "Create empty file a.txt" ||
+	if a.ID != "r1" || a.ToolID != "toolu_01A" || a.Action != agent.ActionCommand || a.Command != "touch a.txt" || a.Reason != "Create empty file a.txt" ||
 		len(a.Paths) != 1 || a.Paths[0] != "/private/tmp/aibo-10/ws/a.txt" {
 		t.Errorf("bash approval = %+v", a)
 	}
-	if got := labels(a.Options); got != "once=批准本次 | session=本会话内始终允许[Bash(touch a.txt); 访问 /private/tmp/aibo-10/ws; 自动接受修改] | always=永久允许[Bash(touch a.txt)] | deny=拒绝 | stop=拒绝并停止" {
+	if got := labels(a.Options); got != "once=allow_once | session=allow_session[tools Bash(touch a.txt); directories /private/tmp/aibo-10/ws; accept_edits] | always=allow_always[tools Bash(touch a.txt)] | deny=deny | stop=deny_stop" {
 		t.Errorf("options: %s", got)
 	}
-	if r := a.Options[1].Rules; len(r) != 3 || r[0].Label != "Bash(touch a.txt)" || r[2].Label != "自动接受修改" {
+	if r := a.Options[1].Rules; len(r) != 3 || r[0].Grant.Items[0] != "Bash(touch a.txt)" || r[2].Grant.Kind != agent.GrantAcceptEdits {
 		t.Errorf("session option's rules = %+v", r)
 	}
 	if a.Options[2].Where != ".claude/settings.local.json" {
@@ -57,11 +61,11 @@ func TestCanUseToolBecomesAnApproval(t *testing.T) {
 	}
 
 	w := ask(t, p, writeAsk)
-	if w.Title != "修改文件" || w.Diff != "--- /private/tmp/aibo-10/ws/b.txt\n+++ /private/tmp/aibo-10/ws/b.txt\n+hi\n+there" {
+	if w.Action != agent.ActionEdit || w.Diff != "--- /private/tmp/aibo-10/ws/b.txt\n+++ /private/tmp/aibo-10/ws/b.txt\n+hi\n+there" {
 		t.Errorf("write approval = %+v", w)
 	}
 	// No rule for a settings file: no permanent option.
-	if got := labels(w.Options); got != "once=批准本次 | session=本会话内始终允许[自动接受修改] | deny=拒绝 | stop=拒绝并停止" {
+	if got := labels(w.Options); got != "once=allow_once | session=allow_session[accept_edits] | deny=deny | stop=deny_stop" {
 		t.Errorf("options: %s", got)
 	}
 }
@@ -146,17 +150,15 @@ func TestSignedOut(t *testing.T) {
 	} {
 		evs = append(evs, p.line([]byte(l))...)
 	}
-	if len(evs) != 4 {
+	// Signed out, the session says how to sign in: no failure besides.
+	if len(evs) != 3 {
 		t.Fatalf("events = %#v", evs)
 	}
 	if _, ok := evs[1].(agent.NotLoggedIn); !ok {
 		t.Errorf("event 1 = %#v", evs[1])
 	}
-	if f, ok := evs[2].(agent.Failed); !ok || !strings.Contains(f.Message, "未登录") {
+	if evs[2] != (agent.TurnEnded{}) {
 		t.Errorf("event 2 = %#v", evs[2])
-	}
-	if evs[3] != (agent.TurnEnded{}) {
-		t.Errorf("event 3 = %#v", evs[3])
 	}
 }
 
@@ -164,11 +166,11 @@ func TestSignedOut(t *testing.T) {
 func TestAPIRetry(t *testing.T) {
 	p := newParser()
 	evs := p.line([]byte(`{"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"retry_delay_ms":1200,"error_status":529,"error":"overloaded_error","session_id":"s"}`))
-	if len(evs) != 1 || evs[0] != (agent.Retrying{Message: "第 2/10 次重试（529 overloaded_error）"}) {
+	if len(evs) != 1 || evs[0] != (agent.Retrying{Attempt: 2, Max: 10, Message: "529 overloaded_error"}) {
 		t.Errorf("events = %#v", evs)
 	}
 	evs = p.line([]byte(`{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":null,"error":"unknown","session_id":"s"}`))
-	if len(evs) != 1 || evs[0] != (agent.Retrying{Message: "第 1/10 次重试（unknown）"}) {
+	if len(evs) != 1 || evs[0] != (agent.Retrying{Attempt: 1, Max: 10, Message: "unknown"}) {
 		t.Errorf("events = %#v", evs)
 	}
 }

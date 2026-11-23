@@ -102,7 +102,7 @@ func (w *Workbench) rangeOf(id string, s *session, from, to int) ([]model.Messag
 	}
 	first, last := ended[0].Seq, ended[len(ended)-1].Seq
 	if from > to || from < first || to > last {
-		return nil, fmt.Errorf("%w：%s，可以引用的是 %s", ErrBadRange, refs.Range(from, to), refs.Range(first, last))
+		return nil, fmt.Errorf("%w: %s, of %s", ErrBadRange, refs.Range(from, to), refs.Range(first, last))
 	}
 	var out []model.Message
 	for _, m := range ended {

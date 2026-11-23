@@ -14,11 +14,11 @@ import (
 )
 
 var options = []agent.ApprovalOption{
-	{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"},
-	{ID: "session", Kind: agent.AllowSession, Label: "本会话内始终允许"},
-	{ID: "always", Kind: agent.AllowAlways, Label: "永久允许", Where: ".claude/settings.local.json"},
-	{ID: "no", Kind: agent.Deny, Label: "拒绝"},
-	{ID: "stop", Kind: agent.DenyStop, Label: "拒绝并停止"},
+	{ID: "once", Kind: agent.AllowOnce},
+	{ID: "session", Kind: agent.AllowSession},
+	{ID: "always", Kind: agent.AllowAlways, Where: ".claude/settings.local.json"},
+	{ID: "no", Kind: agent.Deny},
+	{ID: "stop", Kind: agent.DenyStop},
 }
 
 // gated opens a session whose Agent asks to write each path given, one
@@ -29,7 +29,7 @@ func gated(t *testing.T, dir string, early bool, paths ...string) (*bench, model
 	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
 		for i, p := range paths {
 			id := string(rune('a' + i))
-			req := agent.ApprovalRequested{ID: "ap-" + id, ToolID: id, Title: "修改文件", Paths: []string{p}, Diff: "+hi", Options: options}
+			req := agent.ApprovalRequested{ID: "ap-" + id, ToolID: id, Action: agent.ActionEdit, Paths: []string{p}, Diff: "+hi", Options: options}
 			start := agent.ToolStarted{ToolID: id, Name: "Write", Input: json.RawMessage(`{}`)}
 			if early { // the request comes before its call
 				emit(req)
@@ -73,7 +73,7 @@ func TestApprovalWaitsAndRecordsTheAnswer(t *testing.T) {
 	b.Send(s.ID, "写")
 	b.waitFor(t, "the first request", func() bool { return pendingOn(b, t, s.ID) != nil })
 	a := pendingOn(b, t, s.ID)
-	if a.Outside || len(a.Options) != 5 || a.Title != "修改文件" || a.Diff != "+hi" {
+	if a.Outside || len(a.Options) != 5 || a.Action != agent.ActionEdit || a.Diff != "+hi" {
 		t.Errorf("request = %+v", a)
 	}
 	if st := b.Status(s.ID); st.Approvals != 1 || !st.Running {
@@ -106,10 +106,10 @@ func TestApprovalWaitsAndRecordsTheAnswer(t *testing.T) {
 		var answers []string
 		for _, m := range ms {
 			if m.Tool != nil {
-				answers = append(answers, m.Tool.Approval.Answer.Label+"|"+m.Tool.Approval.Note+"|"+m.Tool.Output)
+				answers = append(answers, string(m.Tool.Approval.Answer.Kind)+"|"+m.Tool.Approval.Note+"|"+m.Tool.Output)
 			}
 		}
-		want := []string{"批准本次||once:", "本会话内始终允许||session:", "拒绝|不要改系统文件|no:不要改系统文件"}
+		want := []string{"allow_once||once:", "allow_session||session:", "deny|不要改系统文件|no:不要改系统文件"}
 		if len(answers) != 3 || answers[0] != want[0] || answers[1] != want[1] || answers[2] != want[2] {
 			t.Errorf("answers = %q", answers)
 		}

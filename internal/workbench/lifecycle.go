@@ -34,7 +34,7 @@ func (w *Workbench) Recover(id string, r Recovery) error {
 		w.mu.Unlock()
 		return ErrNoSuchSession
 	}
-	if s.resumeFailed == "" {
+	if s.resumeFailed == nil {
 		w.mu.Unlock()
 		return nil
 	}
@@ -55,7 +55,7 @@ func (w *Workbench) Recover(id string, r Recovery) error {
 	}
 	s.info.NativeIDs = append(s.info.NativeIDs, "")
 	w.addMarker(id, s, model.Marker{Kind: model.Reset, At: w.now()})
-	s.resumeFailed, s.readOnly = "", false
+	s.resumeFailed, s.readOnly = nil, false
 	hasMessages := len(s.msgs) > 0
 	w.mu.Unlock()
 	if r == FreshWithReference && hasMessages {
@@ -110,7 +110,7 @@ func (w *Workbench) watchIdle(every time.Duration) {
 
 // ErrNothingToRetry is what Retry returns when there is no message to
 // send again.
-var ErrNothingToRetry = errors.New("没有可以重试的消息")
+var ErrNothingToRetry = errors.New("no message to retry")
 
 // Retry sends the session's last user message again, with the references
 // it delivered, as when the Agent was signed out: it is not recorded
@@ -125,7 +125,7 @@ func (w *Workbench) Retry(id string) error {
 	case s.running:
 		w.mu.Unlock()
 		return ErrTurnRunning
-	case s.resumeFailed != "":
+	case s.resumeFailed != nil:
 		w.mu.Unlock()
 		return ErrNeedsRecovery
 	}
@@ -161,8 +161,8 @@ func (w *Workbench) Retry(id string) error {
 		}
 	}
 	text := refs.TurnText(briefs, last.Text)
-	s.running, s.err, s.items, s.needsLogin = true, "", map[string]int{}, false
-	s.since, s.retrying = w.now(), ""
+	s.running, s.err, s.items, s.needsLogin = true, nil, map[string]int{}, false
+	s.since, s.retrying = w.now(), nil
 	native, info := s.native, s.info
 	ws, _ := w.workspace(info.WorkspaceID)
 	w.mu.Unlock()
@@ -175,7 +175,7 @@ func (w *Workbench) Retry(id string) error {
 		}
 	}
 	if err := native.Send(context.Background(), agent.Turn{Text: text}); err != nil {
-		w.fail(id, "发送失败："+err.Error())
+		w.fail(id, StepSend, err)
 		return err
 	}
 	return nil

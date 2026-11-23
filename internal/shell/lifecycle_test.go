@@ -136,7 +136,7 @@ func TestResumeFailureBanner(t *testing.T) {
 	tt.Type("继续")
 	tt.Key(0, ui.KeyEnter)
 	frame()
-	shows("无法续接原生会话", "原生会话无法续接：No conversation found with session ID: x", "原生会话无法续接，请先在上方选择怎么处理")
+	shows("无法续接原生会话", "No conversation found with session ID: x", "原生会话无法续接，请先在上方选择怎么处理")
 	click("暂不处理")
 	shows("会话只读：原生会话无法续接")
 	if tt.HasText("暂不处理") {

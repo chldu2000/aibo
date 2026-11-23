@@ -39,7 +39,7 @@ func (w *Workbench) SendWithFiles(id, text string, mentions []model.Mention) err
 	case w.closing:
 		w.mu.Unlock()
 		return errWorkbenchClosing
-	case s.resumeFailed != "":
+	case s.resumeFailed != nil:
 		w.mu.Unlock()
 		return ErrNeedsRecovery
 	}
@@ -77,8 +77,8 @@ func (w *Workbench) SendWithFiles(id, text string, mentions []model.Mention) err
 		return err
 	}
 	// Running from here, so that nothing else starts meanwhile.
-	s.running, s.err, s.items, s.needsLogin = true, "", map[string]int{}, false
-	s.since, s.retrying = w.now(), ""
+	s.running, s.err, s.items, s.needsLogin = true, nil, map[string]int{}, false
+	s.since, s.retrying = w.now(), nil
 	var stop agent.Session
 	if w.readDirs(id, s, ws) && s.native != nil && w.dirsAtStart(s.info.Agent) {
 		// The Agent reads other workspaces only from its start.
@@ -138,7 +138,7 @@ func (w *Workbench) SendWithFiles(id, text string, mentions []model.Mention) err
 	w.notify(Change{SessionID: id, Message: &m})
 
 	if err := native.Send(context.Background(), agent.Turn{Text: refs.TurnText(briefs, text), Files: files}); err != nil {
-		w.fail(id, "发送失败："+err.Error())
+		w.fail(id, StepSend, err)
 		return err
 	}
 	return nil
@@ -150,12 +150,12 @@ func (w *Workbench) SendWithFiles(id, text string, mentions []model.Mention) err
 func (w *Workbench) startFailed(id string, err error) {
 	w.log.Warn("native session did not start", "session", id, "error", err.Error())
 	if !errors.Is(err, agent.ErrResumeFailed) {
-		w.fail(id, "启动 Agent 失败："+err.Error())
+		w.fail(id, StepStart, err)
 		return
 	}
 	w.mu.Lock()
 	if s, ok := w.sessions[id]; ok {
-		s.running, s.resumeFailed, s.readOnly = false, err.Error(), false
+		s.running, s.resumeFailed, s.readOnly = false, err, false
 	}
 	w.mu.Unlock()
 	w.notify(Change{SessionID: id})
@@ -192,11 +192,11 @@ func (w *Workbench) connect(id string, info model.Session, ws model.Workspace) (
 }
 
 // fail ends a turn that could not start.
-func (w *Workbench) fail(id, msg string) {
-	w.log.Warn("turn failed to start", "session", id, "error", msg)
+func (w *Workbench) fail(id string, step Step, err error) {
+	w.log.Warn("turn failed to start", "session", id, "step", string(step), "error", err.Error())
 	w.mu.Lock()
 	if s, ok := w.sessions[id]; ok {
-		s.running, s.err = false, msg
+		s.running, s.err = false, &Failure{step, err}
 	}
 	w.mu.Unlock()
 	w.notify(Change{SessionID: id})

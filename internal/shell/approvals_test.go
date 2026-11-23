@@ -24,17 +24,17 @@ func TestApprovalCard(t *testing.T) {
 	var f *fake.Agent
 	got := make(chan fake.Decision, 4)
 	opts := []agent.ApprovalOption{
-		{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"},
-		{ID: "session", Kind: agent.AllowSession, Label: "本会话内始终允许"},
-		{ID: "always", Kind: agent.AllowAlways, Label: "永久允许（Write）", Where: ".claude/settings.local.json"},
-		{ID: "no", Kind: agent.Deny, Label: "拒绝"},
-		{ID: "stop", Kind: agent.DenyStop, Label: "拒绝并停止"},
+		{ID: "once", Kind: agent.AllowOnce},
+		{ID: "session", Kind: agent.AllowSession},
+		{ID: "always", Kind: agent.AllowAlways, Where: ".claude/settings.local.json"},
+		{ID: "no", Kind: agent.Deny},
+		{ID: "stop", Kind: agent.DenyStop},
 	}
 	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
 		for i, p := range []string{"/etc/hosts", "notes.txt"} {
 			id := fmt.Sprint(i)
 			emit(agent.ToolStarted{ToolID: id, Name: "Write", Input: []byte(`{"file_path":"` + p + `"}`)})
-			emit(agent.ApprovalRequested{ID: "ap" + id, ToolID: id, Title: "修改文件", Paths: []string{p}, Diff: "--- " + p + "\n+++ " + p + "\n-old line\n+new line", Options: opts})
+			emit(agent.ApprovalRequested{ID: "ap" + id, ToolID: id, Action: agent.ActionEdit, Paths: []string{p}, Diff: "--- " + p + "\n+++ " + p + "\n-old line\n+new line", Options: opts})
 			select {
 			case d := <-f.Decisions():
 				got <- d
@@ -83,7 +83,7 @@ func TestApprovalCard(t *testing.T) {
 	}
 	shows("需要审批 · 修改文件", "写入其他工作区", "-old line", "+new line", "批准本次", "本会话内始终允许", "拒绝并停止")
 
-	click("永久允许（Write）…")
+	click("永久允许…")
 	shows("将写入 .claude/settings.local.json，以后同类操作不再询问。确定吗？")
 	click("取消")
 	click("拒绝…")
@@ -118,9 +118,9 @@ func TestApprovalLevelsRulesAndNotifications(t *testing.T) {
 	var f *fake.Agent
 	respond := func(ctx context.Context, _ agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
 		emit(agent.ToolStarted{ToolID: "t", Name: "Bash", Input: []byte(`{"command":"go test ./..."}`)})
-		emit(agent.ApprovalRequested{ID: "a-" + turn.Text, ToolID: "t", Title: "执行命令", Command: "go test ./...", Options: []agent.ApprovalOption{
-			{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"},
-			{ID: "session", Kind: agent.AllowSession, Label: "本会话内始终允许（go test）", Rules: []agent.Rule{{Label: "命令 go test ./...", Data: []byte(`{}`)}}},
+		emit(agent.ApprovalRequested{ID: "a-" + turn.Text, ToolID: "t", Action: agent.ActionCommand, Command: "go test ./...", Options: []agent.ApprovalOption{
+			{ID: "once", Kind: agent.AllowOnce},
+			{ID: "session", Kind: agent.AllowSession, Rules: []agent.Rule{{Label: "命令 go test ./...", Data: []byte(`{}`)}}},
 		}})
 		select {
 		case <-f.Decisions():
@@ -220,7 +220,7 @@ func TestApprovalLevelsRulesAndNotifications(t *testing.T) {
 	// Clicking it opens the session, where the card waits.
 	sh.Open(back.ID)
 	frame()
-	click("本会话内始终允许（go test）")
+	click("本会话内始终允许")
 	for wb.Status(back.ID).Running {
 		<-changes
 	}
@@ -247,17 +247,17 @@ func TestApprovalLevelsRulesAndNotifications(t *testing.T) {
 func TestLongCommandApprovalCard(t *testing.T) {
 	cmd := strings.Repeat("x", 10000)
 	opts := []agent.ApprovalOption{
-		{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"},
-		{ID: "session", Kind: agent.AllowSession, Label: "本会话内始终允许", Detail: []string{"Bash(" + cmd + ")"},
-			Rules: []agent.Rule{{Label: "Bash(" + cmd + ")"}}},
-		{ID: "always", Kind: agent.AllowAlways, Label: "永久允许", Detail: []string{"以 " + cmd + " 开头的命令"}, Where: "Codex 的执行策略规则"},
-		{ID: "no", Kind: agent.Deny, Label: "拒绝"},
-		{ID: "stop", Kind: agent.DenyStop, Label: "拒绝并停止"},
+		{ID: "once", Kind: agent.AllowOnce},
+		{ID: "session", Kind: agent.AllowSession, Grants: []agent.Grant{{Kind: agent.GrantTools, Items: []string{"Bash(" + cmd + ")"}}},
+			Rules: []agent.Rule{{Grant: agent.Grant{Kind: agent.GrantTools, Items: []string{"Bash(" + cmd + ")"}}}}},
+		{ID: "always", Kind: agent.AllowAlways, Grants: []agent.Grant{{Kind: agent.GrantCommandPrefix, Items: []string{cmd}}}},
+		{ID: "no", Kind: agent.Deny},
+		{ID: "stop", Kind: agent.DenyStop},
 	}
 	var f *fake.Agent
 	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
 		emit(agent.ToolStarted{ToolID: "1", Name: "Bash", Input: []byte(`{"command":"` + cmd + `"}`)})
-		emit(agent.ApprovalRequested{ID: "ap", ToolID: "1", Title: "执行命令", Command: cmd, Cwd: "/" + cmd, Options: opts})
+		emit(agent.ApprovalRequested{ID: "ap", ToolID: "1", Action: agent.ActionCommand, Command: cmd, Cwd: "/" + cmd, Options: opts})
 		select {
 		case <-f.Decisions():
 			emit(agent.ToolFinished{ToolID: "1", Output: "ok"})
@@ -372,8 +372,8 @@ func TestPlanApprovalCard(t *testing.T) {
 	var f *fake.Agent
 	respond := func(ctx context.Context, _ agent.StartOptions, _ agent.Turn, emit func(agent.Event)) {
 		emit(agent.ToolStarted{ToolID: "p", Name: "ExitPlanMode", Input: []byte(`{"plan":"# Plan\n\n1. Create a.txt"}`)})
-		emit(agent.ApprovalRequested{ID: "ap", ToolID: "p", Title: "按计划开始执行", Plan: "# Plan\n\n1. Create a.txt",
-			Input: []byte(`{"plan":"# Plan\n\n1. Create a.txt"}`), Options: []agent.ApprovalOption{{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"}}})
+		emit(agent.ApprovalRequested{ID: "ap", ToolID: "p", Action: agent.ActionPlan, Plan: "# Plan\n\n1. Create a.txt",
+			Input: []byte(`{"plan":"# Plan\n\n1. Create a.txt"}`), Options: []agent.ApprovalOption{{ID: "once", Kind: agent.AllowOnce}}})
 		select {
 		case <-f.Decisions():
 		case <-ctx.Done():

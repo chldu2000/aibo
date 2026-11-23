@@ -2,6 +2,7 @@ package workbench_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestSignedOutAgent(t *testing.T) {
 	sc.emit(agent.NotLoggedIn{}, agent.Failed{Message: "未登录"})
 	sc.endTurn()
 	b.idle(t, s.ID)
-	if st := b.Status(s.ID); !st.NeedsLogin || st.Error != "未登录" {
+	if st := b.Status(s.ID); !st.NeedsLogin || fmt.Sprint(st.Error) != "agent: 未登录" {
 		t.Errorf("status = %+v", st)
 	}
 	if k := <-signedOut; k != fake.Kind {
@@ -66,7 +67,7 @@ func TestSignedOutAgent(t *testing.T) {
 	if len(ms) != 2 || ms[0].Text != "按方案做" || ms[1].Text != "好的" {
 		t.Errorf("messages = %+v", ms)
 	}
-	if st := b.Status(s.ID); st.NeedsLogin || st.Error != "" {
+	if st := b.Status(s.ID); st.NeedsLogin || st.Error != nil {
 		t.Errorf("after retrying: %+v", st)
 	}
 	empty, _ := b.NewSession(ws.ID, fake.Kind, "")

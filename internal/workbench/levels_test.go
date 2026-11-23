@@ -87,9 +87,9 @@ func TestSessionRules(t *testing.T) {
 		}
 		asked++
 		emit(agent.ToolStarted{ToolID: "t", Name: "Bash", Input: json.RawMessage(`{}`)})
-		emit(agent.ApprovalRequested{ID: "a", ToolID: "t", Title: "执行命令", Options: []agent.ApprovalOption{
-			{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"},
-			{ID: "session", Kind: agent.AllowSession, Label: "本会话内始终允许（Bash(go test ./...)）", Rules: []agent.Rule{rule}},
+		emit(agent.ApprovalRequested{ID: "a", ToolID: "t", Action: agent.ActionCommand, Options: []agent.ApprovalOption{
+			{ID: "once", Kind: agent.AllowOnce},
+			{ID: "session", Kind: agent.AllowSession, Rules: []agent.Rule{rule}},
 		}})
 		<-f.Decisions()
 		emit(agent.ToolFinished{ToolID: "t", Output: "ok"})

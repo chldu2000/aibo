@@ -40,7 +40,7 @@ func TestDiagnosticLog(t *testing.T) {
 	if err := b.Send(s.ID, "the secret word is pelican"); err != nil {
 		t.Fatal(err)
 	}
-	sc.emit(agent.Retrying{Message: "第 1/10 次重试（529 overloaded）"},
+	sc.emit(agent.Retrying{Attempt: 1, Max: 10, Message: "529 overloaded"},
 		agent.ReplyDelta{ReplyID: "r", Text: "walrus"}, agent.ReplyDone{ReplyID: "r"},
 		agent.Failed{Message: "stream disconnected"})
 	sc.endTurn()

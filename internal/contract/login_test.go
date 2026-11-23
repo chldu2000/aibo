@@ -3,7 +3,6 @@ package contract
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +25,7 @@ func TestContractSignedOut(t *testing.T) {
 	r := registry.New(registry.Options{})
 	r.Detect(context.Background())
 	for _, s := range r.Statuses() {
-		t.Logf("%s: state %d %s", s.Name, s.State, s.Reason)
+		t.Logf("%s: state %d problem %d %s", s.Name, s.State, s.Problem, s.Detail)
 		if s.State != registry.NotLoggedIn {
 			t.Errorf("%s is not signed out: %+v", s.Name, s)
 		}
@@ -56,7 +55,7 @@ func TestContractSignedOut(t *testing.T) {
 		}
 		st := w.Status(s.ID)
 		ms, _ := w.Messages(s.ID)
-		if !st.NeedsLogin || !strings.Contains(st.Error, "未登录") || len(ms) != 1 {
+		if !st.NeedsLogin || len(ms) != 1 {
 			t.Errorf("%s: status %+v, %d messages", kind, st, len(ms))
 		}
 	}

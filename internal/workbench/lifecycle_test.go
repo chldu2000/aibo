@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestResumeFailureAndRecovery(t *testing.T) {
 		t.Fatalf("send: %v", err)
 	}
 	st := b2.Status(s.ID)
-	if !strings.Contains(st.ResumeFailed, "No conversation found") || st.Running || st.ReadOnly {
+	if !strings.Contains(fmt.Sprint(st.ResumeFailed), "No conversation found") || st.Running || st.ReadOnly {
 		t.Errorf("status = %+v", st)
 	}
 	if n := len(b2.messages(t, s.ID)); n != 4 {
@@ -46,7 +47,7 @@ func TestResumeFailureAndRecovery(t *testing.T) {
 	}
 
 	b2.Recover(s.ID, workbench.Later)
-	if st := b2.Status(s.ID); !st.ReadOnly || st.ResumeFailed == "" {
+	if st := b2.Status(s.ID); !st.ReadOnly || st.ResumeFailed == nil {
 		t.Errorf("after later: %+v", st)
 	}
 	if err := b2.Send(s.ID, "还是不行"); !errors.Is(err, workbench.ErrNeedsRecovery) {
@@ -56,7 +57,7 @@ func TestResumeFailureAndRecovery(t *testing.T) {
 	if err := b2.Recover(s.ID, workbench.FreshWithReference); err != nil {
 		t.Fatal(err)
 	}
-	if st := b2.Status(s.ID); st.ResumeFailed != "" || st.ReadOnly {
+	if st := b2.Status(s.ID); st.ResumeFailed != nil || st.ReadOnly {
 		t.Errorf("after recovering: %+v", st)
 	}
 	ms := b2.Markers(s.ID)
@@ -115,7 +116,7 @@ func TestIdleSessionsDisconnect(t *testing.T) {
 			return
 		}
 		emit(agent.ToolStarted{ToolID: "t", Name: "Bash", Input: json.RawMessage(`{}`)})
-		emit(agent.ApprovalRequested{ID: "a", ToolID: "t", Title: "执行命令", Options: []agent.ApprovalOption{{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"}}})
+		emit(agent.ApprovalRequested{ID: "a", ToolID: "t", Action: agent.ActionCommand, Options: []agent.ApprovalOption{{ID: "once", Kind: agent.AllowOnce}}})
 		select {
 		case <-f.Decisions():
 		case <-ctx.Done():
@@ -165,20 +166,28 @@ func TestRetryingStatus(t *testing.T) {
 	if err := b.Send(s.ID, "你好"); err != nil {
 		t.Fatal(err)
 	}
-	if st := b.Status(s.ID); !st.Running || st.Since.IsZero() || st.Retrying != "" {
+	if st := b.Status(s.ID); !st.Running || st.Since.IsZero() || st.Retrying != nil {
 		t.Fatalf("status = %+v", st)
 	}
 	sc.emit(agent.Retrying{Message: "Reconnecting... 1/5"})
-	b.waitFor(t, "the retry", func() bool { return b.Status(s.ID).Retrying == "Reconnecting... 1/5" })
+	b.waitFor(t, "the retry", func() bool { return retrying(b.Status(s.ID)) == "Reconnecting... 1/5" })
 	sc.emit(agent.Retrying{Message: "Reconnecting... 2/5"})
-	b.waitFor(t, "the next retry", func() bool { return b.Status(s.ID).Retrying == "Reconnecting... 2/5" })
+	b.waitFor(t, "the next retry", func() bool { return retrying(b.Status(s.ID)) == "Reconnecting... 2/5" })
 	sc.emit(agent.ReplyDelta{ReplyID: "r", Text: "好"})
-	b.waitFor(t, "the reply", func() bool { return b.Status(s.ID).Retrying == "" })
+	b.waitFor(t, "the reply", func() bool { return b.Status(s.ID).Retrying == nil })
 	sc.emit(agent.Retrying{Message: "Reconnecting... 1/5"})
-	b.waitFor(t, "a retry later", func() bool { return b.Status(s.ID).Retrying != "" })
+	b.waitFor(t, "a retry later", func() bool { return b.Status(s.ID).Retrying != nil })
 	sc.endTurn()
 	b.idle(t, s.ID)
-	if st := b.Status(s.ID); st.Retrying != "" {
+	if st := b.Status(s.ID); st.Retrying != nil {
 		t.Errorf("still retrying after the turn: %+v", st)
 	}
+}
+
+// retrying is why the Agent retries, if it does.
+func retrying(st workbench.Status) string {
+	if st.Retrying == nil {
+		return ""
+	}
+	return st.Retrying.Message
 }

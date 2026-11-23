@@ -62,7 +62,7 @@ func TestContractRealAgentsReadReferences(t *testing.T) {
 				t.Fatal("the turn never ended")
 			}
 		}
-		if e := w.Status(id).Error; e != "" {
+		if e := w.Status(id).Error; e != nil {
 			t.Fatalf("error: %s", e)
 		}
 		ms, _ := w.Messages(id)

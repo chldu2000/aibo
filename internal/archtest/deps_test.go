@@ -28,10 +28,13 @@ var allowed = map[string][]string{
 	"internal/store":        {"internal/agent", "internal/model"},
 	"internal/mcpserver":    {"internal/refs"},
 	"internal/workbench":    {"internal/agent", "internal/files", "internal/mcpserver", "internal/model", "internal/refs", "internal/store"},
-	"internal/shell":        {"internal/agent", "internal/agents", "internal/appdata", "internal/model", "internal/refs", "internal/workbench"},
+	"internal/shell":        {"internal/agent", "internal/agents", "internal/appdata", "internal/model", "internal/refs", "internal/workbench", "locales"},
 	"internal/contract":     nil, // tests only
 	"internal/archtest":     nil, // tests only
 	"cmd/aibo":              {"*"},
+	// The messages of the user's interface, which only the shell and the
+	// app say: the layers below word nothing for the user.
+	"locales": {},
 }
 
 func TestLayers(t *testing.T) {

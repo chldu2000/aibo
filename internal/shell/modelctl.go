@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	"github.com/chldu2000/aibo/locales"
 	"slices"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -36,7 +37,8 @@ func (s *Shell) modelsOf(kind agent.Kind) *models {
 		s.later(func() {
 			m.loading, m.list = false, list
 			if err != nil {
-				m.err = err.Error()
+				m.err = s.say(err)
+
 			}
 		})
 	}()
@@ -83,7 +85,7 @@ func (s *Shell) using(x model.Session) using {
 	case id != "":
 		u.name = id
 	default:
-		u.name = "默认模型"
+		u.name = locales.DefaultModel()
 	}
 	return u
 }
@@ -96,9 +98,9 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 	ms := s.modelsOf(x.Agent)
 	tip := func(what string) string {
 		if running {
-			return "等这一轮结束后再换" + what
+			return locales.ChangeAfter(what)
 		}
-		return what + "：点击更换"
+		return locales.ClickToChange(what)
 	}
 	chip := func(symbol, text, label, tooltip string, enabled bool) ui.Element {
 		b := ui.Row(c).Gap(4).Padding(4, 8).Radius(8).AlignItems(ui.Center).Label(label).Tooltip(tooltip).Children(func() {
@@ -114,11 +116,11 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 	}
 	if ms == nil {
 		// The Agent tells no models: what it uses, unchangeable.
-		chip("cpu", u.name, "模型："+u.name, "模型", false)
+		chip("cpu", u.name, locales.ModelLabel(u.name), locales.ModelHeading(), false)
 		return
 	}
 	st := &s.modelMenu
-	mb := chip("cpu", u.name, "模型："+u.name, tip("模型"), !running)
+	mb := chip("cpu", u.name, locales.ModelLabel(u.name), tip(locales.ModelWord()), !running)
 	if mb.Clicked() && !running {
 		st.models, st.efforts = !st.models, false
 	}
@@ -127,15 +129,15 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 	}
 	ui.Popover(c, mb, &st.models, func() {
 		ui.Column(c).Width(320).Gap(2).Padding(8).Children(func() {
-			ui.Text(c, "模型").Bold().TextColor(t.Text).Padding(0, 6, 4)
+			ui.Text(c, locales.ModelHeading()).Bold().TextColor(t.Text).Padding(0, 6, 4)
 			switch {
 			case ms.loading:
-				ui.Text(c, "正在读取模型列表……").FontSize(12).TextColor(t.TextMuted).Padding(4, 6)
+				ui.Text(c, locales.ModelsLoading()).FontSize(12).TextColor(t.TextMuted).Padding(4, 6)
 			case ms.err != "":
-				ui.Text(c, "读不到模型列表："+ms.err).FontSize(11).TextColor(t.Warning).Padding(4, 6)
+				ui.Text(c, withDetail(locales.ModelsFailed(), ms.err)).FontSize(11).TextColor(t.Warning).Padding(4, 6)
 			}
 			for _, m := range ms.list {
-				if pickRow(c, "m"+m.ID, "使用模型 "+m.Name, func() {
+				if pickRow(c, "m"+m.ID, locales.UseModel(m.Name), func() {
 					symbol := "circle"
 					if u.m != nil && u.m.ID == m.ID {
 						symbol = "checkmark.circle.fill"
@@ -159,17 +161,17 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 	}
 	effort := u.effort
 	if effort == "" {
-		effort = "默认"
+		effort = locales.ModeDefault()
 	}
-	eb := chip("gauge.with.dots.needle.33percent", effort, "推理强度："+effort, tip("推理强度"), !running)
+	eb := chip("gauge.with.dots.needle.33percent", effort, locales.EffortLabel(effort), tip(locales.EffortWord()), !running)
 	if eb.Clicked() && !running {
 		st.efforts, st.models = !st.efforts, false
 	}
 	ui.Popover(c, eb, &st.efforts, func() {
 		ui.Column(c).Width(200).Gap(2).Padding(8).Children(func() {
-			ui.Text(c, "推理强度").Bold().TextColor(t.Text).Padding(0, 6, 4)
+			ui.Text(c, locales.EffortHeading()).Bold().TextColor(t.Text).Padding(0, 6, 4)
 			for _, e := range u.m.Efforts {
-				if pickRow(c, "e"+e, "推理强度 "+e, func() {
+				if pickRow(c, "e"+e, locales.EffortRow(e), func() {
 					symbol := "circle"
 					if e == u.effort {
 						symbol = "checkmark.circle.fill"
@@ -177,7 +179,7 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 					sfsymbols.Symbol(c, symbol).Size(14).Color(t.Accent)
 					ui.Text(c, e).TextColor(t.Text).Grow(1)
 					if e == u.m.DefaultEffort {
-						ui.Text(c, "默认").FontSize(11).TextColor(t.TextMuted)
+						ui.Text(c, locales.ModeDefault()).FontSize(11).TextColor(t.TextMuted)
 					}
 				}).Clicked() {
 					s.setModel(x, *u.m, e)
@@ -195,6 +197,6 @@ func (s *Shell) setModel(x model.Session, m agent.Model, effort string) {
 		effort = m.DefaultEffort
 	}
 	if err := s.wb.SetModel(x.ID, m.ID, effort); err != nil {
-		s.notice = "更换模型失败：" + err.Error()
+		s.notice = s.failed(locales.ModelFailed, err)
 	}
 }

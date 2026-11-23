@@ -108,7 +108,7 @@ func TestPlanMode(t *testing.T) {
 	if !slices.Equal(modes, []string{"plan"}) {
 		t.Errorf("modes = %v", modes)
 	}
-	if plan == nil || plan.Title != "按计划开始执行" || !strings.HasPrefix(plan.Plan, "# Plan: create a.txt") {
+	if plan == nil || plan.Action != agent.ActionPlan || !strings.HasPrefix(plan.Plan, "# Plan: create a.txt") {
 		t.Fatalf("approval = %+v", plan)
 	}
 	if o := plan.Options; len(o) == 0 || o[0].Kind != agent.AllowOnce {

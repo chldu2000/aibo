@@ -6,6 +6,7 @@ package shell
 
 import (
 	"errors"
+	"github.com/chldu2000/aibo/locales"
 	"path/filepath"
 	"sync"
 
@@ -236,7 +237,7 @@ func (s *Shell) view(id string) *sessionView {
 	if !v.loaded {
 		msgs, err := s.wb.Messages(id)
 		if err != nil {
-			s.notice = err.Error()
+			s.notice = s.say(err)
 			return v
 		}
 		v.msgs, v.loaded = msgs, true
@@ -255,7 +256,7 @@ func (s *Shell) addWorkspace() {
 			return
 		}
 		if _, err := s.wb.AddWorkspace(path); err != nil {
-			s.later(func() { s.notice = "添加工作区失败：" + err.Error() })
+			s.later(func() { s.notice = s.failed(locales.AddWorkspaceFailed, err) })
 		}
 	}()
 }
@@ -273,7 +274,7 @@ func (s *Shell) later(fn func()) {
 func (s *Shell) newSession(ws model.Workspace, kind agent.Kind) {
 	x, err := s.wb.NewSession(ws.ID, kind, "")
 	if err != nil {
-		s.notice = "新建会话失败：" + err.Error()
+		s.notice = s.failed(locales.NewSessionFailed, err)
 		return
 	}
 	s.goTo(x.ID, 0, 0)
@@ -288,7 +289,7 @@ func (s *Shell) send(id string, text string) bool {
 	if err := s.wb.SendWithFiles(id, text, mentions); err != nil {
 		// A native session that cannot be resumed has its own banner.
 		if !errors.Is(err, agent.ErrResumeFailed) && !errors.Is(err, workbench.ErrNeedsRecovery) && !errors.Is(err, agents.ErrNotLoggedIn) {
-			s.notice = err.Error()
+			s.notice = s.say(err)
 		}
 		return false
 	}
@@ -302,7 +303,7 @@ func workspaceName(ws model.Workspace) string { return filepath.Base(ws.Path) }
 
 func sessionTitle(x model.Session) string {
 	if x.Title == "" {
-		return "新会话"
+		return locales.UntitledSession()
 	}
 	return x.Title
 }
@@ -323,7 +324,8 @@ func (s *Shell) notifyApprovals(changes []workbench.Change) {
 		n := s.wb.Status(id).Approvals
 		if n > s.seen[id] && id != s.current && s.opts.Notify != nil && s.wb.Settings().Notify {
 			x, _ := s.wb.Session(id)
-			s.opts.Notify(id, "「"+sessionTitle(x)+"」需要审批", s.agentName(x.Agent)+" 在等你批准一个操作")
+			s.opts.Notify(id, locales.NotifyTitle(sessionTitle(x)), locales.NotifyBody(s.agentName(x.Agent)))
+
 		}
 		s.seen[id] = n
 	}

@@ -52,25 +52,47 @@ type Options struct {
 	Log *slog.Logger
 }
 
-// Errors of the workbench's operations.
+// Errors of the workbench's operations, which the shell words for the
+// user.
 var (
-	ErrNotDirectory     = errors.New("不是一个文件夹")
-	ErrWorkspaceExists  = errors.New("这个文件夹已经是工作区了")
-	ErrNoSuchWorkspace  = errors.New("工作区不存在")
-	ErrNoSuchSession    = errors.New("会话不存在")
-	ErrUnknownAgent     = errors.New("没有这个 Agent")
-	ErrTurnRunning      = errors.New("Agent 正在回复，请先停止或等它完成")
-	ErrEmptyMessage     = errors.New("消息不能为空")
-	ErrNothingToRef     = errors.New("会话里还没有可以引用的消息")
-	ErrSlashCommand     = errors.New("暂不支持 Agent 自带的斜杠命令。要压缩上下文，请用输入框里的“压缩上下文”")
-	ErrNothingToCompact = errors.New("会话里还没有内容，无需压缩")
-	ErrNeedsRecovery    = errors.New("原生会话无法续接：请先选择新开原生会话，或暂不处理")
-	ErrNoSuchReference  = errors.New("引用不存在")
-	ErrBadRange         = errors.New("引用范围无效")
-	ErrNoSuchApproval   = errors.New("这个审批请求已经处理过或不存在")
-	ErrNoSuchMode       = errors.New("这个 Agent 没有这个权限模式")
-	ErrNoSuchRule       = errors.New("没有这条规则")
-	errWorkbenchClosing = errors.New("工作台正在关闭")
+	ErrNotDirectory     = errors.New("not a folder")
+	ErrWorkspaceExists  = errors.New("the folder is a workspace already")
+	ErrNoSuchWorkspace  = errors.New("no such workspace")
+	ErrNoSuchSession    = errors.New("no such session")
+	ErrUnknownAgent     = errors.New("no such Agent")
+	ErrTurnRunning      = errors.New("the Agent is replying")
+	ErrEmptyMessage     = errors.New("the message is empty")
+	ErrNothingToRef     = errors.New("the session has no message to reference")
+	ErrSlashCommand     = errors.New("the Agent's own slash commands are not supported")
+	ErrNothingToCompact = errors.New("the session has nothing to compact")
+	ErrNeedsRecovery    = errors.New("the native session cannot be resumed: recover it first")
+	ErrNoSuchReference  = errors.New("no such reference")
+	ErrBadRange         = errors.New("the reference's range is not valid")
+	ErrNoSuchApproval   = errors.New("the approval request was answered, or does not exist")
+	ErrNoSuchMode       = errors.New("the Agent has no such permission mode")
+	ErrNoSuchRule       = errors.New("no such rule")
+	errWorkbenchClosing = errors.New("the workbench is closing")
+)
+
+// Failure is why a session's turn failed (Status.Error): what aibo was
+// doing, and the error. An Agent's own failure is an agent.Failed.
+type Failure struct {
+	Step Step
+	Err  error
+}
+
+func (f *Failure) Error() string { return string(f.Step) + ": " + f.Err.Error() }
+func (f *Failure) Unwrap() error { return f.Err }
+
+// Step is what aibo was doing when a turn failed.
+type Step string
+
+const (
+	StepSend    Step = "send"    // sending the message
+	StepStart   Step = "start"   // starting the native session
+	StepCompact Step = "compact" // compacting
+	StepSave    Step = "save"    // saving the messages
+	StepAgent   Step = "agent"   // the Agent failed itself
 )
 
 // Change tells listeners that something changed. Message, when set, is
@@ -88,22 +110,23 @@ type Status struct {
 	Connected bool
 	// Running is set while a turn is running.
 	Running bool
-	// Error is the last error the Agent reported, until the next turn.
-	Error string
+	// Error is why the last turn failed, until the next turn: a
+	// *Failure.
+	Error error
 	// Approvals counts the approval requests waiting for an answer.
 	Approvals int
 	// ResumeFailed is the Agent's error when the native session could
 	// not be resumed, until the user chooses what to do (Recover).
 	// ReadOnly is set when the user chose to leave it for now.
-	ResumeFailed string
+	ResumeFailed error
 	ReadOnly     bool
 	// NeedsLogin is set when the last turn found the Agent signed out.
 	NeedsLogin bool
 	// Since is when the running turn started.
 	Since time.Time
-	// Retrying, while the turn runs, says why the Agent is trying again
-	// to reach its model (agent.Retrying), until it gets on.
-	Retrying string
+	// Retrying, while the turn runs, says the Agent is trying again to
+	// reach its model, and why, until it gets on.
+	Retrying *agent.Retrying
 	// Model and Effort are what the Agent last said it uses
 	// (agent.SettingsReported), Mode the permission mode it last said it
 	// is in (agent.ModeReported); empty until it says.
@@ -151,7 +174,7 @@ type session struct {
 
 	native  agent.Session // nil while not connected
 	running bool
-	err     string
+	err     error
 	// items maps the running turn's replies, tool calls and plans, by
 	// the keys of itemKey, to indexes in msgs.
 	items     map[string]int
@@ -159,14 +182,14 @@ type session struct {
 	// resumeFailed is the Agent's error when the native session could not
 	// be resumed, until the user chooses what to do (Recover); readOnly
 	// is set when the user chose to leave it for now.
-	resumeFailed string
+	resumeFailed error
 	readOnly     bool
 	// needsLogin is set when the last turn found the Agent signed out.
 	needsLogin bool
 	// since is when the running turn started; retrying is the Agent's
 	// last agent.Retrying, until anything else happens.
 	since    time.Time
-	retrying string
+	retrying *agent.Retrying
 	// reported is the model and the effort the Agent last said it uses;
 	// reportedMode the permission mode.
 	reported     agent.SettingsReported
@@ -513,7 +536,7 @@ func (w *Workbench) addMarker(id string, s *session, m model.Marker) {
 		m.AfterSeq = s.msgs[len(s.msgs)-1].Seq
 	}
 	if err := w.st.AddMarker(id, m); err != nil {
-		s.err = "保存标记失败：" + err.Error()
+		s.err = &Failure{StepSave, err}
 		return
 	}
 	s.markers = append(s.markers, m)
@@ -534,7 +557,7 @@ func (w *Workbench) Compact(id string) error {
 	case s.running:
 		w.mu.Unlock()
 		return ErrTurnRunning
-	case s.resumeFailed != "":
+	case s.resumeFailed != nil:
 		w.mu.Unlock()
 		return ErrNeedsRecovery
 	}
@@ -556,7 +579,7 @@ func (w *Workbench) Compact(id string) error {
 		w.mu.Unlock()
 		return ErrNothingToCompact
 	}
-	s.running, s.err, s.items = true, "", map[string]int{}
+	s.running, s.err, s.items = true, nil, map[string]int{}
 	native, info := s.native, s.info
 	ws, _ := w.workspace(info.WorkspaceID)
 	w.mu.Unlock()
@@ -569,7 +592,7 @@ func (w *Workbench) Compact(id string) error {
 		}
 	}
 	if err := native.Compact(context.Background()); err != nil {
-		w.fail(id, "压缩失败："+err.Error())
+		w.fail(id, StepCompact, err)
 		return err
 	}
 	return nil

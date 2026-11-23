@@ -38,13 +38,13 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 	switch ev.(type) {
 	case agent.Retrying, agent.SettingsReported, agent.ModeReported:
 	default:
-		s.retrying = ""
+		s.retrying = nil
 	}
 	switch e := ev.(type) {
 	case agent.Retrying:
 		w.log.Warn("agent retrying", "session", id, "message", e.Message)
 		if s.running {
-			s.retrying = e.Message
+			s.retrying = &e
 		}
 	case agent.SettingsReported:
 		s.reported = e
@@ -186,7 +186,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 			touch(i, true)
 		}
 	case agent.ApprovalRequested:
-		a := &model.Approval{ID: e.ID, Title: e.Title, Command: e.Command, Cwd: e.Cwd, Reason: e.Reason, Diff: e.Diff, Plan: e.Plan,
+		a := &model.Approval{ID: e.ID, Action: e.Action, Tool: e.Tool, WriteRoot: e.WriteRoot, Command: e.Command, Cwd: e.Cwd, Reason: e.Reason, Diff: e.Diff, Plan: e.Plan,
 			Paths: e.Paths, Input: e.Input, Options: e.Options, Outside: w.outside(s, e.Paths)}
 		if i, ok := s.items[itemKey("t", e.ToolID)]; ok && !s.msgs[i].State.Ended() && s.msgs[i].Tool != nil {
 			s.msgs[i].Tool.Approval = a
@@ -220,7 +220,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		}
 	case agent.Failed:
 		w.log.Warn("agent failed", "session", id, "message", e.Message)
-		s.err = e.Message
+		s.err = &Failure{StepAgent, e}
 	}
 	idx := make([]int, 0, len(touched))
 	for i := range touched {
@@ -256,7 +256,7 @@ func (w *Workbench) item(id string, s *session, key string, m model.Message) (i 
 	m.State = model.Streaming
 	seq, err := w.st.AppendMessage(id, m)
 	if err != nil {
-		s.err = "保存消息失败：" + err.Error()
+		s.err = &Failure{StepSave, err}
 		return 0, false, false
 	}
 	m.Seq = seq

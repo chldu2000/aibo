@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	"github.com/chldu2000/aibo/locales"
 	"path/filepath"
 	"strings"
 
@@ -45,7 +46,8 @@ func (s *Shell) matchFiles(sessionID, query string) {
 			}
 			s.pull.files.hits, s.pull.files.loading, s.pull.files.err = hits, false, ""
 			if err != nil {
-				s.pull.files.err = err.Error()
+				s.pull.files.err = s.say(err)
+
 			}
 		})
 	}()
@@ -56,25 +58,25 @@ func (s *Shell) matchFiles(sessionID, query string) {
 func (s *Shell) pullFiles(c *ui.Context, x model.Session) {
 	t := c.Theme()
 	f := &s.pull.files
-	ui.Text(c, "文件").FontSize(11).Bold().TextColor(t.TextMuted).Padding(4, 8, 2)
+	ui.Text(c, locales.FilesHeading()).FontSize(11).Bold().TextColor(t.TextMuted).Padding(4, 8, 2)
 	switch {
 	case f.err != "":
-		ui.Text(c, "读不到文件列表："+f.err).FontSize(11).TextColor(t.Warning).Padding(4, 8)
+		ui.Text(c, withDetail(locales.FilesFailed(), f.err)).FontSize(11).TextColor(t.Warning).Padding(4, 8)
 	case len(f.hits) == 0 && f.loading:
-		ui.Text(c, "正在列出文件……").FontSize(12).TextColor(t.TextMuted).Padding(4, 8)
+		ui.Text(c, locales.FilesLoading()).FontSize(12).TextColor(t.TextMuted).Padding(4, 8)
 	case len(f.hits) == 0:
-		ui.Text(c, "没有找到文件").FontSize(12).TextColor(t.TextMuted).Padding(4, 8)
+		ui.Text(c, locales.NoFiles()).FontSize(12).TextColor(t.TextMuted).Padding(4, 8)
 	}
 	for _, h := range f.hits {
 		symbol := "doc.text"
 		if h.Mention.Dir {
 			symbol = "folder"
 		}
-		row := pickRow(c, "f"+h.Mention.Path, "选择文件 "+h.Rel, func() {
+		row := pickRow(c, "f"+h.Mention.Path, locales.ChooseFile(h.Rel), func() {
 			sfsymbols.Symbol(c, symbol).Size(14).Color(t.TextMuted)
 			ui.Text(c, h.Rel).Font("Menlo").FontSize(12).TextColor(t.Text).MaxLines(1).TruncateMiddle().Grow(1).Shrink(1).MinWidth(0)
 			if h.Workspace != "" {
-				ui.Text(c, filepath.Base(h.Workspace)+"（源工作区）").FontSize(11).TextColor(t.TextMuted).NoWrap()
+				ui.Text(c, locales.SourceWorkspace(filepath.Base(h.Workspace))).FontSize(11).TextColor(t.TextMuted).NoWrap()
 			}
 		})
 		if row.Clicked() {
@@ -128,7 +130,7 @@ func (s *Shell) mentionChip(c *ui.Context, x model.Session, m model.Mention, rem
 	ui.Row(c).Key("m"+m.Path).Gap(6).Padding(3, 4, 3, 8).Radius(8).AlignItems(ui.Center).BorderWidth(1).BorderColor(t.Border).Tooltip(m.Path).Children(func() {
 		sfsymbols.Symbol(c, symbol).Size(12).Color(t.TextMuted)
 		ui.Text(c, name).Font("Menlo").FontSize(12).TextColor(t.Text).MaxLines(1).TruncateMiddle().MaxWidth(320)
-		if remove != nil && iconButton(c, "xmark", "移除文件 "+name).Clicked() {
+		if remove != nil && iconButton(c, "xmark", locales.RemoveFile(name)).Clicked() {
 			remove()
 		}
 	})

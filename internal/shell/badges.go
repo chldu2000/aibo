@@ -1,7 +1,7 @@
 package shell
 
 import (
-	"fmt"
+	"github.com/chldu2000/aibo/locales"
 
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/egoist/mygo/plugins/glass"
@@ -66,24 +66,25 @@ func (s *Shell) badges(c *ui.Context, x model.Session, v *sessionView) {
 	refs := s.wb.Received(x.ID)
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
 		if terminals > 0 {
-			chip(c, "terminal", fmt.Sprintf("%d 个终端进程", terminals), "终端进程", tintTerminal)
+			chip(c, "terminal", locales.BadgeTerminals(terminals), locales.BadgeTerminalsLabel(), tintTerminal)
 		}
 		if subagents > 0 {
-			chip(c, "person.2", fmt.Sprintf("%d 个子 Agent 运行中", subagents), "子 Agent", tintSubagent)
+			chip(c, "person.2", locales.BadgeSubagents(subagents), locales.BadgeSubagentsLabel(), tintSubagent)
 		}
 		if st.Approvals > 0 {
-			chip(c, "exclamationmark.shield", fmt.Sprintf("%d 个待审批", st.Approvals), "待审批", tintApproval)
+			chip(c, "exclamationmark.shield", locales.BadgeApprovals(st.Approvals), locales.BadgeApprovalsLabel(), tintApproval)
 		}
 		if refs > 0 {
-			chip(c, "paperclip", fmt.Sprintf("收到 %d 个引用", refs), "收到的引用", tintRefs)
+			chip(c, "paperclip", locales.BadgeRefs(refs), locales.BadgeRefsLabel(), tintRefs)
 		}
 		ui.Spacer(c)
-		if chip(c, "arrow.down.right.and.arrow.up.left", "压缩上下文", "压缩上下文", tintAction).Clicked() {
+		if chip(c, "arrow.down.right.and.arrow.up.left", locales.Compact(), locales.Compact(), tintAction).Clicked() {
 			if err := s.wb.Compact(x.ID); err != nil {
-				s.notice = err.Error()
+				s.notice = s.say(err)
+
 			}
 		}
-		if chip(c, "arrowshape.turn.up.right", "引用会话…", "引用会话", tintAction).Clicked() {
+		if chip(c, "arrowshape.turn.up.right", locales.ReferenceSession(), locales.ReferenceSessionLabel(), tintAction).Clicked() {
 			s.startSelecting(v)
 		}
 	})

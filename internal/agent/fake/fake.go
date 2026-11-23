@@ -107,7 +107,7 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	if opts.ResumeID != "" && a.resumeFails != "" {
 		why := a.resumeFails
 		a.mu.Unlock()
-		return nil, fmt.Errorf("%w：%s", agent.ErrResumeFailed, why)
+		return nil, fmt.Errorf("%w: %s", agent.ErrResumeFailed, why)
 	}
 	id := opts.ResumeID
 	if id == "" {

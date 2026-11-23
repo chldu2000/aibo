@@ -44,26 +44,26 @@ func (t *thread) approval(id, method string, params json.RawMessage) (agent.Appr
 	}
 	a := agent.ApprovalRequested{ID: id, ToolID: p.ItemID, Reason: p.Reason}
 	k := ask{method: method}
-	once := agent.ApprovalOption{ID: "accept", Kind: agent.AllowOnce, Label: "批准本次"}
-	session := agent.ApprovalOption{ID: "acceptForSession", Kind: agent.AllowSession, Label: "本会话内始终允许"}
-	deny := agent.ApprovalOption{ID: "decline", Kind: agent.Deny, Label: "拒绝"}
-	stop := agent.ApprovalOption{ID: "cancel", Kind: agent.DenyStop, Label: "拒绝并停止"}
+	once := agent.ApprovalOption{ID: "accept", Kind: agent.AllowOnce}
+	session := agent.ApprovalOption{ID: "acceptForSession", Kind: agent.AllowSession}
+	deny := agent.ApprovalOption{ID: "decline", Kind: agent.Deny}
+	stop := agent.ApprovalOption{ID: "cancel", Kind: agent.DenyStop}
 	switch method {
 	case askCommand:
-		a.Title, a.Command, a.Cwd = "执行命令", p.Command, p.Cwd
+		a.Action, a.Command, a.Cwd = agent.ActionCommand, p.Command, p.Cwd
 		session.Rules = []agent.Rule{commandRule(p.Command)}
-		session.Detail = []string{session.Rules[0].Label}
+		session.Grants = []agent.Grant{session.Rules[0].Grant}
 		a.Options = []agent.ApprovalOption{once, session}
 		if len(p.Amendment) > 0 {
 			k.amendment = p.Amendment
 			a.Options = append(a.Options, agent.ApprovalOption{ID: "always", Kind: agent.AllowAlways,
-				Label: "永久允许", Detail: []string{"以 " + strings.Join(p.Amendment, " ") + " 开头的命令"}, Where: "Codex 的执行策略规则"})
+				Grants: []agent.Grant{{Kind: agent.GrantCommandPrefix, Items: p.Amendment}}})
 		}
 		a.Options = append(a.Options, deny, stop)
 	case askFileChange:
-		a.Title = "修改文件"
+		a.Action = agent.ActionEdit
 		if p.GrantRoot != "" {
-			a.Reason = strings.TrimSpace(a.Reason + "（请求在本会话内允许写入 " + p.GrantRoot + "）")
+			a.WriteRoot = p.GrantRoot
 			a.Paths = append(a.Paths, p.GrantRoot)
 		}
 		if it, ok := t.files[p.ItemID]; ok {
@@ -75,10 +75,10 @@ func (t *thread) approval(id, method string, params json.RawMessage) (agent.Appr
 			a.Diff = strings.Join(diffs, "\n")
 		}
 		session.Rules = []agent.Rule{filesRule(a.Paths)}
-		session.Detail = []string{session.Rules[0].Label}
+		session.Grants = []agent.Grant{session.Rules[0].Grant}
 		a.Options = []agent.ApprovalOption{once, session, deny, stop}
 	case askElicitation:
-		a.Title = "调用 MCP 工具（" + p.ServerName + "）"
+		a.Action, a.Tool = agent.ActionMCP, p.ServerName
 		a.Reason = p.Message
 		a.Input = params
 		a.Options = []agent.ApprovalOption{once, deny, stop}
@@ -95,7 +95,7 @@ func (k ask) result(optionID string) (any, error) {
 		case "accept", "decline", "cancel":
 			return map[string]any{"action": optionID}, nil
 		}
-		return nil, errors.New("没有这个选项：" + optionID)
+		return nil, errors.New("no such option: " + optionID)
 	}
 	switch optionID {
 	case "accept", "acceptForSession", "decline", "cancel":
@@ -105,7 +105,7 @@ func (k ask) result(optionID string) (any, error) {
 			return map[string]any{"decision": map[string]any{"acceptWithExecpolicyAmendment": map[string]any{"execpolicy_amendment": k.amendment}}}, nil
 		}
 	}
-	return nil, errors.New("没有这个选项：" + optionID)
+	return nil, errors.New("no such option: " + optionID)
 }
 
 // rule is what a session rule of Codex allows: a command as it was run,
@@ -118,12 +118,12 @@ type rule struct {
 
 func commandRule(cmd string) agent.Rule {
 	b, _ := json.Marshal(rule{Kind: "command", Command: cmd})
-	return agent.Rule{Label: "命令 " + cmd, Data: b}
+	return agent.Rule{Grant: agent.Grant{Kind: agent.GrantCommand, Items: []string{cmd}}, Data: b}
 }
 
 func filesRule(paths []string) agent.Rule {
 	b, _ := json.Marshal(rule{Kind: "files", Paths: paths})
-	return agent.Rule{Label: "修改 " + strings.Join(paths, "、"), Data: b}
+	return agent.Rule{Grant: agent.Grant{Kind: agent.GrantEdits, Items: paths}, Data: b}
 }
 
 // allowed reports whether a session rule allows the request, which Codex

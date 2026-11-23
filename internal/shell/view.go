@@ -1,7 +1,9 @@
 package shell
 
 import (
+	"errors"
 	"fmt"
+	"github.com/chldu2000/aibo/locales"
 	"strings"
 	"time"
 
@@ -40,7 +42,7 @@ func (s *Shell) View(c *ui.Context) {
 	// Folders dropped on the window become workspaces.
 	for _, p := range root.DroppedFiles() {
 		if _, err := s.wb.AddWorkspace(p); err != nil {
-			s.notice = "添加工作区失败：" + err.Error()
+			s.notice = s.failed(locales.AddWorkspaceFailed, err)
 		}
 	}
 }
@@ -58,10 +60,10 @@ func (s *Shell) pane(c *ui.Context) {
 		ui.Box(c).Fill().Children(func() {
 			ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 				if s.opts.Only != "" {
-					ui.Text(c, "这个会话已被删除，可以关闭这个窗口").TextColor(t.TextMuted)
+					ui.Text(c, locales.SessionDeleted()).TextColor(t.TextMuted)
 					return
 				}
-				ui.Text(c, "在左侧选一个会话，或在工作区上点“＋”新建").TextColor(t.TextMuted)
+				ui.Text(c, locales.NoSessionOpen()).TextColor(t.TextMuted)
 			})
 			// Nothing to scroll here: the whole header band moves the window.
 			ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(max(bar.Height, headerBottom)).DragWindow()
@@ -97,17 +99,17 @@ func (s *Shell) pane(c *ui.Context) {
 			s.agentGlyph(c, x.Agent, 20)
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1)
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Grow(1)
-			if iconButton(c, "arrowshape.turn.up.right", "选择消息以引用或复制").Clicked() {
+			if iconButton(c, "arrowshape.turn.up.right", locales.SelectMessages()).Clicked() {
 				if v.sel.on {
 					s.stopSelecting(v)
 				} else {
 					s.startSelecting(v)
 				}
 			}
-			if s.opts.OpenWindow != nil && iconButton(c, "rectangle.on.rectangle", "在新窗口打开").Clicked() {
+			if s.opts.OpenWindow != nil && iconButton(c, "rectangle.on.rectangle", locales.OpenInWindow()).Clicked() {
 				s.opts.OpenWindow(x.ID)
 			}
-			if iconButton(c, "sidebar.trailing", "会话详情").Clicked() {
+			if iconButton(c, "sidebar.trailing", locales.SessionDetails()).Clicked() {
 				s.detail.open, s.detail.confirming = !s.detail.open, ""
 			}
 		})
@@ -191,7 +193,7 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 					s.reply(c, v, m)
 				}
 				if m.State == model.Interrupted && m.Kind != model.ToolCall {
-					ui.Text(c, "已中断").FontSize(11).TextColor(t.TextMuted)
+					ui.Text(c, locales.Interrupted()).FontSize(11).TextColor(t.TextMuted)
 				}
 			})
 		})
@@ -200,7 +202,7 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 		}
 	}).Padding(76, 20, 170).Gap(10).Children(func() {
 		if len(v.msgs) == 0 {
-			ui.Text(c, "发一条消息开始对话").TextColor(t.TextMuted).Margin(ui.Auto)
+			ui.Text(c, locales.StartConversation()).TextColor(t.TextMuted).Margin(ui.Auto)
 		}
 	})
 }
@@ -210,35 +212,37 @@ func (s *Shell) banners(c *ui.Context, id string) {
 	bar := func(text string, dismiss func()) {
 		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
 			ui.Text(c, text).TextColor(c.Theme().Text).Grow(1)
-			if dismiss != nil && iconButton(c, "xmark", "关闭").Clicked() {
+			if dismiss != nil && iconButton(c, "xmark", locales.Close()).Clicked() {
 				dismiss()
 			}
 		})
 	}
 	st := s.wb.Status(id)
-	if st.Error != "" {
-		bar(st.Error, nil)
+	x, ok := s.wb.Session(id)
+	var failure *workbench.Failure
+	if errors.As(st.Error, &failure) {
+		bar(s.sayFailure(s.agentName(x.Agent), failure), nil)
 	}
-	if st.ResumeFailed != "" {
+	if st.ResumeFailed != nil {
 		s.resumeBanner(c, id, st)
 	}
-	if x, ok := s.wb.Session(id); ok {
+	if ok {
 		s.loginBanner(c, x, st)
 		ws := s.workspaceOf(x)
 		if ws.Missing {
 			ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
-				ui.Text(c, "工作区目录不存在："+ws.Path+"。会话可以浏览和被引用，但不能继续。").TextColor(c.Theme().Text).Grow(1)
-				if ui.Button(c, "重新定位…").Clicked() {
+				ui.Text(c, locales.WorkspaceMissing(ws.Path)).TextColor(c.Theme().Text).Grow(1)
+				if ui.Button(c, locales.Relocate()).Clicked() {
 					s.relocate(ws)
 				}
 			})
 		}
 		if x.Archived {
 			ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
-				ui.Text(c, "这个会话已归档：不在工作区里显示，仍可以继续、搜索和被引用。").FontSize(12).TextColor(c.Theme().Text).Grow(1)
-				if ui.Button(c, "取消归档").Clicked() {
+				ui.Text(c, locales.ArchivedNote()).FontSize(12).TextColor(c.Theme().Text).Grow(1)
+				if ui.Button(c, locales.Unarchive()).Clicked() {
 					if err := s.wb.SetArchived(x.ID, false); err != nil {
-						s.notice = err.Error()
+						s.notice = s.say(err)
 					}
 				}
 			})
@@ -249,8 +253,8 @@ func (s *Shell) banners(c *ui.Context, id string) {
 	}
 	if v := s.views[id]; v != nil && v.highlight[0] > 0 {
 		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(40, 120, 255, 0.25))}).Children(func() {
-			ui.Text(c, "已高亮被引用的范围 "+refs.Range(v.highlight[0], v.highlight[1])).TextColor(c.Theme().Text).Grow(1)
-			if iconButton(c, "xmark", "取消高亮").Clicked() {
+			ui.Text(c, locales.Highlighted(refs.Range(v.highlight[0], v.highlight[1]))).TextColor(c.Theme().Text).Grow(1)
+			if iconButton(c, "xmark", locales.ClearHighlight()).Clicked() {
 				v.highlight = [2]int{}
 			}
 		})
@@ -271,19 +275,19 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 					ui.Row(c).Key(r.ID).Gap(6).Padding(3, 4, 3, 8).Radius(8).AlignItems(ui.Center).BorderWidth(1).BorderColor(t.Accent).Children(func() {
 						sfsymbols.Symbol(c, "paperclip").Size(12).Color(t.Accent)
 						ui.Text(c, s.refLabel(r)).FontSize(12).TextColor(t.Text)
-						if iconButton(c, "xmark", "移除引用").Clicked() {
+						if iconButton(c, "xmark", locales.RemoveReference()).Clicked() {
 							if err := s.wb.RemoveDraft(r.ID); err != nil {
-								s.notice = err.Error()
+								s.notice = s.say(err)
 							}
 						}
 					})
 				}
 			})
 		}
-		prompt := "给 " + s.agentName(x.Agent) + " 发消息"
-		blocked := s.wb.Status(x.ID).ResumeFailed != ""
+		prompt := locales.MessageAgent(s.agentName(x.Agent))
+		blocked := s.wb.Status(x.ID).ResumeFailed != nil
 		if blocked {
-			prompt = "原生会话无法续接，请先在上方选择怎么处理"
+			prompt = locales.ComposerBlocked()
 		}
 		input := ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).Disabled(blocked).OnPaste(func(string) bool {
 			v.pasted = true
@@ -307,17 +311,17 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 		}
 		v.typed, v.pasted = v.draft, false
 		ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-			iconButton(c, "paperclip", "添加附件（暂不支持）").Opacity(0.4)
-			if iconButton(c, "at", "引用文件或会话（@）").Clicked() {
+			iconButton(c, "paperclip", locales.Attach()).Opacity(0.4)
+			if iconButton(c, "at", locales.MentionButton()).Clicked() {
 				s.openPull(x.ID, -1)
 			}
 			s.modelControls(c, x, running)
 			s.modeControl(c, x)
 			ui.Spacer(c)
 			if running {
-				if roundButton(c, "stop.fill", "停止", t.Text, t.Background).Clicked() {
+				if roundButton(c, "stop.fill", locales.Stop(), t.Text, t.Background).Clicked() {
 					if err := s.wb.Stop(x.ID); err != nil {
-						s.notice = err.Error()
+						s.notice = s.say(err)
 					}
 				}
 				return
@@ -327,7 +331,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			if empty {
 				bg = t.Border
 			}
-			if roundButton(c, "arrow.up", "发送（Enter）", bg, t.AccentText).Clicked() && !empty {
+			if roundButton(c, "arrow.up", locales.Send(), bg, t.AccentText).Clicked() && !empty {
 				if s.send(x.ID, v.draft) {
 					v.draft = ""
 				}
@@ -395,9 +399,9 @@ func (s *Shell) agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Elem
 // refLabel names a reference in one line: source, title and range.
 func (s *Shell) refLabel(r model.Reference) string {
 	if r.SourceID == r.TargetID {
-		return fmt.Sprintf("本会话 · %s（%d 条）", refs.Range(r.From, r.To), r.Count)
+		return locales.RefThisSession(refs.Range(r.From, r.To), r.Count)
 	}
-	return fmt.Sprintf("%s · %s · %s（%d 条）", s.agentName(r.SourceAgent), r.SourceTitle, refs.Range(r.From, r.To), r.Count)
+	return locales.RefOtherSession(s.agentName(r.SourceAgent), r.SourceTitle, refs.Range(r.From, r.To), r.Count)
 }
 
 // referenceCard shows a delivered reference in blue-tinted glass: one
@@ -413,22 +417,22 @@ func (s *Shell) referenceCard(c *ui.Context, id string) {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			sfsymbols.Symbol(c, "paperclip").Size(12).Color(t.Text)
 			ui.Text(c, s.refLabel(r)).FontSize(12).TextColor(t.Text).Grow(1)
-			label := "查看概要"
+			label := locales.ShowBrief()
 			if s.openCards[id] {
-				label = "收起"
+				label = locales.HideBrief()
 			}
 			if ui.Button(c, label).Clicked() {
 				s.openCards[id] = !s.openCards[id]
 			}
 		})
 		if !sourceExists {
-			ui.Text(c, "源会话已被删除，这个引用已失效").FontSize(12).TextColor(t.Warning)
+			ui.Text(c, locales.RefSourceDeleted()).FontSize(12).TextColor(t.Warning)
 		}
 		for i, rd := range r.Reads {
 			ui.Row(c).Key(i).Gap(6).AlignItems(ui.Center).Children(func() {
 				sfsymbols.Symbol(c, "eye").Size(11).Color(t.TextMuted)
-				ui.Text(c, "Agent 读取了 "+refs.Range(rd.From, rd.To)).FontSize(12).TextColor(t.TextMuted)
-				if sourceExists && ui.Button(c, "在源会话中查看").Clicked() {
+				ui.Text(c, locales.AgentRead(refs.Range(rd.From, rd.To))).FontSize(12).TextColor(t.TextMuted)
+				if sourceExists && ui.Button(c, locales.ShowInSource()).Clicked() {
 					s.goTo(r.SourceID, rd.From, rd.To)
 				}
 			})
@@ -457,14 +461,14 @@ func (s *Shell) reveal(sessionID string, from, to int) {
 // compacted its context, or a new native session took over.
 func divider(c *ui.Context, mk model.Marker) {
 	t := c.Theme()
-	text := "已切换到新的 Agent 原生会话"
+	text := locales.NewNativeSession()
 	if mk.Kind == model.Compaction {
-		text = "上下文已压缩 · 自动"
+		text = locales.CompactedAuto()
 		if mk.Trigger == "manual" {
-			text = "上下文已压缩 · 手动"
+			text = locales.CompactedManual()
 		}
 		if mk.PreTokens > 0 {
-			text += fmt.Sprintf(" · %s → %s tokens", kTokens(mk.PreTokens), kTokens(mk.PostTokens))
+			text = locales.CompactedTokens(text, kTokens(mk.PreTokens), kTokens(mk.PostTokens))
 		}
 	}
 	ui.Row(c).Gap(8).Padding(6, 0).AlignItems(ui.Center).Children(func() {
@@ -489,25 +493,25 @@ func (s *Shell) resumeBanner(c *ui.Context, id string, st workbench.Status) {
 	t := c.Theme()
 	recover := func(r workbench.Recovery) {
 		if err := s.wb.Recover(id, r); err != nil {
-			s.notice = err.Error()
+			s.notice = s.say(err)
 		}
 	}
 	ui.Column(c).Gap(8).Padding(10, 12).Radius(14).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
 		if st.ReadOnly {
-			ui.Text(c, "会话只读：原生会话无法续接").Bold().TextColor(t.Text)
+			ui.Text(c, locales.ReadOnlyResume()).Bold().TextColor(t.Text)
 		} else {
-			ui.Text(c, "无法续接原生会话").Bold().TextColor(t.Text)
-			ui.Text(c, st.ResumeFailed).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
-			ui.Text(c, "aibo 的会话记录都还在。新开一个原生会话就能继续，但 Agent 的上下文会从头开始；带上引用，它可以按需读回之前的内容。").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, locales.CannotResume()).Bold().TextColor(t.Text)
+			ui.Text(c, agent.Detail(st.ResumeFailed, agent.ErrResumeFailed)).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
+			ui.Text(c, locales.ResumeExplain()).FontSize(12).TextColor(t.TextMuted)
 		}
 		ui.Row(c).Gap(6).Wrap().Children(func() {
-			if ui.PrimaryButton(c, "新开原生会话并引用之前的内容（推荐）").Clicked() {
+			if ui.PrimaryButton(c, locales.FreshWithReference()).Clicked() {
 				recover(workbench.FreshWithReference)
 			}
-			if ui.Button(c, "新开原生会话（不带引用）").Clicked() {
+			if ui.Button(c, locales.FreshPlain()).Clicked() {
 				recover(workbench.Fresh)
 			}
-			if !st.ReadOnly && ui.Button(c, "暂不处理").Clicked() {
+			if !st.ReadOnly && ui.Button(c, locales.Later()).Clicked() {
 				recover(workbench.Later)
 			}
 		})
@@ -522,34 +526,39 @@ func (s *Shell) working(c *ui.Context, x model.Session, st workbench.Status) {
 		ui.Box(c).Width(44)
 		ui.Column(c).Grow(1).MaxWidth(820).Gap(4).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Spinner(c).Label("运行中")
-				what := s.agentName(x.Agent) + " 正在工作"
+				ui.Spinner(c).Label(locales.Running())
+				what := locales.AgentWorking(s.agentName(x.Agent))
 				if st.Approvals > 0 {
-					what = s.agentName(x.Agent) + " 在等你审批"
+					what = locales.AgentWaiting(s.agentName(x.Agent))
 				}
 				if !st.Since.IsZero() {
 					what += " · " + elapsed(time.Since(st.Since))
 				}
 				ui.Text(c, what).FontSize(13).TextColor(t.TextMuted)
 			})
-			if st.Retrying != "" {
+			if r := st.Retrying; r != nil {
+				text := locales.Retrying()
+				if r.Max > 0 {
+					text = locales.RetryingCount(r.Attempt, r.Max)
+				}
 				ui.Row(c).Gap(6).AlignItems(ui.Start).Children(func() {
 					sfsymbols.Symbol(c, "wifi.exclamationmark").Size(12).Color(t.Warning)
-					ui.Text(c, "连不上模型，正在自动重试："+st.Retrying).FontSize(12).TextColor(t.Warning).Selectable().Grow(1)
+					ui.Text(c, withDetail(text, r.Message)).FontSize(12).TextColor(t.Warning).Selectable().Grow(1)
 				})
 			}
 		})
 	})
 }
 
-// elapsed is a duration as 1 分 05 秒.
+// elapsed is a duration as 1m 05s.
 func elapsed(d time.Duration) string {
 	sec := int(d.Seconds())
 	if sec < 60 {
-		return fmt.Sprintf("%d 秒", max(sec, 0))
+		return locales.Seconds(fmt.Sprint(max(sec, 0)))
 	}
 	if sec < 3600 {
-		return fmt.Sprintf("%d 分 %02d 秒", sec/60, sec%60)
+		return locales.Minutes(fmt.Sprint(sec/60), fmt.Sprintf("%02d", sec%60))
 	}
-	return fmt.Sprintf("%d 小时 %02d 分", sec/3600, sec/60%60)
+	return locales.Hours(fmt.Sprint(sec/3600), fmt.Sprintf("%02d", sec/60%60))
+
 }

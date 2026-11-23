@@ -1,7 +1,7 @@
 package shell
 
 import (
-	"fmt"
+	"github.com/chldu2000/aibo/locales"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +33,10 @@ type settingsUI struct {
 type dataMove struct {
 	to      string
 	hasData bool
-	sync    string // the sync service it is in, if any
+	// synced is set when it is in a sync service's folder, sync naming
+	// the service, if known.
+	synced bool
+	sync   string
 }
 
 // openSettings opens the settings, the advanced fields as they are.
@@ -57,12 +60,12 @@ func (s *Shell) settingsModal(c *ui.Context) {
 		ui.Column(c).Width(620).Gap(14).Padding(20).Radius(18).Material(glass.Glass{}).Children(func() {
 			// The window still moves while the settings cover it.
 			ui.Row(c).AlignItems(ui.Center).DragWindow().Children(func() {
-				ui.Text(c, "设置").Bold().FontSize(16).TextColor(t.Text).Grow(1)
-				if iconButton(c, "xmark", "关闭设置").Clicked() {
+				ui.Text(c, locales.Settings()).Bold().FontSize(16).TextColor(t.Text).Grow(1)
+				if iconButton(c, "xmark", locales.CloseSettings()).Clicked() {
 					s.settings.open = false
 				}
 			})
-			ui.Tabs(c, &s.settings.tab, "通用", "Agent", "高级")
+			ui.Tabs(c, &s.settings.tab, locales.TabGeneral(), locales.TabAgents(), locales.TabAdvanced())
 			switch s.settings.tab {
 			case 0:
 				s.generalSettings(c)
@@ -94,32 +97,32 @@ func (s *Shell) generalSettings(c *ui.Context) {
 	t := c.Theme()
 	st := s.wb.Settings()
 	ui.Column(c).Gap(6).Children(func() {
-		ui.Text(c, "数据目录").TextColor(t.Text)
-		ui.Text(c, "会话、消息与引用都存在这里。可以改到方便找的位置，aibo 会把数据搬过去。").FontSize(11).TextColor(t.TextMuted)
+		ui.Text(c, locales.DataDir()).TextColor(t.Text)
+		ui.Text(c, locales.DataDirExplain()).FontSize(11).TextColor(t.TextMuted)
 		ui.Text(c, s.opts.DataDir).Font("Menlo").FontSize(12).TextColor(t.Text).Selectable().Padding(6, 8).Radius(8).Background(t.Surface)
 		if m := s.settings.move; m != nil {
 			s.confirmMove(c, m)
 			return
 		}
 		ui.Row(c).Gap(6).Children(func() {
-			if s.opts.ShowInFinder != nil && ui.Button(c, "在 Finder 中显示").Clicked() {
+			if s.opts.ShowInFinder != nil && ui.Button(c, locales.ShowInFinder()).Clicked() {
 				s.opts.ShowInFinder(s.opts.DataDir)
 			}
-			if s.opts.MoveDataDir != nil && ui.Button(c, "更改…").Disabled(s.settings.moving).Clicked() {
+			if s.opts.MoveDataDir != nil && ui.Button(c, locales.Change()).Disabled(s.settings.moving).Clicked() {
 				s.chooseDataDir()
 			}
-			if s.opts.OpenLogs != nil && ui.Button(c, "打开日志目录").Tooltip("诊断日志：会话和 Agent 发生了什么，不含对话内容").Clicked() {
+			if s.opts.OpenLogs != nil && ui.Button(c, locales.OpenLogs()).Tooltip(locales.OpenLogsTip()).Clicked() {
 				s.opts.OpenLogs()
 			}
 		})
 		if s.settings.moving {
-			ui.Text(c, "正在搬移数据，完成后 aibo 会重新启动……").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, locales.Moving()).FontSize(12).TextColor(t.TextMuted)
 		}
 		if s.settings.moveErr != "" {
 			ui.Text(c, s.settings.moveErr).FontSize(12).TextColor(t.Warning)
 		}
 	})
-	field(c, "新会话的默认权限模式", "按 Agent 分别设置，没选过时是 Agent 标为默认的模式。已有会话的模式不变，可以在会话的输入框里单独调整。", func() {
+	field(c, locales.DefaultModes(), locales.DefaultModesExplain(), func() {
 		for _, a := range s.wb.Agents() {
 			list := s.modesOf(a.Kind)
 			if list == nil {
@@ -142,7 +145,7 @@ func (s *Shell) generalSettings(c *ui.Context) {
 			ui.Row(c).Key(string(a.Kind)).Gap(8).AlignItems(ui.Center).Children(func() {
 				s.agentGlyph(c, a.Kind, 16)
 				ui.Text(c, a.Name).FontSize(12).TextColor(t.Text).Width(110)
-				if ui.Select(c, &cur, names).Label("新会话的默认权限模式：" + a.Name).Changed() {
+				if ui.Select(c, &cur, names).Label(locales.DefaultModeOf(a.Name)).Changed() {
 					modes := map[agent.Kind]string{}
 					for k, v := range st.DefaultModes {
 						modes[k] = v
@@ -154,21 +157,21 @@ func (s *Shell) generalSettings(c *ui.Context) {
 			})
 			for _, m := range list {
 				if m.ID == st.DefaultModes[a.Kind] && m.Risk == agent.Danger {
-					ui.Text(c, "注意：新的 "+a.Name+" 会话里，"+m.Description+"。").FontSize(11).TextColor(t.Warning)
+					ui.Text(c, locales.DefaultModeWarning(a.Name, modeDescription(a.Kind, m))).FontSize(11).TextColor(t.Warning)
 				}
 			}
 		}
 	})
-	field(c, "文件引用时包括被 .gitignore 忽略的文件", "在输入框里用 @ 引用文件时，也列出 git 忽略的文件（例如构建产物）。", func() {
+	field(c, locales.MentionIgnored(), locales.MentionIgnoredExplain(), func() {
 		on := st.MentionIgnored
-		if ui.Switch(c, &on).Label("文件引用时包括被忽略的文件（开关）").Changed() {
+		if ui.Switch(c, &on).Label(locales.MentionIgnoredSwitch()).Changed() {
 			st.MentionIgnored = on
 			s.saveSettings(st)
 		}
 	})
-	field(c, "有待审批时发系统通知", "不在屏幕上的会话需要审批时提醒你。", func() {
+	field(c, locales.Notify(), locales.NotifyExplain(), func() {
 		on := st.Notify
-		if ui.Switch(c, &on).Label("有待审批时发系统通知（开关）").Changed() {
+		if ui.Switch(c, &on).Label(locales.NotifySwitch()).Changed() {
 			st.Notify = on
 			s.saveSettings(st)
 		}
@@ -179,7 +182,7 @@ func (s *Shell) generalSettings(c *ui.Context) {
 func (s *Shell) chooseDataDir() {
 	for _, x := range s.wb.Sessions() {
 		if s.wb.Status(x.ID).Running {
-			s.settings.moveErr = "有会话正在运行。请先等它完成或停止，再更改数据目录。"
+			s.settings.moveErr = locales.MoveWhileRunning()
 			return
 		}
 	}
@@ -193,7 +196,7 @@ func (s *Shell) chooseDataDir() {
 		}
 		s.later(func() { s.settings.moveErr = "" })
 		m := &dataMove{to: path, hasData: appdata.HasData(path)}
-		m.sync, _ = appdata.SyncFolder(path)
+		m.sync, m.synced = appdata.SyncFolder(path)
 		s.later(func() { s.settings.move = m })
 	}()
 }
@@ -202,28 +205,32 @@ func (s *Shell) chooseDataDir() {
 func (s *Shell) confirmMove(c *ui.Context, m *dataMove) {
 	t := c.Theme()
 	ui.Column(c).Gap(6).Padding(10, 12).Radius(12).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.18))}).Children(func() {
-		ui.Text(c, "改到："+m.to).Font("Menlo").FontSize(12).TextColor(t.Text)
+		ui.Text(c, locales.MoveTo(m.to)).Font("Menlo").FontSize(12).TextColor(t.Text)
 		if m.hasData {
-			ui.Text(c, "这个文件夹里已经有 aibo 的数据：aibo 将直接使用它，现在的数据原样留在原处。").FontSize(12).TextColor(t.Text)
+			ui.Text(c, locales.MoveHasData()).FontSize(12).TextColor(t.Text)
 		} else {
-			ui.Text(c, "aibo 会把数据复制过去，校验无误后再删除原位置的数据，然后重新启动。").FontSize(12).TextColor(t.Text)
+			ui.Text(c, locales.MoveCopies()).FontSize(12).TextColor(t.Text)
 		}
-		if m.sync != "" {
-			ui.Text(c, "这个文件夹在 "+m.sync+" 里。同步软件在 aibo 写入时同步数据库，可能损坏数据，不建议放在这里。").FontSize(12).Bold().TextColor(t.Warning)
+		if m.synced {
+			text := locales.MoveSyncedUnknown()
+			if m.sync != "" {
+				text = locales.MoveSynced(m.sync)
+			}
+			ui.Text(c, text).FontSize(12).Bold().TextColor(t.Warning)
 		}
 		ui.Row(c).Gap(6).Children(func() {
-			if ui.PrimaryButton(c, "确定更改").Clicked() {
+			if ui.PrimaryButton(c, locales.ConfirmChange()).Clicked() {
 				s.settings.move, s.settings.moving = nil, true
 				go func() {
 					if err := s.opts.MoveDataDir(m.to); err != nil {
 						s.later(func() {
 							s.settings.moving = false
-							s.settings.moveErr = "更改数据目录失败：" + err.Error()
+							s.settings.moveErr = s.failed(locales.MoveFailed, err)
 						})
 					}
 				}()
 			}
-			if ui.Button(c, "取消").Clicked() {
+			if ui.Button(c, locales.Cancel()).Clicked() {
 				s.settings.move = nil
 			}
 		})
@@ -236,21 +243,21 @@ func (s *Shell) advancedSettings(c *ui.Context) {
 	num := func(name, what string, v *string, unit string) {
 		field(c, name, what, func() {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.TextInput(c, v).Label(name + "（数值）").Width(90)
+				ui.TextInput(c, v).Label(locales.NumberField(name)).Width(90)
 				ui.Text(c, unit).FontSize(12).TextColor(t.TextMuted)
 			})
 		})
 	}
-	num("read_reference 每页", "接收方 Agent 读引用时一页的大小（估算）。", &set.page, "token")
-	num("分页里单条工具输出", "一页里每条工具调用的输出最多保留这么多，其余用 read_message 读。", &set.toolOutput, "token")
-	num("read_message 每页", "读一条长消息时一页的大小。", &set.messagePage, "token")
-	num("闲置自动断开", "会话这么久没有动静，就结束 Agent 进程；有待审批时不断开。", &set.idleMinutes, "分钟")
+	num(locales.BudgetPage(), locales.BudgetPageExplain(), &set.page, "token")
+	num(locales.BudgetToolOutput(), locales.BudgetToolOutputExplain(), &set.toolOutput, "token")
+	num(locales.BudgetMessagePage(), locales.BudgetMessagePageExplain(), &set.messagePage, "token")
+	num(locales.IdleTimeout(), locales.IdleTimeoutExplain(), &set.idleMinutes, locales.UnitMinutes())
 	if set.advancedErr != "" {
 		ui.Text(c, set.advancedErr).FontSize(12).TextColor(t.Warning)
 	}
 	ui.Row(c).Gap(6).Children(func() {
 		ui.Spacer(c)
-		if ui.Button(c, "恢复默认").Clicked() {
+		if ui.Button(c, locales.RestoreDefaults()).Clicked() {
 			d := workbench.DefaultSettings
 			st := s.wb.Settings()
 			st.Budgets, st.IdleTimeout = d.Budgets, d.IdleTimeout
@@ -259,7 +266,7 @@ func (s *Shell) advancedSettings(c *ui.Context) {
 				s.settings.tab = advancedTab
 			}
 		}
-		if ui.PrimaryButton(c, "保存").Clicked() {
+		if ui.PrimaryButton(c, locales.Save()).Clicked() {
 			s.saveAdvanced()
 		}
 	})
@@ -279,7 +286,7 @@ func (s *Shell) saveAdvanced() {
 	st.Budgets = refs.Budgets{Page: parse(set.page), ToolOutput: parse(set.toolOutput), MessagePage: parse(set.messagePage)}
 	st.IdleTimeout = time.Duration(parse(set.idleMinutes)) * time.Minute
 	if err := s.wb.SetSettings(st); err != nil {
-		set.advancedErr = fmt.Sprintf("%v：每页 1000–200000，单条输出 200 到每页大小之间，read_message 每页 1000–500000，闲置 1–1440 分钟。", err)
+		set.advancedErr = locales.BudgetRanges(s.say(err))
 		return
 	}
 	set.advancedErr = ""
@@ -287,7 +294,8 @@ func (s *Shell) saveAdvanced() {
 
 func (s *Shell) saveSettings(st workbench.Settings) bool {
 	if err := s.wb.SetSettings(st); err != nil {
-		s.notice = "保存设置失败：" + err.Error()
+		s.notice = s.failed(locales.SaveSettingsFailed, err)
+
 		return false
 	}
 	return true

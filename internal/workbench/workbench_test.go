@@ -3,6 +3,7 @@ package workbench_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -182,7 +183,7 @@ func TestReplyStreamsThenEnds(t *testing.T) {
 	check(t, b.messages(t, s.ID),
 		want{1, model.UserMessage, model.Done, "你好"},
 		want{2, model.AgentReply, model.Done, "**你好**"})
-	if st := b.Status(s.ID); !st.Connected || st.Error != "" {
+	if st := b.Status(s.ID); !st.Connected || st.Error != nil {
 		t.Errorf("status = %+v, want connected without error", st)
 	}
 }
@@ -452,11 +453,11 @@ func TestAgentFailureIsReported(t *testing.T) {
 	sc.emit(agent.Failed{Message: "boom"})
 	sc.endTurn()
 	b.idle(t, s.ID)
-	if st := b.Status(s.ID); st.Error != "boom" {
+	if st := b.Status(s.ID); fmt.Sprint(st.Error) != "agent: boom" {
 		t.Errorf("error = %q", st.Error)
 	}
 	b.Send(s.ID, "again")
-	if st := b.Status(s.ID); st.Error != "" {
+	if st := b.Status(s.ID); st.Error != nil {
 		t.Errorf("error kept into the next turn: %q", st.Error)
 	}
 	sc.endTurn()

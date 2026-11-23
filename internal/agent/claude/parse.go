@@ -150,14 +150,11 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 			return out
 		}
 		if e.Subtype == "api_retry" {
-			msg := fmt.Sprintf("第 %d/%d 次重试", e.Attempt, e.MaxRetries)
-			switch {
-			case e.ErrorStatus != nil && e.Error != "":
-				msg += fmt.Sprintf("（%d %s）", *e.ErrorStatus, e.Error)
-			case e.Error != "":
-				msg += "（" + e.Error + "）"
+			msg := e.Error
+			if e.ErrorStatus != nil && e.Error != "" {
+				msg = fmt.Sprintf("%d %s", *e.ErrorStatus, e.Error)
 			}
-			return []agent.Event{agent.Retrying{Message: msg}}
+			return []agent.Event{agent.Retrying{Attempt: e.Attempt, Max: e.MaxRetries, Message: msg}}
 		}
 		if e.Subtype == "compact_boundary" {
 			m := e.CompactMetadata
@@ -380,7 +377,7 @@ func resultText(content json.RawMessage) string {
 		case "text":
 			parts = append(parts, b.Text)
 		case "image":
-			parts = append(parts, "[图片]")
+			parts = append(parts, "[image]")
 		}
 	}
 	return strings.Join(parts, "\n")
@@ -392,7 +389,8 @@ func (p *parser) result(e envelope) []agent.Event {
 	var out []agent.Event
 	if p.loggedOut {
 		p.loggedOut = false
-		return []agent.Event{agent.Failed{Message: "Claude Code 未登录。请在终端里运行 claude 登录，然后点“重试”。"}, agent.TurnEnded{}}
+		// NotLoggedIn said so: the session shows how to sign in.
+		return []agent.Event{agent.TurnEnded{}}
 	}
 	if e.IsError && !interrupted {
 		msg := e.Result
@@ -402,7 +400,7 @@ func (p *parser) result(e envelope) []agent.Event {
 		if msg == "" {
 			msg = e.Subtype
 		}
-		out = append(out, agent.Failed{Message: "Claude Code 出错：" + msg})
+		out = append(out, agent.Failed{Message: msg})
 	}
 	out = append(out, agent.TurnEnded{Interrupted: interrupted})
 	p.interrupting = false

@@ -70,11 +70,11 @@ func approval(id string, r canUseTool) agent.ApprovalRequested {
 	case "ExitPlanMode":
 		// Plan mode's end: the plan, which Claude Code acts on once it
 		// is approved.
-		a.Title, a.Plan = "按计划开始执行", in.Plan
+		a.Action, a.Plan = agent.ActionPlan, in.Plan
 	case "Bash":
-		a.Title, a.Command = "执行命令", in.Command
+		a.Action, a.Command = agent.ActionCommand, in.Command
 	case "Edit", "MultiEdit", "Write", "NotebookEdit":
-		a.Title = "修改文件"
+		a.Action = agent.ActionEdit
 		path := in.FilePath
 		if path == "" {
 			path = in.Notebook
@@ -94,10 +94,11 @@ func approval(id string, r canUseTool) agent.ApprovalRequested {
 		}
 	default:
 		if strings.HasPrefix(r.ToolName, "mcp__") {
-			a.Title = "调用 MCP 工具 " + r.ToolName
+			a.Action = agent.ActionMCP
 		} else {
-			a.Title = "使用工具 " + r.ToolName
+			a.Action = agent.ActionTool
 		}
+		a.Tool = r.ToolName
 		a.Input = r.Input
 	}
 	if r.BlockedPath != "" && len(a.Paths) == 0 {
@@ -131,8 +132,8 @@ func lines(s string) []string {
 // suggestions for the session; always, its suggested rules for a
 // settings file; deny; deny and stop.
 func options(raw []json.RawMessage) []agent.ApprovalOption {
-	opts := []agent.ApprovalOption{{ID: optOnce, Kind: agent.AllowOnce, Label: "批准本次"}}
-	var session, always []string
+	opts := []agent.ApprovalOption{{ID: optOnce, Kind: agent.AllowOnce}}
+	var session, always []agent.Grant
 	var rules []agent.Rule
 	where := ""
 	for _, r := range raw {
@@ -140,26 +141,26 @@ func options(raw []json.RawMessage) []agent.ApprovalOption {
 		if json.Unmarshal(r, &s) != nil {
 			continue
 		}
-		session = append(session, describe(s))
-		rules = append(rules, agent.Rule{Label: describe(s), Data: r})
+		session = append(session, grant(s))
+		rules = append(rules, agent.Rule{Grant: grant(s), Data: r})
 		if f, ok := settingsFiles[s.Destination]; ok && s.Type == "addRules" {
-			always = append(always, describe(s))
+			always = append(always, grant(s))
 			where = f
 		}
 	}
 	if len(session) > 0 {
-		opts = append(opts, agent.ApprovalOption{ID: optSession, Kind: agent.AllowSession, Label: "本会话内始终允许", Detail: session, Rules: rules})
+		opts = append(opts, agent.ApprovalOption{ID: optSession, Kind: agent.AllowSession, Grants: session, Rules: rules})
 	}
 	if len(always) > 0 {
-		opts = append(opts, agent.ApprovalOption{ID: optAlways, Kind: agent.AllowAlways, Label: "永久允许", Detail: always, Where: where})
+		opts = append(opts, agent.ApprovalOption{ID: optAlways, Kind: agent.AllowAlways, Grants: always, Where: where})
 	}
 	return append(opts,
-		agent.ApprovalOption{ID: optDeny, Kind: agent.Deny, Label: "拒绝"},
-		agent.ApprovalOption{ID: optStop, Kind: agent.DenyStop, Label: "拒绝并停止"})
+		agent.ApprovalOption{ID: optDeny, Kind: agent.Deny},
+		agent.ApprovalOption{ID: optStop, Kind: agent.DenyStop})
 }
 
-// describe says what a suggestion allows.
-func describe(s suggestion) string {
+// grant is what a suggestion allows.
+func grant(s suggestion) agent.Grant {
 	switch s.Type {
 	case "addRules":
 		var rs []string
@@ -170,16 +171,16 @@ func describe(s suggestion) string {
 				rs = append(rs, r.ToolName)
 			}
 		}
-		return strings.Join(rs, "、")
+		return agent.Grant{Kind: agent.GrantTools, Items: rs}
 	case "setMode":
 		if s.Mode == "acceptEdits" {
-			return "自动接受修改"
+			return agent.Grant{Kind: agent.GrantAcceptEdits}
 		}
-		return "切换到 " + s.Mode + " 模式"
+		return agent.Grant{Kind: agent.GrantMode, Items: []string{s.Mode}}
 	case "addDirectories":
-		return "访问 " + strings.Join(s.Directories, "、")
+		return agent.Grant{Kind: agent.GrantDirectories, Items: s.Directories}
 	}
-	return s.Type
+	return agent.Grant{Kind: agent.GrantKind(s.Type)}
 }
 
 // response is the control protocol's answer to a can_use_tool request
@@ -204,25 +205,21 @@ func response(r canUseTool, optionID, note string) (map[string]any, error) {
 		}
 		return map[string]any{"behavior": "allow", "updatedInput": r.Input, "updatedPermissions": perms}, nil
 	case optDeny, optStop:
-		if note == "" {
-			note = "用户拒绝了这个操作。"
-		} else {
-			note = "用户拒绝了这个操作：" + note
-		}
+		note = denyNote(note)
 		return map[string]any{"behavior": "deny", "message": note, "interrupt": optionID == optStop}, nil
 	}
-	return nil, errors.New("没有这个选项：" + optionID)
+	return nil, errors.New("no such option: " + optionID)
 }
 
 // Modes are Claude Code's permission modes, in the order Shift+Tab goes
 // through them; "manual" is only another name of "default".
 var Modes = []agent.PermissionMode{
-	{ID: "default", Name: "Manual", Description: "执行命令、修改文件前照常询问", Risk: agent.Safe, Default: true},
-	{ID: "acceptEdits", Name: "Accept edits", Description: "修改文件不再询问，其余照常询问", Risk: agent.Caution},
-	{ID: "plan", Name: "Plan", Description: "只读：先拿出计划，你批准后才动手", Risk: agent.Safe, ReadOnly: true},
-	{ID: "auto", Name: "Auto", Description: "由分类器判断，大多数操作不再询问", Risk: agent.Caution},
-	{ID: "dontAsk", Name: "Don't Ask", Description: "不再询问：没有事先允许过的操作一律拒绝", Risk: agent.Safe},
-	{ID: "bypassPermissions", Name: "Bypass Permissions", Description: "所有操作都不再询问，包括工作区以外", Risk: agent.Danger},
+	{ID: "default", Name: "Manual", Description: "Asks before running commands or changing files", Risk: agent.Safe, Default: true},
+	{ID: "acceptEdits", Name: "Accept edits", Description: "Changes files unasked; asks for the rest", Risk: agent.Caution},
+	{ID: "plan", Name: "Plan", Description: "Read only: makes a plan, and acts once you approve it", Risk: agent.Safe, ReadOnly: true},
+	{ID: "auto", Name: "Auto", Description: "A classifier decides; most actions go unasked", Risk: agent.Caution},
+	{ID: "dontAsk", Name: "Don't Ask", Description: "Never asks: denies whatever was not allowed beforehand", Risk: agent.Safe},
+	{ID: "bypassPermissions", Name: "Bypass Permissions", Description: "Asks for nothing, outside the workspace too", Risk: agent.Danger},
 }
 
 func knownMode(id string) bool {

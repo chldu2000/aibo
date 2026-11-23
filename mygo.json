@@ -6,6 +6,10 @@
   "icon": "assets/icon.png",
   "main": "./cmd/aibo",
   "out": "build",
+  "i18n": {
+    "dir": "locales",
+    "source": "en"
+  },
   "macos": {
     "infoPlist": {
       "LSApplicationCategoryType": "public.app-category.developer-tools"

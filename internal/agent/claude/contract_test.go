@@ -76,7 +76,7 @@ func (e *env) turn(t *testing.T, id, text string) []model.Message {
 		t.Fatal(err)
 	}
 	e.until(t, "the turn to end", func() bool { return !e.Status(id).Running })
-	if st := e.Status(id); st.Error != "" {
+	if st := e.Status(id); st.Error != nil {
 		t.Fatalf("Claude Code reported: %s", st.Error)
 	}
 	ms, _ := e.Messages(id)
@@ -146,7 +146,7 @@ func TestContractInterrupt(t *testing.T) {
 	if r := ms[len(ms)-1]; r.State != model.Interrupted || strings.Contains(r.Text, "\n400") {
 		t.Errorf("after stop: %v, %d bytes", r.State, len(r.Text))
 	}
-	if st := e.Status(s.ID); st.Error != "" {
+	if st := e.Status(s.ID); st.Error != nil {
 		t.Errorf("stopping reported an error: %s", st.Error)
 	}
 	ms = e.turn(t, s.ID, "Reply with only: OK")

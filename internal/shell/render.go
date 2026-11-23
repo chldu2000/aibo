@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/chldu2000/aibo/locales"
 	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -44,7 +45,7 @@ func (s *Shell) reply(c *ui.Context, v *sessionView, m model.Message) {
 	v.open.init()
 	if strings.TrimSpace(m.Thinking) != "" {
 		o := v.open.thinking[m.Seq]
-		ui.Collapsible(c, "思考", &o, func() {
+		ui.Collapsible(c, locales.Thinking(), &o, func() {
 			ui.Text(c, m.Thinking).FontSize(12).TextColor(t.TextMuted).Selectable().Padding(0, 0, 0, 12)
 		})
 		v.open.thinking[m.Seq] = o
@@ -65,14 +66,14 @@ func toolLabel(m model.Message) string {
 	label := tl.Name + " · " + gist(tl.Input)
 	switch {
 	case m.State == model.Streaming:
-		label += " · 运行中"
+		label = locales.ToolRunning(label)
 	case m.State == model.Interrupted:
-		label += " · 已中断"
+		label = locales.ToolInterrupted(label)
 	case tl.IsError:
-		label += " · 出错"
+		label = locales.ToolFailed(label)
 	}
 	if n := len(m.Children); n > 0 {
-		label += fmt.Sprintf(" · 子代理 %d 步", n)
+		label = locales.ToolSteps(label, n)
 	}
 	return label
 }
@@ -110,7 +111,7 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key string, m model.Message)
 	}()
 	ui.Collapsible(c, toolLabel(m), &o, func() {
 		ui.Column(c).Gap(6).Padding(4, 0, 4, 12).Children(func() {
-			ui.Text(c, "参数").FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, locales.ToolArgs()).FontSize(11).TextColor(t.TextMuted)
 			ui.Text(c, pretty(m.Tool.Input)).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
 			for i, ch := range m.Children {
 				ui.Row(c).Key(i).Gap(6).AlignItems(ui.Start).Children(func() {
@@ -127,12 +128,12 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key string, m model.Message)
 			if !m.Tool.Done {
 				return
 			}
-			label := "结果"
+			label := locales.ToolResult()
 			if m.Tool.IsError {
-				label = "结果（出错）"
+				label = locales.ToolResultError()
 			}
 			if m.Tool.Truncated {
-				label += " · 超过 1 MB，之后的部分没有保存"
+				label = locales.ToolTruncated(label)
 			}
 			ui.Text(c, label).FontSize(11).TextColor(t.TextMuted)
 			if len(m.Tool.Output) < bigOutput {
@@ -162,7 +163,7 @@ func pretty(input json.RawMessage) string {
 func plan(c *ui.Context, m model.Message) {
 	t := c.Theme()
 	ui.Column(c).Gap(4).Padding(8, 12).Radius(12).Background(t.Surface).Children(func() {
-		ui.Text(c, "计划").FontSize(12).Bold().TextColor(t.TextMuted)
+		ui.Text(c, locales.PlanHeading()).FontSize(12).Bold().TextColor(t.TextMuted)
 		for i, it := range m.Plan {
 			ui.Row(c).Key(i).Gap(6).AlignItems(ui.Center).Children(func() {
 				symbol, color := "circle", t.TextMuted

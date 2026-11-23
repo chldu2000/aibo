@@ -144,15 +144,21 @@ type Tool struct {
 
 // Approval is an approval request and, once answered, the answer.
 type Approval struct {
-	ID      string
-	Title   string
-	Command string `json:",omitempty"`
-	Cwd     string `json:",omitempty"`
-	Reason  string `json:",omitempty"`
-	Diff    string `json:",omitempty"`
-	Plan    string `json:",omitempty"`
-	Paths   []string
-	Input   json.RawMessage `json:",omitempty"`
+	ID string
+	// Action is what is asked, Tool the tool or MCP server it names
+	// (agent.ApprovalRequested). Title is what requests kept before
+	// Action say, in Chinese.
+	Action    agent.Action `json:",omitempty"`
+	Tool      string       `json:",omitempty"`
+	Title     string       `json:",omitempty"`
+	WriteRoot string       `json:",omitempty"`
+	Command   string       `json:",omitempty"`
+	Cwd       string       `json:",omitempty"`
+	Reason    string       `json:",omitempty"`
+	Diff      string       `json:",omitempty"`
+	Plan      string       `json:",omitempty"`
+	Paths     []string
+	Input     json.RawMessage `json:",omitempty"`
 	// Outside is set when it writes outside the session's workspace.
 	Outside bool
 	Options []agent.ApprovalOption

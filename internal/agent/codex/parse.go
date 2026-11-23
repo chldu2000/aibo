@@ -136,7 +136,7 @@ func result(it item) (string, bool) {
 		}
 		failed := it.Status == "failed" || it.Status == "declined" || it.ExitCode != nil && *it.ExitCode != 0
 		if it.Status == "declined" && out == "" {
-			out = "（命令被拒绝执行）"
+			out = commandDeclined
 		}
 		return out, failed
 	case "fileChange":
@@ -149,7 +149,7 @@ func result(it item) (string, bool) {
 		}
 		out := b.String()
 		if it.Status == "declined" {
-			out = "（修改被拒绝）\n" + out
+			out = editDeclined + "\n" + out
 		}
 		return out, it.Status == "failed" || it.Status == "declined"
 	case "mcpToolCall":
@@ -241,16 +241,17 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 				return nil
 			}
 			t.loggedOut = true
-			return []agent.Event{agent.NotLoggedIn{}, agent.Failed{Message: "Codex 未登录。请在设置的“Agent”页登录，然后重新发送。"}}
+			// The session shows how to sign in.
+			return []agent.Event{agent.NotLoggedIn{}}
 		}
 		if n.Error != nil && !n.WillRetry {
-			return []agent.Event{agent.Failed{Message: "Codex 出错：" + n.Error.Message}}
+			return []agent.Event{agent.Failed{Message: n.Error.Message}}
 		}
 		if n.Error != nil {
 			// As "Reconnecting... 2/5", while the network is down.
 			msg := n.Error.Message
 			if d := strings.TrimSpace(n.Error.AdditionalDetails); d != "" {
-				msg += "（" + d + "）"
+				msg += " (" + d + ")"
 			}
 			return []agent.Event{agent.Retrying{Message: msg}}
 		}
@@ -262,9 +263,9 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		case "interrupted":
 			return append(out, agent.TurnEnded{Interrupted: true})
 		case "failed":
-			msg := "Codex 出错"
+			msg := ""
 			if n.Turn.Error != nil {
-				msg += "：" + n.Turn.Error.Message
+				msg = n.Turn.Error.Message
 			}
 			out = append(out, agent.Failed{Message: msg})
 		}

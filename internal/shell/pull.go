@@ -1,7 +1,7 @@
 package shell
 
 import (
-	"fmt"
+	"github.com/chldu2000/aibo/locales"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -99,14 +99,14 @@ func (s *Shell) pullPanel(c *ui.Context, x model.Session) {
 // session by its title.
 func (s *Shell) pullSearch(c *ui.Context, x model.Session) {
 	t := c.Theme()
-	ui.Text(c, "引用文件或会话").Bold().FontSize(15).TextColor(t.Text)
-	ui.TextInput(c, &s.pull.query).Placeholder("按路径搜索文件，或按标题搜索会话").Label("搜索文件或会话").AutoFocus()
+	ui.Text(c, locales.MentionPanel()).Bold().FontSize(15).TextColor(t.Text)
+	ui.TextInput(c, &s.pull.query).Placeholder(locales.MentionSearch()).Label(locales.MentionSearchLabel()).AutoFocus()
 	s.matchFiles(x.ID, strings.TrimSpace(s.pull.query))
 	q := strings.ToLower(strings.TrimSpace(s.pull.query))
 	ui.Scroll(c).Grow(1).Children(func() {
 		ui.Column(c).Gap(2).Children(func() {
 			s.pullFiles(c, x)
-			ui.Text(c, "会话").FontSize(11).Bold().TextColor(t.TextMuted).Padding(10, 8, 2)
+			ui.Text(c, locales.SessionsHeading()).FontSize(11).Bold().TextColor(t.TextMuted).Padding(10, 8, 2)
 			found := false
 			// Every session, archived ones and those of removed
 			// workspaces too, the most recent first.
@@ -116,11 +116,11 @@ func (s *Shell) pullSearch(c *ui.Context, x model.Session) {
 				}
 				found = true
 				ws := s.workspaceOf(src)
-				row := pickRow(c, src.ID, "选择 "+sessionTitle(src), func() {
+				row := pickRow(c, src.ID, locales.ChooseSession(sessionTitle(src)), func() {
 					s.agentGlyph(c, src.Agent, 16)
 					ui.Text(c, sessionTitle(src)).TextColor(t.Text).MaxLines(1).Grow(1)
 					if src.Archived {
-						ui.Text(c, "已归档").FontSize(11).TextColor(t.TextMuted)
+						ui.Text(c, locales.Archived()).FontSize(11).TextColor(t.TextMuted)
 					}
 					ui.Text(c, workspaceName(ws)).FontSize(11).TextColor(t.TextMuted)
 				})
@@ -129,7 +129,7 @@ func (s *Shell) pullSearch(c *ui.Context, x model.Session) {
 				}
 			}
 			if !found {
-				ui.Text(c, "没有找到会话").TextColor(t.TextMuted).Padding(8)
+				ui.Text(c, locales.NoSessionsFound()).TextColor(t.TextMuted).Padding(8)
 			}
 		})
 	})
@@ -138,7 +138,8 @@ func (s *Shell) pullSearch(c *ui.Context, x model.Session) {
 func (s *Shell) choosePullSource(src model.Session) {
 	msgs, err := s.wb.Messages(src.ID)
 	if err != nil {
-		s.notice = err.Error()
+		s.notice = s.say(err)
+
 		return
 	}
 	v := &sessionView{msgs: msgs, loaded: true}
@@ -160,7 +161,7 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 	n := v.sel.chosen.Len()
 	back := false
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		back = iconButton(c, "chevron.left", "返回搜索").Clicked()
+		back = iconButton(c, "chevron.left", locales.BackToSearch()).Clicked()
 		s.agentGlyph(c, src.Agent, 18)
 		ui.Text(c, sessionTitle(src)).Bold().TextColor(t.Text).NoWrap().Grow(1)
 	})
@@ -170,18 +171,18 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if n == 0 {
-			ui.Text(c, "点击消息设起点，Shift+点击设终点").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, locales.PullHint()).FontSize(12).TextColor(t.TextMuted)
 		} else {
-			ui.Text(c, fmt.Sprintf("已选 %s · %d 条", refs.Range(v.sel.from, v.sel.to), n)).FontSize(12).Bold().TextColor(t.Text)
+			ui.Text(c, locales.Selected(refs.Range(v.sel.from, v.sel.to), n)).FontSize(12).Bold().TextColor(t.Text)
 			if v.sel.filled {
-				ui.Text(c, "已补齐中间的消息").FontSize(12).TextColor(t.Warning)
+				ui.Text(c, locales.FilledGaps()).FontSize(12).TextColor(t.Warning)
 			}
 		}
 		ui.Spacer(c)
-		if ui.Button(c, "选中整个会话").Clicked() && len(v.msgs) > 0 {
+		if ui.Button(c, locales.SelectAll()).Clicked() && len(v.msgs) > 0 {
 			v.choose(v.msgs[0].Seq, v.msgs[len(v.msgs)-1].Seq)
 		}
-		if ui.Button(c, "选中整轮").Disabled(n == 0).Clicked() && n > 0 {
+		if ui.Button(c, locales.SelectTurns()).Disabled(n == 0).Clicked() && n > 0 {
 			v.wholeTurns()
 		}
 	})
@@ -201,9 +202,9 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 			}).Fill().Radius(10).Background(t.Surface)
 		})
 		ui.Column(c).Grow(1).Gap(6).Children(func() {
-			ui.Text(c, "接收方 Agent 会收到的概要").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, locales.BriefHeading()).FontSize(12).TextColor(t.TextMuted)
 			ui.Scroll(c).Grow(1).Radius(10).Background(t.Surface).Children(func() {
-				text := "选好范围后，这里显示概要。"
+				text := locales.BriefPending()
 				if n > 0 {
 					text = s.pullBrief(x)
 				}
@@ -213,12 +214,12 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 	})
 	ui.Row(c).Gap(6).Children(func() {
 		ui.Spacer(c)
-		if ui.Button(c, "取消").Clicked() {
+		if ui.Button(c, locales.Cancel()).Clicked() {
 			p.open = false
 		}
-		if ui.PrimaryButton(c, "插入引用").Disabled(n == 0 || p.briefErr != "").Clicked() && n > 0 {
+		if ui.PrimaryButton(c, locales.InsertReference()).Disabled(n == 0 || p.briefErr != "").Clicked() && n > 0 {
 			if _, err := s.wb.ReferenceRange(p.source.ID, v.sel.from, v.sel.to, x.ID); err != nil {
-				p.briefErr = err.Error()
+				p.briefErr = s.say(err)
 				return
 			}
 			// The chip takes the place of the "@" typed.
@@ -241,19 +242,19 @@ func (s *Shell) pullBrief(x model.Session) string {
 		p.brief, p.briefErr = "", ""
 		b, err := s.wb.PreviewBrief(p.source.ID, from, to, workbench.Target{SessionID: x.ID, Agent: x.Agent, WorkspaceID: x.WorkspaceID})
 		if err != nil {
-			p.briefErr = err.Error()
+			p.briefErr = s.say(err)
 		}
 		p.brief = b
 	}
 	if p.briefErr != "" {
-		return "无法引用这个范围：" + p.briefErr
+		return withDetail(locales.CannotReferenceRange(), p.briefErr)
 	}
 	return p.brief
 }
 
 func (s *Shell) roleOf(x model.Session, m model.Message) string {
 	if m.Kind == model.UserMessage {
-		return "用户"
+		return locales.RoleUser()
 	}
 	return s.agentName(x.Agent)
 }

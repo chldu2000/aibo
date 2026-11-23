@@ -49,11 +49,15 @@ model ← store ← workbench ← shell ← cmd/aibo
   - 界面上的文字，以及 Tester 用来查找元素的 Label；
   - 错误提示、通知、对话框；
   - 交给用户看的状态说明。
-- 需要说给用户听的错误，下层包（`workbench`、适配器等）返回带类型或带代码的错误，由外壳转换成当前语言的文字，下层不拼界面文字。
-- 交给 Agent 读的文字（引用概要、MCP 工具说明）不属于界面文字，单独存放，按需另行翻译。
+- 只有外壳（`internal/shell`）和 `cmd/aibo` 引用 `locales`（依赖方向测试管着）。下层包不拼界面文字（ADR 0005）：
+  - 需要说给用户听的错误，返回哨兵错误或带类型的错误（`workbench.ErrTurnRunning`、`workbench.Failure`、`agents.UnusableError`），错误本身的文字用英文，写给开发者看；外壳在 `words.go` 里转换成当前语言的文字，认不出的原样显示。
+  - 需要显示的状态给结构化的字段（审批的 `Action`、规则的 `Grant`、Agent 检测的 `Problem`、重试的次数），由外壳措辞。
+  - Agent 的原话（报错、模式名称）原样显示，不翻译。
+- 交给 Agent 读的文字不属于界面文字，单独存放：引用概要和工具结果在 `internal/refs`，MCP 工具说明在 `internal/mcpserver`，适配器对 Agent 说的话在各自的 `prompts.go`。
 - 至少支持简体中文和英文。源语言是英文（`locales/en.json` 写全所有文字，其他语言缺词时回退到英文）。新增文字两种语言同时写。
-- 迁移现有的文字见 `.scratch/aibo-v1-followups/issues/03`。迁移完成之前，新代码就要遵守这一条。
-- Label 在同一画面内保持唯一：Tester 按文字查找元素，重名会点错。
+- 加了或改了文字，运行 `go tool mygo generate` 重新生成 `locales/catalog_gen.go`，和语言文件一起提交。带整数参数的消息，在 `en.json` 的 `@键名` 里把参数类型写成 `int`（不写时参数是字符串），参数按消息里出现的顺序列出。
+- `internal/shell` 的测试默认用简体中文（`main_test.go`），`inLocale` 切换语言；`i18n_test.go` 在两种语言下各跑一遍冒烟测试，检查外壳和 `cmd/aibo` 的代码里没有中文字符串、两个语言文件的键一致。
+- Label 在同一画面内保持唯一：Tester 按文字查找元素，重名会点错。冒烟测试会检查两种语言下控件的 Label 是否重复。
 
 ## 代码风格
 

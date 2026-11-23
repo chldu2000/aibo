@@ -15,8 +15,8 @@ import (
 
 // Errors of managing workspaces and sessions.
 var (
-	ErrWorkspaceMissing = errors.New("工作区目录不存在：会话可以浏览和被引用，但不能继续。请重新定位工作区")
-	ErrPathInUse        = errors.New("这个文件夹已经是另一个工作区")
+	ErrWorkspaceMissing = errors.New("the workspace's folder is missing")
+	ErrPathInUse        = errors.New("the folder is another workspace")
 )
 
 // Workspace returns a workspace, also one removed.

@@ -30,9 +30,9 @@ var dataFiles = []string{DBFile, DBFile + "-wal", DBFile + "-shm", "attachments"
 
 // Errors of the data directory.
 var (
-	ErrUnavailable = errors.New("数据目录不可用")
-	ErrLocked      = errors.New("数据目录正被另一个 aibo 使用")
-	ErrNotEmpty    = errors.New("目标文件夹里有别的东西")
+	ErrUnavailable = errors.New("the data directory is unavailable")
+	ErrLocked      = errors.New("the data directory is in use by another aibo")
+	ErrNotEmpty    = errors.New("the folder holds other things")
 )
 
 // Config is what the config file holds.
@@ -64,7 +64,7 @@ func LoadConfig(def string) (Config, error) {
 		return c, err
 	}
 	if err := json.Unmarshal(b, &c); err != nil {
-		return c, fmt.Errorf("配置文件 %s 无法解析：%w", filepath.Join(def, ConfigFile), err)
+		return c, fmt.Errorf("config file %s: %w", filepath.Join(def, ConfigFile), err)
 	}
 	return c, nil
 }
@@ -110,14 +110,15 @@ func HasData(dir string) bool {
 // well.
 var syncFolders = []struct{ part, name string }{
 	{"/Library/Mobile Documents/", "iCloud Drive"},
-	{"/Library/CloudStorage/", "云盘"},
+	{"/Library/CloudStorage/", ""},
 	{"/Dropbox", "Dropbox"},
 	{"/Google Drive", "Google Drive"},
 	{"/OneDrive", "OneDrive"},
 	{"/Box Sync", "Box"},
 }
 
-// SyncFolder names the sync service whose folder path is in, if any.
+// SyncFolder names the sync service whose folder path is in, if any: ""
+// for one it cannot name.
 func SyncFolder(path string) (string, bool) {
 	p := filepath.Clean(path) + "/"
 	for _, s := range syncFolders {
@@ -149,11 +150,11 @@ func Move(from, to string) error {
 	}
 	entries, err := os.ReadDir(to)
 	if err != nil {
-		return fmt.Errorf("%w：%s", ErrUnavailable, to)
+		return fmt.Errorf("%w: %s", ErrUnavailable, to)
 	}
 	for _, e := range entries {
 		if !strings.HasPrefix(e.Name(), ".") {
-			return fmt.Errorf("%w：%s。请选一个空文件夹，或已有 aibo 数据的文件夹", ErrNotEmpty, to)
+			return fmt.Errorf("%w: %s", ErrNotEmpty, to)
 		}
 	}
 	var copied []string
@@ -171,7 +172,7 @@ func Move(from, to string) error {
 		copied = append(copied, dst)
 		if err := copyAll(src, dst); err != nil {
 			undo()
-			return fmt.Errorf("复制 %s 失败：%w", name, err)
+			return fmt.Errorf("copying %s: %w", name, err)
 		}
 	}
 	if err := verify(from, to); err != nil {
@@ -199,7 +200,7 @@ func verify(from, to string) error {
 			rel, _ := filepath.Rel(from, p)
 			got, err := os.Stat(filepath.Join(to, rel))
 			if err != nil || got.Size() != fi.Size() {
-				return fmt.Errorf("校验失败：%s 没有完整复制", rel)
+				return fmt.Errorf("checking the copy: %s was not copied whole", rel)
 			}
 			return nil
 		})
@@ -217,7 +218,7 @@ func verify(from, to string) error {
 	defer db.Close()
 	var ok string
 	if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ok); err != nil || ok != "ok" {
-		return fmt.Errorf("校验失败：复制后的数据库不完整（%v %s）", err, ok)
+		return fmt.Errorf("checking the copy: the database is not whole (%v %s)", err, ok)
 	}
 	return nil
 }

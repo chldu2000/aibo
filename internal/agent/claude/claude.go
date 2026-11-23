@@ -130,7 +130,7 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 		log = agent.Discard
 	}
 	if path == "" {
-		return nil, errors.New("没有找到 Claude Code")
+		return nil, agent.ErrNotFound
 	}
 	cmd := exec.Command(path, a.args(opts)...)
 	cmd.Dir = opts.Workspace
@@ -151,7 +151,7 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	cmd.Stderr = io.MultiWriter(&s.stderr, &agent.LineLog{Log: log})
 	if err := cmd.Start(); err != nil {
 		log.Warn("process did not start", "error", err.Error())
-		return nil, fmt.Errorf("启动 Claude Code 失败：%w", err)
+		return nil, fmt.Errorf("%w: %w", agent.ErrStartFailed, err)
 	}
 	s.log = log.With("pid", cmd.Process.Pid)
 	s.log.Info("process started", "resume", opts.ResumeID != "", "model", opts.Model, "mode", opts.Mode)
@@ -185,12 +185,12 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 		why = s.startErr
 	}
 	if why == "" {
-		why = "没有回应"
+		why = "no answer"
 	}
 	if opts.ResumeID != "" {
-		return nil, fmt.Errorf("%w：%s", agent.ErrResumeFailed, why)
+		return nil, fmt.Errorf("%w: %s", agent.ErrResumeFailed, why)
 	}
-	return nil, fmt.Errorf("Claude Code 启动失败：%s", why)
+	return nil, fmt.Errorf("%w: %s", agent.ErrStartFailed, why)
 }
 
 // startTimeout is how long Claude Code may take to be ready.
@@ -231,10 +231,10 @@ func (s *session) Send(_ context.Context, turn agent.Turn) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closing {
-		return errors.New("Claude Code 会话已关闭")
+		return agent.ErrClosed
 	}
 	if s.running {
-		return errors.New("Claude Code 正在回复")
+		return agent.ErrBusy
 	}
 	s.running = true
 	err := s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": withFiles(turn)}})
@@ -333,14 +333,14 @@ func (s *session) read(stdout io.Reader) {
 	s.mu.Unlock()
 	if running {
 		if !closing {
-			msg := "Claude Code 进程意外退出"
+			msg := ""
 			if err != nil {
-				msg += "（" + err.Error() + "）"
+				msg = err.Error()
 			}
 			if t := strings.TrimSpace(s.stderr.String()); t != "" {
-				msg += "：" + t
+				msg = strings.TrimSpace(msg + "\n" + t)
 			}
-			s.events <- agent.Failed{Message: msg}
+			s.events <- agent.Failed{Message: msg, Exited: true}
 		}
 		s.events <- agent.TurnEnded{Interrupted: true}
 	}
@@ -377,7 +377,7 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 	defer s.mu.Unlock()
 	r, ok := s.parser.asks[id]
 	if !ok {
-		return errors.New("Claude Code 没有在等这个审批")
+		return errors.New("no such approval request pending")
 	}
 	resp, err := response(r, optionID, note)
 	if err != nil {
@@ -394,7 +394,7 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 // Claude Code reports with its next turn (system/init).
 func (s *session) SetMode(_ context.Context, mode string) error {
 	if !knownMode(mode) {
-		return fmt.Errorf("Claude Code 没有这个权限模式：%s", mode)
+		return fmt.Errorf("no such permission mode: %s", mode)
 	}
 	return s.control("mode", map[string]any{"subtype": "set_permission_mode", "mode": mode})
 }
@@ -446,7 +446,7 @@ func withFiles(turn agent.Turn) string {
 	b.WriteString(turn.Text)
 	// Each on a line of its own: Claude Code reads an @ only after a
 	// space or at the start of a line, not after "：".
-	b.WriteString("\n\n提到的文件：")
+	b.WriteString("\n\n" + filesHeading)
 	for _, f := range turn.Files {
 		b.WriteString("\n")
 		name := f.Name()
@@ -471,7 +471,7 @@ func (a *Agent) Models(ctx context.Context) ([]agent.Model, error) {
 	path, env := a.path, a.env
 	a.mu.Unlock()
 	if path == "" {
-		return nil, errors.New("没有找到 Claude Code")
+		return nil, agent.ErrNotFound
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -505,7 +505,7 @@ func (a *Agent) Models(ctx context.Context) ([]agent.Model, error) {
 			return out, nil
 		}
 	}
-	return nil, errors.New("Claude Code 没有说它有哪些模型")
+	return nil, errors.New("Claude Code did not tell its models")
 }
 
 // models reads initialize's answer, if line is it: its models, its

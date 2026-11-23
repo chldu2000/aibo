@@ -35,7 +35,7 @@ var DefaultSettings = Settings{Notify: true, Budgets: refs.DefaultBudgets, IdleT
 const settingsKey = "workbench"
 
 // ErrBadSettings is what SetSettings returns for settings out of range.
-var ErrBadSettings = errors.New("设置的值不在允许的范围内")
+var ErrBadSettings = errors.New("a setting is out of range")
 
 // Settings returns the settings.
 func (w *Workbench) Settings() Settings {

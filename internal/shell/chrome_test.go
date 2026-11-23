@@ -170,8 +170,8 @@ func TestSessionWindow(t *testing.T) {
 		emit(agent.ReplyDelta{ReplyID: "r", Text: "先改文件。"})
 		emit(agent.ReplyDone{ReplyID: "r"})
 		emit(agent.ToolStarted{ToolID: "w", Name: "Write", Input: []byte(`{"file_path":"a.txt"}`)})
-		emit(agent.ApprovalRequested{ID: "ap", ToolID: "w", Title: "修改文件", Paths: []string{"a.txt"},
-			Options: []agent.ApprovalOption{{ID: "once", Kind: agent.AllowOnce, Label: "批准本次"}, {ID: "no", Kind: agent.Deny, Label: "拒绝"}}})
+		emit(agent.ApprovalRequested{ID: "ap", ToolID: "w", Action: agent.ActionEdit, Paths: []string{"a.txt"},
+			Options: []agent.ApprovalOption{{ID: "once", Kind: agent.AllowOnce}, {ID: "no", Kind: agent.Deny}}})
 		select {
 		case <-f.Decisions():
 			emit(agent.ToolFinished{ToolID: "w", Output: "ok"})
@@ -263,7 +263,7 @@ func TestSessionWindow(t *testing.T) {
 	}
 	// Closing the window leaves the session, which the main window shows.
 	own.Close()
-	if !main.HasText("拆出的会话") || wb.Status(s.ID).Error != "" {
+	if !main.HasText("拆出的会话") || wb.Status(s.ID).Error != nil {
 		t.Errorf("the main window lost the session: %q", main.Texts())
 	}
 	// Deleted, the session's window says so.

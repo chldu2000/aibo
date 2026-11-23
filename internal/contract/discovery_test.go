@@ -18,8 +18,8 @@ func TestContractDiscovery(t *testing.T) {
 	r := registry.New(registry.Options{Dirs: []string{}}) // only the login shell
 	r.Detect(context.Background())
 	for _, s := range r.Statuses() {
-		t.Logf("%s: state %d, %s (%s), version %s, %s %s", s.Name, s.State, s.Path, s.Source, s.Version, s.Auth, s.Reason)
-		if s.State != registry.Ready || s.Source != "登录 shell 的 PATH" {
+		t.Logf("%s: state %d, %s (source %d), version %s, %s problem %d %s", s.Name, s.State, s.Path, s.Source, s.Version, s.Auth, s.Problem, s.Detail)
+		if s.State != registry.Ready || s.Source != registry.SourcePath {
 			t.Errorf("%s is not ready: %+v", s.Name, s)
 		}
 	}

@@ -14,7 +14,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -29,6 +28,7 @@ import (
 	"github.com/chldu2000/aibo/internal/diag"
 	"github.com/chldu2000/aibo/internal/shell"
 	"github.com/chldu2000/aibo/internal/workbench"
+	"github.com/chldu2000/aibo/locales"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
@@ -192,14 +192,15 @@ const (
 
 // ask says why the data directory cannot be opened, and asks what to do.
 func (a *app) ask(err error) choice {
-	buttons := []string{"重试", "重新选择位置", "退出"}
-	detail := "aibo 不会在别处新建一个空的数据目录。请检查磁盘是否已连接，或者选择数据目录现在所在的位置。"
+	buttons := []string{locales.DataRetry(), locales.DataReselect(), locales.Quit()}
+	message := locales.WithDetail(locales.ErrDataUnavailable(), agent.Detail(err, appdata.ErrUnavailable))
+	detail := locales.DataMissingDetail()
 	if errors.Is(err, appdata.ErrLocked) {
-		buttons = []string{"重试", "退出"}
-		detail = "同一个数据目录同时只能由一个 aibo 使用。请先退出另一个 aibo。"
+		buttons = []string{locales.DataRetry(), locales.Quit()}
+		message, detail = locales.ErrDataLocked(), locales.DataLockedDetail()
 	}
 	r, derr := mygo.Dialog.Message(mygo.MessageOptions{Type: mygo.MessageWarning, Title: "aibo",
-		Message: err.Error(), Detail: detail, Buttons: buttons, DefaultButton: 0, CancelButton: len(buttons) - 1})
+		Message: message, Detail: detail, Buttons: buttons, DefaultButton: 0, CancelButton: len(buttons) - 1})
 	if derr != nil {
 		return quit
 	}
@@ -214,15 +215,15 @@ func (a *app) ask(err error) choice {
 
 // reselect lets the user say where the data directory is now.
 func (a *app) reselect() {
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: "选择数据目录", ButtonLabel: "使用这个文件夹", Directory: true, CreateDirectories: true})
+	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: locales.ChooseDataDir(), ButtonLabel: locales.UseFolder(), Directory: true, CreateDirectories: true})
 	if err != nil || len(paths) == 0 {
 		return
 	}
 	p := paths[0]
 	if !appdata.HasData(p) {
 		r, err := mygo.Dialog.Message(mygo.MessageOptions{Type: mygo.MessageWarning, Title: "aibo",
-			Message: "这个文件夹里没有 aibo 的数据", Detail: p + "\n\n使用它，aibo 将从空白开始；原来的数据不在这里。",
-			Buttons: []string{"从空白开始", "取消"}, DefaultButton: 1, CancelButton: 1})
+			Message: locales.NoDataHere(), Detail: locales.NoDataHereDetail(p),
+			Buttons: []string{locales.StartEmpty(), locales.Cancel()}, DefaultButton: 1, CancelButton: 1})
 		if err != nil || r.Button != 0 {
 			return
 		}
@@ -247,7 +248,7 @@ func (a *app) show() {
 		OpenURL:      func(u string) { mygo.Shell.OpenExternal(u) },
 		OpenTerminal: func(path string) { exec.Command("open", "-a", "Terminal", path).Start() },
 		ChooseFile: func() (string, bool) {
-			paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win.Load(), Title: "选择可执行文件", ShowHiddenFiles: true})
+			paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win.Load(), Title: locales.ChooseExecutable(), ShowHiddenFiles: true})
 			if err != nil || len(paths) == 0 {
 				return "", false
 			}
@@ -300,7 +301,7 @@ func (a *app) closeDiag() {
 // on it. The workbench closes first: the database must be closed.
 func (a *app) moveDataDir(to string) error {
 	if os.Getenv("AIBO_DATA_DIR") != "" {
-		return errors.New("数据目录由环境变量 AIBO_DATA_DIR 指定，不能在这里更改")
+		return errors.New(locales.DataDirFromEnv())
 	}
 	if err := a.wb.Close(); err != nil {
 		return err
@@ -343,9 +344,9 @@ func (a *app) beforeQuit(e *mygo.QuitEvent) {
 	e.PreventDefault()
 	go func() {
 		r, err := mygo.Dialog.Message(mygo.MessageOptions{Parent: a.win.Load(), Type: mygo.MessageWarning,
-			Message: fmt.Sprintf("有 %d 个会话正在运行，确定退出吗？", n),
-			Detail:  "退出会中断它们：正在进行的回复保存为“已中断”，还没处理的审批视为拒绝。",
-			Buttons: []string{"退出", "取消"}, DefaultButton: 1, CancelButton: 1})
+			Message: locales.QuitRunning(n),
+			Detail:  locales.QuitRunningDetail(),
+			Buttons: []string{locales.Quit(), locales.Cancel()}, DefaultButton: 1, CancelButton: 1})
 		if err == nil && r.Button == 0 {
 			a.quitting.Store(true)
 			mygo.App.Quit()

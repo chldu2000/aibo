@@ -13,9 +13,9 @@ import (
 func labels(opts []agent.ApprovalOption) string {
 	var ls []string
 	for _, o := range opts {
-		l := o.ID + "=" + o.Label
-		if len(o.Detail) > 0 {
-			l += "[" + strings.Join(o.Detail, "; ") + "]"
+		l := o.ID + "=" + string(o.Kind)
+		for _, g := range o.Grants {
+			l += "[" + string(g.Kind) + " " + strings.Join(g.Items, " ") + "]"
 		}
 		ls = append(ls, l)
 	}
@@ -36,10 +36,10 @@ func answer(t *testing.T, k ask, opt string) string {
 func TestApprovalRequests(t *testing.T) {
 	th := newThread()
 	cmd, k, ok := th.approval("codex-7", askCommand, json.RawMessage(`{"threadId":"T","turnId":"U","itemId":"c1","command":"npm install left-pad","cwd":"/w","reason":"needs network","proposedExecpolicyAmendment":["npm","install"]}`))
-	if !ok || cmd.ToolID != "c1" || cmd.Title != "执行命令" || cmd.Command != "npm install left-pad" || cmd.Cwd != "/w" || cmd.Reason != "needs network" {
+	if !ok || cmd.ToolID != "c1" || cmd.Action != agent.ActionCommand || cmd.Command != "npm install left-pad" || cmd.Cwd != "/w" || cmd.Reason != "needs network" {
 		t.Fatalf("command approval = %+v", cmd)
 	}
-	if got := labels(cmd.Options); got != "accept=批准本次 | acceptForSession=本会话内始终允许[命令 npm install left-pad] | always=永久允许[以 npm install 开头的命令] | decline=拒绝 | cancel=拒绝并停止" {
+	if got := labels(cmd.Options); got != "accept=allow_once | acceptForSession=allow_session[command npm install left-pad] | always=allow_always[command_prefix npm install] | decline=deny | cancel=deny_stop" {
 		t.Errorf("options: %s", got)
 	}
 	for opt, want := range map[string]string{
@@ -57,10 +57,10 @@ func TestApprovalRequests(t *testing.T) {
 	// A file change shows the diff of the item it gates.
 	th.handle("item/started", json.RawMessage(`{"threadId":"T","turnId":"U","item":{"type":"fileChange","id":"f1","status":"inProgress","changes":[{"path":"/w/a.go","kind":{"type":"update"},"diff":"@@ -1 +1 @@\n-a\n+b\n"}]}}`))
 	fc, k, ok := th.approval("codex-8", askFileChange, json.RawMessage(`{"threadId":"T","turnId":"U","itemId":"f1","reason":null}`))
-	if !ok || fc.Title != "修改文件" || fc.Diff != "--- /w/a.go\n+++ /w/a.go\n@@ -1 +1 @@\n-a\n+b" || len(fc.Paths) != 1 || fc.Paths[0] != "/w/a.go" {
+	if !ok || fc.Action != agent.ActionEdit || fc.Diff != "--- /w/a.go\n+++ /w/a.go\n@@ -1 +1 @@\n-a\n+b" || len(fc.Paths) != 1 || fc.Paths[0] != "/w/a.go" {
 		t.Errorf("file approval = %+v", fc)
 	}
-	if got := labels(fc.Options); got != "accept=批准本次 | acceptForSession=本会话内始终允许[修改 /w/a.go] | decline=拒绝 | cancel=拒绝并停止" {
+	if got := labels(fc.Options); got != "accept=allow_once | acceptForSession=allow_session[edits /w/a.go] | decline=deny | cancel=deny_stop" {
 		t.Errorf("options: %s", got)
 	}
 	if _, err := k.result("always"); err == nil {
@@ -68,7 +68,7 @@ func TestApprovalRequests(t *testing.T) {
 	}
 
 	mcp, k, ok := th.approval("codex-9", askElicitation, json.RawMessage(`{"threadId":"T","turnId":"U","serverName":"github","message":"Allow create_issue?"}`))
-	if !ok || mcp.Title != "调用 MCP 工具（github）" || mcp.Reason != "Allow create_issue?" || labels(mcp.Options) != "accept=批准本次 | decline=拒绝 | cancel=拒绝并停止" {
+	if !ok || mcp.Action != agent.ActionMCP || mcp.Tool != "github" || mcp.Reason != "Allow create_issue?" || labels(mcp.Options) != "accept=allow_once | decline=deny | cancel=deny_stop" {
 		t.Errorf("mcp approval = %+v", mcp)
 	}
 	if got := answer(t, k, "decline"); got != `{"action":"decline"}` {
@@ -85,7 +85,7 @@ func TestSessionRules(t *testing.T) {
 	th := newThread()
 	cmd, _, _ := th.approval("1", askCommand, json.RawMessage(`{"itemId":"c","command":"go test ./...","cwd":"/w"}`))
 	rules := cmd.Options[1].Rules
-	if cmd.Options[1].Kind != agent.AllowSession || len(rules) != 1 || rules[0].Label != "命令 go test ./..." {
+	if cmd.Options[1].Kind != agent.AllowSession || len(rules) != 1 || rules[0].Grant.Kind != agent.GrantCommand || rules[0].Grant.Items[0] != "go test ./..." {
 		t.Fatalf("session option = %+v", cmd.Options[1])
 	}
 	th.handle("item/started", json.RawMessage(`{"item":{"type":"fileChange","id":"f","changes":[{"path":"/w/a.go","kind":{"type":"update"},"diff":"x"}]}}`))
@@ -168,7 +168,7 @@ func TestSignedOut(t *testing.T) {
 	th := newThread()
 	retry := json.RawMessage(`{"threadId":"T","turnId":"U","error":{"message":"Reconnecting... 2/5","codexErrorInfo":{"responseStreamDisconnected":{"httpStatusCode":401}},"additionalDetails":"401 Unauthorized"},"willRetry":true}`)
 	evs := th.handle("error", retry)
-	if len(evs) != 2 {
+	if len(evs) != 1 {
 		t.Fatalf("events = %#v", evs)
 	}
 	if _, ok := evs[0].(agent.NotLoggedIn); !ok {

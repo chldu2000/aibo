@@ -1,7 +1,7 @@
 package shell
 
 import (
-	"fmt"
+	"github.com/chldu2000/aibo/locales"
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
@@ -35,32 +35,32 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 	ui.Scroll(c).Absolute().Top(70).Right(16).Width(400).MaxHeight(560).Radius(18).Material(glass.Glass{}).Children(func() {
 		ui.Column(c).Gap(12).Padding(16).Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "会话详情").Bold().TextColor(t.Text).Grow(1)
-				if iconButton(c, "xmark", "关闭会话详情").Clicked() {
+				ui.Text(c, locales.SessionDetails()).Bold().TextColor(t.Text).Grow(1)
+				if iconButton(c, "xmark", locales.DetailsClose()).Clicked() {
 					s.detail.open = false
 				}
 			})
 			kv("Agent", func() {
 				text(s.agentName(x.Agent))
 			})
-			kv("模型", func() {
+			kv(locales.DetailModel(), func() {
 				u := s.using(x)
 				line := u.name
 				if u.effort != "" {
-					line += " · 推理强度 " + u.effort
+					line = locales.EffortLine(line, u.effort)
 				}
 				text(line)
 				if st.Running {
-					ui.Text(c, "这一轮结束后可以在输入框底部更换").FontSize(11).TextColor(t.TextMuted)
+					ui.Text(c, locales.ChangeAfterTurn()).FontSize(11).TextColor(t.TextMuted)
 				}
 			})
-			kv("工作区", func() {
+			kv(locales.DetailWorkspace(), func() {
 				text(ws.Path)
 				if ws.Missing {
-					ui.Text(c, "目录不存在").FontSize(11).TextColor(t.Warning)
+					ui.Text(c, locales.FolderMissing()).FontSize(11).TextColor(t.Warning)
 				}
 			})
-			kv("原生会话", func() {
+			kv(locales.DetailNative(), func() {
 				var ids []string
 				for _, id := range x.NativeIDs {
 					if id != "" {
@@ -69,57 +69,59 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 				}
 				switch {
 				case len(ids) == 0:
-					text("尚未开始")
+					text(locales.NotStarted())
 				default:
 					text(ids[len(ids)-1])
 					if len(ids) > 1 {
-						ui.Text(c, fmt.Sprintf("第 %d 个（之前的已无法续接）", len(ids))).FontSize(11).TextColor(t.TextMuted)
+						ui.Text(c, locales.NativeCount(len(ids))).FontSize(11).TextColor(t.TextMuted)
 					}
 				}
-				state := "进程未运行，发消息时续接"
+				state := locales.ProcessIdle()
 				if st.Connected {
-					state = "进程运行中"
+					state = locales.ProcessRunning()
 				}
 				ui.Text(c, state).FontSize(11).TextColor(t.TextMuted)
 			})
-			kv("权限模式", func() {
+			kv(locales.DetailMode(), func() {
 				s.detailsMode(c, x)
 			})
-			kv("始终允许", func() {
+			kv(locales.DetailRules(), func() {
 				if len(x.Rules) == 0 {
-					text("无")
+					text(locales.None())
 				}
 				for i, r := range x.Rules {
 					s.ruleRow(c, x.ID, i, r)
 				}
 			})
-			kv("可读的源工作区", func() {
+			kv(locales.DetailReadDirs(), func() {
 				if len(x.ReadDirs) == 0 {
-					text("无")
+					text(locales.None())
 				}
 				for i, d := range x.ReadDirs {
-					ui.Text(c, d+"（只读）").Key(i).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
+					ui.Text(c, locales.ReadOnlyDir(d)).Key(i).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
 				}
 			})
 			ui.Row(c).Gap(6).Wrap().Children(func() {
-				if ui.Button(c, "压缩上下文").Disabled(st.Running).Clicked() {
+				if ui.Button(c, locales.Compact()).Disabled(st.Running).Clicked() {
 					if err := s.wb.Compact(x.ID); err != nil {
-						s.notice = err.Error()
+						s.notice = s.say(err)
+
 					}
 				}
-				if ui.Button(c, "重命名…").Clicked() {
+				if ui.Button(c, locales.RenameMenu()).Clicked() {
 					s.side.renaming, s.side.newTitle = x.ID, x.Title
 				}
-				archive := "归档"
+				archive := locales.Archive()
 				if x.Archived {
-					archive = "取消归档"
+					archive = locales.Unarchive()
 				}
 				if ui.Button(c, archive).Clicked() {
 					if err := s.wb.SetArchived(x.ID, !x.Archived); err != nil {
-						s.notice = err.Error()
+						s.notice = s.say(err)
+
 					}
 				}
-				if ui.Button(c, "删除…").TextColor(t.Danger).Clicked() {
+				if ui.Button(c, locales.DeleteMenu()).TextColor(t.Danger).Clicked() {
 					s.side.deleting = x.ID
 				}
 			})
@@ -147,12 +149,12 @@ func (s *Shell) detailsMode(c *ui.Context, x model.Session) {
 		ui.Text(c, name).FontSize(12).TextColor(c.Theme().Text)
 		return
 	}
-	if ui.Select(c, &name, names).Label("权限模式（选择）").Changed() {
+	if ui.Select(c, &name, names).Label(locales.ModeSelect()).Changed() {
 		if m := byName[name]; m.Risk == agent.Danger {
 			s.detail.confirming = m.ID
 		} else {
 			s.setMode(x.ID, m.ID)
 		}
 	}
-	ui.Text(c, cur.Description).FontSize(11).TextColor(c.Theme().TextMuted)
+	ui.Text(c, modeDescription(x.Agent, cur)).FontSize(11).TextColor(c.Theme().TextMuted)
 }

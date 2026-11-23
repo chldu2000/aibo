@@ -28,7 +28,7 @@ func TestContractCompactionAndSelfReference(t *testing.T) {
 				t.Fatal(err)
 			}
 			e.until(func() bool { return !e.Status(s.ID).Running })
-			if st := e.Status(s.ID); st.Error != "" {
+			if st := e.Status(s.ID); st.Error != nil {
 				t.Fatalf("compacting: %s", st.Error)
 			}
 			ms := e.Markers(s.ID)

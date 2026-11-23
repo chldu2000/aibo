@@ -95,13 +95,55 @@ type Status struct {
 	Spec
 	State State
 	// Path is the executable found; Source how it was found.
-	Path, Source string
-	Version      string
+	Path    string
+	Source  Source
+	Version string
 	// Auth is how it is signed in, as it says.
 	Auth string
-	// Reason says, for the user, why it is not ready.
-	Reason string
+	// Problem is why it is not ready, if it is not; Detail what the
+	// system or the Agent said of it.
+	Problem Problem
+	Detail  string
 }
+
+// Source is how an Agent's executable was found.
+type Source int
+
+const (
+	SourceNone Source = iota
+	// SourceSettings: the user chose it in the settings.
+	SourceSettings
+	// SourceCommon: where executables are usually installed.
+	SourceCommon
+	// SourcePath: the login shell's PATH.
+	SourcePath
+)
+
+// Problem is why an Agent is not ready, for the shell to word.
+type Problem int
+
+const (
+	NoProblem Problem = iota
+	// ProblemUnknown: aibo does not support the Agent.
+	ProblemUnknown
+	// ProblemBadPath: the executable the user chose (Detail) does not
+	// exist or cannot run.
+	ProblemBadPath
+	// ProblemNotFound: no executable was found.
+	ProblemNotFound
+	// ProblemNoVersion, ProblemBadVersion: its version could not be read,
+	// or was not understood.
+	ProblemNoVersion
+	ProblemBadVersion
+	// ProblemTooOld: its version is older than Spec.MinVersion.
+	ProblemTooOld
+	// ProblemNoLogin, ProblemBadLogin: how it is signed in could not be
+	// read, or was not understood.
+	ProblemNoLogin
+	ProblemBadLogin
+	// ProblemSignedOut: it is signed out.
+	ProblemSignedOut
+)
 
 // Usable reports whether sessions can start with the Agent: installed and
 // new enough. (Signed out, it still starts: it says so itself.)
@@ -155,7 +197,7 @@ func New(o Options) *Registry {
 		r.paths[k] = p
 	}
 	for _, s := range Specs {
-		r.status[s.Kind] = &Status{Spec: s, State: Checking, Reason: "正在检测……"}
+		r.status[s.Kind] = &Status{Spec: s, State: Checking}
 	}
 	r.codex.OnAccount(r.accountChanged)
 	return r
@@ -163,12 +205,13 @@ func New(o Options) *Registry {
 
 // ErrNoInAppLogin is StartLogin's error for an Agent signed in to
 // otherwise (Spec.Login).
-var ErrNoInAppLogin = errors.New("这个 Agent 不能在 aibo 里登录")
+var ErrNoInAppLogin = errors.New("the Agent cannot sign in in aibo")
 
 // LoginState is a sign-in started in aibo (LoginInApp).
 type LoginState struct {
 	codex.Login
-	// Waiting is set until it ends; Error says why it failed.
+	// Waiting is set until it ends; Error says why it failed, in the
+	// Agent's words.
 	Waiting bool
 	Error   string
 }
@@ -228,7 +271,7 @@ func (r *Registry) accountChanged(e codex.AccountEvent) {
 	if e.LoginID != "" && e.LoginID == r.login.ID {
 		r.login.Waiting = false
 		if !e.Success {
-			r.login.Error = "登录没有完成：" + e.Error
+			r.login.Error = e.Error
 		}
 	}
 	r.mu.Unlock()
@@ -279,7 +322,7 @@ func (r *Registry) Status(kind agent.Kind) Status {
 	if s, ok := r.status[kind]; ok {
 		return *s
 	}
-	return Status{Spec: Spec{Kind: kind, Name: string(kind)}, State: NotInstalled, Reason: "aibo 不认识这个 Agent"}
+	return Status{Spec: Spec{Kind: kind, Name: string(kind)}, State: NotInstalled, Problem: ProblemUnknown}
 }
 
 // Statuses returns every Agent's standing, in Specs' order.
@@ -315,6 +358,14 @@ func (r *Registry) SetPath(ctx context.Context, kind agent.Kind, path string) {
 	r.Check(ctx, kind)
 }
 
+// UnusableError is Ready's error for an Agent not installed, too old,
+// or whose version could not be read.
+type UnusableError struct{ Status Status }
+
+func (e *UnusableError) Error() string {
+	return fmt.Sprintf("%s cannot be used (problem %d) %s", e.Status.Name, e.Status.Problem, e.Status.Detail)
+}
+
 // Ready says why a message cannot go to the Agent now, or nil. Signed
 // out, it goes only to an Agent that says so (Spec.HoldsSignedOut).
 func (r *Registry) Ready(kind agent.Kind) error {
@@ -323,7 +374,7 @@ func (r *Registry) Ready(kind agent.Kind) error {
 	case s.State == Checking:
 		return nil // its own errors will tell
 	case !s.Usable():
-		return errors.New(s.Reason)
+		return &UnusableError{s}
 	case s.State == NotLoggedIn:
 		if spec, _ := Describe(kind); spec.HoldsSignedOut {
 			return ErrNotLoggedIn
@@ -333,14 +384,14 @@ func (r *Registry) Ready(kind agent.Kind) error {
 }
 
 // ErrNotLoggedIn is Ready's error for an Agent signed out.
-var ErrNotLoggedIn = errors.New("Agent 未登录")
+var ErrNotLoggedIn = errors.New("the Agent is signed out")
 
 // MarkNotLoggedIn records that a session found the Agent signed out.
 func (r *Registry) MarkNotLoggedIn(kind agent.Kind) {
 	r.mu.Lock()
 	s, ok := r.status[kind]
 	if ok && s.State == Ready {
-		s.State, s.Reason, s.Auth = NotLoggedIn, s.Name+" 未登录", ""
+		s.State, s.Problem, s.Auth = NotLoggedIn, ProblemSignedOut, ""
 	}
 	r.mu.Unlock()
 	if ok {
@@ -386,7 +437,7 @@ func (r *Registry) Check(ctx context.Context, kind agent.Kind) {
 			spec = s
 		}
 	}
-	r.set(Status{Spec: spec, State: Checking, Reason: "正在检测……"})
+	r.set(Status{Spec: spec, State: Checking})
 	st := r.check(ctx, spec)
 	env := r.env()
 	if st.Usable() {
@@ -415,17 +466,17 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 	switch {
 	case chosen != "":
 		if !executable(chosen) {
-			st.State, st.Reason = NotInstalled, "指定的可执行文件不存在或不能执行："+chosen
+			st.State, st.Problem, st.Detail = NotInstalled, ProblemBadPath, chosen
 			return st
 		}
-		st.Path, st.Source = chosen, "设置中指定"
+		st.Path, st.Source = chosen, SourceSettings
 	default:
 		if p, ok := findIn(spec.Command, r.o.Dirs); ok {
-			st.Path, st.Source = p, "常见安装位置"
+			st.Path, st.Source = p, SourceCommon
 		} else if p, ok := findIn(spec.Command, filepath.SplitList(shellPath)); ok {
-			st.Path, st.Source = p, "登录 shell 的 PATH"
+			st.Path, st.Source = p, SourcePath
 		} else {
-			st.State, st.Reason = NotInstalled, "没有找到 "+spec.Name+"。请按官方说明安装，或在设置里指定可执行文件。"
+			st.State, st.Problem = NotInstalled, ProblemNotFound
 			return st
 		}
 	}
@@ -435,30 +486,30 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 	env := r.env()
 	out, _, err := run(ctx, st.Path, env, "--version")
 	if err != nil {
-		st.State, st.Reason = Broken, "无法读取版本："+err.Error()
+		st.State, st.Problem, st.Detail = Broken, ProblemNoVersion, err.Error()
 		return st
 	}
 	st.Version = versionRE.FindString(out)
 	if st.Version == "" {
-		st.State, st.Reason = Broken, "无法识别版本："+strings.TrimSpace(out)
+		st.State, st.Problem, st.Detail = Broken, ProblemBadVersion, strings.TrimSpace(out)
 		return st
 	}
 	if older(st.Version, spec.MinVersion) {
-		st.State, st.Reason = TooOld, fmt.Sprintf("版本 %s 过低，请升级到 %s 或更高版本。", st.Version, spec.MinVersion)
+		st.State, st.Problem = TooOld, ProblemTooOld
 		return st
 	}
 	switch spec.Kind {
 	case claude.Kind:
-		st.State, st.Auth, st.Reason = claudeLogin(ctx, st.Path, env)
+		st.State, st.Auth, st.Problem, st.Detail = claudeLogin(ctx, st.Path, env)
 	case codex.Kind:
-		st.State, st.Auth, st.Reason = codexLogin(ctx, st.Path, env)
+		st.State, st.Auth, st.Problem, st.Detail = codexLogin(ctx, st.Path, env)
 	}
 	return st
 }
 
 // claudeLogin asks Claude Code how it is signed in (claude auth status:
 // JSON, exit 1 when not).
-func claudeLogin(ctx context.Context, path string, env []string) (State, string, string) {
+func claudeLogin(ctx context.Context, path string, env []string) (State, string, Problem, string) {
 	out, code, err := run(ctx, path, env, "auth", "status")
 	var s struct {
 		LoggedIn         bool   `json:"loggedIn"`
@@ -467,33 +518,33 @@ func claudeLogin(ctx context.Context, path string, env []string) (State, string,
 	}
 	if json.Unmarshal([]byte(out), &s) != nil {
 		if err != nil {
-			return Broken, "", "无法读取登录状态：" + err.Error()
+			return Broken, "", ProblemNoLogin, err.Error()
 		}
-		return Broken, "", "无法识别登录状态：" + strings.TrimSpace(out)
+		return Broken, "", ProblemBadLogin, strings.TrimSpace(out)
 	}
 	if !s.LoggedIn || code == 1 {
-		return NotLoggedIn, "", "Claude Code 未登录"
+		return NotLoggedIn, "", ProblemSignedOut, ""
 	}
 	auth := s.AuthMethod
 	if s.SubscriptionType != "" {
-		auth += "（" + s.SubscriptionType + "）"
+		auth += " (" + s.SubscriptionType + ")"
 	}
-	return Ready, auth, ""
+	return Ready, auth, NoProblem, ""
 }
 
 // codexLogin asks Codex how it is signed in (codex login status: exit 1
 // when not).
-func codexLogin(ctx context.Context, path string, env []string) (State, string, string) {
+func codexLogin(ctx context.Context, path string, env []string) (State, string, Problem, string) {
 	// It says so on stderr.
 	out, code, err := runOut(ctx, true, path, env, "login", "status")
 	text := strings.TrimSpace(out)
 	switch {
 	case code == 1:
-		return NotLoggedIn, "", "Codex 未登录"
+		return NotLoggedIn, "", ProblemSignedOut, ""
 	case err != nil:
-		return Broken, "", "无法读取登录状态：" + err.Error()
+		return Broken, "", ProblemNoLogin, err.Error()
 	}
-	return Ready, strings.TrimPrefix(text, "Logged in using "), ""
+	return Ready, strings.TrimPrefix(text, "Logged in using "), NoProblem, ""
 }
 
 var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+`)
@@ -586,7 +637,7 @@ func ShellPath(ctx context.Context, shell string) (string, error) {
 	i := strings.Index(s, marker)
 	j := strings.LastIndex(s, marker)
 	if i < 0 || j <= i {
-		return "", errors.New("登录 shell 没有给出 PATH")
+		return "", errors.New("the login shell gave no PATH")
 	}
 	return s[i+len(marker) : j], nil
 }

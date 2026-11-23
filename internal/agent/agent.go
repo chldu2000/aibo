@@ -11,11 +11,40 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
-// ErrResumeFailed is what Start returns, wrapped with the Agent's own
-// words, when the native session to resume is lost or cannot be resumed.
-var ErrResumeFailed = errors.New("原生会话无法续接")
+// The errors of adapters the shell words for the user. An adapter wraps
+// them with the Agent's own words, or the system's, as
+// fmt.Errorf("%w: %s", ErrStartFailed, why); Detail returns those.
+var (
+	// ErrResumeFailed is what Start returns when the native session to
+	// resume is lost or cannot be resumed.
+	ErrResumeFailed = errors.New("the native session cannot be resumed")
+	// ErrNotFound: the Agent's executable was not found.
+	ErrNotFound = errors.New("the Agent was not found")
+	// ErrStartFailed: the Agent's process did not start, or did not
+	// answer.
+	ErrStartFailed = errors.New("the Agent did not start")
+	// ErrBusy: the Agent is replying, or otherwise cannot take it now.
+	ErrBusy = errors.New("the Agent is busy")
+	// ErrClosed: the native session was closed, or its process ended.
+	ErrClosed = errors.New("the native session is closed")
+)
+
+// Detail is what err says after sentinel, which it wraps: the Agent's
+// own words, or the system's; "" when it says nothing more.
+func Detail(err, sentinel error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if i := strings.Index(s, sentinel.Error()); i >= 0 {
+		s = s[i+len(sentinel.Error()):]
+		return strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(s, ":"), "："))
+	}
+	return s
+}
 
 // Kind names an Agent implementation, as stored with each session.
 type Kind string
@@ -101,7 +130,8 @@ type DirsAtStart interface {
 type PermissionMode struct {
 	// ID is the adapter's own, as StartOptions.Mode and SetMode take it.
 	ID string
-	// Name and Description are as the Agent shows them.
+	// Name is as the Agent shows it. Description, in English, says what
+	// the mode does; the shell words it in the user's language.
 	Name        string
 	Description string
 	Risk        Risk
@@ -110,7 +140,8 @@ type PermissionMode struct {
 	// Default marks the mode of a session that has none: the Agent's
 	// own default, or, for Codex, what aibo always used.
 	Default bool
-	// Unavailable, when set, says why it cannot be chosen now.
+	// Unavailable, when set, says why it cannot be chosen now, in
+	// English.
 	Unavailable string
 }
 
@@ -133,12 +164,43 @@ type ModeLister interface {
 }
 
 // Rule is something the user allowed for the rest of a session, which
-// the Agent's adapter applies again when the session restarts. Data is
-// the adapter's own; the workbench only keeps it.
+// the Agent's adapter applies again when the session restarts. Grant says
+// what it allows; Data is the adapter's own, which the workbench only
+// keeps. Label is what rules kept before Grant say, in Chinese.
 type Rule struct {
-	Label string
+	Label string `json:",omitempty"`
+	Grant Grant
 	Data  json.RawMessage
 }
+
+// Grant is what an answer or a rule allows, for the shell to word.
+type Grant struct {
+	Kind GrantKind `json:",omitempty"`
+	// Items are the rules, commands, paths, directories or the mode the
+	// grant names.
+	Items []string `json:",omitempty"`
+}
+
+// GrantKind is what a Grant allows.
+type GrantKind string
+
+const (
+	// GrantTools: the uses of tools Items name, in the Agent's own rule
+	// syntax, as "Bash(ls:*)".
+	GrantTools GrantKind = "tools"
+	// GrantAcceptEdits: edits, unasked, for the rest of the session.
+	GrantAcceptEdits GrantKind = "accept_edits"
+	// GrantMode: the session switches to the mode Items[0].
+	GrantMode GrantKind = "mode"
+	// GrantDirectories: access to the directories Items.
+	GrantDirectories GrantKind = "directories"
+	// GrantCommand: the command Items[0], as it was run.
+	GrantCommand GrantKind = "command"
+	// GrantCommandPrefix: the commands starting with the words Items.
+	GrantCommandPrefix GrantKind = "command_prefix"
+	// GrantEdits: changes to the files Items.
+	GrantEdits GrantKind = "edits"
+)
 
 // Session is one running native session.
 type Session interface {
@@ -297,8 +359,10 @@ type ApprovalRequested struct {
 	ID string
 	// ToolID is the tool call it gates, which may start after it.
 	ToolID string
-	// Title says what is asked, as "执行命令".
-	Title   string
+	// Action is what is asked; Tool names the tool of ActionTool, or the
+	// MCP server or tool of ActionMCP.
+	Action  Action
+	Tool    string
 	Command string
 	Cwd     string
 	Reason  string
@@ -309,6 +373,9 @@ type ApprovalRequested struct {
 	Plan string
 	// Paths are the files it writes.
 	Paths []string
+	// WriteRoot, when set, is a directory the Agent asks to write in for
+	// the rest of the session.
+	WriteRoot string
 	// Input is the tool's input, for the other tools.
 	Input json.RawMessage
 	// Options are the Agent's own answers, in the order to show.
@@ -319,17 +386,29 @@ type ApprovalRequested struct {
 type ApprovalOption struct {
 	ID   string
 	Kind OptionKind
-	// Label is the action alone, short enough for a button: "永久允许",
-	// not the rule it writes.
-	Label string
-	// Detail, for AllowSession and AllowAlways, says what the option
-	// allows, one line for each rule; it may be as long as a command.
+	// Grants, for AllowSession and AllowAlways, are what the option
+	// allows, one for each rule; a rule may be as long as a command.
+	Grants []Grant `json:",omitempty"`
+	// Detail is what answers kept before Grants say they allow, in
+	// Chinese.
 	Detail []string `json:",omitempty"`
-	// Where, for AllowAlways, is where the Agent writes the rule.
+	// Where, for AllowAlways, is the file the Agent writes the rule in;
+	// empty when it is the Agent's own rules.
 	Where string
 	// Rules, for AllowSession, are what the session allows from then on.
 	Rules []Rule `json:",omitempty"`
 }
+
+// Action is what an approval request asks for.
+type Action string
+
+const (
+	ActionCommand Action = "command" // run a command
+	ActionEdit    Action = "edit"    // change files
+	ActionPlan    Action = "plan"    // act on a plan
+	ActionMCP     Action = "mcp"     // call an MCP tool
+	ActionTool    Action = "tool"    // use another tool
+)
 
 // OptionKind is what an answer does.
 type OptionKind string
@@ -362,16 +441,24 @@ type TurnEnded struct {
 }
 
 // Failed reports an error of the turn or the session, in the Agent's own
-// words. A turn that fails still ends with TurnEnded.
+// words, which may be none. A turn that fails still ends with TurnEnded.
 type Failed struct {
 	Message string
+	// Exited is set when the Agent's process ended unexpectedly; Message
+	// is then how it exited, and what it wrote to stderr.
+	Exited bool
 }
+
+// Error makes a failure an error, as the workbench keeps it.
+func (f Failed) Error() string { return f.Message }
 
 // Retrying reports that the Agent could not reach its model and tries
 // again by itself, as when the network drops: the turn goes on, silent
-// meanwhile. Message says why, in the Agent's own words.
+// meanwhile. Attempt and Max count the tries when the Agent counts them;
+// Message says why, in the Agent's own words.
 type Retrying struct {
-	Message string
+	Attempt, Max int
+	Message      string
 }
 
 func (NativeSessionStarted) isEvent() {}

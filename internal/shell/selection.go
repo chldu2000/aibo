@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"github.com/chldu2000/aibo/locales"
 	"slices"
 	"strings"
 
@@ -112,7 +113,7 @@ func (s *Shell) copyText(x model.Session, v *sessionView) string {
 		if !v.sel.chosen.Has(m.Seq) {
 			continue
 		}
-		role := "用户"
+		role := locales.RoleUser()
 		if m.Kind != model.UserMessage {
 			role = s.agentName(x.Agent)
 		}
@@ -130,30 +131,30 @@ func (s *Shell) selectionBar(c *ui.Context, x model.Session, v *sessionView) {
 	ui.Column(c).Gap(8).Padding(10, 12).Radius(18).Material(glass.Glass{}).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if n == 0 {
-				ui.Text(c, "点击消息设起点，Shift+点击扩展，也可以拖选").TextColor(t.TextMuted)
+				ui.Text(c, locales.SelectHint()).TextColor(t.TextMuted)
 			} else {
-				ui.Text(c, fmt.Sprintf("已选 %s · %d 条", refs.Range(sel.from, sel.to), n)).Bold().TextColor(t.Text)
+				ui.Text(c, locales.Selected(refs.Range(sel.from, sel.to), n)).Bold().TextColor(t.Text)
 				if sel.filled {
-					ui.Text(c, "已补齐中间的消息").FontSize(12).TextColor(t.Warning)
+					ui.Text(c, locales.FilledGaps()).FontSize(12).TextColor(t.Warning)
 				}
 			}
 		})
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
-			if ui.Button(c, "选中整个会话").Clicked() && len(v.msgs) > 0 {
+			if ui.Button(c, locales.SelectAll()).Clicked() && len(v.msgs) > 0 {
 				v.choose(v.msgs[0].Seq, v.msgs[len(v.msgs)-1].Seq)
 			}
-			if ui.Button(c, "选中整轮").Disabled(n == 0).Clicked() && n > 0 {
+			if ui.Button(c, locales.SelectTurns()).Disabled(n == 0).Clicked() && n > 0 {
 				v.wholeTurns()
 			}
-			if ui.Button(c, "复制").Disabled(n == 0).Clicked() && n > 0 {
+			if ui.Button(c, locales.Copy()).Disabled(n == 0).Clicked() && n > 0 {
 				c.WriteClipboard(s.copyText(x, v))
 			}
 			ui.Spacer(c)
-			if ui.Button(c, "取消").Clicked() {
+			if ui.Button(c, locales.Cancel()).Clicked() {
 				s.stopSelecting(v)
 				return
 			}
-			send := ui.PrimaryButton(c, "发给…").Disabled(n == 0)
+			send := ui.PrimaryButton(c, locales.SendTo()).Disabled(n == 0)
 			if send.Clicked() && n > 0 {
 				sel.sending, sel.target = !sel.sending, nil
 			}
@@ -176,44 +177,44 @@ func (s *Shell) targets(c *ui.Context, src model.Session, v *sessionView) {
 		brief, err := s.wb.PreviewBrief(src.ID, v.sel.from, v.sel.to, workbench.Target{SessionID: tg.sessionID, Agent: tg.agent, WorkspaceID: tg.workspaceID})
 		if err != nil {
 			v.sel.sending = false
-			s.notice = "无法引用：" + err.Error()
+			s.notice = s.failed(locales.CannotReference, err)
 			return
 		}
 		tg.brief = brief
 		v.sel.target = &tg
 	}
 	ui.Column(c).Width(340).Gap(2).Padding(10).Children(func() {
-		ui.Text(c, fmt.Sprintf("把 %s 引用给…", refs.Range(v.sel.from, v.sel.to))).Bold().TextColor(t.Text).Padding(0, 6, 6)
+		ui.Text(c, locales.ReferenceRangeTo(refs.Range(v.sel.from, v.sel.to))).Bold().TextColor(t.Text).Padding(0, 6, 6)
 		// The session itself: to find again what its Agent compacted away.
-		if pickRow(c, "self", "引用给本会话", func() {
+		if pickRow(c, "self", locales.RefToThis(), func() {
 			s.agentGlyph(c, src.Agent, 16)
-			ui.Text(c, "本会话（找回之前的内容）").TextColor(t.Text).Grow(1)
+			ui.Text(c, locales.ThisSessionRow()).TextColor(t.Text).Grow(1)
 		}).Clicked() {
-			pick(target{sessionID: src.ID, agent: src.Agent, workspaceID: src.WorkspaceID, label: "本会话"})
+			pick(target{sessionID: src.ID, agent: src.Agent, workspaceID: src.WorkspaceID, label: locales.ThisSession()})
 		}
 		sessions := s.wb.Sessions()
 		for _, ws := range s.wb.Workspaces() {
 			ui.Text(c, workspaceName(ws)).FontSize(11).Bold().TextColor(t.TextMuted).Padding(8, 6, 2)
 			for _, a := range s.wb.Agents() {
-				label := "新建 " + a.Name + " 会话"
-				row := pickRow(c, ws.ID+string(a.Kind), "引用给 "+workspaceName(ws)+" 的新 "+a.Name+" 会话", func() {
+				label := locales.NewAgentSession(a.Name)
+				row := pickRow(c, ws.ID+string(a.Kind), locales.RefTo(locales.NewSessionOf(a.Name, workspaceName(ws))), func() {
 					s.agentGlyph(c, a.Kind, 16)
 					ui.Text(c, label).TextColor(t.Text).Grow(1)
 				})
 				if row.Clicked() {
-					pick(target{agent: a.Kind, workspaceID: ws.ID, label: workspaceName(ws) + " 的新 " + a.Name + " 会话"})
+					pick(target{agent: a.Kind, workspaceID: ws.ID, label: locales.NewSessionOf(a.Name, workspaceName(ws))})
 				}
 			}
 			for _, x := range sessions {
 				if x.WorkspaceID != ws.ID || x.ID == src.ID {
 					continue
 				}
-				row := pickRow(c, x.ID, "引用给 "+sessionTitle(x), func() {
+				row := pickRow(c, x.ID, locales.RefTo(sessionTitle(x)), func() {
 					s.agentGlyph(c, x.Agent, 16)
 					ui.Text(c, sessionTitle(x)).TextColor(t.Text).NoWrap().Grow(1)
 				})
 				if row.Clicked() {
-					pick(target{sessionID: x.ID, agent: x.Agent, workspaceID: x.WorkspaceID, label: "「" + sessionTitle(x) + "」"})
+					pick(target{sessionID: x.ID, agent: x.Agent, workspaceID: x.WorkspaceID, label: locales.QuotedTitle(sessionTitle(x))})
 				}
 			}
 		}
@@ -235,17 +236,17 @@ func (s *Shell) preview(c *ui.Context, src model.Session, v *sessionView) {
 	t := c.Theme()
 	tg := v.sel.target
 	ui.Column(c).Width(560).Gap(10).Padding(14).Children(func() {
-		ui.Text(c, "引用给 "+tg.label).Bold().TextColor(t.Text)
-		ui.Text(c, "接收方 Agent 会收到下面的概要，需要细节时再通过工具读取引用的内容：").FontSize(12).TextColor(t.TextMuted)
+		ui.Text(c, locales.RefTo(tg.label)).Bold().TextColor(t.Text)
+		ui.Text(c, locales.PreviewExplain()).FontSize(12).TextColor(t.TextMuted)
 		ui.Scroll(c).MaxHeight(320).Radius(10).Background(t.Surface).Children(func() {
 			ui.Text(c, tg.brief).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable().Padding(10)
 		})
 		ui.Row(c).Gap(6).Children(func() {
 			ui.Spacer(c)
-			if ui.Button(c, "返回").Clicked() {
+			if ui.Button(c, locales.Back()).Clicked() {
 				v.sel.target = nil
 			}
-			if ui.PrimaryButton(c, "引用").Clicked() {
+			if ui.PrimaryButton(c, locales.Reference()).Clicked() {
 				s.confirm(src, v)
 			}
 		})
@@ -260,13 +261,14 @@ func (s *Shell) confirm(src model.Session, v *sessionView) {
 	if targetID == "" {
 		x, err := s.wb.NewSession(tg.workspaceID, tg.agent, "")
 		if err != nil {
-			s.notice = "新建会话失败：" + err.Error()
+			s.notice = s.failed(locales.NewSessionFailed, err)
 			return
 		}
 		targetID = x.ID
 	}
 	if _, err := s.wb.ReferenceRange(src.ID, v.sel.from, v.sel.to, targetID); err != nil {
-		s.notice = "引用失败：" + err.Error()
+		s.notice = s.failed(locales.ReferenceFailed, err)
+
 		return
 	}
 	s.stopSelecting(v)

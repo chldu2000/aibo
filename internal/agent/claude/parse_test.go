@@ -141,7 +141,7 @@ func TestToolsAndReplies(t *testing.T) {
 	if x, _ := w.Session(id); x.NativeID() != "71b501e4-9795-4c35-afee-5f49ae856ccc" {
 		t.Errorf("native session = %v", x.NativeIDs)
 	}
-	if st := w.Status(id); st.Error != "" {
+	if st := w.Status(id); st.Error != nil {
 		t.Errorf("error = %q", st.Error)
 	}
 }
@@ -158,7 +158,7 @@ func TestInterruptedTurnThenNext(t *testing.T) {
 		t.Errorf("next reply = %v %q", r.State, r.Text)
 	}
 	// An interruption is not an error.
-	if st := w.Status(id); st.Error != "" {
+	if st := w.Status(id); st.Error != nil {
 		t.Errorf("error = %q", st.Error)
 	}
 }
@@ -209,8 +209,8 @@ func TestTodoWriteIsAPlanAndThinkingAttaches(t *testing.T) {
 		agent.ThinkingDelta{ReplyID: "m1#0", Text: "想一想"},
 		agent.ThinkingDelta{ReplyID: "m1#0", Text: "再说"},
 		agent.PlanUpdated{PlanID: "todos", Items: []agent.PlanItem{{Text: "读", Status: agent.PlanCompleted}, {Text: "写", Status: agent.PlanInProgress}}},
-		agent.ToolFinished{ToolID: "t2", Output: "a\n[图片]", IsError: true},
-		agent.Failed{Message: "Claude Code 出错：too many turns"},
+		agent.ToolFinished{ToolID: "t2", Output: "a\n[image]", IsError: true},
+		agent.Failed{Message: "too many turns"},
 		agent.TurnEnded{},
 	}
 	if len(evs) != len(want) {

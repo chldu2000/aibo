@@ -15,7 +15,7 @@ import (
 
 // ErrNotReadable is what sending a mention of a file outside the
 // session's workspace and its source workspaces returns.
-var ErrNotReadable = errors.New("这个文件不在会话的工作区或可读的源工作区里")
+var ErrNotReadable = errors.New("the file is not in the session's workspace or a source workspace it reads")
 
 // FileHit is a file or directory that matched what the user typed.
 type FileHit struct {

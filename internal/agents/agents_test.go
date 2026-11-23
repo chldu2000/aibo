@@ -68,11 +68,11 @@ func TestFoundThroughTheLoginShell(t *testing.T) {
 	r.Detect(context.Background())
 
 	c := r.Status(claude.Kind)
-	if c.State != agents.Ready || c.Source != "登录 shell 的 PATH" || c.Version != "2.1.320" || c.Auth != "claude.ai（pro）" || !strings.HasPrefix(c.Path, "/") {
+	if c.State != agents.Ready || c.Source != agents.SourcePath || c.Version != "2.1.320" || c.Auth != "claude.ai (pro)" || !strings.HasPrefix(c.Path, "/") {
 		t.Errorf("claude = %+v", c)
 	}
 	x := r.Status(codex.Kind)
-	if x.State != agents.TooOld || !strings.Contains(x.Reason, "版本 0.168.0 过低，请升级到 0.169.0 或更高版本") || x.Usable() {
+	if x.State != agents.TooOld || x.Problem != agents.ProblemTooOld || x.Usable() {
 		t.Errorf("codex = %+v", x)
 	}
 	if err := r.Ready(codex.Kind); err == nil {
@@ -87,14 +87,14 @@ func TestFixedPlacesAndChosenPaths(t *testing.T) {
 	r := agents.New(agents.Options{Shell: shellWith(t), Dirs: []string{fixed}, Paths: nil})
 	r.SetPath(context.Background(), codex.Kind, chosen)
 	r.Check(context.Background(), claude.Kind)
-	if c := r.Status(claude.Kind); c.State != agents.Ready || c.Source != "常见安装位置" {
+	if c := r.Status(claude.Kind); c.State != agents.Ready || c.Source != agents.SourceCommon {
 		t.Errorf("claude = %+v", c)
 	}
-	if x := r.Status(codex.Kind); x.State != agents.Ready || x.Source != "设置中指定" || x.Auth != "ChatGPT" {
+	if x := r.Status(codex.Kind); x.State != agents.Ready || x.Source != agents.SourceSettings || x.Auth != "ChatGPT" {
 		t.Errorf("codex = %+v", x)
 	}
 	r.SetPath(context.Background(), codex.Kind, filepath.Join(other, "gone"))
-	if x := r.Status(codex.Kind); x.State != agents.NotInstalled || !strings.Contains(x.Reason, "指定的可执行文件不存在") {
+	if x := r.Status(codex.Kind); x.State != agents.NotInstalled || x.Problem != agents.ProblemBadPath {
 		t.Errorf("a chosen path that is gone: %+v", x)
 	}
 	if got := r.Paths(); got[codex.Kind] != filepath.Join(other, "gone") {
@@ -122,7 +122,7 @@ func TestNotInstalledAndSignedOut(t *testing.T) {
 
 	none := agents.New(agents.Options{Shell: shellWith(t), Dirs: []string{t.TempDir()}})
 	none.Detect(context.Background())
-	if c := none.Status(claude.Kind); c.State != agents.NotInstalled || !strings.Contains(c.Reason, "没有找到 Claude Code") {
+	if c := none.Status(claude.Kind); c.State != agents.NotInstalled || c.Problem != agents.ProblemNotFound {
 		t.Errorf("nothing installed: %+v", c)
 	}
 }

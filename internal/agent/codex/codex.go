@@ -101,9 +101,9 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	var raw json.RawMessage
 	if err := srv.call(ctx, method, params, &raw); err != nil {
 		if opts.ResumeID != "" {
-			return nil, fmt.Errorf("%w：%v", agent.ErrResumeFailed, err)
+			return nil, fmt.Errorf("%w: %v", agent.ErrResumeFailed, err)
 		}
-		return nil, fmt.Errorf("新建 Codex thread 失败：%w", err)
+		return nil, fmt.Errorf("%w: thread/start: %w", agent.ErrStartFailed, err)
 	}
 	var res struct {
 		Thread struct {
@@ -129,7 +129,7 @@ func (a *Agent) server(ctx context.Context) (*server, error) {
 		return a.srv, nil
 	}
 	if a.path == "" {
-		return nil, errors.New("没有找到 Codex")
+		return nil, agent.ErrNotFound
 	}
 	log := a.log
 	if log == nil {
@@ -205,7 +205,7 @@ func startServer(ctx context.Context, path string, env []string, log *slog.Logge
 	cmd.Stderr = io.MultiWriter(&s.stderr, &agent.LineLog{Log: log})
 	if err := cmd.Start(); err != nil {
 		log.Warn("app-server did not start", "error", err.Error())
-		return nil, fmt.Errorf("启动 Codex app-server 失败：%w", err)
+		return nil, fmt.Errorf("%w: %w", agent.ErrStartFailed, err)
 	}
 	s.log = log.With("pid", cmd.Process.Pid)
 	s.log.Info("app-server started")
@@ -213,7 +213,7 @@ func startServer(ctx context.Context, path string, env []string, log *slog.Logge
 	init := map[string]any{"clientInfo": map[string]any{"name": "aibo", "version": "0.1"}, "capabilities": map[string]any{"experimentalApi": true}}
 	if err := s.call(ctx, "initialize", init, nil); err != nil {
 		s.kill()
-		return nil, fmt.Errorf("Codex app-server 握手失败：%w", err)
+		return nil, fmt.Errorf("%w: initialize: %w", agent.ErrStartFailed, err)
 	}
 	if err := s.send(map[string]any{"method": "initialized"}); err != nil {
 		s.kill()
@@ -234,7 +234,7 @@ func (s *server) send(v any) error {
 		return err
 	}
 	if s.isDead() {
-		return errors.New("Codex app-server 已退出")
+		return fmt.Errorf("%w: the app-server exited", agent.ErrClosed)
 	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
@@ -262,7 +262,7 @@ func (s *server) call(ctx context.Context, method string, params, out any) error
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(2 * time.Minute):
-		return fmt.Errorf("Codex app-server 没有回应 %s", method)
+		return fmt.Errorf("the Codex app-server did not answer %s", method)
 	}
 	if r.err != nil {
 		return r.err
@@ -349,18 +349,18 @@ func (s *server) read(stdout io.Reader) {
 	sessions := s.sessions
 	s.sessions = map[string]*session{}
 	for id, ch := range s.pending {
-		ch <- response{err: errors.New("Codex app-server 已退出")}
+		ch <- response{err: fmt.Errorf("%w: the app-server exited", agent.ErrClosed)}
 		delete(s.pending, id)
 	}
 	s.mu.Unlock()
 	close(s.exited)
 	s.onIdle(s)
-	msg := "Codex app-server 意外退出"
+	msg := ""
 	if err != nil {
-		msg += "（" + err.Error() + "）"
+		msg = err.Error()
 	}
 	if t := strings.TrimSpace(s.stderr.String()); t != "" {
-		msg += "：" + t
+		msg = strings.TrimSpace(msg + "\n" + t)
 	}
 	for _, sess := range sessions {
 		sess.ended(msg)
@@ -381,7 +381,7 @@ func (s *server) request(id json.RawMessage, method string, params json.RawMessa
 		return
 	}
 	s.log.Warn("unknown request", "method", method, "fields", agent.Shape(params))
-	s.send(map[string]any{"id": id, "error": map[string]any{"code": -32601, "message": "aibo 不支持 " + method}})
+	s.send(map[string]any{"id": id, "error": map[string]any{"code": -32601, "message": "aibo does not support " + method}})
 }
 
 // notify passes a notification to the session of its thread, and those
@@ -482,9 +482,9 @@ func (s *session) notify(method string, params json.RawMessage) {
 func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 	s.mu.Lock()
 	if s.closed || s.running {
-		err := errors.New("Codex 会话已关闭")
+		err := agent.ErrClosed
 		if s.running {
-			err = errors.New("Codex 正在回复")
+			err = agent.ErrBusy
 		}
 		s.mu.Unlock()
 		return err
@@ -493,7 +493,7 @@ func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 	text := turn.Text
 	if s.note != "" {
 		// Codex's decline carries no reason: it comes now.
-		text = "（关于我刚才拒绝的操作，说明一下：" + s.note + "）\n\n" + text
+		text = denyNote(s.note) + text
 		s.note = ""
 	}
 	params := s.turnParams(withFiles(text, turn.Files))
@@ -592,7 +592,7 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 	k, ok := s.asks[id]
 	if !ok {
 		s.mu.Unlock()
-		return errors.New("Codex 没有在等这个审批")
+		return errors.New("no such approval request pending")
 	}
 	result, err := k.result(optionID)
 	if err != nil {
@@ -616,11 +616,11 @@ func withFiles(text string, files []agent.FileMention) string {
 	}
 	var b strings.Builder
 	b.WriteString(text)
-	b.WriteString("\n\n提到的文件（需要时请自己读取）：")
+	b.WriteString("\n\n" + filesHeading)
 	for _, f := range files {
 		b.WriteString("\n- " + f.Name())
 		if f.Dir {
-			b.WriteString("（目录）")
+			b.WriteString(dirMark)
 		}
 	}
 	return strings.TrimSpace(b.String())
@@ -658,7 +658,7 @@ func (s *session) SetModel(_ context.Context, model, effort string) error {
 // with turn/start, and reports them (thread/settings/updated).
 func (s *session) SetMode(_ context.Context, mode string) error {
 	if _, ok := presetOf(mode); !ok {
-		return fmt.Errorf("Codex 没有这个权限模式：%s", mode)
+		return fmt.Errorf("no such permission mode: %s", mode)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -672,7 +672,7 @@ func (s *session) Compact(ctx context.Context) error {
 	s.mu.Lock()
 	if s.closed || s.running {
 		s.mu.Unlock()
-		return errors.New("Codex 正忙或会话已关闭")
+		return agent.ErrBusy
 	}
 	s.running, s.parse.compacting = true, true
 	s.mu.Unlock()

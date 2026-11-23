@@ -71,7 +71,7 @@ func (e *env) until(t *testing.T, what string, cond func() bool) {
 func (e *env) idle(t *testing.T, id string) []model.Message {
 	t.Helper()
 	e.until(t, "the turn to end", func() bool { return !e.Status(id).Running })
-	if st := e.Status(id); st.Error != "" {
+	if st := e.Status(id); st.Error != nil {
 		t.Fatalf("Codex reported: %s", st.Error)
 	}
 	ms, _ := e.Messages(id)
