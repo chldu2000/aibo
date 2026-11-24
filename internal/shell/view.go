@@ -75,14 +75,28 @@ func (s *Shell) pane(c *ui.Context) {
 	}
 	v := s.view(x.ID)
 	ws := s.workspaceOf(x)
-	ui.Box(c).Fill().Children(func() {
+	pane := ui.Box(c).Fill()
+	width, _ := c.Size()
+	if b := pane.Bounds(); b.W > 0 {
+		width = b.W
+	} else if s.opts.Only == "" {
+		width -= s.split
+	}
+	if s.detail.session != x.ID {
+		s.detail.session, s.detail.confirming = x.ID, ""
+	}
+	pane.Children(func() {
+		rail := float32(0)
+		if s.detail.open && width >= 720 {
+			rail = min(400, width*0.42)
+		}
 		// Chosen rows show in a light tint with the theme's text, not the
 		// list's solid accent.
 		th := *t
 		if v.sel.on {
 			th.Accent, th.AccentText = tinted(c, ui.RGBA(40, 120, 255, 0.28)), t.Text
 		}
-		ui.Themed(c, &th).Fill().Children(func() {
+		ui.Themed(c, &th).Absolute().Top(0).Bottom(0).Left(0).Right(rail).Children(func() {
 			ui.Column(c).Fill().Children(func() {
 				s.messages(c, x, v, s.wb.Markers(x.ID)).Grow(1)
 			})
@@ -104,8 +118,8 @@ func (s *Shell) pane(c *ui.Context) {
 		}
 		ui.Row(c).Absolute().Top(headerTop).Left(left).Right(right).Height(headerBottom-headerTop).Radius(23).Clip().Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).DragWindow().Children(func() {
 			s.agentGlyph(c, x.Agent, 20)
-			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1)
-			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Grow(1)
+			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1).Shrink(1).MinWidth(0)
+			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Basis(0).Grow(1).MinWidth(0)
 			if iconButton(c, "arrowshape.turn.up.right", locales.SelectMessages()).Clicked() {
 				if v.sel.on {
 					s.stopSelecting(v)
@@ -117,12 +131,15 @@ func (s *Shell) pane(c *ui.Context) {
 				s.opts.OpenWindow(x.ID)
 			}
 			if iconButton(c, "sidebar.trailing", locales.SessionDetails()).Clicked() {
-				s.detail.open, s.detail.confirming = !s.detail.open, ""
+				if s.detail.open {
+					s.closeDetails(x.ID)
+				} else {
+					s.detail.open = true
+				}
 			}
 		})
 		s.windowCapsule(c)
-		s.details(c, x)
-		ui.Column(c).Absolute().Bottom(16).Left(16).Right(16).Gap(8).Children(func() {
+		composer := ui.Column(c).Absolute().Bottom(16).Left(16).Right(16 + rail).Gap(8).Children(func() {
 			s.banners(c, x.ID)
 			// Approvals whose tool calls have not started yet.
 			for _, a := range s.wb.LooseApprovals(x.ID) {
@@ -136,6 +153,15 @@ func (s *Shell) pane(c *ui.Context) {
 				s.composer(c, x, v)
 			}
 		})
+		if s.detail.open {
+			panel := ui.Column(c).Absolute().Top(headerBottom + 8).Right(12).Bottom(16).Key("session-inspector")
+			if rail > 0 {
+				panel.Width(rail - 12)
+			} else {
+				panel.Left(16).Bottom(composer.Bounds().H + 24)
+			}
+			s.inspector(c, panel, x)
+		}
 	})
 }
 
