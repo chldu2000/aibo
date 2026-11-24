@@ -135,19 +135,24 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key string, m model.Message)
 				label = locales.ToolTruncated(label)
 			}
 			ui.Text(c, label).FontSize(11).TextColor(t.TextMuted)
-			if len(m.Tool.Output) < bigOutput {
-				ui.Text(c, strings.TrimRight(m.Tool.Output, "\n")).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
-				return
-			}
-			out, ok := v.open.outputs[key]
-			if !ok || out.n != len(m.Tool.Output) {
-				out = output{st: &editor.State{Buffer: editor.NewBuffer(m.Tool.Output), ReadOnly: true}, n: len(m.Tool.Output)}
-				v.open.outputs[key] = out
-			}
-			editor.View(c, out.st).Height(320).Radius(8)
+			readOutput(c, &v.open, key, m.Tool.Output)
 		})
 	})
 	v.open.tools[key] = o
+}
+
+func readOutput(c *ui.Context, o *open, key, data string) {
+	if len(data) < bigOutput {
+		ui.Text(c, strings.TrimRight(data, "\n")).Font("Menlo").FontSize(11).TextColor(c.Theme().Text).Selectable()
+		return
+	}
+	o.init()
+	out, ok := o.outputs[key]
+	if !ok || out.n != len(data) {
+		out = output{st: &editor.State{Buffer: editor.NewBuffer(data), ReadOnly: true}, n: len(data)}
+		o.outputs[key] = out
+	}
+	editor.View(c, out.st).Height(320).Radius(8)
 }
 
 func pretty(input json.RawMessage) string {

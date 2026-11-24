@@ -152,6 +152,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 				m.Tool.Truncated = true
 			}
 			m.Tool.Output, m.Tool.IsError, m.Tool.Done = out, e.IsError, true
+			m.Tool.Declined, m.Tool.ExitCode = e.Declined, e.ExitCode
 			m.State, m.FinishedAt = model.Done, now
 		}
 		if e.Parent != "" {

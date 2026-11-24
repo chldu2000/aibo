@@ -84,6 +84,7 @@ func (s *Shell) pane(c *ui.Context) {
 	}
 	if s.detail.session != x.ID {
 		s.detail.session, s.detail.confirming = x.ID, ""
+		s.detail.selected = ""
 	}
 	pane.Children(func() {
 		rail := float32(0)

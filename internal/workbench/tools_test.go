@@ -8,6 +8,7 @@ import (
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/workbench"
 )
 
 func TestToolCallsThinkingPlansAndSubagents(t *testing.T) {
@@ -17,6 +18,7 @@ func TestToolCallsThinkingPlansAndSubagents(t *testing.T) {
 	ws, s := newSession(t, b)
 
 	b.Send(s.ID, "看看项目")
+	code := 0
 	sc.emit(
 		agent.ThinkingDelta{ReplyID: "m1", Text: "先列出"},
 		agent.ThinkingDelta{ReplyID: "m1", Text: "文件"},
@@ -33,7 +35,7 @@ func TestToolCallsThinkingPlansAndSubagents(t *testing.T) {
 		agent.ToolFinished{ToolID: "t1", Output: "module x"},
 		agent.ToolStarted{ToolID: "agent1", Name: "Agent", Input: json.RawMessage(`{"prompt": "数一下文件"}`)},
 		agent.ToolStarted{ToolID: "c1", Parent: "agent1", Name: "Bash", Input: json.RawMessage(`{"command": "ls | wc -l"}`)},
-		agent.ToolFinished{ToolID: "c1", Parent: "agent1", Output: "3"},
+		agent.ToolFinished{ToolID: "c1", Parent: "agent1", Output: "3", ExitCode: &code},
 		agent.ReplyDelta{ReplyID: "cm", Parent: "agent1", Text: "共 3 个文件"},
 		agent.ReplyDone{ReplyID: "cm", Parent: "agent1"},
 		agent.ToolFinished{ToolID: "agent1", Output: "3 个文件"},
@@ -47,6 +49,11 @@ func TestToolCallsThinkingPlansAndSubagents(t *testing.T) {
 
 	check := func(ms []model.Message) {
 		t.Helper()
+		calls := workbench.Activities(ms, workbench.Commands)
+		if len(calls) != 3 || calls[2].ID != "5.1" || calls[2].Active ||
+			calls[2].Message.Tool.ExitCode == nil || *calls[2].Message.Tool.ExitCode != 0 {
+			t.Fatalf("command history did not preserve nested call identity and exit status")
+		}
 		kinds := ""
 		for _, m := range ms {
 			kinds += string(m.Kind) + " "

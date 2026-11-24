@@ -135,6 +135,8 @@ type Tool struct {
 	// Output is the result, cut to MaxToolOutput bytes (Truncated).
 	Output    string
 	IsError   bool
+	Declined  bool `json:",omitempty"`
+	ExitCode  *int `json:",omitempty"`
 	Truncated bool
 	// Done is set once the result came.
 	Done bool
@@ -227,6 +229,10 @@ type ReferenceRead struct {
 func (m Message) Clone() Message {
 	if m.Tool != nil {
 		t := *m.Tool
+		if t.ExitCode != nil {
+			code := *t.ExitCode
+			t.ExitCode = &code
+		}
 		if t.Approval != nil {
 			a := *t.Approval
 			if a.Answer != nil {

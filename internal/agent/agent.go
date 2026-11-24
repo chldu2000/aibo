@@ -323,11 +323,13 @@ type ToolStarted struct {
 
 // ToolFinished reports a tool call's result.
 type ToolFinished struct {
-	ToolID  string
-	Parent  string
-	Output  string
-	IsError bool
-	Raw     json.RawMessage
+	ToolID   string
+	Parent   string
+	Output   string
+	IsError  bool
+	Declined bool
+	ExitCode *int
+	Raw      json.RawMessage
 }
 
 // PlanUpdated reports the Agent's plan, whole; a later update of the same

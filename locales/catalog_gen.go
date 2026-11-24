@@ -34,6 +34,106 @@ type Messages struct{ locale string }
 // source language.
 func In(locale string) Messages { return Messages{locale} }
 
+// CommandHistory says "Command history"
+// in the language the app shows.
+func CommandHistory() string { return In(i18n.Locale()).CommandHistory() }
+
+// CommandHistory says "Command history"
+// in the language of msgs.
+func (msgs Messages) CommandHistory() string {
+	return Catalog.Format(msgs.locale, "commandHistory", nil)
+}
+
+// CallDeclined says "Execution declined"
+// in the language the app shows.
+func CallDeclined() string { return In(i18n.Locale()).CallDeclined() }
+
+// CallDeclined says "Execution declined"
+// in the language of msgs.
+func (msgs Messages) CallDeclined() string {
+	return Catalog.Format(msgs.locale, "callDeclined", nil)
+}
+
+// CallActive says "Tool call in progress"
+// in the language the app shows.
+func CallActive() string { return In(i18n.Locale()).CallActive() }
+
+// CallActive says "Tool call in progress"
+// in the language of msgs.
+func (msgs Messages) CallActive() string {
+	return Catalog.Format(msgs.locale, "callActive", nil)
+}
+
+// CallReturned says "Tool call returned"
+// in the language the app shows.
+func CallReturned() string { return In(i18n.Locale()).CallReturned() }
+
+// CallReturned says "Tool call returned"
+// in the language of msgs.
+func (msgs Messages) CallReturned() string {
+	return Catalog.Format(msgs.locale, "callReturned", nil)
+}
+
+// CallUnknown says "Final state unknown"
+// in the language the app shows.
+func CallUnknown() string { return In(i18n.Locale()).CallUnknown() }
+
+// CallUnknown says "Final state unknown"
+// in the language of msgs.
+func (msgs Messages) CallUnknown() string {
+	return Catalog.Format(msgs.locale, "callUnknown", nil)
+}
+
+// NoActivities says "No activity recorded in this session."
+// in the language the app shows.
+func NoActivities() string { return In(i18n.Locale()).NoActivities() }
+
+// NoActivities says "No activity recorded in this session."
+// in the language of msgs.
+func (msgs Messages) NoActivities() string {
+	return Catalog.Format(msgs.locale, "noActivities", nil)
+}
+
+// UnknownCommandDir says "Working directory not recorded"
+// in the language the app shows.
+func UnknownCommandDir() string { return In(i18n.Locale()).UnknownCommandDir() }
+
+// UnknownCommandDir says "Working directory not recorded"
+// in the language of msgs.
+func (msgs Messages) UnknownCommandDir() string {
+	return Catalog.Format(msgs.locale, "unknownCommandDir", nil)
+}
+
+// CommandExit says "Exit code {code}"
+// in the language the app shows.
+func CommandExit(code string) string { return In(i18n.Locale()).CommandExit(code) }
+
+// CommandExit says "Exit code {code}"
+// in the language of msgs.
+func (msgs Messages) CommandExit(code string) string {
+	return Catalog.Format(msgs.locale, "commandExit", map[string]any{"code": code})
+}
+
+// CallEmptyOutput says "No output"
+// in the language the app shows.
+func CallEmptyOutput() string { return In(i18n.Locale()).CallEmptyOutput() }
+
+// CallEmptyOutput says "No output"
+// in the language of msgs.
+func (msgs Messages) CallEmptyOutput() string {
+	return Catalog.Format(msgs.locale, "callEmptyOutput", nil)
+}
+
+// CallNoResult says "No result recorded yet"
+// in the language the app shows.
+func CallNoResult() string { return In(i18n.Locale()).CallNoResult() }
+
+// CallNoResult says "No result recorded yet"
+// in the language of msgs.
+func (msgs Messages) CallNoResult() string {
+	return Catalog.Format(msgs.locale, "callNoResult", nil)
+}
+
 // WithDetail says "{head}: {detail}"
 // in the language the app shows.
 func WithDetail(head string, detail string) string { return In(i18n.Locale()).WithDetail(head, detail) }
@@ -3648,11 +3748,11 @@ func (msgs Messages) RemoveFile(name string) string {
 	return Catalog.Format(msgs.locale, "removeFile", map[string]any{"name": name})
 }
 
-// BadgeTerminals says "{count, plural, one {# terminal process} other {# terminal processes}}"
+// BadgeTerminals says "{count, plural, one {# active command call} other {# active command calls}}"
 // in the language the app shows.
 func BadgeTerminals(count int) string { return In(i18n.Locale()).BadgeTerminals(count) }
 
-// BadgeTerminals says "{count, plural, one {# terminal process} other {# terminal processes}}"
+// BadgeTerminals says "{count, plural, one {# active command call} other {# active command calls}}"
 // in the language of msgs.
 func (msgs Messages) BadgeTerminals(count int) string {
 	return Catalog.Format(msgs.locale, "badgeTerminals", map[string]any{"count": count})

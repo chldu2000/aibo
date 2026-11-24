@@ -4,6 +4,7 @@ import (
 	"github.com/chldu2000/aibo/locales"
 
 	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 )
@@ -11,7 +12,6 @@ import (
 // Tools that run a terminal process, and that run a subagent, by the
 // names the Agents give them.
 var (
-	terminalTools = map[string]bool{"Bash": true, "shell": true}
 	subagentTools = map[string]bool{"Agent": true, "Task": true, "agent": true}
 )
 
@@ -25,7 +25,7 @@ func running(msgs []model.Message) (terminals, subagents int) {
 				continue
 			}
 			switch {
-			case terminalTools[m.Tool.Name]:
+			case workbench.ActivityOf(m.Tool.Name) == workbench.Commands:
 				terminals++
 			case subagentTools[m.Tool.Name]:
 				subagents++
@@ -65,7 +65,9 @@ func (s *Shell) badges(c *ui.Context, x model.Session, v *sessionView) {
 	refs := s.wb.Received(x.ID)
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
 		if terminals > 0 {
-			chip(c, "terminal", locales.BadgeTerminals(terminals), locales.BadgeTerminalsLabel(), tintTerminal)
+			if chip(c, "terminal", locales.BadgeTerminals(terminals), locales.BadgeTerminalsLabel(), tintTerminal).Clicked() {
+				s.openActivities(x.ID, workbench.Commands, true)
+			}
 		}
 		if subagents > 0 {
 			chip(c, "person.2", locales.BadgeSubagents(subagents), locales.BadgeSubagentsLabel(), tintSubagent)

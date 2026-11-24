@@ -1,4 +1,14 @@
 {
+  "commandHistory": "Command history",
+  "callDeclined": "Execution declined",
+  "callActive": "Tool call in progress",
+  "callReturned": "Tool call returned",
+  "callUnknown": "Final state unknown",
+  "noActivities": "No activity recorded in this session.",
+  "unknownCommandDir": "Working directory not recorded",
+  "commandExit": "Exit code {code}",
+  "callEmptyOutput": "No output",
+  "callNoResult": "No result recorded yet",
   "@@locale": "en",
   "withDetail": "{head}: {detail}",
   "theAgent": "The Agent",
@@ -464,7 +474,7 @@
   "chooseFile": "Choose the file {path}",
   "sourceWorkspace": "{name} (source workspace)",
   "removeFile": "Remove the file {name}",
-  "badgeTerminals": "{count, plural, one {# terminal process} other {# terminal processes}}",
+  "badgeTerminals": "{count, plural, one {# active command call} other {# active command calls}}",
   "@badgeTerminals": {
     "placeholders": {
       "count": {

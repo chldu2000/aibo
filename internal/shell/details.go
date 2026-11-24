@@ -12,14 +12,17 @@ import (
 
 // detailsUI is the session details panel.
 type detailsUI struct {
-	open    bool
-	session string
+	open     bool
+	session  string
+	page     workbench.ActivityKind
+	selected string
 	// confirming is a dangerous mode waiting for a second click.
 	confirming string
 }
 
 func (s *Shell) closeDetails(id string) {
 	s.detail.open, s.detail.confirming = false, ""
+	s.detail.page, s.detail.selected = "", ""
 	s.focusComposer = id
 }
 
@@ -27,13 +30,28 @@ func (s *Shell) closeDetails(id string) {
 func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 	panel.Radius(16).Clip().Material(glass.Glass{}).Padding(12).Gap(8).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, locales.SessionDetails()).Bold().TextColor(c.Theme().Text).Grow(1)
+			title := locales.SessionDetails()
+			if s.detail.page != "" {
+				title = s.inspectorTitle()
+				if iconButton(c, "chevron.left", locales.Back()).Clicked() {
+					if s.detail.selected != "" {
+						s.detail.selected = ""
+					} else {
+						s.detail.page = ""
+					}
+				}
+			}
+			ui.Text(c, title).Bold().TextColor(c.Theme().Text).Grow(1)
 			if iconButton(c, "xmark", locales.DetailsClose()).Clicked() {
 				s.closeDetails(x.ID)
 			}
 		})
-		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			s.details(c, x)
+		ui.Scroll(c).Key(string(s.detail.page) + "/" + s.detail.selected).Grow(1).MinHeight(0).Children(func() {
+			if s.detail.page == "" {
+				s.details(c, x)
+			} else {
+				s.activityPage(c, x)
+			}
 		})
 	})
 }
@@ -50,6 +68,9 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 	}
 	text := func(s string) { ui.Text(c, s).FontSize(12).TextColor(t.Text).Selectable() }
 	ui.Column(c).Gap(12).Padding(4).Children(func() {
+		if ui.Button(c, locales.CommandHistory()).Clicked() {
+			s.openActivities(x.ID, workbench.Commands, false)
+		}
 		kv("Agent", func() {
 			text(s.agentName(x.Agent))
 		})

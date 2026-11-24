@@ -1,0 +1,117 @@
+package shell
+
+import (
+	"encoding/json"
+	"strconv"
+
+	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/workbench"
+	"github.com/chldu2000/aibo/locales"
+	"github.com/egoist/mygo/ui"
+)
+
+func (s *Shell) inspectorTitle() string {
+	return locales.CommandHistory()
+}
+
+func (s *Shell) openActivities(id string, kind workbench.ActivityKind, fromBadge bool) {
+	s.detail.open, s.detail.page, s.detail.selected = true, kind, ""
+	s.detail.confirming = ""
+	if fromBadge {
+		for _, a := range workbench.Activities(s.view(id).msgs, kind) {
+			if a.Active {
+				if s.detail.selected != "" {
+					s.detail.selected = ""
+					return
+				}
+				s.detail.selected = a.ID
+			}
+		}
+	}
+}
+
+func callState(a workbench.Activity) string {
+	m, tool := a.Message, a.Message.Tool
+	if tool.Declined || tool.Approval != nil && tool.Approval.Answer != nil &&
+		(tool.Approval.Answer.Kind == agent.Deny || tool.Approval.Answer.Kind == agent.DenyStop) {
+		return locales.CallDeclined()
+	}
+	switch {
+	case a.Active:
+		return locales.CallActive()
+	case m.State == model.Interrupted:
+		return locales.Interrupted()
+	case tool.IsError:
+		return locales.ToolResultError()
+	case tool.Done:
+		return locales.CallReturned()
+	default:
+		return locales.CallUnknown()
+	}
+}
+
+func (s *Shell) activityPage(c *ui.Context, x model.Session) {
+	v := s.view(x.ID)
+	items := workbench.Activities(v.msgs, s.detail.page)
+	ui.Column(c).Gap(6).Padding(4).Children(func() {
+		for _, a := range items {
+			if a.ID == s.detail.selected {
+				ui.Text(c, callState(a)).FontSize(12).TextColor(c.Theme().TextMuted)
+				s.commandDetail(c, v, a)
+				return
+			}
+		}
+		s.detail.selected = ""
+		if len(items) == 0 {
+			ui.Text(c, locales.NoActivities()).TextColor(c.Theme().TextMuted)
+		}
+		for _, a := range items {
+			label := "#" + a.ID + " · " + gist(a.Message.Tool.Input)
+			row := pickRow(c, a.ID, label, func() {
+				ui.Column(c).Gap(3).MinWidth(0).Grow(1).Children(func() {
+					ui.Text(c, label).MaxLines(2).TextColor(c.Theme().Text)
+					ui.Text(c, callState(a)).FontSize(11).TextColor(c.Theme().TextMuted)
+				})
+			})
+			if row.Clicked() {
+				s.detail.selected = a.ID
+			}
+		}
+	})
+}
+
+func (s *Shell) commandDetail(c *ui.Context, v *sessionView, a workbench.Activity) {
+	tool := a.Message.Tool
+	var cmd struct{ Command, Cwd string }
+	_ = json.Unmarshal(tool.Input, &cmd)
+	if cmd.Command == "" {
+		cmd.Command = pretty(tool.Input)
+	}
+	ui.Text(c, cmd.Command).Font("Menlo").Selectable().TextColor(c.Theme().Text)
+	if cmd.Cwd != "" {
+		ui.Text(c, cmd.Cwd).Selectable().TextColor(c.Theme().TextMuted)
+	} else {
+		ui.Text(c, locales.UnknownCommandDir()).TextColor(c.Theme().TextMuted)
+	}
+	if tool.ExitCode != nil {
+		ui.Text(c, locales.CommandExit(strconv.Itoa(*tool.ExitCode))).TextColor(c.Theme().TextMuted)
+	}
+	activityResult(c, v, a)
+}
+
+func activityResult(c *ui.Context, v *sessionView, a workbench.Activity) {
+	tool := a.Message.Tool
+	label := locales.ToolResult()
+	if tool.Truncated {
+		label = locales.ToolTruncated(label)
+	}
+	ui.Text(c, label).Bold().FontSize(12).TextColor(c.Theme().TextMuted)
+	if tool.Output != "" {
+		readOutput(c, &v.open, "inspector/"+a.ID, tool.Output)
+	} else if tool.Done {
+		ui.Text(c, locales.CallEmptyOutput()).TextColor(c.Theme().TextMuted)
+	} else {
+		ui.Text(c, locales.CallNoResult()).TextColor(c.Theme().TextMuted)
+	}
+}

@@ -46,12 +46,12 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 		}
 	}
 	settle()
-	if tt.HasText("个终端进程") || tt.HasText("运行中") {
+	if tt.HasText("个命令调用中") || tt.HasText("运行中") {
 		t.Errorf("badges show at zero: %q", tt.Texts())
 	}
 	wb.Send(s.ID, "跑")
 	deadline := time.After(5 * time.Second)
-	for !tt.HasText("2 个终端进程") {
+	for !tt.HasText("2 个命令调用中") {
 		select {
 		case <-changes:
 		case <-deadline:
@@ -63,12 +63,27 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 	if !tt.HasText("1 个子 Agent 运行中") {
 		t.Errorf("no subagent badge: %q", tt.Texts())
 	}
+	if err := tt.Click("终端进程"); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	if err := tt.Click("#2.1 · sleep 9"); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	if !tt.HasText("未记录工作目录") || !tt.HasText("尚未记录到结果") {
+		t.Fatalf("no running command detail: %q", tt.Texts())
+	}
+	if err := tt.Click("关闭会话详情"); err != nil {
+		t.Fatal(err)
+	}
+	settle()
 	close(release)
 	for wb.Status(s.ID).Running {
 		<-changes
 	}
 	settle()
-	if tt.HasText("2 个终端进程") || tt.HasText("1 个子 Agent 运行中") {
+	if tt.HasText("2 个命令调用中") || tt.HasText("1 个子 Agent 运行中") {
 		t.Errorf("badges stay after the tools ended: %q", tt.Texts())
 	}
 	for _, w := range []string{"压缩上下文", "引用会话…"} {
@@ -93,6 +108,13 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 		t.Errorf("opened %q in a window, want %q", opened, s.ID)
 	}
 	click("会话详情")
+	click("命令记录")
+	click("#2.1 · sleep 9")
+	if !tt.HasText("工具调用已返回") || !tt.HasText("ok") {
+		t.Fatalf("missing completed command: %q", tt.Texts())
+	}
+	click("返回")
+	click("返回")
 	for _, w := range []string{"权限模式", "原生会话", "工作区", "归档"} {
 		if !tt.HasText(w) {
 			t.Errorf("details lack %q: %q", w, tt.Texts())

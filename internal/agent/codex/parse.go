@@ -306,7 +306,11 @@ func (t *thread) completed(it item, raw json.RawMessage) []agent.Event {
 	}
 	if _, _, ok := tool(it); ok {
 		out, failed := result(it)
-		return []agent.Event{agent.ToolFinished{ToolID: it.ID, Output: out, IsError: failed, Raw: raw}}
+		e := agent.ToolFinished{ToolID: it.ID, Output: out, IsError: failed, Raw: raw}
+		if it.Type == "commandExecution" {
+			e.ExitCode, e.Declined = it.ExitCode, it.Status == "declined"
+		}
+		return []agent.Event{e}
 	}
 	return nil
 }
