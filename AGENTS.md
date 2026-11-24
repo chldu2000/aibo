@@ -16,4 +16,4 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 
 ### Conventions
 
-Project structure, concurrency, Agent protocols, storage, i18n and code style: see `docs/agents/conventions.md`. Run `scripts/check.sh` before committing.
+See [project conventions](docs/agents/conventions.md) for project structure, concurrency, Agent protocols, storage, i18n, code style, and commit message format. Run `scripts/check.sh` before committing.

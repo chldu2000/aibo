@@ -61,10 +61,18 @@ model ← store ← workbench ← shell ← cmd/aibo
 
 ## 代码风格
 
-- Go 的注释和标识符用英文；提交信息用中文。
+- Go 的注释和标识符用英文。
 - 错误提示要说清楚出了什么事、用户能怎么办。
 - 只用 `CGO_ENABLED=0` 构建。
 - 术语跟 `GLOSSARY.md` 一致；难以撤回、出人意料、经过取舍的决定，记进 `docs/adr/`。
+
+## 提交信息
+
+提交信息遵循 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)，标题、正文和页脚均用英文。标题由类型、可选的范围、英文冒号和一个空格、简短描述组成，例如 `docs: document commit conventions` 或 `fix(store): prevent duplicate messages after session recovery`。
+
+- 新功能用 `feat`，修复缺陷用 `fix`。其他改动按用途选择类型，例如 `docs`、`test`、`refactor` 或 `ci`。
+- 有破坏性变更时，在冒号前加 `!` 并在标题中说明变更，或在页脚用 `BREAKING CHANGE: ` 说明不兼容之处。
+- 正文和页脚均可省略。需要时，在标题、正文和页脚之间各留一个空行。
 
 ## 流程
 
