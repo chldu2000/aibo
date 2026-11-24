@@ -34,6 +34,56 @@ type Messages struct{ locale string }
 // source language.
 func In(locale string) Messages { return Messages{locale} }
 
+// ChildHistoryOpen says "Child conversation"
+// in the language the app shows.
+func ChildHistoryOpen() string { return In(i18n.Locale()).ChildHistoryOpen() }
+
+// ChildHistoryOpen says "Child conversation"
+// in the language of msgs.
+func (msgs Messages) ChildHistoryOpen() string {
+	return Catalog.Format(msgs.locale, "childHistoryOpen", nil)
+}
+
+// ChildHistoryUnavailable says "Child history unavailable"
+// in the language the app shows.
+func ChildHistoryUnavailable() string { return In(i18n.Locale()).ChildHistoryUnavailable() }
+
+// ChildHistoryUnavailable says "Child history unavailable"
+// in the language of msgs.
+func (msgs Messages) ChildHistoryUnavailable() string {
+	return Catalog.Format(msgs.locale, "childHistoryUnavailable", nil)
+}
+
+// ChildHistoryMore says "Load more turns"
+// in the language the app shows.
+func ChildHistoryMore() string { return In(i18n.Locale()).ChildHistoryMore() }
+
+// ChildHistoryMore says "Load more turns"
+// in the language of msgs.
+func (msgs Messages) ChildHistoryMore() string {
+	return Catalog.Format(msgs.locale, "childHistoryMore", nil)
+}
+
+// ChildHistoryRetry says "Try again"
+// in the language the app shows.
+func ChildHistoryRetry() string { return In(i18n.Locale()).ChildHistoryRetry() }
+
+// ChildHistoryRetry says "Try again"
+// in the language of msgs.
+func (msgs Messages) ChildHistoryRetry() string {
+	return Catalog.Format(msgs.locale, "childHistoryRetry", nil)
+}
+
+// ChildUserMessage says "User"
+// in the language the app shows.
+func ChildUserMessage() string { return In(i18n.Locale()).ChildUserMessage() }
+
+// ChildUserMessage says "User"
+// in the language of msgs.
+func (msgs Messages) ChildUserMessage() string {
+	return Catalog.Format(msgs.locale, "childUserMessage", nil)
+}
+
 // BackgroundUnknown says "Background status unknown"
 // in the language the app shows.
 func BackgroundUnknown() string { return In(i18n.Locale()).BackgroundUnknown() }

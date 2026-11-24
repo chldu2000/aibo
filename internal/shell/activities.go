@@ -49,6 +49,10 @@ func callState(a workbench.Activity) string {
 	switch {
 	case a.Active:
 		return locales.CallActive()
+	case m.State == model.Interrupted && !tool.Done:
+		// The parent turn stopped reporting. Its command or child may
+		// still be running independently.
+		return locales.CallUnknown()
 	case m.State == model.Interrupted:
 		return locales.Interrupted()
 	case tool.IsError:
@@ -68,7 +72,7 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 			if a.ID == s.detail.selected {
 				ui.Text(c, callState(a)).FontSize(12).TextColor(c.Theme().TextMuted)
 				if s.detail.page == string(workbench.Delegations) {
-					s.delegationDetail(c, v, a)
+					s.delegationDetail(c, x.ID, v, a)
 				} else {
 					s.commandDetail(c, x.ID, v, a)
 				}
@@ -99,8 +103,20 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 
 // delegationDetail shows the recorded timeline without the actionable
 // approval controls of a live conversation.
-func (s *Shell) delegationDetail(c *ui.Context, v *sessionView, a workbench.Activity) {
+func (s *Shell) delegationDetail(c *ui.Context, id string, v *sessionView, a workbench.Activity) {
 	m := a.Message
+	if h := s.detail.history; h != nil {
+		s.childPage(c, h)
+		if h.err == nil {
+			return
+		}
+	} else if m.Tool.ChildThread != "" && m.Tool.NativeThread != "" {
+		if ui.Button(c, locales.ChildHistoryOpen()).Clicked() {
+			h := &childHistoryView{session: id, activity: a.ID, seen: map[[2]string]bool{}, cursors: map[string]bool{}}
+			s.detail.history = h
+			s.loadChildPage(h)
+		}
+	}
 	var task struct{ Description, Prompt string }
 	_ = json.Unmarshal(m.Tool.Input, &task)
 	if task.Description != "" {

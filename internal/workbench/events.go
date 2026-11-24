@@ -122,7 +122,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		m.State, m.FinishedAt = model.Done, now
 		touch(i, true)
 	case agent.ToolStarted:
-		tool := &model.Tool{Name: e.Name, Input: e.Input}
+		tool := &model.Tool{Name: e.Name, Input: e.Input, ChildThread: e.ChildThread}
 		if e.NativeThread != "" {
 			tool.NativeThread, tool.NativeItem = e.NativeThread, e.ToolID
 		}

@@ -12,6 +12,7 @@ import (
 
 // detailsUI is the session details panel.
 type detailsUI struct {
+	history    *childHistoryView
 	open       bool
 	session    string
 	page       string
@@ -24,6 +25,7 @@ type detailsUI struct {
 }
 
 func (s *Shell) closeDetails(id string) {
+	s.closeChildHistory()
 	s.detail.open, s.detail.confirming = false, ""
 	s.detail.page, s.detail.selected = "", ""
 	s.focusComposer = id
@@ -37,7 +39,9 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 			if s.detail.page != "" {
 				title = s.inspectorTitle()
 				if iconButton(c, "chevron.left", locales.Back()).Clicked() {
-					if s.detail.page == "files" && s.workspacePanel(x.WorkspaceID).file != "" {
+					if s.detail.history != nil {
+						s.closeChildHistory()
+					} else if s.detail.page == "files" && s.workspacePanel(x.WorkspaceID).file != "" {
 						s.workspacePanel(x.WorkspaceID).file = ""
 					} else if s.detail.page == "git" && s.workspacePanel(x.WorkspaceID).change != nil {
 						s.workspacePanel(x.WorkspaceID).change = nil

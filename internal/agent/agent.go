@@ -314,6 +314,7 @@ type ReplyDone struct {
 
 // ToolStarted reports a tool call the Agent made, with its input.
 type ToolStarted struct {
+	ChildThread  string
 	NativeThread string
 	ToolID       string
 	Parent       string

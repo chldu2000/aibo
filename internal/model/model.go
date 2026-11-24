@@ -130,6 +130,7 @@ type Mention struct {
 
 // Tool is a tool call: what the Agent called, and what came back.
 type Tool struct {
+	ChildThread  string `json:",omitempty"`
 	NativeThread string `json:",omitempty"`
 	NativeItem   string `json:",omitempty"`
 	Name         string

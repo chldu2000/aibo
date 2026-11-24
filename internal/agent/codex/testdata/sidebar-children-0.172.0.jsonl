@@ -1,0 +1,9 @@
+{"method":"item/started","params":{"threadId":"parent","turnId":"delegating-turn","item":{"type":"subAgentActivity","id":"activity-1","kind":"started","agentThreadId":"child-1","agentPath":"/root/child_one"}}}
+{"method":"item/completed","params":{"threadId":"parent","turnId":"delegating-turn","item":{"type":"subAgentActivity","id":"activity-1","kind":"started","agentThreadId":"child-1","agentPath":"/root/child_one"}}}
+{"method":"item/started","params":{"threadId":"parent","turnId":"delegating-turn","item":{"type":"subAgentActivity","id":"activity-2","kind":"started","agentThreadId":"child-2","agentPath":"/root/child_two"}}}
+{"method":"item/completed","params":{"threadId":"parent","turnId":"delegating-turn","item":{"type":"subAgentActivity","id":"activity-2","kind":"started","agentThreadId":"child-2","agentPath":"/root/child_two"}}}
+{"request":"thread/read","params":{"threadId":"child-1"},"result":{"thread":{"id":"child-1","parentThreadId":"parent"}}}
+{"request":"thread/turns/list","params":{"threadId":"child-1","limit":1,"itemsView":"full","sortDirection":"asc"},"result":{"data":[{"id":"turn-1","itemsView":"full","status":"completed","items":[{"id":"item-1","type":"agentMessage","text":"AIBO_CHILD_ONE"}]}],"nextCursor":"page-1"}}
+{"request":"thread/turns/list","params":{"threadId":"child-1","cursor":"page-1","limit":1,"itemsView":"full","sortDirection":"asc"},"result":{"data":[{"id":"turn-2","itemsView":"full","status":"completed","items":[{"id":"item-2","type":"agentMessage","text":"AIBO_SECOND_PAGE"}]}],"nextCursor":null}}
+{"request":"thread/read","params":{"threadId":"child-2"},"result":{"thread":{"id":"child-2","parentThreadId":"parent"}}}
+{"request":"thread/turns/list","params":{"threadId":"child-2","limit":1,"itemsView":"full","sortDirection":"asc"},"result":{"data":[{"id":"turn-3","itemsView":"full","status":"completed","items":[{"id":"item-3","type":"agentMessage","text":"AIBO_CHILD_TWO"}]}],"nextCursor":null}}

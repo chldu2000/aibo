@@ -1,4 +1,9 @@
 {
+  "childHistoryOpen": "Child conversation",
+  "childHistoryUnavailable": "Child history unavailable",
+  "childHistoryMore": "Load more turns",
+  "childHistoryRetry": "Try again",
+  "childUserMessage": "User",
   "backgroundUnknown": "Background status unknown",
   "backgroundListed": "Running in the latest terminal snapshot",
   "backgroundAbsent": "Absent from the latest terminal snapshot",

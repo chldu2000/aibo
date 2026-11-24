@@ -55,6 +55,9 @@ func (s *Shell) pane(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
 	x, ok := s.wb.Session(s.current)
+	if h := s.detail.history; h != nil && (!ok || !s.detail.open || s.detail.page != string(workbench.Delegations) || h.session != x.ID || h.activity != s.detail.selected) {
+		s.closeChildHistory()
+	}
 	watched := ""
 	if ok && s.detail.open && !s.settings.open && (s.detail.page == "files" || s.detail.page == "git") {
 		watched = x.WorkspaceID

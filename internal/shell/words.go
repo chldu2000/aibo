@@ -28,6 +28,7 @@ var known = []struct {
 	{workbench.ErrGitRead, locales.GitReadFailed, true},
 	{workbench.ErrGitLarge, locales.GitTooLarge, false},
 	{workbench.ErrPreviewSpecial, locales.FilePreviewSpecial, false},
+	{agent.ErrChildHistory, locales.ChildHistoryUnavailable, false},
 	{workbench.ErrNotDirectory, locales.ErrNotDirectory, false},
 	{workbench.ErrWorkspaceExists, locales.ErrWorkspaceExists, false},
 	{workbench.ErrNoSuchWorkspace, locales.ErrNoSuchWorkspace, false},

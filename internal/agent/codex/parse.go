@@ -34,9 +34,12 @@ func newThread() *thread {
 
 // item is the part of a ThreadItem the workbench reads.
 type item struct {
-	Type string `json:"type"`
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	ActivityKind  string `json:"kind"`
+	AgentThreadID string `json:"agentThreadId"`
+	AgentPath     string `json:"agentPath"`
+	Type          string `json:"type"`
+	ID            string `json:"id"`
+	Text          string `json:"text"`
 	// reasoning
 	Summary []string `json:"summary"`
 	Content []string `json:"content"`
@@ -126,6 +129,10 @@ func tool(it item) (name string, input any, ok bool) {
 		return "web_search", map[string]any{"query": it.Query}, true
 	case "collabAgentToolCall":
 		return "agent", map[string]any{"prompt": it.Prompt}, true
+	case "subAgentActivity":
+		if it.ActivityKind == "started" && it.AgentThreadID != "" {
+			return "agent", map[string]any{"description": it.AgentPath}, true
+		}
 	}
 	return "", nil, false
 }
@@ -224,7 +231,7 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		}
 		if name, input, ok := tool(n.Item); ok {
 			b, _ := json.Marshal(input)
-			return []agent.Event{agent.ToolStarted{NativeThread: n.ThreadID, ToolID: n.Item.ID, Name: name, Input: b, Raw: params}}
+			return []agent.Event{agent.ToolStarted{NativeThread: n.ThreadID, ChildThread: n.Item.AgentThreadID, ToolID: n.Item.ID, Name: name, Input: b, Raw: params}}
 		}
 	case "item/completed":
 		delete(t.commands, n.Item.ID)

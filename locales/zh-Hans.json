@@ -1,4 +1,9 @@
 {
+  "childHistoryOpen": "子会话历史",
+  "childHistoryUnavailable": "暂时无法读取子会话历史",
+  "childHistoryMore": "加载更多轮次",
+  "childHistoryRetry": "重新读取",
+  "childUserMessage": "用户",
   "backgroundUnknown": "后台状态未知",
   "backgroundListed": "最近快照显示终端仍在运行",
   "backgroundAbsent": "最近快照未列出该终端",

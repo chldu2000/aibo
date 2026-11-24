@@ -61,6 +61,8 @@ Status: ready-for-agent
 
 ## Further Notes
 
+Codex CLI 0.172.0 的父线程用 `subAgentActivity` 的 `kind=started` 和 `agentThreadId` 标识本次创建的子线程。真实样本包含并发委派、父轮结束、重启后的直接父级核对和分页。打开历史及翻页只发出 `thread/read` 和 `thread/turns/list` 两种线程请求。Claude Code 保留已存委派步骤。[脱敏子线程实录](../../internal/agent/codex/testdata/sidebar-children-0.172.0.jsonl)
+
 Codex CLI 0.172.0 的后台清单只覆盖当前连接已加载的线程。Windows 样本记录了父轮结束后仍在运行的任务、从清单消失、审批拒绝，以及新连接查询失败；断线或缺少真实快照时显示未知。Claude Code 沿用命令记录。[脱敏后台实录](../../internal/agent/codex/testdata/sidebar-background-0.172.0.jsonl)
 
 Windows 上的 Codex CLI 0.172.0 已验证并发命令按线程、轮次和条目分段报告输出。完成事件提供聚合文本时替换增量，没有输出的命令可返回 null。[脱敏协议实录](../../internal/agent/codex/testdata/sidebar-command-0.172.0.jsonl)
