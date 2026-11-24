@@ -279,15 +279,7 @@ func (a *app) show() {
 			w.Invalidate()
 		}
 	})
-	a.win.Store(mygo.NewWindow(mygo.WindowOptions{
-		Title:         "aibo",
-		Width:         1180,
-		Height:        780,
-		TitleBarStyle: mygo.TitleBarHiddenInset,
-		Transparent:   true,
-		Vibrancy:      mygo.VibrancySidebar,
-		Content:       ui.View(a.sh.View),
-	}))
+	a.win.Store(newShellWindow(a.sh, "aibo", 1180, 780))
 }
 
 // closeDiag closes the diagnostic log, if open.
@@ -392,15 +384,7 @@ func (a *app) openWindow(sessionID string) {
 	if title == "" {
 		title = "aibo"
 	}
-	w := mygo.NewWindow(mygo.WindowOptions{
-		Title:         title,
-		Width:         860,
-		Height:        760,
-		TitleBarStyle: mygo.TitleBarHiddenInset,
-		Transparent:   true,
-		Vibrancy:      mygo.VibrancySidebar,
-		Content:       ui.View(sh.View),
-	})
+	w := newShellWindow(sh, title, 860, 760)
 	win.Store(w)
 	a.own[sessionID] = w
 	w.OnClosed(func() {
@@ -411,6 +395,21 @@ func (a *app) openWindow(sessionID string) {
 			}
 		})
 	})
+}
+
+func newShellWindow(sh *shell.Shell, title string, width, height int) *mygo.Window {
+	const customControls = runtime.GOOS == "windows"
+	w := mygo.NewWindow(mygo.WindowOptions{
+		Title: title, Width: width, Height: height,
+		TitleBarStyle: mygo.TitleBarHiddenInset, HideWindowButtons: customControls,
+		Transparent: true, Vibrancy: mygo.VibrancySidebar,
+		Content: ui.View(sh.View),
+	})
+	if customControls {
+		sh.SetWindowControls(w)
+		w.Invalidate()
+	}
+	return w
 }
 
 func openTerminal(path string) {

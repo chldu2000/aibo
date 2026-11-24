@@ -65,8 +65,9 @@ type Options struct {
 
 // Shell is the window's state.
 type Shell struct {
-	wb   *workbench.Workbench
-	opts Options
+	window WindowControls
+	wb     *workbench.Workbench
+	opts   Options
 
 	mu       sync.Mutex
 	pending  []workbench.Change // changes not yet applied

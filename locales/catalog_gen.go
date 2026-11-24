@@ -616,6 +616,46 @@ func (msgs Messages) Close() string {
 	return Catalog.Format(msgs.locale, "close", nil)
 }
 
+// MinimizeWindow says "Minimize window"
+// in the language the app shows.
+func MinimizeWindow() string { return In(i18n.Locale()).MinimizeWindow() }
+
+// MinimizeWindow says "Minimize window"
+// in the language of msgs.
+func (msgs Messages) MinimizeWindow() string {
+	return Catalog.Format(msgs.locale, "minimizeWindow", nil)
+}
+
+// MaximizeWindow says "Maximize window"
+// in the language the app shows.
+func MaximizeWindow() string { return In(i18n.Locale()).MaximizeWindow() }
+
+// MaximizeWindow says "Maximize window"
+// in the language of msgs.
+func (msgs Messages) MaximizeWindow() string {
+	return Catalog.Format(msgs.locale, "maximizeWindow", nil)
+}
+
+// RestoreWindow says "Restore window"
+// in the language the app shows.
+func RestoreWindow() string { return In(i18n.Locale()).RestoreWindow() }
+
+// RestoreWindow says "Restore window"
+// in the language of msgs.
+func (msgs Messages) RestoreWindow() string {
+	return Catalog.Format(msgs.locale, "restoreWindow", nil)
+}
+
+// CloseWindow says "Close window"
+// in the language the app shows.
+func CloseWindow() string { return In(i18n.Locale()).CloseWindow() }
+
+// CloseWindow says "Close window"
+// in the language of msgs.
+func (msgs Messages) CloseWindow() string {
+	return Catalog.Format(msgs.locale, "closeWindow", nil)
+}
+
 // WorkspaceMissing says "The workspace's folder is missing: {path}. Its sessions can be read and referenced, but not continued."
 // in the language the app shows.
 func WorkspaceMissing(path string) string { return In(i18n.Locale()).WorkspaceMissing(path) }

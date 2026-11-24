@@ -336,3 +336,86 @@ func TestTitleBarBand(t *testing.T) {
 		}
 	}
 }
+
+type testWindow struct {
+	minimized, maximized bool
+	closed               chan struct{}
+}
+
+func (w *testWindow) Minimize()         { w.minimized = true }
+func (w *testWindow) IsMaximized() bool { return w.maximized }
+func (w *testWindow) ToggleMaximize()   { w.maximized = !w.maximized }
+func (w *testWindow) Close()            { close(w.closed) }
+
+func TestWindowCapsule(t *testing.T) {
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(nil)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	for _, name := range []string{"empty", "main", "session"} {
+		t.Run(name, func(t *testing.T) {
+			opts := shell.Options{}
+			if name != "empty" {
+				ws, _ := wb.AddWorkspace(t.TempDir())
+				session, err := wb.NewSession(ws.ID, fake.Kind, "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if name == "session" {
+					opts.Only = session.ID
+				}
+			}
+			sh := shell.New(wb, opts)
+			defer sh.Close()
+			w := &testWindow{closed: make(chan struct{})}
+			sh.SetWindowControls(w)
+			tt := ui.NewTester(sh.View, 860, 760)
+			find := func(label string) ui.Rect {
+				t.Helper()
+				r, ok := tt.Find(label)
+				if !ok {
+					t.Fatalf("missing %s", label)
+				}
+				return r
+			}
+			click := func(label string) {
+				t.Helper()
+				if err := tt.Click(label); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+			}
+			minimize := find("最小化窗口")
+			maximize := find("最大化窗口")
+			shut := find("关闭窗口")
+			if minimize.X+minimize.W > maximize.X || maximize.X+maximize.W > shut.X {
+				t.Fatal("window buttons overlap")
+			}
+			if name != "empty" {
+				details := find("会话详情")
+				if details.X+details.W >= minimize.X || details.Y >= minimize.Y+minimize.H || minimize.Y >= details.Y+details.H {
+					t.Fatalf("window buttons %+v not beside session header %+v", minimize, details)
+				}
+			}
+			click("最大化窗口")
+			if !w.maximized {
+				t.Fatal("maximize did not reach this window")
+			}
+			click("还原窗口")
+			if w.maximized {
+				t.Fatal("restore did not reach this window")
+			}
+			click("最小化窗口")
+			if !w.minimized {
+				t.Fatal("minimize did not reach this window")
+			}
+			click("关闭窗口")
+			select {
+			case <-w.closed:
+			case <-time.After(time.Second):
+				t.Fatal("close did not reach this window")
+			}
+		})
+	}
+}

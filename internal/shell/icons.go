@@ -16,6 +16,8 @@ func glyph(body string) *ui.SVG {
 }
 
 var iconFallbacks = map[string]*ui.SVG{
+	"minus":                              glyph(`<path d="M4 12h16"/>`),
+	"square":                             glyph(`<rect x="4" y="4" width="16" height="16" rx="1"/>`),
 	"arrow.down.right.and.arrow.up.left": glyph(`<path d="M3 3l7 7m0-5v5H5m16 11-7-7m5 0h-5v5"/>`),
 	"arrow.turn.down.right":              glyph(`<path d="M5 3v8a4 4 0 0 0 4 4h11m-5-5 5 5-5 5"/>`),
 	"arrow.up":                           glyph(`<path d="M12 20V4m-7 7 7-7 7 7"/>`),

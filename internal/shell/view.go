@@ -66,6 +66,7 @@ func (s *Shell) pane(c *ui.Context) {
 			})
 			// Nothing to scroll here: the whole header band moves the window.
 			ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(max(bar.Height, headerBottom)).DragWindow()
+			s.windowCapsule(c)
 		})
 		return
 	}
@@ -94,9 +95,11 @@ func (s *Shell) pane(c *ui.Context) {
 			ui.Box(c).Absolute().Top(0).Left(0).Width(left).Height(headerBottom).DragWindow()
 		}
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(headerTop).DragWindow()
-		// Windows places its caption buttons at the right edge of both windows.
 		right := max(float32(16), bar.Right+12)
-		ui.Row(c).Absolute().Top(headerTop).Left(left).Right(right).Height(headerBottom-headerTop).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).DragWindow().Children(func() {
+		if s.window != nil {
+			right = capsuleRight + capsuleWidth + 8
+		}
+		ui.Row(c).Absolute().Top(headerTop).Left(left).Right(right).Height(headerBottom-headerTop).Radius(23).Clip().Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).DragWindow().Children(func() {
 			s.agentGlyph(c, x.Agent, 20)
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1)
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Grow(1)
@@ -114,6 +117,7 @@ func (s *Shell) pane(c *ui.Context) {
 				s.detail.open, s.detail.confirming = !s.detail.open, ""
 			}
 		})
+		s.windowCapsule(c)
 		s.details(c, x)
 		s.pullPanel(c, x) // before the composer, which it may give the focus back to
 		ui.Column(c).Absolute().Bottom(16).Left(16).Right(16).Gap(8).Children(func() {
