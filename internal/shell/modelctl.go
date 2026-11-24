@@ -7,7 +7,6 @@ import (
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
-	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -104,7 +103,7 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 	}
 	chip := func(symbol, text, label, tooltip string, enabled bool) ui.Element {
 		b := ui.Row(c).Gap(4).Padding(4, 8).Radius(8).AlignItems(ui.Center).Label(label).Tooltip(tooltip).Children(func() {
-			sfsymbols.Symbol(c, symbol).Size(13).Color(t.TextMuted)
+			icon(c, symbol).Size(13).Color(t.TextMuted)
 			ui.Text(c, text).FontSize(12).TextColor(t.TextMuted)
 		})
 		if !enabled {
@@ -142,7 +141,7 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 					if u.m != nil && u.m.ID == m.ID {
 						symbol = "checkmark.circle.fill"
 					}
-					sfsymbols.Symbol(c, symbol).Size(14).Color(t.Accent)
+					icon(c, symbol).Size(14).Color(t.Accent)
 					ui.Column(c).Grow(1).Children(func() {
 						ui.Text(c, m.Name).TextColor(t.Text)
 						if m.Description != "" {
@@ -176,7 +175,7 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 					if e == u.effort {
 						symbol = "checkmark.circle.fill"
 					}
-					sfsymbols.Symbol(c, symbol).Size(14).Color(t.Accent)
+					icon(c, symbol).Size(14).Color(t.Accent)
 					ui.Text(c, e).TextColor(t.Text).Grow(1)
 					if e == u.m.DefaultEffort {
 						ui.Text(c, locales.ModeDefault()).FontSize(11).TextColor(t.TextMuted)

@@ -327,4 +327,12 @@ func TestTitleBarBand(t *testing.T) {
 	if r := find(own, "新会话"); r.X <= bar.Left {
 		t.Errorf("the session's title at x=%v, under the traffic lights (to %v)", r.X, bar.Left)
 	}
+	caption := ui.TitleBar{Height: 32, Right: 138, Bottom: 32}
+	for tt, width := range map[*ui.Tester]float32{main: 1100, own: 860} {
+		tt.SetTitleBar(caption)
+		r := find(tt, "会话详情")
+		if r.Y < caption.Bottom && r.X+r.W > width-caption.Right {
+			t.Errorf("details button %+v overlaps caption buttons at x=%v", r, width-caption.Right)
+		}
+	}
 }

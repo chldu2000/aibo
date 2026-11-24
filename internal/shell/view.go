@@ -12,7 +12,6 @@ import (
 	"github.com/chldu2000/aibo/internal/refs"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/plugins/glass"
-	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -95,7 +94,9 @@ func (s *Shell) pane(c *ui.Context) {
 			ui.Box(c).Absolute().Top(0).Left(0).Width(left).Height(headerBottom).DragWindow()
 		}
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(headerTop).DragWindow()
-		ui.Row(c).Absolute().Top(headerTop).Left(left).Right(16).Height(headerBottom-headerTop).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).DragWindow().Children(func() {
+		// Windows places its caption buttons at the right edge of both windows.
+		right := max(float32(16), bar.Right+12)
+		ui.Row(c).Absolute().Top(headerTop).Left(left).Right(right).Height(headerBottom-headerTop).Radius(23).Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).DragWindow().Children(func() {
 			s.agentGlyph(c, x.Agent, 20)
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1)
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Grow(1)
@@ -273,7 +274,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 				s.draftMentions(c, x, v)
 				for _, r := range drafts {
 					ui.Row(c).Key(r.ID).Gap(6).Padding(3, 4, 3, 8).Radius(8).AlignItems(ui.Center).BorderWidth(1).BorderColor(t.Accent).Children(func() {
-						sfsymbols.Symbol(c, "paperclip").Size(12).Color(t.Accent)
+						icon(c, "paperclip").Size(12).Color(t.Accent)
 						ui.Text(c, s.refLabel(r)).FontSize(12).TextColor(t.Text)
 						if iconButton(c, "xmark", locales.RemoveReference()).Clicked() {
 							if err := s.wb.RemoveDraft(r.ID); err != nil {
@@ -353,7 +354,7 @@ func (s *Shell) agentName(kind agent.Kind) string {
 func iconButton(c *ui.Context, symbol, tip string) ui.Element {
 	t := c.Theme()
 	b := ui.Box(c).Padding(5).Radius(7).Tooltip(tip).Label(tip).Children(func() {
-		sfsymbols.Symbol(c, symbol).Size(15).Color(t.Text)
+		icon(c, symbol).Size(15).Color(t.Text)
 	})
 	if b.Hovered() {
 		b.Background(t.SurfaceHover)
@@ -364,7 +365,7 @@ func iconButton(c *ui.Context, symbol, tip string) ui.Element {
 // roundButton is the composer's round send/stop button.
 func roundButton(c *ui.Context, symbol, tip string, bg, fg ui.Color) ui.Element {
 	return ui.Box(c).Size(30, 30).Radius(15).Background(bg).AlignItems(ui.Center).Justify(ui.Center).Tooltip(tip).Label(tip).Children(func() {
-		sfsymbols.Symbol(c, symbol).Size(13).Color(fg)
+		icon(c, symbol).Size(13).Color(fg)
 	})
 }
 
@@ -415,7 +416,7 @@ func (s *Shell) referenceCard(c *ui.Context, id string) {
 	_, sourceExists := s.wb.Session(r.SourceID)
 	ui.Column(c).Key(id).Gap(6).Padding(8, 10).Radius(14).Material(glass.Glass{Tint: tinted(c, ui.RGBA(40, 120, 255, 0.18))}).Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			sfsymbols.Symbol(c, "paperclip").Size(12).Color(t.Text)
+			icon(c, "paperclip").Size(12).Color(t.Text)
 			ui.Text(c, s.refLabel(r)).FontSize(12).TextColor(t.Text).Grow(1)
 			label := locales.ShowBrief()
 			if s.openCards[id] {
@@ -430,7 +431,7 @@ func (s *Shell) referenceCard(c *ui.Context, id string) {
 		}
 		for i, rd := range r.Reads {
 			ui.Row(c).Key(i).Gap(6).AlignItems(ui.Center).Children(func() {
-				sfsymbols.Symbol(c, "eye").Size(11).Color(t.TextMuted)
+				icon(c, "eye").Size(11).Color(t.TextMuted)
 				ui.Text(c, locales.AgentRead(refs.Range(rd.From, rd.To))).FontSize(12).TextColor(t.TextMuted)
 				if sourceExists && ui.Button(c, locales.ShowInSource()).Clicked() {
 					s.goTo(r.SourceID, rd.From, rd.To)
@@ -542,7 +543,7 @@ func (s *Shell) working(c *ui.Context, x model.Session, st workbench.Status) {
 					text = locales.RetryingCount(r.Attempt, r.Max)
 				}
 				ui.Row(c).Gap(6).AlignItems(ui.Start).Children(func() {
-					sfsymbols.Symbol(c, "wifi.exclamationmark").Size(12).Color(t.Warning)
+					icon(c, "wifi.exclamationmark").Size(12).Color(t.Warning)
 					ui.Text(c, withDetail(text, r.Message)).FontSize(12).TextColor(t.Warning).Selectable().Grow(1)
 				})
 			}

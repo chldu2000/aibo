@@ -10,7 +10,6 @@ import (
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
-	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/egoist/mygo/ui/markdown"
@@ -115,7 +114,7 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key string, m model.Message)
 			ui.Text(c, pretty(m.Tool.Input)).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
 			for i, ch := range m.Children {
 				ui.Row(c).Key(i).Gap(6).AlignItems(ui.Start).Children(func() {
-					sfsymbols.Symbol(c, "arrow.turn.down.right").Size(11).Color(t.TextMuted)
+					icon(c, "arrow.turn.down.right").Size(11).Color(t.TextMuted)
 					ui.Column(c).Grow(1).Children(func() {
 						if ch.Kind == model.ToolCall {
 							s.tool(c, v, fmt.Sprintf("%s/%d", key, i), ch)
@@ -173,7 +172,7 @@ func plan(c *ui.Context, m model.Message) {
 				case agent.PlanInProgress:
 					symbol, color = "circle.dotted", t.Accent
 				}
-				sfsymbols.Symbol(c, symbol).Size(13).Color(color)
+				icon(c, symbol).Size(13).Color(color)
 				text := ui.Text(c, it.Text).TextColor(t.Text)
 				if it.Status == agent.PlanCompleted {
 					text.TextColor(t.TextMuted)

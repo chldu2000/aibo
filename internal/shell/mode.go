@@ -7,7 +7,6 @@ import (
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
-	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -77,7 +76,7 @@ func (s *Shell) modeControl(c *ui.Context, x model.Session) {
 		symbol, color, tip = "exclamationmark.shield", t.Warning, locales.ModeDangerTip(cur.Name, modeDescription(x.Agent, cur))
 	}
 	b := ui.Row(c).Gap(4).Padding(4, 8).Radius(8).AlignItems(ui.Center).Label(locales.ModeLabel(cur.Name)).Tooltip(tip).Children(func() {
-		sfsymbols.Symbol(c, symbol).Size(13).Color(color)
+		icon(c, symbol).Size(13).Color(color)
 		ui.Text(c, cur.Name).FontSize(12).TextColor(color)
 		if n := len(x.Rules); n > 0 {
 			ui.Text(c, locales.RulesCount(n)).FontSize(12).TextColor(color)
@@ -148,7 +147,7 @@ func (s *Shell) modeRow(c *ui.Context, kind agent.Kind, m agent.PermissionMode, 
 		if current {
 			symbol = "checkmark.circle.fill"
 		}
-		sfsymbols.Symbol(c, symbol).Size(14).Color(t.Accent)
+		icon(c, symbol).Size(14).Color(t.Accent)
 		ui.Column(c).Grow(1).Children(func() {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				name := ui.Text(c, m.Name).TextColor(t.Text)

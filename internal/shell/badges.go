@@ -5,7 +5,6 @@ import (
 
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/egoist/mygo/plugins/glass"
-	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -43,7 +42,7 @@ func running(msgs []model.Message) (terminals, subagents int) {
 func chip(c *ui.Context, symbol, text, label string, tint ui.Color) ui.Element {
 	t := c.Theme()
 	return ui.Row(c).Gap(6).Padding(5, 10).Radius(14).AlignItems(ui.Center).Label(label).Material(glass.Glass{Tint: tinted(c, tint)}).Children(func() {
-		sfsymbols.Symbol(c, symbol).Size(12).Color(t.Text)
+		icon(c, symbol).Size(12).Color(t.Text)
 		ui.Text(c, text).FontSize(12).TextColor(t.Text)
 	})
 }

@@ -122,7 +122,9 @@ func (s *Shell) generalSettings(c *ui.Context) {
 			ui.Text(c, s.settings.moveErr).FontSize(12).TextColor(t.Warning)
 		}
 	})
-	field(c, locales.DefaultModes(), locales.DefaultModesExplain(), func() {
+	ui.Column(c).Gap(6).Children(func() {
+		ui.Text(c, locales.DefaultModes()).TextColor(t.Text)
+		ui.Text(c, locales.DefaultModesExplain()).FontSize(11).TextColor(t.TextMuted)
 		for _, a := range s.wb.Agents() {
 			list := s.modesOf(a.Kind)
 			if list == nil {
@@ -144,7 +146,7 @@ func (s *Shell) generalSettings(c *ui.Context) {
 			}
 			ui.Row(c).Key(string(a.Kind)).Gap(8).AlignItems(ui.Center).Children(func() {
 				s.agentGlyph(c, a.Kind, 16)
-				ui.Text(c, a.Name).FontSize(12).TextColor(t.Text).Width(110)
+				ui.Text(c, a.Name).FontSize(12).TextColor(t.Text).Grow(1)
 				if ui.Select(c, &cur, names).Label(locales.DefaultModeOf(a.Name)).Changed() {
 					modes := map[agent.Kind]string{}
 					for k, v := range st.DefaultModes {

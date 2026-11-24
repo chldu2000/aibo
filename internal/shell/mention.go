@@ -8,7 +8,6 @@ import (
 
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/workbench"
-	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -73,7 +72,7 @@ func (s *Shell) pullFiles(c *ui.Context, x model.Session) {
 			symbol = "folder"
 		}
 		row := pickRow(c, "f"+h.Mention.Path, locales.ChooseFile(h.Rel), func() {
-			sfsymbols.Symbol(c, symbol).Size(14).Color(t.TextMuted)
+			icon(c, symbol).Size(14).Color(t.TextMuted)
 			ui.Text(c, h.Rel).Font("Menlo").FontSize(12).TextColor(t.Text).MaxLines(1).TruncateMiddle().Grow(1).Shrink(1).MinWidth(0)
 			if h.Workspace != "" {
 				ui.Text(c, locales.SourceWorkspace(filepath.Base(h.Workspace))).FontSize(11).TextColor(t.TextMuted).NoWrap()
@@ -129,7 +128,7 @@ func (s *Shell) mentionChip(c *ui.Context, x model.Session, m model.Mention, rem
 		symbol = "folder"
 	}
 	ui.Row(c).Key("m"+m.Path).Gap(6).Padding(3, 4, 3, 8).Radius(8).AlignItems(ui.Center).BorderWidth(1).BorderColor(t.Border).Tooltip(m.Path).Children(func() {
-		sfsymbols.Symbol(c, symbol).Size(12).Color(t.TextMuted)
+		icon(c, symbol).Size(12).Color(t.TextMuted)
 		ui.Text(c, name).Font("Menlo").FontSize(12).TextColor(t.Text).MaxLines(1).TruncateMiddle().MaxWidth(320)
 		if remove != nil && iconButton(c, "xmark", locales.RemoveFile(name)).Clicked() {
 			remove()

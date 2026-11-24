@@ -16,6 +16,49 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+type settingsAgent struct {
+	*fake.Agent
+	name string
+}
+
+func (a settingsAgent) Name() string     { return a.name }
+func (a settingsAgent) Kind() agent.Kind { return agent.Kind(a.name) }
+
+func TestGeneralSettingsWithTwoAgents(t *testing.T) {
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{
+		settingsAgent{fake.New(nil), "Claude Code"}, settingsAgent{fake.New(nil), "Codex"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 900, 780)
+	if err := tt.Click("设置（⌘,）"); err != nil {
+		t.Fatal(err)
+	}
+	find := func(label string) ui.Rect {
+		t.Helper()
+		for range 100 {
+			tt.Frame()
+			if r, ok := tt.Find(label); ok {
+				return r
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatalf("missing %s", label)
+		return ui.Rect{}
+	}
+	first := find("新会话的默认权限模式：Claude Code")
+	second := find("新会话的默认权限模式：Codex")
+	title := find("新会话的默认权限模式")
+	if title.H > 30 || first.Y == second.Y {
+		t.Errorf("default modes title height %.0f, selector rows at %.0f and %.0f", title.H, first.Y, second.Y)
+	}
+	if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
+		saveImage(t, tt.Image(), filepath.Join(p, "general-two-agents.png"))
+	}
+}
+
 // The settings: the default approval level, notifications, the advanced
 // budgets, and moving the data directory.
 func TestSettingsModal(t *testing.T) {

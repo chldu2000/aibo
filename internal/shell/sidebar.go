@@ -6,7 +6,6 @@ import (
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/egoist/mygo/plugins/glass"
-	"github.com/egoist/mygo/plugins/sfsymbols"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -170,7 +169,7 @@ func (s *Shell) marks(c *ui.Context, x model.Session) {
 	}
 	if m := s.modeOf(x); m.Risk == agent.Danger {
 		ui.Box(c).Label(m.Name + " · " + sessionTitle(x)).Tooltip(withDetail(m.Name, modeDescription(x.Agent, m))).Children(func() {
-			sfsymbols.Symbol(c, "exclamationmark.shield").Size(12).Color(t.Warning)
+			icon(c, "exclamationmark.shield").Size(12).Color(t.Warning)
 		})
 	}
 	if n := s.wb.Received(x.ID); n > 0 {
