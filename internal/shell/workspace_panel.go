@@ -10,6 +10,9 @@ import (
 )
 
 type workspacePanel struct {
+	diffView                 *editor.DiffState
+	diffFor                  workbench.GitChange
+	diffValue                workbench.ChangeDiff
 	change                   *workbench.GitChange
 	expanded                 map[string]bool
 	file                     string

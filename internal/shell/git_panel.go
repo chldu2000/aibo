@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -8,6 +9,7 @@ import (
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/chldu2000/aibo/locales"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 )
 
 func gitPathLabel(name string) string {
@@ -39,12 +41,23 @@ func (s *Shell) gitPage(c *ui.Context, id string) {
 		branch = locales.GitDetached() + " " + status.OID[:min(12, len(status.OID))]
 	}
 	ui.Text(c, branch).Bold().Selectable()
+	p := s.workspacePanel(id)
+	groups := []string{locales.GitStaged(), locales.GitUnstaged(), locales.GitUntracked(), locales.GitConflict()}
+	if p.change != nil {
+		ch := *p.change
+		ui.Text(c, groups[ch.Group]+" · "+changeLabel(ch)).Bold().Selectable()
+		if !slices.Contains(status.Changes, ch) {
+			ui.Text(c, locales.GitGone())
+			return
+		}
+		s.changeDiff(c, id, ch, p)
+		return
+	}
 	if len(status.Changes) == 0 {
 		ui.Text(c, locales.GitClean())
 		return
 	}
-	p := s.workspacePanel(id)
-	for group, label := range []string{locales.GitStaged(), locales.GitUnstaged(), locales.GitUntracked(), locales.GitConflict()} {
+	for group, label := range groups {
 		heading := false
 		for _, ch := range status.Changes {
 			if ch.Group != workbench.GitGroup(group) {
@@ -60,7 +73,55 @@ func (s *Shell) gitPage(c *ui.Context, id string) {
 			}
 		}
 	}
-	if p.change != nil {
-		ui.Text(c, changeLabel(*p.change)).Selectable()
+}
+
+func (s *Shell) changeDiff(c *ui.Context, id string, ch workbench.GitChange, p *workspacePanel) {
+	if ch.Group == workbench.GitConflict {
+		ui.Text(c, locales.GitUnmerged())
+		return
 	}
+	r := s.wb.Diff(id, ch)
+	if !readReady(s, c, r) {
+		return
+	}
+	d := r.Value
+	if d.Missing {
+		ui.Text(c, locales.GitGone())
+		return
+	}
+	if d.Truncated {
+		ui.Text(c, locales.FilePreviewLimited())
+	}
+	if p.diffView == nil || p.diffFor != ch || p.diffValue != d {
+		view := &editor.DiffState{Layout: editor.DiffUnified}
+		if d.Untracked {
+			if d.AddedText == "" {
+				ui.Text(c, locales.GitEmptyAdded())
+				return
+			}
+			view.New = editor.NewBuffer(d.AddedText)
+		} else {
+			files, err := editor.ParsePatch(d.Patch)
+			if err != nil || len(files) != 1 {
+				ui.Text(c, locales.GitMetadata())
+				ui.Text(c, d.Patch).Selectable()
+				return
+			}
+			file := files[0]
+			if file.Binary {
+				ui.Text(c, locales.FilePreviewBinary())
+				return
+			}
+			if len(file.Hunks) == 0 {
+				ui.Text(c, locales.GitMetadata())
+				if file.OldMode != file.NewMode {
+					ui.Text(c, file.OldMode+" → "+file.NewMode).Selectable()
+				}
+				return
+			}
+			view.SetPatch(file)
+		}
+		p.diffView, p.diffFor, p.diffValue = view, ch, d
+	}
+	editor.DiffView(c, p.diffView).Height(360).Radius(8)
 }

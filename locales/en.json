@@ -1,4 +1,8 @@
 {
+  "gitGone": "This change is no longer listed",
+  "gitUnmerged": "Resolve the conflict to compare these versions",
+  "gitEmptyAdded": "New empty file",
+  "gitMetadata": "Change recorded without a text hunk",
   "gitStatus": "Git status",
   "gitUnborn": "No commits yet",
   "gitDetached": "Detached HEAD",

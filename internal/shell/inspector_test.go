@@ -78,6 +78,12 @@ func TestInspectorFileSelectionFollowsWorkspace(t *testing.T) {
 	click("Git 状态")
 	wait("sidebar-test · 尚无提交")
 	wait("?  src/file.txt")
+	click("?  src/file.txt")
+	wait("未跟踪 · ?  src/file.txt")
+	sh.Open(second.ID)
+	wait("未跟踪 · ?  src/file.txt")
+	click("返回")
+	wait("?  src/file.txt")
 	sh.Open(third.ID)
 	wait("此目录不属于 Git 仓库")
 }

@@ -34,6 +34,46 @@ type Messages struct{ locale string }
 // source language.
 func In(locale string) Messages { return Messages{locale} }
 
+// GitGone says "This change is no longer listed"
+// in the language the app shows.
+func GitGone() string { return In(i18n.Locale()).GitGone() }
+
+// GitGone says "This change is no longer listed"
+// in the language of msgs.
+func (msgs Messages) GitGone() string {
+	return Catalog.Format(msgs.locale, "gitGone", nil)
+}
+
+// GitUnmerged says "Resolve the conflict to compare these versions"
+// in the language the app shows.
+func GitUnmerged() string { return In(i18n.Locale()).GitUnmerged() }
+
+// GitUnmerged says "Resolve the conflict to compare these versions"
+// in the language of msgs.
+func (msgs Messages) GitUnmerged() string {
+	return Catalog.Format(msgs.locale, "gitUnmerged", nil)
+}
+
+// GitEmptyAdded says "New empty file"
+// in the language the app shows.
+func GitEmptyAdded() string { return In(i18n.Locale()).GitEmptyAdded() }
+
+// GitEmptyAdded says "New empty file"
+// in the language of msgs.
+func (msgs Messages) GitEmptyAdded() string {
+	return Catalog.Format(msgs.locale, "gitEmptyAdded", nil)
+}
+
+// GitMetadata says "Change recorded without a text hunk"
+// in the language the app shows.
+func GitMetadata() string { return In(i18n.Locale()).GitMetadata() }
+
+// GitMetadata says "Change recorded without a text hunk"
+// in the language of msgs.
+func (msgs Messages) GitMetadata() string {
+	return Catalog.Format(msgs.locale, "gitMetadata", nil)
+}
+
 // GitStatus says "Git status"
 // in the language the app shows.
 func GitStatus() string { return In(i18n.Locale()).GitStatus() }

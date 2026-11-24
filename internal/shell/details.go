@@ -37,6 +37,8 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 				if iconButton(c, "chevron.left", locales.Back()).Clicked() {
 					if s.detail.page == "files" && s.workspacePanel(x.WorkspaceID).file != "" {
 						s.workspacePanel(x.WorkspaceID).file = ""
+					} else if s.detail.page == "git" && s.workspacePanel(x.WorkspaceID).change != nil {
+						s.workspacePanel(x.WorkspaceID).change = nil
 					} else if s.detail.selected != "" {
 						s.detail.selected = ""
 					} else {

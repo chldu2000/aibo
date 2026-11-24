@@ -1,4 +1,8 @@
 {
+  "gitGone": "选中的改动已消失",
+  "gitUnmerged": "文件存在合并冲突",
+  "gitEmptyAdded": "新增空文件",
+  "gitMetadata": "已记录改动，无文本差异块",
   "gitStatus": "Git 状态",
   "gitUnborn": "尚无提交",
   "gitDetached": "分离 HEAD",
