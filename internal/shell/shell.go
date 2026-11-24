@@ -91,9 +91,7 @@ type Shell struct {
 	side sidebarUI
 	// glyphs are the Agents' icons, parsed once.
 	glyphs map[agent.Kind]*ui.SVG
-	// models are the models each Agent told; modelMenu the composer's
-	// model and effort menus.
-	models    map[agent.Kind]*models
+	// modelMenu holds the composer's model and effort menus.
 	modelMenu modelState
 	// detail is the session details panel.
 	detail detailsUI

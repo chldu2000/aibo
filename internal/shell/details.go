@@ -5,6 +5,7 @@ import (
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 )
@@ -44,7 +45,7 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 				text(s.agentName(x.Agent))
 			})
 			kv(locales.DetailModel(), func() {
-				u := s.using(x)
+				u := modelInUse(x, st, s.modelsOf(x.Agent, workbench.PeekModels).Models)
 				line := u.name
 				if u.effort != "" {
 					line = locales.EffortLine(line, u.effort)

@@ -2,15 +2,139 @@ package shell_test
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/agent/codex"
 	"github.com/chldu2000/aibo/internal/agent/fake"
+	"github.com/chldu2000/aibo/internal/agents"
+	"github.com/chldu2000/aibo/internal/agents/testdata/fakecli"
 	"github.com/chldu2000/aibo/internal/shell"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/ui"
 )
+
+type countingModels struct {
+	*fake.Agent
+	calls atomic.Int32
+	reply chan error
+}
+
+func (*countingModels) Kind() agent.Kind { return codex.Kind }
+
+func (a *countingModels) Models(ctx context.Context) ([]agent.Model, error) {
+	a.calls.Add(1)
+	select {
+	case err := <-a.reply:
+		if err != nil {
+			return nil, err
+		}
+		return []agent.Model{{ID: "big", Name: "Big"}}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestModelListDuringDetectionAndAcrossWindows(t *testing.T) {
+	a := &countingModels{Agent: fake.New(nil), reply: make(chan error, 1)}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{a}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	reg := agents.New(agents.Options{})
+	ws, err := wb.AddWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := wb.NewSession(ws.ID, a.Kind(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := wb.NewSession(ws.ID, a.Kind(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	window := func(id string) (*shell.Shell, *ui.Tester) {
+		sh := shell.New(wb, shell.Options{Agents: reg, Only: id})
+		t.Cleanup(sh.Close)
+		return sh, ui.NewTester(sh.View, 1100, 800)
+	}
+	mainShell, main := window("")
+	mainShell.Open(first.ID)
+	_, other := window(first.ID)
+	frame := func() {
+		for _, tt := range []*ui.Tester{main, other} {
+			tt.Frame()
+			tt.Advance(time.Second)
+		}
+	}
+	until := func(what string, ready func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+			frame()
+			if ready() {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatalf("%s: calls=%d main=%q other=%q", what, a.calls.Load(), main.Texts(), other.Texts())
+	}
+	click := func(tt *ui.Tester) {
+		t.Helper()
+		if err := tt.Click("模型：默认模型"); err != nil {
+			t.Fatal(err)
+		}
+		frame()
+	}
+	wantCalls := func(want int32) {
+		t.Helper()
+		if got := a.calls.Load(); got != want {
+			t.Fatalf("model lookups = %d, want %d", got, want)
+		}
+	}
+	// Even with a menu open, discovery must configure the executable first.
+	path := fakecli.Install(t, t.TempDir(), "codex", "0.169.0", true)
+	frame()
+	click(main)
+	click(other)
+	wantCalls(0)
+	reg.SetPath(context.Background(), a.Kind(), path)
+	until("one shared lookup", func() bool { return a.calls.Load() == 1 })
+	a.reply <- errors.New("temporary failure")
+	until("both menus show the failure", func() bool {
+		return main.HasText("读不到模型列表：temporary failure") && other.HasText("读不到模型列表：temporary failure")
+	})
+	for i := 0; i < 5; i++ {
+		frame()
+	}
+	wantCalls(1)
+	click(main)
+	click(main)
+	until("one retry", func() bool { return a.calls.Load() == 2 })
+	a.reply <- nil
+	until("both windows show the recovered list", func() bool { return main.HasText("Big") && other.HasText("Big") })
+	reg.Check(context.Background(), a.Kind())
+	click(main)
+	mainShell.Open(second.ID)
+	frame()
+	click(main)
+	wantCalls(2)
+	click(main)
+	click(other)
+	reg.SetPath(context.Background(), a.Kind(), fakecli.Install(t, t.TempDir(), "codex", "0.169.0", true))
+	frame()
+	wantCalls(2) // unnamed defaults need no model details until a menu opens
+	click(main)
+	click(other)
+	until("changed executable read once", func() bool { return a.calls.Load() == 3 })
+	a.reply <- nil
+	until("both windows show the new list", func() bool { return main.HasText("Big") && other.HasText("Big") })
+	wantCalls(3)
+}
 
 // withEfforts is a fake Agent that tells models taking reasoning
 // efforts: its default, which runs as fake.DefaultModel, and two more.

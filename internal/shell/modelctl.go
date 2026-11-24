@@ -1,47 +1,32 @@
 package shell
 
 import (
-	"context"
-	"github.com/chldu2000/aibo/locales"
 	"slices"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/agents"
 	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/workbench"
+	"github.com/chldu2000/aibo/locales"
 	"github.com/egoist/mygo/ui"
 )
 
-// models are the models an Agent told, loaded once.
-type models struct {
-	list    []agent.Model
-	loading bool
-	err     string
-}
-
-// modelsOf are an Agent's models, loading them the first time; nil while
-// they load, or when the Agent does not tell.
-func (s *Shell) modelsOf(kind agent.Kind) *models {
-	if !s.wb.TellsModels(kind) {
-		return nil
+func (s *Shell) modelsOf(kind agent.Kind, demand workbench.ModelDemand) workbench.ModelList {
+	var source workbench.ModelSource
+	if r := s.opts.Agents; r != nil {
+		st := r.Status(kind)
+		switch {
+		case st.State == agents.Checking:
+			return workbench.ModelList{Loading: true}
+		case st.Problem == agents.ProblemUnknown:
+			// Demo and test Agents are provided directly by the workbench.
+		case !st.Usable():
+			return workbench.ModelList{Err: &agents.UnusableError{Status: st}}
+		default:
+			source = workbench.ModelSource{Path: st.Path, Version: st.Version, Auth: st.Auth, SignedOut: st.State == agents.NotLoggedIn}
+		}
 	}
-	if s.models == nil {
-		s.models = map[agent.Kind]*models{}
-	}
-	if m, ok := s.models[kind]; ok {
-		return m
-	}
-	m := &models{loading: true}
-	s.models[kind] = m
-	go func() {
-		list, err := s.wb.Models(context.Background(), kind)
-		s.later(func() {
-			m.loading, m.list = false, list
-			if err != nil {
-				m.err = s.say(err)
-
-			}
-		})
-	}()
-	return m
+	return s.wb.ModelList(kind, source, demand)
 }
 
 // modelState is the composer's model and effort menus.
@@ -57,12 +42,7 @@ type using struct {
 	m            *agent.Model
 }
 
-func (s *Shell) using(x model.Session) using {
-	var list []agent.Model
-	if ms := s.modelsOf(x.Agent); ms != nil {
-		list = ms.list
-	}
-	st := s.wb.Status(x.ID)
+func modelInUse(x model.Session, st workbench.Status, list []agent.Model) using {
 	u := using{effort: x.Effort}
 	if u.effort == "" {
 		u.effort = st.Effort
@@ -93,8 +73,18 @@ func (s *Shell) using(x model.Session) using {
 // while no turn runs, which change them from the next turn on.
 func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 	t := c.Theme()
-	u := s.using(x)
-	ms := s.modelsOf(x.Agent)
+	st := &s.modelMenu
+	status := s.wb.Status(x.ID)
+	canList := s.wb.TellsModels(x.Agent)
+	var ms workbench.ModelList
+	if canList {
+		demand := workbench.PeekModels
+		if st.models || x.Model != "" || status.Model != "" {
+			demand = workbench.LoadModels
+		}
+		ms = s.modelsOf(x.Agent, demand)
+	}
+	u := modelInUse(x, status, ms.Models)
 	tip := func(what string) string {
 		if running {
 			return locales.ChangeAfter(what)
@@ -113,15 +103,21 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 		}
 		return b
 	}
-	if ms == nil {
+	if !canList {
 		// The Agent tells no models: what it uses, unchangeable.
 		chip("cpu", u.name, locales.ModelLabel(u.name), locales.ModelHeading(), false)
 		return
 	}
-	st := &s.modelMenu
 	mb := chip("cpu", u.name, locales.ModelLabel(u.name), tip(locales.ModelWord()), !running)
 	if mb.Clicked() && !running {
 		st.models, st.efforts = !st.models, false
+		if st.models {
+			demand := workbench.LoadModels
+			if ms.Err != nil {
+				demand = workbench.RetryModels
+			}
+			ms = s.modelsOf(x.Agent, demand)
+		}
 	}
 	if running {
 		st.models, st.efforts = false, false
@@ -130,12 +126,12 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 		ui.Column(c).Width(320).Gap(2).Padding(8).Children(func() {
 			ui.Text(c, locales.ModelHeading()).Bold().TextColor(t.Text).Padding(0, 6, 4)
 			switch {
-			case ms.loading:
+			case ms.Loading:
 				ui.Text(c, locales.ModelsLoading()).FontSize(12).TextColor(t.TextMuted).Padding(4, 6)
-			case ms.err != "":
-				ui.Text(c, withDetail(locales.ModelsFailed(), ms.err)).FontSize(11).TextColor(t.Warning).Padding(4, 6)
+			case ms.Err != nil:
+				ui.Text(c, withDetail(locales.ModelsFailed(), s.say(ms.Err))).FontSize(11).TextColor(t.Warning).Padding(4, 6)
 			}
-			for _, m := range ms.list {
+			for _, m := range ms.Models {
 				if pickRow(c, "m"+m.ID, locales.UseModel(m.Name), func() {
 					symbol := "circle"
 					if u.m != nil && u.m.ID == m.ID {

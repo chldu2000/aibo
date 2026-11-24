@@ -158,6 +158,7 @@ type Workbench struct {
 
 	mu         sync.Mutex
 	closing    bool
+	modelLists map[agent.Kind]*modelListEntry
 	workspaces []model.Workspace
 	sessions   map[string]*session
 	refs       map[string]*model.Reference
@@ -289,6 +290,9 @@ func (w *Workbench) Close() error {
 	}
 	w.closing = true
 	close(w.done)
+	for _, entry := range w.modelLists {
+		entry.cancel()
+	}
 	var natives []agent.Session
 	for _, s := range w.sessions {
 		if s.native != nil {

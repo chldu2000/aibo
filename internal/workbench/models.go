@@ -42,3 +42,73 @@ func (w *Workbench) SetModel(sessionID, model, effort string) error {
 	w.notify(Change{SessionID: sessionID})
 	return nil
 }
+
+// ModelSource identifies the installation and sign-in used for a list.
+type ModelSource struct {
+	Path, Version, Auth string
+	SignedOut           bool
+}
+
+// ModelList is a read-only snapshot shared by windows of the workbench.
+type ModelList struct {
+	Models  []agent.Model
+	Loading bool
+	Err     error
+}
+
+type modelListEntry struct {
+	source ModelSource
+	cancel context.CancelFunc
+	list   ModelList
+}
+
+type ModelDemand int
+
+const (
+	// PeekModels reads only what is already cached.
+	PeekModels ModelDemand = iota
+	LoadModels
+	// RetryModels also retries a failed request when the user opens the menu.
+	RetryModels
+)
+
+// ModelList starts at most one lookup for a source and notifies all windows
+// when it completes. An empty successful list is cached too.
+func (w *Workbench) ModelList(kind agent.Kind, source ModelSource, demand ModelDemand) ModelList {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	entry := w.modelLists[kind]
+	if entry != nil && entry.source != source {
+		entry.cancel()
+		delete(w.modelLists, kind)
+		entry = nil
+	}
+	if entry != nil && (entry.list.Err == nil || demand != RetryModels) {
+		return entry.list
+	}
+	if w.closing || demand == PeekModels {
+		return ModelList{}
+	}
+	if w.modelLists == nil {
+		w.modelLists = make(map[agent.Kind]*modelListEntry)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	entry = &modelListEntry{source: source, cancel: cancel, list: ModelList{Loading: true}}
+	w.modelLists[kind] = entry
+	w.pumps.Add(1)
+	go func() {
+		defer w.pumps.Done()
+		defer cancel()
+		list, err := w.Models(ctx, kind)
+		w.mu.Lock()
+		current := !w.closing && w.modelLists[kind] == entry
+		if current {
+			entry.list = ModelList{Models: list, Err: err}
+		}
+		w.mu.Unlock()
+		if current {
+			w.notify(Change{})
+		}
+	}()
+	return entry.list
+}

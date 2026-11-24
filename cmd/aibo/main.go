@@ -275,9 +275,14 @@ func (a *app) show() {
 		},
 	})
 	a.reg.OnChange(func() {
-		if w := a.win.Load(); w != nil {
-			w.Invalidate()
-		}
+		mygo.RunOnMain(func() {
+			if w := a.win.Load(); w != nil {
+				w.Invalidate()
+			}
+			for _, w := range a.own {
+				w.Invalidate()
+			}
+		})
 	})
 	a.win.Store(newShellWindow(a.sh, "aibo", 1180, 780))
 }
