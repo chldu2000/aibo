@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Shell) inspectorTitle() string {
+	if s.detail.page == workbench.Delegations {
+		return locales.DelegationHistory()
+	}
 	return locales.CommandHistory()
 }
 
@@ -58,7 +61,11 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 		for _, a := range items {
 			if a.ID == s.detail.selected {
 				ui.Text(c, callState(a)).FontSize(12).TextColor(c.Theme().TextMuted)
-				s.commandDetail(c, v, a)
+				if s.detail.page == workbench.Delegations {
+					s.delegationDetail(c, v, a)
+				} else {
+					s.commandDetail(c, v, a)
+				}
 				return
 			}
 		}
@@ -79,6 +86,37 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 			}
 		}
 	})
+}
+
+// delegationDetail shows the recorded timeline without the actionable
+// approval controls of a live conversation.
+func (s *Shell) delegationDetail(c *ui.Context, v *sessionView, a workbench.Activity) {
+	m := a.Message
+	var task struct{ Description, Prompt string }
+	_ = json.Unmarshal(m.Tool.Input, &task)
+	if task.Description != "" {
+		ui.Text(c, task.Description).Bold().TextColor(c.Theme().Text)
+	}
+	if task.Prompt != "" {
+		ui.Text(c, task.Prompt).Selectable().TextColor(c.Theme().Text)
+	}
+	ui.Text(c, locales.ChildRecordedSteps()).Bold().FontSize(12).TextColor(c.Theme().TextMuted)
+	if len(m.Children) == 0 {
+		ui.Text(c, locales.NoChildMessages()).TextColor(c.Theme().TextMuted)
+	}
+	for i, child := range m.Children {
+		key := a.ID + "." + strconv.Itoa(i+1)
+		ui.Column(c).Key(key).Gap(4).Padding(8).Radius(8).Background(c.Theme().Surface).Children(func() {
+			if child.Tool == nil {
+				ui.Text(c, child.Text).Selectable().TextColor(c.Theme().Text)
+				return
+			}
+			ui.Text(c, child.Tool.Name).Bold().TextColor(c.Theme().Text)
+			readOutput(c, &v.open, "input/"+key, pretty(child.Tool.Input))
+			activityResult(c, v, workbench.Activity{ID: key, Message: child})
+		})
+	}
+	activityResult(c, v, a)
 }
 
 func (s *Shell) commandDetail(c *ui.Context, v *sessionView, a workbench.Activity) {

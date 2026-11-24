@@ -60,7 +60,7 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 		}
 		settle()
 	}
-	if !tt.HasText("1 个子 Agent 运行中") {
+	if !tt.HasText("1 个委派调用中") {
 		t.Errorf("no subagent badge: %q", tt.Texts())
 	}
 	if err := tt.Click("终端进程"); err != nil {
@@ -78,12 +78,23 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	settle()
+	if err := tt.Click("子 Agent"); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	if !tt.HasText("已记录步骤") || !tt.HasText("Bash") {
+		t.Fatalf("single active delegation did not open directly: %q", tt.Texts())
+	}
+	if err := tt.Click("关闭会话详情"); err != nil {
+		t.Fatal(err)
+	}
+	settle()
 	close(release)
 	for wb.Status(s.ID).Running {
 		<-changes
 	}
 	settle()
-	if tt.HasText("2 个命令调用中") || tt.HasText("1 个子 Agent 运行中") {
+	if tt.HasText("2 个命令调用中") || tt.HasText("1 个委派调用中") {
 		t.Errorf("badges stay after the tools ended: %q", tt.Texts())
 	}
 	for _, w := range []string{"压缩上下文", "引用会话…"} {

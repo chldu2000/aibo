@@ -9,12 +9,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// Tools that run a terminal process, and that run a subagent, by the
-// names the Agents give them.
-var (
-	subagentTools = map[string]bool{"Agent": true, "Task": true, "agent": true}
-)
-
 // running counts a session's tool calls still running that run terminal
 // processes, and subagents: a subagent's own calls too.
 func running(msgs []model.Message) (terminals, subagents int) {
@@ -24,10 +18,10 @@ func running(msgs []model.Message) (terminals, subagents int) {
 			if m.Kind != model.ToolCall || m.Tool == nil || m.State != model.Streaming {
 				continue
 			}
-			switch {
-			case workbench.ActivityOf(m.Tool.Name) == workbench.Commands:
+			switch workbench.ActivityOf(m.Tool.Name) {
+			case workbench.Commands:
 				terminals++
-			case subagentTools[m.Tool.Name]:
+			case workbench.Delegations:
 				subagents++
 			}
 			count(m.Children)
@@ -70,7 +64,9 @@ func (s *Shell) badges(c *ui.Context, x model.Session, v *sessionView) {
 			}
 		}
 		if subagents > 0 {
-			chip(c, "person.2", locales.BadgeSubagents(subagents), locales.BadgeSubagentsLabel(), tintSubagent)
+			if chip(c, "person.2", locales.BadgeSubagents(subagents), locales.BadgeSubagentsLabel(), tintSubagent).Clicked() {
+				s.openActivities(x.ID, workbench.Delegations, true)
+			}
 		}
 		if st.Approvals > 0 {
 			chip(c, "exclamationmark.shield", locales.BadgeApprovals(st.Approvals), locales.BadgeApprovalsLabel(), tintApproval)

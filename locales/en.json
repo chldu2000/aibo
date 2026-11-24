@@ -1,4 +1,7 @@
 {
+  "delegationHistory": "Subagent activity",
+  "childRecordedSteps": "Recorded steps",
+  "noChildMessages": "No child messages have been recorded.",
   "commandHistory": "Command history",
   "callDeclined": "Execution declined",
   "callActive": "Tool call in progress",
@@ -483,7 +486,7 @@
     }
   },
   "badgeTerminalsLabel": "Terminal processes",
-  "badgeSubagents": "{count, plural, one {# subagent running} other {# subagents running}}",
+  "badgeSubagents": "{count, plural, one {# active delegation} other {# active delegations}}",
   "@badgeSubagents": {
     "placeholders": {
       "count": {

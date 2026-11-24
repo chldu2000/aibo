@@ -68,9 +68,14 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 	}
 	text := func(s string) { ui.Text(c, s).FontSize(12).TextColor(t.Text).Selectable() }
 	ui.Column(c).Gap(12).Padding(4).Children(func() {
-		if ui.Button(c, locales.CommandHistory()).Clicked() {
-			s.openActivities(x.ID, workbench.Commands, false)
-		}
+		ui.Row(c).Gap(6).Wrap().Children(func() {
+			if ui.Button(c, locales.CommandHistory()).Clicked() {
+				s.openActivities(x.ID, workbench.Commands, false)
+			}
+			if ui.Button(c, locales.DelegationHistory()).Clicked() {
+				s.openActivities(x.ID, workbench.Delegations, false)
+			}
+		})
 		kv("Agent", func() {
 			text(s.agentName(x.Agent))
 		})

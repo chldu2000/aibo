@@ -34,6 +34,36 @@ type Messages struct{ locale string }
 // source language.
 func In(locale string) Messages { return Messages{locale} }
 
+// DelegationHistory says "Subagent activity"
+// in the language the app shows.
+func DelegationHistory() string { return In(i18n.Locale()).DelegationHistory() }
+
+// DelegationHistory says "Subagent activity"
+// in the language of msgs.
+func (msgs Messages) DelegationHistory() string {
+	return Catalog.Format(msgs.locale, "delegationHistory", nil)
+}
+
+// ChildRecordedSteps says "Recorded steps"
+// in the language the app shows.
+func ChildRecordedSteps() string { return In(i18n.Locale()).ChildRecordedSteps() }
+
+// ChildRecordedSteps says "Recorded steps"
+// in the language of msgs.
+func (msgs Messages) ChildRecordedSteps() string {
+	return Catalog.Format(msgs.locale, "childRecordedSteps", nil)
+}
+
+// NoChildMessages says "No child messages have been recorded."
+// in the language the app shows.
+func NoChildMessages() string { return In(i18n.Locale()).NoChildMessages() }
+
+// NoChildMessages says "No child messages have been recorded."
+// in the language of msgs.
+func (msgs Messages) NoChildMessages() string {
+	return Catalog.Format(msgs.locale, "noChildMessages", nil)
+}
+
 // CommandHistory says "Command history"
 // in the language the app shows.
 func CommandHistory() string { return In(i18n.Locale()).CommandHistory() }
@@ -3768,11 +3798,11 @@ func (msgs Messages) BadgeTerminalsLabel() string {
 	return Catalog.Format(msgs.locale, "badgeTerminalsLabel", nil)
 }
 
-// BadgeSubagents says "{count, plural, one {# subagent running} other {# subagents running}}"
+// BadgeSubagents says "{count, plural, one {# active delegation} other {# active delegations}}"
 // in the language the app shows.
 func BadgeSubagents(count int) string { return In(i18n.Locale()).BadgeSubagents(count) }
 
-// BadgeSubagents says "{count, plural, one {# subagent running} other {# subagents running}}"
+// BadgeSubagents says "{count, plural, one {# active delegation} other {# active delegations}}"
 // in the language of msgs.
 func (msgs Messages) BadgeSubagents(count int) string {
 	return Catalog.Format(msgs.locale, "badgeSubagents", map[string]any{"count": count})

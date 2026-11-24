@@ -8,12 +8,17 @@ import (
 
 type ActivityKind string
 
-const Commands ActivityKind = "commands"
+const (
+	Commands    ActivityKind = "commands"
+	Delegations ActivityKind = "delegations"
+)
 
 func ActivityOf(name string) ActivityKind {
 	switch name {
 	case "Bash", "shell":
 		return Commands
+	case "Agent", "Task", "agent":
+		return Delegations
 	}
 	return ""
 }

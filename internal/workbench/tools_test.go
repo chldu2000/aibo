@@ -50,6 +50,10 @@ func TestToolCallsThinkingPlansAndSubagents(t *testing.T) {
 	check := func(ms []model.Message) {
 		t.Helper()
 		calls := workbench.Activities(ms, workbench.Commands)
+		tasks := workbench.Activities(ms, workbench.Delegations)
+		if len(tasks) != 1 || tasks[0].ID != "5" || tasks[0].Active || len(tasks[0].Message.Children) != 2 {
+			t.Fatalf("delegations lost their recorded steps")
+		}
 		if len(calls) != 3 || calls[2].ID != "5.1" || calls[2].Active ||
 			calls[2].Message.Tool.ExitCode == nil || *calls[2].Message.Tool.ExitCode != 0 {
 			t.Fatalf("command history did not preserve nested call identity and exit status")

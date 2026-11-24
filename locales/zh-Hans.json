@@ -1,4 +1,7 @@
 {
+  "delegationHistory": "子 Agent 活动",
+  "childRecordedSteps": "已记录步骤",
+  "noChildMessages": "尚未记录到子消息。",
   "commandHistory": "命令记录",
   "callDeclined": "已拒绝执行",
   "callActive": "工具调用进行中",
@@ -371,7 +374,7 @@
   "removeFile": "移除文件 {name}",
   "badgeTerminals": "{count} 个命令调用中",
   "badgeTerminalsLabel": "终端进程",
-  "badgeSubagents": "{count} 个子 Agent 运行中",
+  "badgeSubagents": "{count} 个委派调用中",
   "badgeSubagentsLabel": "子 Agent",
   "badgeApprovals": "{count} 个待审批",
   "badgeApprovalsLabel": "待审批",
