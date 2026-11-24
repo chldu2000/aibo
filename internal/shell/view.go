@@ -55,6 +55,9 @@ func (s *Shell) pane(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
 	x, ok := s.wb.Session(s.current)
+	if s.pull.open && (s.pull.in != s.current || !ok || s.settings.open) {
+		s.pull = pull{}
+	}
 	if !ok {
 		ui.Box(c).Fill().Children(func() {
 			ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
@@ -119,7 +122,6 @@ func (s *Shell) pane(c *ui.Context) {
 		})
 		s.windowCapsule(c)
 		s.details(c, x)
-		s.pullPanel(c, x) // before the composer, which it may give the focus back to
 		ui.Column(c).Absolute().Bottom(16).Left(16).Right(16).Gap(8).Children(func() {
 			s.banners(c, x.ID)
 			// Approvals whose tool calls have not started yet.
@@ -127,6 +129,7 @@ func (s *Shell) pane(c *ui.Context) {
 				s.approvalCard(c, x.ID, &a)
 			}
 			if v.sel.on {
+				s.pull = pull{}
 				s.selectionBar(c, x, v)
 			} else {
 				s.badges(c, x, v)
@@ -272,7 +275,8 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 	t := c.Theme()
 	running := s.wb.Status(x.ID).Running
 	drafts := s.wb.Drafts(x.ID)
-	ui.Column(c).Gap(6).Padding(10, 12).Radius(18).Material(glass.Glass{}).Children(func() {
+	card := ui.Column(c).Gap(6).Padding(10, 12).Radius(18).Material(glass.Glass{})
+	card.Children(func() {
 		if len(drafts) > 0 || len(v.mentions) > 0 {
 			ui.Row(c).Gap(6).Wrap().Children(func() {
 				s.draftMentions(c, x, v)
@@ -306,19 +310,26 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			}
 			return true
 		})
-		if s.refocus {
+		if s.focusComposer == x.ID {
 			input.Focus()
-			s.refocus = false
 		}
+		s.focusComposer = ""
 		// Typing "@" opens the @ panel too; a paste with one does not.
 		if at, ok := typedAt(v.typed, v.draft); ok && !v.pasted {
 			s.openPull(x.ID, at)
 		}
 		v.typed, v.pasted = v.draft, false
-		ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+		var atButton ui.Element
+		toolbar := ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 			iconButton(c, "paperclip", locales.Attach()).Opacity(0.4)
-			if iconButton(c, "at", locales.MentionButton()).Clicked() {
-				s.openPull(x.ID, -1)
+			atButton = iconButton(c, "at", locales.MentionButton())
+			if atButton.Clicked() {
+				if s.pull.open {
+					s.pull = pull{}
+					input.Focus()
+				} else {
+					s.openPull(x.ID, -1)
+				}
 			}
 			s.modelControls(c, x, running)
 			s.modeControl(c, x)
@@ -342,6 +353,10 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 				}
 			}
 		})
+		if s.pull.open && (input.PressedInside() || toolbar.PressedInside() && !atButton.PressedInside()) {
+			s.pull = pull{}
+		}
+		s.pullPanel(c, x, card)
 	})
 }
 

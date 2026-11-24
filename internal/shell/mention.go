@@ -30,7 +30,7 @@ const filesShown = 8
 // matchFiles matches the session's files against query, unless it was
 // the last one matched.
 func (s *Shell) matchFiles(sessionID, query string) {
-	f := &s.pull.files
+	f := s.pull.files
 	if f.asked && f.query == query {
 		return
 	}
@@ -40,13 +40,12 @@ func (s *Shell) matchFiles(sessionID, query string) {
 	go func() {
 		hits, err := s.wb.MatchFiles(context.Background(), sessionID, query, filesShown)
 		s.later(func() {
-			if s.pull.files.gen != gen {
+			if s.pull.files != f || f.gen != gen {
 				return
 			}
-			s.pull.files.hits, s.pull.files.loading, s.pull.files.err = hits, false, ""
+			f.hits, f.loading, f.err = hits, false, ""
 			if err != nil {
-				s.pull.files.err = s.say(err)
-
+				f.err = s.say(err)
 			}
 		})
 	}()
@@ -56,7 +55,7 @@ func (s *Shell) matchFiles(sessionID, query string) {
 // mentions one.
 func (s *Shell) pullFiles(c *ui.Context, x model.Session) {
 	t := c.Theme()
-	f := &s.pull.files
+	f := s.pull.files
 	ui.Text(c, locales.FilesHeading()).FontSize(11).Bold().TextColor(t.TextMuted).Padding(4, 8, 2)
 	switch {
 	case f.err != "":

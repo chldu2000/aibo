@@ -1,7 +1,6 @@
 package shell
 
 import (
-	"github.com/chldu2000/aibo/locales"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -9,6 +8,8 @@ import (
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
 	"github.com/chldu2000/aibo/internal/workbench"
+	"github.com/chldu2000/aibo/locales"
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -24,7 +25,7 @@ type pull struct {
 	at int
 	in string
 	// files are the files matching the search.
-	files fileSearch
+	files *fileSearch
 	// source is the session chosen, with its own view for choosing
 	// messages; nil while searching.
 	source *model.Session
@@ -72,26 +73,31 @@ func dropAt(draft string, at int) string {
 // openPull opens the @ panel: by the "@" at byte at of session id's
 // draft, or by the @ button when at is -1.
 func (s *Shell) openPull(id string, at int) {
-	s.pull = pull{open: true, at: at, in: id}
+	s.pull = pull{open: true, at: at, in: id, files: &fileSearch{}}
 }
 
 // pullPanel shows the @ panel, when open, for the receiving session x.
-func (s *Shell) pullPanel(c *ui.Context, x model.Session) {
+func (s *Shell) pullPanel(c *ui.Context, x model.Session, card ui.Element) {
 	if !s.pull.open {
 		return
 	}
-	ui.Modal(c, &s.pull.open, func() {
-		ui.Column(c).Width(760).Height(560).Gap(10).Padding(16).Children(func() {
-			if s.pull.source == nil {
-				s.pullSearch(c, x)
-			} else {
-				s.pullRange(c, x)
-			}
-		})
+	b := card.Bounds()
+	room := max(0, b.Y-headerBottom-16)
+	panel := ui.PopoverBase(c, card, &s.pull.open, func(panel ui.Element) {
+		panel.AttachTo(card, ui.AnchorTopStart, ui.AnchorBottomStart).Margin(0, 0, 8, 0).
+			Radius(16).Shadow(0, 5, 18, 0, ui.RGBA(0, 0, 0, 0.18))
+		content := ui.Column(c).Width(b.W).Gap(8).Padding(12).Radius(16).Material(glass.Glass{})
+		if s.pull.source == nil {
+			content.MaxHeight(min(320, room)).Children(func() { s.pullSearch(c, x) })
+		} else {
+			content.Height(min(440, room)).Children(func() { s.pullRange(c, x, b.W < 520) })
+		}
 	})
-	// However it closed, the caret goes back to the composer.
 	if !s.pull.open {
-		s.refocus = true
+		s.pull = pull{}
+		if !panel.PressedOutside() {
+			s.focusComposer = x.ID
+		}
 	}
 }
 
@@ -103,7 +109,7 @@ func (s *Shell) pullSearch(c *ui.Context, x model.Session) {
 	ui.TextInput(c, &s.pull.query).Placeholder(locales.MentionSearch()).Label(locales.MentionSearchLabel()).AutoFocus()
 	s.matchFiles(x.ID, strings.TrimSpace(s.pull.query))
 	q := strings.ToLower(strings.TrimSpace(s.pull.query))
-	ui.Scroll(c).Grow(1).Children(func() {
+	ui.Scroll(c).Shrink(1).MinHeight(0).Children(func() {
 		ui.Column(c).Gap(2).Children(func() {
 			s.pullFiles(c, x)
 			ui.Text(c, locales.SessionsHeading()).FontSize(11).Bold().TextColor(t.TextMuted).Padding(10, 8, 2)
@@ -153,7 +159,7 @@ func (s *Shell) choosePullSource(src model.Session) {
 
 // pullRange chooses the range on the source's timeline, with the brief
 // as it would be beside it.
-func (s *Shell) pullRange(c *ui.Context, x model.Session) {
+func (s *Shell) pullRange(c *ui.Context, x model.Session, narrow bool) {
 	t := c.Theme()
 	p := &s.pull
 	v, src := p.v, *p.source
@@ -169,7 +175,7 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 		p.source, p.v = nil, nil
 		return
 	}
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
 		if n == 0 {
 			ui.Text(c, locales.PullHint()).FontSize(12).TextColor(t.TextMuted)
 		} else {
@@ -179,17 +185,23 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 			}
 		}
 		ui.Spacer(c)
-		if ui.Button(c, locales.SelectAll()).Clicked() && len(v.msgs) > 0 {
-			v.choose(v.msgs[0].Seq, v.msgs[len(v.msgs)-1].Seq)
-		}
-		if ui.Button(c, locales.SelectTurns()).Disabled(n == 0).Clicked() && n > 0 {
-			v.wholeTurns()
-		}
+		ui.Row(c).Gap(6).Children(func() {
+			if ui.Button(c, locales.SelectAll()).Clicked() && len(v.msgs) > 0 {
+				v.choose(v.msgs[0].Seq, v.msgs[len(v.msgs)-1].Seq)
+			}
+			if ui.Button(c, locales.SelectTurns()).Disabled(n == 0).Clicked() && n > 0 {
+				v.wholeTurns()
+			}
+		})
 	})
-	ui.Row(c).Grow(1).Gap(12).AlignItems(ui.Stretch).Children(func() {
+	body := ui.Row(c).Grow(1).MinHeight(0).Gap(8).AlignItems(ui.Stretch)
+	if narrow {
+		body.Column()
+	}
+	body.Children(func() {
 		th := *t
 		th.Accent, th.AccentText = tinted(c, ui.RGBA(40, 120, 255, 0.28)), t.Text
-		ui.Themed(c, &th).Width(360).Children(func() {
+		ui.Themed(c, &th).Basis(0).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 			ui.List(c, &v.list, len(v.msgs), func(i int) {
 				m := v.msgs[i]
 				ui.Row(c).Gap(8).Padding(6, 8).IgnoreInput(true).Children(func() {
@@ -201,7 +213,7 @@ func (s *Shell) pullRange(c *ui.Context, x model.Session) {
 				})
 			}).Fill().Radius(10).Background(t.Surface)
 		})
-		ui.Column(c).Grow(1).Gap(6).Children(func() {
+		ui.Column(c).Basis(0).Grow(1).MinWidth(0).MinHeight(0).Gap(6).Children(func() {
 			ui.Text(c, locales.BriefHeading()).FontSize(12).TextColor(t.TextMuted)
 			ui.Scroll(c).Grow(1).Radius(10).Background(t.Surface).Children(func() {
 				text := locales.BriefPending()

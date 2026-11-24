@@ -15,6 +15,68 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+func TestReferencePanelPlacement(t *testing.T) {
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(nil)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	source, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	wb.Rename(source.ID, "引用来源")
+	x, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	for _, size := range []struct {
+		name string
+		only string
+		w, h int
+	}{{"main", "", 1100, 800}, {"detached", x.ID, 440, 520}} {
+		t.Run(size.name, func(t *testing.T) {
+			sh := shell.New(wb, shell.Options{Only: size.only})
+			defer sh.Close()
+			sh.Open(x.ID)
+			tt := ui.NewTester(sh.View, size.w, size.h)
+			tt.Frame()
+			click := func(label string) {
+				t.Helper()
+				if err := tt.Click(label); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+			}
+			aboveDraft := func() {
+				t.Helper()
+				panel, ok := tt.AccessByRole(ui.RolePopup, "")
+				if !ok {
+					t.Fatal("missing reference popover")
+				}
+				input, ok := tt.Find("给 假 Agent 发消息")
+				if !ok {
+					t.Fatal("composer inaccessible while picking a reference")
+				}
+				b := panel.Bounds
+				gap := input.Y - (b.Y + b.H)
+				if gap < 0 || gap > 26 || b.X > input.X || b.X < input.X-18 || b.X+b.W > float32(size.w) || b.Y < 0 || b.H < 100 {
+					t.Fatalf("panel %v, composer %v", b, input)
+				}
+			}
+			click("给 假 Agent 发消息")
+			tt.Type("第一行\n第二行")
+			tt.Frame()
+			click("引用文件或会话（@）")
+			aboveDraft()
+			click("选择 引用来源")
+			aboveDraft()
+			if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
+				saveImage(t, tt.Image(), filepath.Join(p, "reference-range-"+size.name+".png"))
+			}
+			click("会话详情")
+			if !tt.HasText("关闭会话详情") || tt.HasText("插入引用") {
+				t.Fatal("click outside should dismiss the reference panel and open details")
+			}
+		})
+	}
+}
+
 // "@" and a few letters find a file of the workspace, which goes into the
 // draft as a chip in place of the "@"; sent, the Agent gets its path, and
 // the message shows it. The same panel still lists sessions.

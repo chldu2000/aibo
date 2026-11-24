@@ -84,9 +84,8 @@ type Shell struct {
 	// choosingAgent is the workspace whose "+" shows the Agents to start
 	// a session with.
 	choosingAgent string
-	// refocus gives the composer the keyboard focus in the next frame
-	// that builds it.
-	refocus bool
+	// focusComposer is the session to refocus once its reference picker closes.
+	focusComposer string
 	// side is the sidebar's state.
 	side sidebarUI
 	// glyphs are the Agents' icons, parsed once.
