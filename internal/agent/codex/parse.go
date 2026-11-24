@@ -20,14 +20,17 @@ type thread struct {
 	replies     map[string]bool // replies started, by item ID
 	// files are the file changes started, by item ID, for their
 	// approval requests to show.
-	files map[string]item
+	files    map[string]item
+	commands map[string]string // live command item to its owning turn
 	// compacting is set while a compaction asked for runs.
 	compacting bool
 	// loggedOut is set once the turn found Codex signed out.
 	loggedOut bool
 }
 
-func newThread() *thread { return &thread{replies: map[string]bool{}, files: map[string]item{}} }
+func newThread() *thread {
+	return &thread{replies: map[string]bool{}, files: map[string]item{}, commands: map[string]string{}}
+}
 
 // item is the part of a ThreadItem the workbench reads.
 type item struct {
@@ -212,6 +215,9 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		t.reasoning.WriteString(n.Delta)
 		t.reasoningID = n.ItemID
 	case "item/started":
+		if n.Item.Type == "commandExecution" && n.TurnID != "" && n.Item.ID != "" {
+			t.commands[n.Item.ID] = n.TurnID
+		}
 		if n.Item.Type == "fileChange" {
 			t.files[n.Item.ID] = n.Item
 		}
@@ -220,7 +226,12 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 			return []agent.Event{agent.ToolStarted{ToolID: n.Item.ID, Name: name, Input: b, Raw: params}}
 		}
 	case "item/completed":
+		delete(t.commands, n.Item.ID)
 		return t.completed(n.Item, params)
+	case "item/commandExecution/outputDelta":
+		if n.Delta != "" && n.TurnID != "" && t.commands[n.ItemID] == n.TurnID {
+			return []agent.Event{agent.ToolOutputDelta{ToolID: n.ItemID, Text: n.Delta}}
+		}
 	case "turn/plan/updated":
 		items := make([]agent.PlanItem, len(n.Plan))
 		for i, s := range n.Plan {
@@ -257,6 +268,7 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		}
 	case "turn/completed":
 		clear(t.files)
+		clear(t.commands)
 		t.compacting, t.loggedOut = false, false
 		out := t.flushReasoning()
 		switch n.Turn.Status {
@@ -309,6 +321,7 @@ func (t *thread) completed(it item, raw json.RawMessage) []agent.Event {
 		e := agent.ToolFinished{ToolID: it.ID, Output: out, IsError: failed, Raw: raw}
 		if it.Type == "commandExecution" {
 			e.ExitCode, e.Declined = it.ExitCode, it.Status == "declined"
+			e.KeepStreamedOutput = it.AggregatedOutput == nil && out == ""
 		}
 		return []agent.Event{e}
 	}

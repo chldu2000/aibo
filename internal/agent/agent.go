@@ -321,15 +321,20 @@ type ToolStarted struct {
 	Raw    json.RawMessage
 }
 
+// ToolOutputDelta appends a chunk of output to an active tool call.
+type ToolOutputDelta struct{ ToolID, Text string }
+
 // ToolFinished reports a tool call's result.
 type ToolFinished struct {
-	ToolID   string
-	Parent   string
-	Output   string
-	IsError  bool
-	Declined bool
-	ExitCode *int
-	Raw      json.RawMessage
+	// KeepStreamedOutput means the completion omitted its aggregate.
+	KeepStreamedOutput bool
+	ToolID             string
+	Parent             string
+	Output             string
+	IsError            bool
+	Declined           bool
+	ExitCode           *int
+	Raw                json.RawMessage
 }
 
 // PlanUpdated reports the Agent's plan, whole; a later update of the same
@@ -471,6 +476,7 @@ func (ThinkingDelta) isEvent()        {}
 func (ReplyDone) isEvent()            {}
 func (ToolStarted) isEvent()          {}
 func (ToolFinished) isEvent()         {}
+func (ToolOutputDelta) isEvent()      {}
 func (PlanUpdated) isEvent()          {}
 func (ApprovalRequested) isEvent()    {}
 func (Compacted) isEvent()            {}

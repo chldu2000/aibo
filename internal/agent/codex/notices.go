@@ -15,8 +15,9 @@ var knownNotices = map[string]bool{
 	"item/reasoning/summaryTextDelta": true, "item/reasoning/textDelta": true,
 	"item/started": true, "item/completed": true, "turn/plan/updated": true,
 	"error": true, "turn/completed": true,
-	// What item/completed says whole: outputs, patches, plans.
-	"item/commandExecution/outputDelta": true, "item/fileChange/outputDelta": true,
+	"item/commandExecution/outputDelta": true,
+	// What item/completed says whole: patches, plans.
+	"item/fileChange/outputDelta":  true,
 	"item/fileChange/patchUpdated": true, "item/plan/delta": true,
 	"item/reasoning/summaryPartAdded": true, "item/mcpToolCall/progress": true,
 	"turn/diff/updated": true,

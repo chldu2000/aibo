@@ -141,12 +141,34 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 			}
 			touch(i, true)
 		}
+	case agent.ToolOutputDelta:
+		i, ok := s.items[itemKey("t", e.ToolID)]
+		if !ok || s.msgs[i].State.Ended() {
+			break
+		}
+		t := s.msgs[i].Tool
+		if t == nil || t.Truncated || e.Text == "" {
+			break
+		}
+		room := model.MaxToolOutput - len(t.Output)
+		chunk := e.Text
+		if len(chunk) > room {
+			chunk = strings.ToValidUTF8(chunk[:room], "")
+			t.Truncated = true
+		}
+		t.Output += chunk
+		touch(i, false)
 	case agent.ToolFinished:
 		finish := func(m *model.Message) {
 			if m.Tool == nil {
 				m.Tool = &model.Tool{}
 			}
 			out := e.Output
+			if e.KeepStreamedOutput {
+				out = m.Tool.Output
+			} else {
+				m.Tool.Truncated = false
+			}
 			if len(out) > model.MaxToolOutput {
 				out = strings.ToValidUTF8(out[:model.MaxToolOutput], "")
 				m.Tool.Truncated = true
