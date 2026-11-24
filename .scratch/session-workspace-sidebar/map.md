@@ -8,6 +8,7 @@ Label: wayfinder:map
 
 ## Notes
 
+- [首期交付规格与实施工单](../readonly-sidebar-v1/spec.md)汇集了已确认的范围与验收边界。实施工单单独编号，便于和本地图中的决策票分别跟踪。
 - 用户主动从会话标题的详情入口打开侧栏，或点击终端、子 Agent 徽章直达对应内容。新活动只更新徽章。规划需兼顾现有会话详情、主窗口和独立会话窗口。
 - 现有入口可对照[会话详情](../../internal/shell/details.go)和[运行中活动徽章](../../internal/shell/badges.go)。旧规划在[工作台窗口布局](../multi-agent-workbench-v1/issues/18-window-layout.md)留下了对实时计数的疑问；两家适配器的实际证据决定侧栏能怎样描述活动。
 - 终端与子 Agent 跟随会话。文件与 Git 跟随工作区。同工作区切换会话时保留目录展开和正在看的差异，切换到另一个工作区后显示那个工作区的数据。
