@@ -10,6 +10,7 @@ import (
 )
 
 type workspacePanel struct {
+	change                   *workbench.GitChange
 	expanded                 map[string]bool
 	file                     string
 	editor                   *editor.State

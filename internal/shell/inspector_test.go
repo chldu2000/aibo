@@ -2,6 +2,7 @@ package shell_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -70,6 +71,15 @@ func TestInspectorFileSelectionFollowsWorkspace(t *testing.T) {
 	wait("src/file.txt")
 	click("返回")
 	wait("file.txt")
+	click("返回")
+	if out, err := exec.Command("git", "-C", root, "init", "-b", "sidebar-test").CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	click("Git 状态")
+	wait("sidebar-test · 尚无提交")
+	wait("?  src/file.txt")
+	sh.Open(third.ID)
+	wait("此目录不属于 Git 仓库")
 }
 
 func TestInspectorBesideConversationAndAboveNarrowDraft(t *testing.T) {

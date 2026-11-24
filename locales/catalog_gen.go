@@ -34,6 +34,126 @@ type Messages struct{ locale string }
 // source language.
 func In(locale string) Messages { return Messages{locale} }
 
+// GitStatus says "Git status"
+// in the language the app shows.
+func GitStatus() string { return In(i18n.Locale()).GitStatus() }
+
+// GitStatus says "Git status"
+// in the language of msgs.
+func (msgs Messages) GitStatus() string {
+	return Catalog.Format(msgs.locale, "gitStatus", nil)
+}
+
+// GitUnborn says "No commits yet"
+// in the language the app shows.
+func GitUnborn() string { return In(i18n.Locale()).GitUnborn() }
+
+// GitUnborn says "No commits yet"
+// in the language of msgs.
+func (msgs Messages) GitUnborn() string {
+	return Catalog.Format(msgs.locale, "gitUnborn", nil)
+}
+
+// GitDetached says "Detached HEAD"
+// in the language the app shows.
+func GitDetached() string { return In(i18n.Locale()).GitDetached() }
+
+// GitDetached says "Detached HEAD"
+// in the language of msgs.
+func (msgs Messages) GitDetached() string {
+	return Catalog.Format(msgs.locale, "gitDetached", nil)
+}
+
+// GitClean says "Working tree clean"
+// in the language the app shows.
+func GitClean() string { return In(i18n.Locale()).GitClean() }
+
+// GitClean says "Working tree clean"
+// in the language of msgs.
+func (msgs Messages) GitClean() string {
+	return Catalog.Format(msgs.locale, "gitClean", nil)
+}
+
+// GitStaged says "Staged"
+// in the language the app shows.
+func GitStaged() string { return In(i18n.Locale()).GitStaged() }
+
+// GitStaged says "Staged"
+// in the language of msgs.
+func (msgs Messages) GitStaged() string {
+	return Catalog.Format(msgs.locale, "gitStaged", nil)
+}
+
+// GitUnstaged says "Unstaged"
+// in the language the app shows.
+func GitUnstaged() string { return In(i18n.Locale()).GitUnstaged() }
+
+// GitUnstaged says "Unstaged"
+// in the language of msgs.
+func (msgs Messages) GitUnstaged() string {
+	return Catalog.Format(msgs.locale, "gitUnstaged", nil)
+}
+
+// GitUntracked says "Untracked"
+// in the language the app shows.
+func GitUntracked() string { return In(i18n.Locale()).GitUntracked() }
+
+// GitUntracked says "Untracked"
+// in the language of msgs.
+func (msgs Messages) GitUntracked() string {
+	return Catalog.Format(msgs.locale, "gitUntracked", nil)
+}
+
+// GitConflict says "Conflicts"
+// in the language the app shows.
+func GitConflict() string { return In(i18n.Locale()).GitConflict() }
+
+// GitConflict says "Conflicts"
+// in the language of msgs.
+func (msgs Messages) GitConflict() string {
+	return Catalog.Format(msgs.locale, "gitConflict", nil)
+}
+
+// GitMissing says "Git executable unavailable"
+// in the language the app shows.
+func GitMissing() string { return In(i18n.Locale()).GitMissing() }
+
+// GitMissing says "Git executable unavailable"
+// in the language of msgs.
+func (msgs Messages) GitMissing() string {
+	return Catalog.Format(msgs.locale, "gitMissing", nil)
+}
+
+// GitNotRepo says "This directory is outside a Git repository"
+// in the language the app shows.
+func GitNotRepo() string { return In(i18n.Locale()).GitNotRepo() }
+
+// GitNotRepo says "This directory is outside a Git repository"
+// in the language of msgs.
+func (msgs Messages) GitNotRepo() string {
+	return Catalog.Format(msgs.locale, "gitNotRepo", nil)
+}
+
+// GitReadFailed says "Could not read the Git repository"
+// in the language the app shows.
+func GitReadFailed() string { return In(i18n.Locale()).GitReadFailed() }
+
+// GitReadFailed says "Could not read the Git repository"
+// in the language of msgs.
+func (msgs Messages) GitReadFailed() string {
+	return Catalog.Format(msgs.locale, "gitReadFailed", nil)
+}
+
+// GitTooLarge says "Changes exceed the display limit"
+// in the language the app shows.
+func GitTooLarge() string { return In(i18n.Locale()).GitTooLarge() }
+
+// GitTooLarge says "Changes exceed the display limit"
+// in the language of msgs.
+func (msgs Messages) GitTooLarge() string {
+	return Catalog.Format(msgs.locale, "gitTooLarge", nil)
+}
+
 // WorkspaceFiles says "Workspace files"
 // in the language the app shows.
 func WorkspaceFiles() string { return In(i18n.Locale()).WorkspaceFiles() }

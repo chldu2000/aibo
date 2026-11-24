@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Shell) inspectorTitle() string {
+	if s.detail.page == "git" {
+		return locales.GitStatus()
+	}
 	if s.detail.page == "files" {
 		return locales.WorkspaceFiles()
 	}

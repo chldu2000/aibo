@@ -23,6 +23,10 @@ var known = []struct {
 	detail bool
 }{
 	{workbench.ErrPreviewBinary, locales.FilePreviewBinary, false},
+	{workbench.ErrGitMissing, locales.GitMissing, false},
+	{workbench.ErrNotRepository, locales.GitNotRepo, false},
+	{workbench.ErrGitRead, locales.GitReadFailed, true},
+	{workbench.ErrGitLarge, locales.GitTooLarge, false},
 	{workbench.ErrPreviewSpecial, locales.FilePreviewSpecial, false},
 	{workbench.ErrNotDirectory, locales.ErrNotDirectory, false},
 	{workbench.ErrWorkspaceExists, locales.ErrWorkspaceExists, false},

@@ -55,6 +55,8 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 				s.details(c, x)
 			case "files":
 				s.filePage(c, x.WorkspaceID)
+			case "git":
+				s.gitPage(c, x.WorkspaceID)
 			default:
 				s.activityPage(c, x)
 			}
@@ -83,6 +85,9 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 			}
 			if ui.Button(c, locales.WorkspaceFiles()).Clicked() {
 				s.detail.page = "files"
+			}
+			if ui.Button(c, locales.GitStatus()).Clicked() {
+				s.detail.page = "git"
 			}
 		})
 		kv("Agent", func() {
