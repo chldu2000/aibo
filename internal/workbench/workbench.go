@@ -28,6 +28,9 @@ import (
 
 // Options configures Open.
 type Options struct {
+	// WatchWorkspace runs until canceled or the native watcher fails. The
+	// watcher delivers debounced hints, never file contents.
+	WatchWorkspace func(context.Context, string, func()) error
 	// DataDir holds the database.
 	DataDir string
 	// Agents are the Agents sessions can use.
@@ -156,15 +159,17 @@ type Workbench struct {
 	done      chan struct{} // closed when the workbench closes
 	pumps     sync.WaitGroup
 
-	mu          sync.Mutex
-	closing     bool
-	modelLists  map[agent.Kind]*modelListEntry
-	browseReads map[workspaceReadKey]*workspaceRead
-	workspaces  []model.Workspace
-	sessions    map[string]*session
-	refs        map[string]*model.Reference
-	listeners   map[int]func(Change)
-	nextL       int
+	mu             sync.Mutex
+	closing        bool
+	modelLists     map[agent.Kind]*modelListEntry
+	browseReads    map[workspaceReadKey]*workspaceRead
+	watches        map[string]*workspaceWatch
+	watchWorkspace func(context.Context, string, func()) error
+	workspaces     []model.Workspace
+	sessions       map[string]*session
+	refs           map[string]*model.Reference
+	listeners      map[int]func(Change)
+	nextL          int
 }
 
 // session is a session's state in memory.
@@ -252,6 +257,7 @@ func Open(o Options) (*Workbench, error) {
 		}
 	}
 	w := &Workbench{log: log, st: st, agents: o.Agents, now: o.Now, budgets: settings.Budgets, idle: settings.IdleTimeout, settings: settings, ready: o.Ready, loggedOut: o.OnNotLoggedIn, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
+	w.watchWorkspace = o.WatchWorkspace
 	if w.workspaces, err = st.Workspaces(); err != nil {
 		st.Close()
 		return nil, err
@@ -291,6 +297,9 @@ func (w *Workbench) Close() error {
 	}
 	w.closing = true
 	close(w.done)
+	for _, watch := range w.watches {
+		watch.cancel()
+	}
 	for _, entry := range w.modelLists {
 		entry.cancel()
 	}

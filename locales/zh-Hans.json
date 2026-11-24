@@ -1,4 +1,5 @@
 {
+  "workspaceRefresh": "刷新工作区",
   "gitGone": "选中的改动已消失",
   "gitUnmerged": "文件存在合并冲突",
   "gitEmptyAdded": "新增空文件",

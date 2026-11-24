@@ -159,7 +159,7 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 
 // Close stops the shell following the workbench, as when its window
 // closes.
-func (s *Shell) Close() { s.unsubscribe() }
+func (s *Shell) Close() { s.watchPanel(""); s.unsubscribe() }
 
 // goTo shows a session, messages from..to highlighted (none when zero).
 // A session's own window shows no other: the main window does.

@@ -32,6 +32,27 @@ func (s *Shell) workspacePanel(id string) *workspacePanel {
 	return p
 }
 
+func (s *Shell) watchPanel(id string) {
+	if s.detail.watched == id {
+		return
+	}
+	if s.detail.release != nil {
+		s.detail.release()
+		s.detail.release = nil
+	}
+	s.detail.watched = id
+	if id != "" {
+		s.detail.release = s.wb.ObserveWorkspace(id)
+	}
+}
+
+// RefreshVisibleWorkspace runs on the window thread when it regains focus.
+func (s *Shell) RefreshVisibleWorkspace() {
+	if id := s.detail.watched; id != "" {
+		s.wb.RefreshWorkspace(id)
+	}
+}
+
 func readReady[T any](s *Shell, c *ui.Context, r workbench.Snapshot[T]) bool {
 	if r.Pending {
 		ui.Text(c, locales.WorkspaceLoading()).TextColor(c.Theme().TextMuted)

@@ -82,8 +82,13 @@ func TestInspectorFileSelectionFollowsWorkspace(t *testing.T) {
 	wait("未跟踪 · ?  src/file.txt")
 	sh.Open(second.ID)
 	wait("未跟踪 · ?  src/file.txt")
+	if err := os.Remove(filepath.Join(root, "src", "file.txt")); err != nil {
+		t.Fatal(err)
+	}
+	click("刷新工作区")
+	wait("选中的改动已消失")
 	click("返回")
-	wait("?  src/file.txt")
+	wait("工作树干净")
 	sh.Open(third.ID)
 	wait("此目录不属于 Git 仓库")
 }

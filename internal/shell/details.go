@@ -17,6 +17,8 @@ type detailsUI struct {
 	page       string
 	selected   string
 	workspaces map[string]*workspacePanel
+	watched    string
+	release    func()
 	// confirming is a dangerous mode waiting for a second click.
 	confirming string
 }
@@ -47,6 +49,11 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 				}
 			}
 			ui.Text(c, title).Bold().TextColor(c.Theme().Text).Grow(1)
+			if s.detail.page == "files" || s.detail.page == "git" {
+				if iconButton(c, "arrow.clockwise", locales.WorkspaceRefresh()).Clicked() {
+					s.wb.RefreshWorkspace(x.WorkspaceID)
+				}
+			}
 			if iconButton(c, "xmark", locales.DetailsClose()).Clicked() {
 				s.closeDetails(x.ID)
 			}

@@ -1,4 +1,5 @@
 {
+  "workspaceRefresh": "Refresh workspace",
   "gitGone": "This change is no longer listed",
   "gitUnmerged": "Resolve the conflict to compare these versions",
   "gitEmptyAdded": "New empty file",

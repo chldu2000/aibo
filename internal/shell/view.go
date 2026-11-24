@@ -55,6 +55,11 @@ func (s *Shell) pane(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
 	x, ok := s.wb.Session(s.current)
+	watched := ""
+	if ok && s.detail.open && !s.settings.open && (s.detail.page == "files" || s.detail.page == "git") {
+		watched = x.WorkspaceID
+	}
+	s.watchPanel(watched)
 	if s.pull.open && (s.pull.in != s.current || !ok || s.settings.open) {
 		s.pull = pull{}
 	}

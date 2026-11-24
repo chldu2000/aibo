@@ -129,6 +129,7 @@ func (a *app) start() {
 		}
 		if err == nil {
 			o := workbench.Options{DataDir: dir, Agents: a.agents, Ready: a.ready, OnNotLoggedIn: a.reg.MarkNotLoggedIn}
+			o.WatchWorkspace = watchWorkspace
 			if l, lerr := diag.Open(dir, nil); lerr == nil {
 				a.diag, o.Log = l, l.Logger
 				l.Logger.Info("aibo started", "data", dir)
@@ -414,6 +415,7 @@ func newShellWindow(sh *shell.Shell, title string, width, height int) *mygo.Wind
 		sh.SetWindowControls(w)
 		w.Invalidate()
 	}
+	w.OnFocus(sh.RefreshVisibleWorkspace)
 	return w
 }
 

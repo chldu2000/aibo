@@ -34,6 +34,16 @@ type Messages struct{ locale string }
 // source language.
 func In(locale string) Messages { return Messages{locale} }
 
+// WorkspaceRefresh says "Refresh workspace"
+// in the language the app shows.
+func WorkspaceRefresh() string { return In(i18n.Locale()).WorkspaceRefresh() }
+
+// WorkspaceRefresh says "Refresh workspace"
+// in the language of msgs.
+func (msgs Messages) WorkspaceRefresh() string {
+	return Catalog.Format(msgs.locale, "workspaceRefresh", nil)
+}
+
 // GitGone says "This change is no longer listed"
 // in the language the app shows.
 func GitGone() string { return In(i18n.Locale()).GitGone() }
