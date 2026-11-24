@@ -239,6 +239,16 @@ type Turn struct {
 	// adapter puts after Text as its Agent takes them (ADR 0004): only
 	// their paths, for the Agent to read itself.
 	Files []FileMention
+	// Images are the images the user attached, which the adapter puts
+	// before Text for the model to see (ADR 0006).
+	Images []Image
+}
+
+// Image is an image a turn carries: a file the workbench keeps, of a type
+// both Agents take (image/png, image/jpeg, image/gif, image/webp), within
+// their size limits.
+type Image struct {
+	Path, MIME string
 }
 
 // FileMention is a file or directory the user mentioned in a message.

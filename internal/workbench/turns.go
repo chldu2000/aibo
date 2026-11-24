@@ -24,11 +24,31 @@ func (w *Workbench) Send(id, text string) error {
 	return w.SendWithFiles(id, text, nil)
 }
 
-// SendWithFiles sends a message mentioning files: only their paths go to
-// the Agent, which reads them itself (ADR 0004). Each must be in the
-// session's workspace or a source workspace it may read (ErrNotReadable).
+// SendWithFiles sends a message mentioning files (SendMessage).
 func (w *Workbench) SendWithFiles(id, text string, mentions []model.Mention) error {
-	text = strings.TrimSpace(text)
+	return w.SendMessage(id, Outgoing{Text: text, Mentions: mentions})
+}
+
+// Outgoing is a message the user sends.
+type Outgoing struct {
+	Text string
+	// Mentions are files whose paths only go to the Agent, which reads
+	// them itself (ADR 0004). Each must be in the session's workspace or
+	// a source workspace it may read (ErrNotReadable).
+	Mentions []model.Mention
+	// Attachments are images the Agent sees (ADR 0006), from
+	// AttachImage for this session (ErrAttachmentGone).
+	Attachments []model.Attachment
+}
+
+// SendMessage sends a message, with the references drafted for the
+// session, and starts the Agent's turn.
+func (w *Workbench) SendMessage(id string, o Outgoing) error {
+	text, mentions := strings.TrimSpace(o.Text), o.Mentions
+	images, err := w.turnImages(id, o.Attachments)
+	if err != nil {
+		return err
+	}
 
 	w.mu.Lock()
 	s, ok := w.sessions[id]
@@ -54,7 +74,7 @@ func (w *Workbench) SendWithFiles(id, text string, mentions []model.Mention) err
 		w.mu.Unlock()
 		return ErrNotReadable
 	}
-	if text == "" && len(w.drafts(id)) == 0 && len(mentions) == 0 {
+	if text == "" && len(w.drafts(id)) == 0 && len(mentions) == 0 && len(images) == 0 {
 		w.mu.Unlock()
 		return ErrEmptyMessage
 	}
@@ -104,7 +124,7 @@ func (w *Workbench) SendWithFiles(id, text string, mentions []model.Mention) err
 	now := w.now()
 	w.mu.Lock()
 	drafts := w.drafts(id)
-	m := model.Message{Kind: model.UserMessage, State: model.Done, Text: text, Mentions: mentions, CreatedAt: now, FinishedAt: now}
+	m := model.Message{Kind: model.UserMessage, State: model.Done, Text: text, Mentions: mentions, Attachments: o.Attachments, CreatedAt: now, FinishedAt: now}
 	seq, err := w.st.AppendMessage(id, m)
 	if err != nil {
 		s.running = false
@@ -137,7 +157,7 @@ func (w *Workbench) SendWithFiles(id, text string, mentions []model.Mention) err
 	w.mu.Unlock()
 	w.notify(Change{SessionID: id, Message: &m})
 
-	if err := native.Send(context.Background(), agent.Turn{Text: refs.TurnText(briefs, text), Files: files}); err != nil {
+	if err := native.Send(context.Background(), agent.Turn{Text: refs.TurnText(briefs, text), Files: files, Images: images}); err != nil {
 		w.fail(id, StepSend, err)
 		return err
 	}

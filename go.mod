@@ -5,6 +5,7 @@ go 1.27.3
 require (
 	github.com/egoist/mygo v0.10.1-0.20261119165701-641de1523c72
 	github.com/modelcontextprotocol/go-sdk v1.8.0
+	golang.org/x/image v0.46.0
 	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.62.0
 )
@@ -29,7 +30,6 @@ require (
 	go.digitalxero.dev/rpm v0.3.4 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
-	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect

@@ -1196,14 +1196,104 @@ func (msgs Messages) ComposerBlocked() string {
 	return Catalog.Format(msgs.locale, "composerBlocked", nil)
 }
 
-// Attach says "Add attachments (not supported yet)"
+// Attach says "Attach images"
 // in the language the app shows.
 func Attach() string { return In(i18n.Locale()).Attach() }
 
-// Attach says "Add attachments (not supported yet)"
+// Attach says "Attach images"
 // in the language of msgs.
 func (msgs Messages) Attach() string {
 	return Catalog.Format(msgs.locale, "attach", nil)
+}
+
+// Attaching says "Adding image…"
+// in the language the app shows.
+func Attaching() string { return In(i18n.Locale()).Attaching() }
+
+// Attaching says "Adding image…"
+// in the language of msgs.
+func (msgs Messages) Attaching() string {
+	return Catalog.Format(msgs.locale, "attaching", nil)
+}
+
+// RemoveImage says "Remove the image {name}"
+// in the language the app shows.
+func RemoveImage(name string) string { return In(i18n.Locale()).RemoveImage(name) }
+
+// RemoveImage says "Remove the image {name}"
+// in the language of msgs.
+func (msgs Messages) RemoveImage(name string) string {
+	return Catalog.Format(msgs.locale, "removeImage", map[string]any{"name": name})
+}
+
+// OpenImage says "Open the image {name}"
+// in the language the app shows.
+func OpenImage(name string) string { return In(i18n.Locale()).OpenImage(name) }
+
+// OpenImage says "Open the image {name}"
+// in the language of msgs.
+func (msgs Messages) OpenImage(name string) string {
+	return Catalog.Format(msgs.locale, "openImage", map[string]any{"name": name})
+}
+
+// ChooseImages says "Choose images to attach"
+// in the language the app shows.
+func ChooseImages() string { return In(i18n.Locale()).ChooseImages() }
+
+// ChooseImages says "Choose images to attach"
+// in the language of msgs.
+func (msgs Messages) ChooseImages() string {
+	return Catalog.Format(msgs.locale, "chooseImages", nil)
+}
+
+// ImageFiles says "Images"
+// in the language the app shows.
+func ImageFiles() string { return In(i18n.Locale()).ImageFiles() }
+
+// ImageFiles says "Images"
+// in the language of msgs.
+func (msgs Messages) ImageFiles() string {
+	return Catalog.Format(msgs.locale, "imageFiles", nil)
+}
+
+// CannotAttach says "{name} is not an image, nor in the session's workspace or a source workspace it can read: it cannot be attached or me…"
+// in the language the app shows.
+func CannotAttach(name string) string { return In(i18n.Locale()).CannotAttach(name) }
+
+// CannotAttach says "{name} is not an image, nor in the session's workspace or a source workspace it can read: it cannot be attached or me…"
+// in the language of msgs.
+func (msgs Messages) CannotAttach(name string) string {
+	return Catalog.Format(msgs.locale, "cannotAttach", map[string]any{"name": name})
+}
+
+// ErrNotImage says "Only PNG, JPEG, GIF and WebP images can be attached."
+// in the language the app shows.
+func ErrNotImage() string { return In(i18n.Locale()).ErrNotImage() }
+
+// ErrNotImage says "Only PNG, JPEG, GIF and WebP images can be attached."
+// in the language of msgs.
+func (msgs Messages) ErrNotImage() string {
+	return Catalog.Format(msgs.locale, "errNotImage", nil)
+}
+
+// ErrImageTooLarge says "The image is too large to attach. Try a smaller one, or a screenshot of part of it."
+// in the language the app shows.
+func ErrImageTooLarge() string { return In(i18n.Locale()).ErrImageTooLarge() }
+
+// ErrImageTooLarge says "The image is too large to attach. Try a smaller one, or a screenshot of part of it."
+// in the language of msgs.
+func (msgs Messages) ErrImageTooLarge() string {
+	return Catalog.Format(msgs.locale, "errImageTooLarge", nil)
+}
+
+// ErrAttachmentGone says "An attached image is gone. Remove it from the message and attach it again."
+// in the language the app shows.
+func ErrAttachmentGone() string { return In(i18n.Locale()).ErrAttachmentGone() }
+
+// ErrAttachmentGone says "An attached image is gone. Remove it from the message and attach it again."
+// in the language of msgs.
+func (msgs Messages) ErrAttachmentGone() string {
+	return Catalog.Format(msgs.locale, "errAttachmentGone", nil)
 }
 
 // MentionButton says "Reference a file or session (@)"

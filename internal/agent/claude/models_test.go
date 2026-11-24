@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -198,5 +199,30 @@ func TestTurnWithFiles(t *testing.T) {
 	}
 	if withFiles(agent.Turn{Text: "hi"}) != "hi" {
 		t.Error("no files, other text")
+	}
+}
+
+// Images go before the text as base64 image blocks; an image alone goes
+// without a text block, which Claude refuses empty.
+func TestTurnWithImages(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "a.png")
+	os.WriteFile(p, []byte("png"), 0o644)
+	got, err := turnContent(agent.Turn{Text: "看图", Images: []agent.Image{{Path: p, MIME: "image/png"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(got)
+	if want := `[{"source":{"data":"cG5n","media_type":"image/png","type":"base64"},"type":"image"},{"text":"看图","type":"text"}]`; string(b) != want {
+		t.Errorf("content = %s", b)
+	}
+	alone, _ := turnContent(agent.Turn{Images: []agent.Image{{Path: p, MIME: "image/png"}}})
+	if b, _ := json.Marshal(alone); strings.Contains(string(b), `"text"`) {
+		t.Errorf("an image alone → %s", b)
+	}
+	if c, _ := turnContent(agent.Turn{Text: "hi"}); c != "hi" {
+		t.Errorf("text alone → %#v", c)
+	}
+	if _, err := turnContent(agent.Turn{Images: []agent.Image{{Path: p + ".gone", MIME: "image/png"}}}); err == nil {
+		t.Error("a missing image was sent")
 	}
 }

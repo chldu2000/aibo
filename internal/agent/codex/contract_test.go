@@ -249,3 +249,34 @@ func TestContractFileMention(t *testing.T) {
 		t.Errorf("replied %q", r.Text)
 	}
 }
+
+// An attached image reaches the model, which sees it without tools
+// (research/17): testdata/shapes.png is a red circle, then a blue square.
+func TestContractImage(t *testing.T) {
+	path := contract(t)
+	data, err := os.ReadFile("testdata/shapes.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := openEnv(t, t.TempDir(), path)
+	defer e.Close()
+	w, _ := e.AddWorkspace(t.TempDir())
+	s, _ := e.NewSession(w.ID, codex.Kind, "")
+	a, err := e.AttachImage(s.ID, "shapes.png", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.SendMessage(s.ID, workbench.Outgoing{Text: "Do not use any tools. Name the shapes in the image and their colors, left to right, as 'color shape, color shape'.", Attachments: []model.Attachment{a}}); err != nil {
+		t.Fatal(err)
+	}
+	ms := e.idle(t, s.ID)
+	r := strings.ToLower(lastReply(ms).Text)
+	if !strings.Contains(r, "red circle") || !strings.Contains(r, "blue square") {
+		t.Errorf("replied %q", r)
+	}
+	for _, m := range ms {
+		if m.Kind == model.ToolCall {
+			t.Errorf("it used %s", m.Tool.Name)
+		}
+	}
+}

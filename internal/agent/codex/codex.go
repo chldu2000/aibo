@@ -502,7 +502,7 @@ func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 		text = denyNote(s.note) + text
 		s.note = ""
 	}
-	params := s.turnParams(withFiles(text, turn.Files))
+	params := s.turnParams(withFiles(text, turn.Files), turn.Images)
 	s.mu.Unlock()
 	var res struct {
 		Turn struct {
@@ -613,6 +613,19 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 	return s.srv.send(map[string]any{"id": k.rpcID, "result": result})
 }
 
+// turnInput is turn/start's input: an image Codex reads itself from its
+// path (localImage, research/17) before the text, for each image.
+func turnInput(text string, images []agent.Image) []any {
+	var in []any
+	for _, img := range images {
+		in = append(in, map[string]any{"type": "localImage", "path": img.Path})
+	}
+	if text != "" || len(images) == 0 {
+		in = append(in, map[string]any{"type": "text", "text": text})
+	}
+	return in
+}
+
 // withFiles is text with the files the user mentioned after it: Codex
 // takes no file as input (a "mention" item shows the model nothing,
 // research/07), so it reads them itself.
@@ -632,10 +645,11 @@ func withFiles(text string, files []agent.FileMention) string {
 	return strings.TrimSpace(b.String())
 }
 
-// turnParams are turn/start's for text, with what changed since the last
-// turn, which Codex keeps from then on. Called with s.mu held.
-func (s *session) turnParams(text string) map[string]any {
-	params := map[string]any{"threadId": s.id, "input": []any{map[string]any{"type": "text", "text": text}}}
+// turnParams are turn/start's for text and images, with what changed
+// since the last turn, which Codex keeps from then on. Called with s.mu
+// held.
+func (s *session) turnParams(text string, images []agent.Image) map[string]any {
+	params := map[string]any{"threadId": s.id, "input": turnInput(text, images)}
 	if p, ok := presetOf(s.mode); ok {
 		params["approvalPolicy"], params["approvalsReviewer"] = p.policy, p.reviewer
 		params["sandboxPolicy"] = map[string]any{"type": sandboxTypes[p.sandbox]}

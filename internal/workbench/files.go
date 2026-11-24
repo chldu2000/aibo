@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -122,6 +123,37 @@ func (w *Workbench) MatchFiles(ctx context.Context, sessionID, query string, n i
 		}
 	}
 	return out, nil
+}
+
+// MentionPath is a mention of a file or directory the user gave by its
+// path, as one pasted or dropped: ErrNotReadable when it is not in the
+// session's workspace or a source workspace it may read. It looks at the
+// file: not on the main thread.
+func (w *Workbench) MentionPath(sessionID, path string) (FileHit, error) {
+	own, sources, err := w.roots(sessionID)
+	if err != nil {
+		return FileHit{}, err
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return FileHit{}, err
+	}
+	path = filepath.Clean(path)
+	if fi.IsDir() {
+		path += "/"
+	}
+	for i, ws := range append([]model.Workspace{own}, sources...) {
+		rel, ok := relIn(ws.Path, path)
+		if !ok {
+			continue
+		}
+		h := FileHit{Mention: model.Mention{Path: path, WorkspaceID: ws.ID, Dir: fi.IsDir()}, Rel: rel}
+		if i > 0 {
+			h.Workspace = ws.Path
+		}
+		return h, nil
+	}
+	return FileHit{}, ErrNotReadable
 }
 
 // turnFiles are the mentions as the Agent gets them, relative to the

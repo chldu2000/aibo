@@ -40,6 +40,12 @@ type Options struct {
 	OpenWindow func(sessionID string)
 	// ChooseFile asks for an executable, blocking off the main thread.
 	ChooseFile func() (string, bool)
+	// ChooseImages asks for images to attach, blocking off the main
+	// thread; nil leaves the composer's paperclip out.
+	ChooseImages func() ([]string, bool)
+	// OpenFile opens a file in its app, as an attached image in the
+	// system's viewer.
+	OpenFile func(path string)
 	// DataDir is the data directory in use, which the settings show.
 	DataDir string
 	// MoveDataDir moves the data to another directory and starts aibo
@@ -108,6 +114,8 @@ type Shell struct {
 	approvals map[string]*approvalUI
 	// openCards are the reference cards showing their briefs.
 	openCards map[string]bool
+	// thumbs are the attachments' pictures, by file.
+	thumbs map[string]*thumb
 	// unsubscribe stops the workbench's changes coming (Close).
 	unsubscribe func()
 }
@@ -123,6 +131,10 @@ type sessionView struct {
 	typed string
 	// mentions are the files the draft mentions.
 	mentions []model.Mention
+	// attachments are the images the draft carries; attaching counts
+	// those still being added, which the draft waits for.
+	attachments []model.Attachment
+	attaching   int
 	// pasted is set by a paste into the draft, which is not typing.
 	pasted bool
 	// sel is selection mode.
@@ -280,11 +292,11 @@ func (s *Shell) newSession(ws model.Workspace, kind agent.Kind) {
 
 // send sends the session's draft.
 func (s *Shell) send(id string, text string) bool {
-	var mentions []model.Mention
+	o := workbench.Outgoing{Text: text}
 	if v := s.views[id]; v != nil {
-		mentions = v.mentions
+		o.Mentions, o.Attachments = v.mentions, v.attachments
 	}
-	if err := s.wb.SendWithFiles(id, text, mentions); err != nil {
+	if err := s.wb.SendMessage(id, o); err != nil {
 		// A native session that cannot be resumed has its own banner.
 		if !errors.Is(err, agent.ErrResumeFailed) && !errors.Is(err, workbench.ErrNeedsRecovery) && !errors.Is(err, agents.ErrNotLoggedIn) {
 			s.notice = s.say(err)
@@ -292,7 +304,7 @@ func (s *Shell) send(id string, text string) bool {
 		return false
 	}
 	if v := s.views[id]; v != nil {
-		v.mentions = nil
+		v.mentions, v.attachments = nil, nil
 	}
 	return true
 }

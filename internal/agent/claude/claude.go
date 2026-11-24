@@ -8,6 +8,7 @@ package claude
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -228,6 +229,10 @@ func (s *session) write(v any) error {
 }
 
 func (s *session) Send(_ context.Context, turn agent.Turn) error {
+	content, err := turnContent(turn)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closing {
@@ -237,7 +242,7 @@ func (s *session) Send(_ context.Context, turn agent.Turn) error {
 		return agent.ErrBusy
 	}
 	s.running = true
-	err := s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": withFiles(turn)}})
+	err = s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
 	if err != nil {
 		s.running = false
 	}
@@ -434,6 +439,29 @@ func (s *session) SetModel(_ context.Context, model, effort string) error {
 		return err
 	}
 	return s.control("settings", map[string]any{"subtype": "get_settings"})
+}
+
+// turnContent is a user message's content: its text, or, with images,
+// an image block for each (base64, as Claude Code takes them: research/17)
+// before the text.
+func turnContent(turn agent.Turn) (any, error) {
+	text := withFiles(turn)
+	if len(turn.Images) == 0 {
+		return text, nil
+	}
+	var blocks []any
+	for _, img := range turn.Images {
+		b, err := os.ReadFile(img.Path)
+		if err != nil {
+			return nil, err
+		}
+		blocks = append(blocks, map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": img.MIME, "data": base64.StdEncoding.EncodeToString(b)}})
+	}
+	// An empty text block is refused.
+	if text != "" {
+		blocks = append(blocks, map[string]any{"type": "text", "text": text})
+	}
+	return blocks, nil
 }
 
 // withFiles is a turn's text with its files after it, as Claude Code

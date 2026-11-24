@@ -29,7 +29,8 @@ var ErrMessageEnded = errors.New("store: message has ended and can no longer cha
 
 // Store is the open database.
 type Store struct {
-	db *sql.DB
+	db  *sql.DB
+	dir string
 }
 
 // Open opens (creating if needed) the database in dir and brings its
@@ -46,7 +47,7 @@ func Open(dir string) (*Store, error) {
 	// One connection: SQLite serializes writers anyway, and this keeps
 	// the pragmas and transactions simple.
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
+	s := &Store{db: db, dir: dir}
 	if err := s.backupBeforeUpgrade(dir); err != nil {
 		db.Close()
 		return nil, err
@@ -460,7 +461,7 @@ func (s *Store) messages(sessionID string) ([]model.Message, error) {
 			if err := json.Unmarshal([]byte(det.String), &d); err != nil {
 				return nil, fmt.Errorf("store: message #%d: %w", m.Seq, err)
 			}
-			m.Tool, m.Plan, m.Children, m.Mentions = d.Tool, d.Plan, d.Children, d.Mentions
+			m.Tool, m.Plan, m.Children, m.Mentions, m.Attachments = d.Tool, d.Plan, d.Children, d.Mentions, d.Attachments
 		}
 		m.Kind, m.State = model.MessageKind(kind), model.MessageState(state)
 		if raw.Valid {
@@ -486,11 +487,14 @@ func finished(m model.Message) any {
 	return ms(m.FinishedAt)
 }
 
-// DeleteSession deletes a session with its messages and the references
-// it received. References to it stay, to report it deleted.
+// DeleteSession deletes a session with its messages, their attachments
+// and the references it received. References to it stay, to report it
+// deleted.
 func (s *Store) DeleteSession(id string) error {
-	_, err := s.db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
-	return err
+	if _, err := s.db.Exec(`DELETE FROM sessions WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return s.removeAttachments(id)
 }
 
 // MessageRange returns a session's messages from..to, in order, and
@@ -599,17 +603,18 @@ func (s *Store) References() ([]model.Reference, error) {
 
 // detail is what the detail column holds.
 type detail struct {
-	Tool     *model.Tool      `json:"tool,omitempty"`
-	Plan     []agent.PlanItem `json:"plan,omitempty"`
-	Children []model.Message  `json:"children,omitempty"`
-	Mentions []model.Mention  `json:"mentions,omitempty"`
+	Tool        *model.Tool        `json:"tool,omitempty"`
+	Plan        []agent.PlanItem   `json:"plan,omitempty"`
+	Children    []model.Message    `json:"children,omitempty"`
+	Mentions    []model.Mention    `json:"mentions,omitempty"`
+	Attachments []model.Attachment `json:"attachments,omitempty"`
 }
 
 func detailOf(m model.Message) any {
-	if m.Tool == nil && m.Plan == nil && m.Children == nil && m.Mentions == nil {
+	if m.Tool == nil && m.Plan == nil && m.Children == nil && m.Mentions == nil && m.Attachments == nil {
 		return nil
 	}
-	b, err := json.Marshal(detail{Tool: m.Tool, Plan: m.Plan, Children: m.Children, Mentions: m.Mentions})
+	b, err := json.Marshal(detail{Tool: m.Tool, Plan: m.Plan, Children: m.Children, Mentions: m.Mentions, Attachments: m.Attachments})
 	if err != nil {
 		return nil
 	}

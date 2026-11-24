@@ -136,11 +136,11 @@ func TestPresets(t *testing.T) {
 		t.Error("an unknown mode")
 	}
 	s.SetMode(context.Background(), "approve-for-me")
-	p := s.turnParams("x")
+	p := s.turnParams("x", nil)
 	if p["approvalPolicy"] != "on-request" || p["approvalsReviewer"] != "auto_review" || p["sandboxPolicy"].(map[string]any)["type"] != "workspaceWrite" {
 		t.Errorf("turn/start after SetMode: %v", p)
 	}
-	if p := s.turnParams("y"); p["approvalPolicy"] != nil {
+	if p := s.turnParams("y", nil); p["approvalPolicy"] != nil {
 		t.Errorf("then: %v", p)
 	}
 }

@@ -225,6 +225,9 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 							}
 						})
 					}
+					if len(m.Attachments) > 0 {
+						s.sentAttachments(c, m)
+					}
 					if m.Text != "" {
 						ui.Text(c, m.Text).Selectable().TextColor(t.Text).Padding(8, 12).Radius(12).Background(t.Surface)
 					}
@@ -312,8 +315,9 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 	drafts := s.wb.Drafts(x.ID)
 	card := ui.Column(c).Gap(6).Padding(10, 12).Radius(18).Material(glass.Glass{})
 	card.Children(func() {
-		if len(drafts) > 0 || len(v.mentions) > 0 {
+		if len(drafts) > 0 || len(v.mentions) > 0 || len(v.attachments) > 0 || v.attaching > 0 {
 			ui.Row(c).Gap(6).Wrap().Children(func() {
+				s.draftAttachments(c, v)
 				s.draftMentions(c, x, v)
 				for _, r := range drafts {
 					ui.Row(c).Key(r.ID).Gap(6).Padding(3, 4, 3, 8).Radius(8).AlignItems(ui.Center).BorderWidth(1).BorderColor(t.Accent).Children(func() {
@@ -333,14 +337,19 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 		if blocked {
 			prompt = locales.ComposerBlocked()
 		}
-		input := ui.TextArea(c, &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).Disabled(blocked).OnPaste(func(string) bool {
+		svc := c.Services()
+		// Keyed, so that chips appearing above it keep its focus and caret.
+		input := ui.TextArea(c.Key("draft"+x.ID), &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).Disabled(blocked).OnPaste(func(text string) bool {
+			if s.pasteFiles(svc, x.ID, text) {
+				return true
+			}
 			v.pasted = true
 			return false
 		}).OnTextKey(func(k ui.TextKey) bool {
 			if k.Key != ui.KeyEnter || k.Mods != 0 {
 				return false
 			}
-			if !running && (strings.TrimSpace(k.Text()) != "" || len(drafts) > 0 || len(v.mentions) > 0) && s.send(x.ID, k.Text()) {
+			if !running && v.attaching == 0 && (strings.TrimSpace(k.Text()) != "" || len(drafts) > 0 || len(v.mentions) > 0 || len(v.attachments) > 0) && s.send(x.ID, k.Text()) {
 				k.SetText("")
 			}
 			return true
@@ -356,7 +365,9 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 		v.typed, v.pasted = v.draft, false
 		var atButton ui.Element
 		toolbar := ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-			iconButton(c, "paperclip", locales.Attach()).Opacity(0.4)
+			if s.opts.ChooseImages != nil && !blocked && iconButton(c, "paperclip", locales.Attach()).Clicked() {
+				s.chooseImages(x.ID)
+			}
 			atButton = iconButton(c, "at", locales.MentionButton())
 			if atButton.Clicked() {
 				if s.pull.open {
@@ -378,7 +389,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 				return
 			}
 			bg := t.Accent
-			empty := strings.TrimSpace(v.draft) == "" && len(drafts) == 0 && len(v.mentions) == 0
+			empty := strings.TrimSpace(v.draft) == "" && len(drafts) == 0 && len(v.mentions) == 0 && len(v.attachments) == 0 || v.attaching > 0
 			if empty {
 				bg = t.Border
 			}
@@ -393,6 +404,15 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 		}
 		s.pullPanel(c, x, card)
 	})
+	// Files dropped on the composer: images attached, others mentioned.
+	if s.wb.Status(x.ID).ResumeFailed == nil {
+		if dropped := card.DroppedFiles(); len(dropped) > 0 {
+			s.givePaths(x.ID, dropped)
+		}
+		if card.FileDragOver() {
+			card.BorderWidth(2).BorderColor(t.Accent)
+		}
+	}
 }
 
 func (s *Shell) agentName(kind agent.Kind) string {

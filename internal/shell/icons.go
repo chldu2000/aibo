@@ -37,6 +37,7 @@ var iconFallbacks = map[string]*ui.SVG{
 	"gauge.with.dots.needle.33percent":   glyph(`<path d="M3 18a10 10 0 1 1 18 0Zm9-4 5-6M6 13H5m2-5 1 1m4-4v1"/>`),
 	"gearshape":                          glyph(`<path d="m10 2 4 0 .7 3 2 .9 2.7-1.2 2 3.5-2.1 2.2v3.2l2.1 2.2-2 3.5-2.7-1.2-2 .9-.7 3h-4l-.7-3-2-.9-2.7 1.2-2-3.5 2.1-2.2v-3.2L2.6 8.2l2-3.5 2.7 1.2 2-.9Z"/><circle cx="12" cy="12" r="3.2"/>`),
 	"paperclip":                          glyph(`<path d="M8 14 15.5 6.5a2.1 2.1 0 0 1 3 3L10 18a4 4 0 0 1-6-6l9-9a6 6 0 0 1 8 8l-9 9"/>`),
+	"photo":                              glyph(`<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 16-5-5-8 8"/>`),
 	"person.2":                           glyph(`<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-8 14-8 14 0m0-15c5 0 5 7 0 7m2 2c3 1 4 3 4 6"/>`),
 	"plus":                               glyph(`<path d="M12 4v16M4 12h16"/>`),
 	"rectangle.on.rectangle":             glyph(`<rect x="8" y="8" width="13" height="12" rx="2"/><path d="M5 15H3V3h13v2"/>`),

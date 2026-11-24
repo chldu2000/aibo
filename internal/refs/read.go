@@ -171,6 +171,11 @@ func body(m model.Message, thinking bool) string {
 	if m.Kind == model.ToolCall && m.Tool != nil {
 		text = toolText(m, thinking)
 	}
+	for _, a := range m.Attachments {
+		// The image itself stays with its session: its name only.
+		text += "\n[图片: " + a.Name + "]"
+	}
+	text = strings.TrimLeft(text, "\n")
 	if thinking && strings.TrimSpace(m.Thinking) != "" {
 		quoted := "> " + strings.ReplaceAll(strings.TrimSpace(m.Thinking), "\n", "\n> ")
 		text = "> 思考：\n" + quoted + "\n\n" + text

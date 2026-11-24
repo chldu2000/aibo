@@ -72,18 +72,18 @@ func TestSettingsReported(t *testing.T) {
 // for the turns after.
 func TestTurnCarriesModelAndEffort(t *testing.T) {
 	s := &session{id: "T", effort: "max"} // as Start leaves it, given an effort
-	p := s.turnParams("a")
+	p := s.turnParams("a", nil)
 	if p["effort"] != "max" || p["model"] != nil {
 		t.Errorf("first turn: %v", p)
 	}
-	if p := s.turnParams("b"); p["effort"] != nil {
+	if p := s.turnParams("b", nil); p["effort"] != nil {
 		t.Errorf("then: %v", p)
 	}
 	s.SetModel(context.Background(), "gpt-5.6-luna", "low")
-	if p := s.turnParams("c"); p["model"] != "gpt-5.6-luna" || p["effort"] != "low" {
+	if p := s.turnParams("c", nil); p["model"] != "gpt-5.6-luna" || p["effort"] != "low" {
 		t.Errorf("after SetModel: %v", p)
 	}
-	if p := s.turnParams("d"); p["model"] != nil || p["effort"] != nil {
+	if p := s.turnParams("d", nil); p["model"] != nil || p["effort"] != nil {
 		t.Errorf("then: %v", p)
 	}
 }
@@ -93,5 +93,25 @@ func TestTurnWithFiles(t *testing.T) {
 	got := withFiles("看看这些", []agent.FileMention{{Path: "/w/src/main.go", Rel: "src/main.go"}, {Path: "/other/lib/", Dir: true}})
 	if want := "看看这些\n\n提到的文件（需要时请自己读取）：\n- src/main.go\n- /other/lib/（目录）"; got != want {
 		t.Errorf("text = %q, want %q", got, want)
+	}
+}
+
+// Images go before the text as localImage items, which Codex reads
+// itself; an image alone goes without a text item.
+func TestTurnWithImages(t *testing.T) {
+	imgs := []agent.Image{{Path: "/data/attachments/s/a.png", MIME: "image/png"}}
+	got := turnInput("看图", imgs)
+	want := []any{
+		map[string]any{"type": "localImage", "path": "/data/attachments/s/a.png"},
+		map[string]any{"type": "text", "text": "看图"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("input = %#v", got)
+	}
+	if got := turnInput("", imgs); len(got) != 1 {
+		t.Errorf("an image alone → %#v", got)
+	}
+	if got := turnInput("hi", nil); !reflect.DeepEqual(got, []any{map[string]any{"type": "text", "text": "hi"}}) {
+		t.Errorf("text alone → %#v", got)
 	}
 }

@@ -257,6 +257,8 @@ func (a *app) show() {
 			}
 			return paths[0], true
 		},
+		ChooseImages: chooseImages(&a.win),
+		OpenFile:     func(p string) { mygo.Shell.OpenPath(p) },
 		OpenWindow:   a.openWindow,
 		DataDir:      a.dir,
 		MoveDataDir:  a.moveDataDir,
@@ -357,6 +359,19 @@ func (a *app) beforeQuit(e *mygo.QuitEvent) {
 // openWindow shows a session in a window of its own, or brings the one it
 // has to the front. It runs on the main thread. Closing the window leaves
 // the session as it is: it runs on, and the main window shows it too.
+// chooseImages asks for images to attach, in a sheet of the window win
+// holds.
+func chooseImages(win *atomic.Pointer[mygo.Window]) func() ([]string, bool) {
+	return func() ([]string, bool) {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: win.Load(), Title: locales.ChooseImages(), Multiple: true,
+			Filters: []mygo.FileFilter{{Name: locales.ImageFiles(), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
+		if err != nil || len(paths) == 0 {
+			return nil, false
+		}
+		return paths, true
+	}
+}
+
 func (a *app) openWindow(sessionID string) {
 	if w := a.own[sessionID]; w != nil && !w.IsDestroyed() {
 		w.Focus()
@@ -370,6 +385,8 @@ func (a *app) openWindow(sessionID string) {
 	sh := shell.New(a.wb, shell.Options{
 		Only:         sessionID,
 		Agents:       a.reg,
+		ChooseImages: chooseImages(&win),
+		OpenFile:     func(p string) { mygo.Shell.OpenPath(p) },
 		OpenURL:      func(u string) { mygo.Shell.OpenExternal(u) },
 		OpenTerminal: openTerminal,
 		ShowInFinder: mygo.Shell.ShowItemInFolder,

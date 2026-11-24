@@ -111,6 +111,8 @@ type Message struct {
 	Refs []string
 	// Mentions are the files a user message mentioned (ADR 0004).
 	Mentions []Mention `json:",omitempty"`
+	// Attachments are the images a user message carried (ADR 0006).
+	Attachments []Attachment `json:",omitempty"`
 	// Raw is the Agent's own event the message came from, for internal
 	// use only.
 	Raw        json.RawMessage
@@ -126,6 +128,22 @@ type Mention struct {
 	Path        string
 	WorkspaceID string
 	Dir         bool `json:",omitempty"`
+}
+
+// Attachment is an image a user message carried: a copy kept in the
+// data directory, which the Agent sees itself (ADR 0006), unlike a
+// mention's path.
+type Attachment struct {
+	// Name is the file's name as the user knew it, "image.png" for a
+	// pasted one.
+	Name string
+	// File is where the copy is, relative to the data directory's
+	// attachments directory, with slashes: "<session ID>/<ID>.png".
+	File string
+	// MIME is its type: image/png, image/jpeg, image/gif or image/webp.
+	MIME          string
+	Width, Height int
+	Size          int64
 }
 
 // Tool is a tool call: what the Agent called, and what came back.
@@ -257,6 +275,8 @@ func (m Message) Clone() Message {
 		m.Children = cs
 	}
 	m.Refs = append([]string(nil), m.Refs...)
+	m.Mentions = append([]Mention(nil), m.Mentions...)
+	m.Attachments = append([]Attachment(nil), m.Attachments...)
 	return m
 }
 
