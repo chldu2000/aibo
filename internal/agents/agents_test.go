@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/chldu2000/aibo/internal/agent/claude"
 	"github.com/chldu2000/aibo/internal/agent/codex"
 	"github.com/chldu2000/aibo/internal/agents"
+	"github.com/chldu2000/aibo/internal/agents/testdata/fakecli"
 )
 
 // script writes an executable shell script.
@@ -24,36 +26,18 @@ func script(t *testing.T, dir, name, body string) string {
 	return p
 }
 
-// fakeClaude answers --version and auth status as Claude Code 2.1.318
-// does.
-func fakeClaude(t *testing.T, dir, version string, loggedIn bool) string {
-	auth := `echo '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"pro"}'; exit 0`
-	if !loggedIn {
-		auth = `echo '{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}'; exit 1`
-	}
-	return script(t, dir, "claude", `case "$1" in
---version) echo "`+version+` (Claude Code)";;
-auth) `+auth+`;;
-esac
-`)
-}
-
-// fakeCodex answers --version and login status as codex-cli 0.169.0 does.
-func fakeCodex(t *testing.T, dir, version string, loggedIn bool) string {
-	login := `echo "Logged in using ChatGPT"; exit 0`
-	if !loggedIn {
-		login = `echo "Not logged in"; exit 1`
-	}
-	return script(t, dir, "codex", `case "$1" in
---version) echo "codex-cli `+version+`";;
-login) `+login+`;;
-esac
-`)
+func TestMain(m *testing.M) {
+	fakecli.RunIfCLI()
+	os.Exit(m.Run())
 }
 
 // shellWith is a login shell whose PATH has dirs, after the noise rc
 // files print.
 func shellWith(t *testing.T, dirs ...string) string {
+	if runtime.GOOS == "windows" {
+		t.Setenv("PATH", strings.Join(dirs, string(os.PathListSeparator)))
+		return ""
+	}
 	return script(t, t.TempDir(), "fakesh", `echo "Welcome to my shell!"
 printf '__AIBO_PATH__%s__AIBO_PATH__' "`+strings.Join(dirs, ":")+`"
 echo "bye"
@@ -62,13 +46,13 @@ echo "bye"
 
 func TestFoundThroughTheLoginShell(t *testing.T) {
 	bin := t.TempDir()
-	fakeClaude(t, bin, "2.1.320", true)
-	fakeCodex(t, bin, "0.168.0", true)
+	fakecli.Install(t, bin, "claude", "2.1.320", true)
+	fakecli.Install(t, bin, "codex", "0.168.0", true)
 	r := agents.New(agents.Options{Shell: shellWith(t, "/nowhere", bin), Dirs: []string{}})
 	r.Detect(context.Background())
 
 	c := r.Status(claude.Kind)
-	if c.State != agents.Ready || c.Source != agents.SourcePath || c.Version != "2.1.320" || c.Auth != "claude.ai (pro)" || !strings.HasPrefix(c.Path, "/") {
+	if c.State != agents.Ready || c.Source != agents.SourcePath || c.Version != "2.1.320" || c.Auth != "claude.ai (pro)" || !filepath.IsAbs(c.Path) {
 		t.Errorf("claude = %+v", c)
 	}
 	x := r.Status(codex.Kind)
@@ -82,8 +66,8 @@ func TestFoundThroughTheLoginShell(t *testing.T) {
 
 func TestFixedPlacesAndChosenPaths(t *testing.T) {
 	fixed, other := t.TempDir(), t.TempDir()
-	fakeClaude(t, fixed, "2.1.318", true)
-	chosen := fakeCodex(t, other, "0.170.1", true)
+	fakecli.Install(t, fixed, "claude", "2.1.318", true)
+	chosen := fakecli.Install(t, other, "codex", "0.170.1", true)
 	r := agents.New(agents.Options{Shell: shellWith(t), Dirs: []string{fixed}, Paths: nil})
 	r.SetPath(context.Background(), codex.Kind, chosen)
 	r.Check(context.Background(), claude.Kind)
@@ -104,8 +88,8 @@ func TestFixedPlacesAndChosenPaths(t *testing.T) {
 
 func TestNotInstalledAndSignedOut(t *testing.T) {
 	bin := t.TempDir()
-	fakeClaude(t, bin, "2.1.318", false)
-	fakeCodex(t, bin, "0.169.0", false)
+	fakecli.Install(t, bin, "claude", "2.1.318", false)
+	fakecli.Install(t, bin, "codex", "0.169.0", false)
 	r := agents.New(agents.Options{Shell: shellWith(t), Dirs: []string{bin}})
 	r.Detect(context.Background())
 	if c := r.Status(claude.Kind); c.State != agents.NotLoggedIn || !c.Usable() {
@@ -129,7 +113,7 @@ func TestNotInstalledAndSignedOut(t *testing.T) {
 
 func TestMarkNotLoggedIn(t *testing.T) {
 	bin := t.TempDir()
-	fakeClaude(t, bin, "2.1.318", true)
+	fakecli.Install(t, bin, "claude", "2.1.318", true)
 	r := agents.New(agents.Options{Shell: shellWith(t), Dirs: []string{bin}})
 	r.Check(context.Background(), claude.Kind)
 	changed := 0
@@ -141,6 +125,9 @@ func TestMarkNotLoggedIn(t *testing.T) {
 }
 
 func TestShellPathTimesOut(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows reads PATH directly")
+	}
 	slow := script(t, t.TempDir(), "slowsh", "sleep 30\n")
 	start := time.Now()
 	if _, err := agents.ShellPath(context.Background(), slow); err == nil {

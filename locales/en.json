@@ -255,7 +255,7 @@
   "noDetection": "Agents are not detected here.",
   "sourceSettings": "chosen in the settings",
   "sourceCommon": "a usual install location",
-  "sourcePath": "the login shell's PATH",
+  "sourcePath": "PATH",
   "pathFrom": "{path} ({source})",
   "agentVersion": "Version {version}",
   "agentSignedIn": "{line} · Signed in: {auth}",

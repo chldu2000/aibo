@@ -71,3 +71,4 @@ model ← store ← workbench ← shell ← cmd/aibo
 - 一个任务对应一次提交；任务文件里写实现说明，以及“没有验证”的部分。
 - 提交前运行 `scripts/check.sh`。
 - 发布前：运行 `go tool mygo build -platform darwin/arm64` 打包，在真机上点一遍，再改 `mygo.json` 里的版本号。
+- Windows x64 在仓库根目录用 PowerShell 运行 `$env:CGO_ENABLED = '0'`，再运行 `go tool mygo build -platform windows/amd64`。双击 `build/windows-amd64/aibo.exe` 启动。构建机安装 NSIS 后，同一命令也会生成 `aibo-setup-<版本>-amd64.exe`。首次启动默认把数据存入 `%LOCALAPPDATA%\aibo`。

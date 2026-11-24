@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -20,6 +21,10 @@ type looseApproval struct {
 func (w *Workbench) outside(s *session, paths []string) bool {
 	ws, _ := w.workspace(s.info.WorkspaceID)
 	for _, p := range paths {
+		// A Windows path starting with a separator is rooted on the workspace's drive.
+		if len(p) > 0 && filepath.VolumeName(p) == "" && os.IsPathSeparator(p[0]) {
+			p = filepath.VolumeName(ws.Path) + p
+		}
 		if !filepath.IsAbs(p) {
 			continue // relative to the workspace
 		}
@@ -33,7 +38,7 @@ func (w *Workbench) outside(s *session, paths []string) bool {
 
 func within(p, root string) bool {
 	rel, err := filepath.Rel(root, p)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
+	return err == nil && filepath.IsLocal(rel)
 }
 
 // resolve resolves the symbolic links of p's longest existing start.

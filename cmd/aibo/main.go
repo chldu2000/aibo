@@ -2,9 +2,10 @@
 //
 //	CGO_ENABLED=0 go build -o aibo ./cmd/aibo && ./aibo
 //
-// The app, as mygo.json describes it, with its disk image, in build/:
+// The packaged app and installer go in build/:
 //
 //	go tool mygo build -platform darwin/arm64
+//	go tool mygo build -platform windows/amd64
 //
 // AIBO_DATA_DIR replaces the data directory (and the config file's
 // choice), for development. AIBO_DEMO=1 adds a scripted Agent. The
@@ -18,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 
@@ -246,7 +248,7 @@ func (a *app) show() {
 		Notify:       notify,
 		Agents:       a.reg,
 		OpenURL:      func(u string) { mygo.Shell.OpenExternal(u) },
-		OpenTerminal: func(path string) { exec.Command("open", "-a", "Terminal", path).Start() },
+		OpenTerminal: openTerminal,
 		ChooseFile: func() (string, bool) {
 			paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.win.Load(), Title: locales.ChooseExecutable(), ShowHiddenFiles: true})
 			if err != nil || len(paths) == 0 {
@@ -371,7 +373,7 @@ func (a *app) openWindow(sessionID string) {
 		Only:         sessionID,
 		Agents:       a.reg,
 		OpenURL:      func(u string) { mygo.Shell.OpenExternal(u) },
-		OpenTerminal: func(path string) { exec.Command("open", "-a", "Terminal", path).Start() },
+		OpenTerminal: openTerminal,
 		ShowInFinder: mygo.Shell.ShowItemInFolder,
 		Wake: func() {
 			if w := win.Load(); w != nil {
@@ -409,4 +411,19 @@ func (a *app) openWindow(sessionID string) {
 			}
 		})
 	})
+}
+
+func openTerminal(path string) {
+	if runtime.GOOS == "windows" {
+		// Opening the console executable from the desktop gives it a terminal.
+		if err := mygo.Shell.OpenPath(path); err != nil {
+			log.Print(err)
+		}
+		return
+	}
+	go func() {
+		if err := exec.Command("open", "-a", "Terminal", path).Run(); err != nil {
+			log.Print(err)
+		}
+	}()
 }

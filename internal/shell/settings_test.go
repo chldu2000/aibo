@@ -10,6 +10,7 @@ import (
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/agents"
+	"github.com/chldu2000/aibo/internal/agents/testdata/fakecli"
 	"github.com/chldu2000/aibo/internal/shell"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/ui"
@@ -121,7 +122,7 @@ func TestSettingsModal(t *testing.T) {
 		if err := tt.Click(field + "（数值）"); err != nil {
 			t.Fatal(err)
 		}
-		tt.Key(ui.Super, ui.KeyA)
+		tt.Key(ui.Cmd, ui.KeyA)
 		tt.Type(value)
 	}
 	set("read_reference 每页", "10") // too small
@@ -150,31 +151,14 @@ func TestSettingsModal(t *testing.T) {
 	close(block)
 }
 
-// stub writes an executable shell script standing in for an Agent.
-func stub(t *testing.T, dir, name, body string) string {
-	t.Helper()
-	p := filepath.Join(dir, name)
-	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return p
-}
-
 // The Agents as found: the settings' Agent page, unavailable ones grayed
 // in the new-session picker, and a session's Agent signed out.
 func TestAgentsFoundAndSignedOut(t *testing.T) {
 	bin := t.TempDir()
-	claudePath := stub(t, bin, "claude", `case "$1" in
---version) echo "2.1.318 (Claude Code)";;
-auth) echo '{"loggedIn":false,"authMethod":"none"}'; exit 1;;
-esac
-`)
-	stub(t, bin, "codex", `case "$1" in
---version) echo "codex-cli 0.168.0";;
-esac
-`)
-	sh := stub(t, t.TempDir(), "fakesh", `printf '__AIBO_PATH__/usr/bin__AIBO_PATH__'`)
-	reg := agents.New(agents.Options{Shell: sh, Dirs: []string{bin}})
+	t.Setenv("PATH", bin)
+	claudePath := fakecli.Install(t, bin, "claude", "2.1.318", false)
+	fakecli.Install(t, bin, "codex", "0.168.0", false)
+	reg := agents.New(agents.Options{Shell: filepath.Join(bin, "unused"), Dirs: []string{bin}})
 	reg.Detect(context.Background())
 
 	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: reg.Agents(), Ready: reg.Ready})

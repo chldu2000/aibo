@@ -145,7 +145,7 @@ func turnFiles(mentions []model.Mention, root string, readable []string) ([]agen
 // trailing "/".
 func relIn(root, p string) (string, bool) {
 	rel, err := filepath.Rel(root, strings.TrimSuffix(p, "/"))
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+	if err != nil || rel == "." || !filepath.IsLocal(rel) {
 		return "", false
 	}
 	rel = filepath.ToSlash(rel)

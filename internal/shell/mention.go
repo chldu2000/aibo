@@ -106,12 +106,13 @@ func (s *Shell) mention(x model.Session, m model.Mention) {
 // mentionName is how a mention reads: its path in the session's own
 // workspace, or the source workspace's name before it.
 func (s *Shell) mentionName(x model.Session, m model.Mention) string {
-	own := s.workspaceOf(x).Path
-	if rel, ok := strings.CutPrefix(m.Path, own+"/"); ok {
+	own := filepath.ToSlash(s.workspaceOf(x).Path)
+	path := filepath.ToSlash(m.Path)
+	if rel, ok := strings.CutPrefix(path, strings.TrimSuffix(own, "/")+"/"); ok {
 		return rel
 	}
 	if ws, ok := s.wb.Workspace(m.WorkspaceID); ok {
-		if rel, ok := strings.CutPrefix(m.Path, ws.Path+"/"); ok {
+		if rel, ok := strings.CutPrefix(path, strings.TrimSuffix(filepath.ToSlash(ws.Path), "/")+"/"); ok {
 			return filepath.Base(ws.Path) + "/" + rel
 		}
 	}

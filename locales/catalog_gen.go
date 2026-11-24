@@ -1884,11 +1884,11 @@ func (msgs Messages) SourceCommon() string {
 	return Catalog.Format(msgs.locale, "sourceCommon", nil)
 }
 
-// SourcePath says "the login shell's PATH"
+// SourcePath says "PATH"
 // in the language the app shows.
 func SourcePath() string { return In(i18n.Locale()).SourcePath() }
 
-// SourcePath says "the login shell's PATH"
+// SourcePath says "PATH"
 // in the language of msgs.
 func (msgs Messages) SourcePath() string {
 	return Catalog.Format(msgs.locale, "sourcePath", nil)

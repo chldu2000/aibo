@@ -87,7 +87,7 @@ func TestSidebarManagement(t *testing.T) {
 	shows("引用 1") // b received one
 
 	menu("迁移方案 timestamptz", "重命名…")
-	tt.Key(ui.Super, ui.KeyA)
+	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("迁移方案（定稿）")
 	click("确定")
 	if x, _ := wb.Session(a.ID); x.Title != "迁移方案（定稿）" {
@@ -107,7 +107,7 @@ func TestSidebarManagement(t *testing.T) {
 	tt.Type("timestamptz")
 	frame()
 	shows("迁移方案 timestamptz") // the snippet
-	tt.Key(ui.Super, ui.KeyA)
+	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Key(0, ui.KeyBackspace)
 	frame()
 

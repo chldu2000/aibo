@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/chldu2000/aibo/internal/agents/testdata/fakecli"
 	"github.com/egoist/mygo/i18n"
 )
 
@@ -12,6 +13,7 @@ import (
 var locale = "zh-Hans"
 
 func TestMain(m *testing.M) {
+	fakecli.RunIfCLI()
 	i18n.SetLocaleFunc(func() string { return locale })
 	os.Exit(m.Run())
 }

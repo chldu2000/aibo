@@ -184,7 +184,7 @@
   "noDetection": "没有接入 Agent 检测。",
   "sourceSettings": "设置中指定",
   "sourceCommon": "常见安装位置",
-  "sourcePath": "登录 shell 的 PATH",
+  "sourcePath": "PATH 环境变量",
   "pathFrom": "{path}（{source}）",
   "agentVersion": "版本 {version}",
   "agentSignedIn": "{line} · 已登录：{auth}",

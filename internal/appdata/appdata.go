@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -43,8 +44,15 @@ type Config struct {
 }
 
 // DefaultDir is the default data directory, where the config file always
-// is: ~/Library/Application Support/aibo.
+// is. On Windows the local profile holds the database and its WAL.
 func DefaultDir() (string, error) {
+	if runtime.GOOS == "windows" {
+		local, err := os.UserCacheDir() // %LocalAppData%
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(local, "aibo"), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -120,7 +128,7 @@ var syncFolders = []struct{ part, name string }{
 // SyncFolder names the sync service whose folder path is in, if any: ""
 // for one it cannot name.
 func SyncFolder(path string) (string, bool) {
-	p := filepath.Clean(path) + "/"
+	p := filepath.ToSlash(filepath.Clean(path)) + "/"
 	for _, s := range syncFolders {
 		if strings.Contains(p, s.part) {
 			if s.part == "/Library/CloudStorage/" {

@@ -168,7 +168,7 @@ func TestSelectAndReferenceToNewSession(t *testing.T) {
 		t.Error("a contiguous choice says it was filled")
 	}
 	row(0, "#1")
-	row(ui.Super, "#4") // leaving a gap
+	row(ui.Cmd, "#4") // leaving a gap
 	shows("已选 #1–#4 · 4 条", "已补齐中间的消息")
 	row(0, "#4") // alone
 	click(0, "选中整轮")

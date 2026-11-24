@@ -1,4 +1,4 @@
-// Package agents finds the Agents installed on this Mac, checks that
+// Package agents finds the Agents installed on this computer, checks that
 // they are new enough and signed in, and keeps their adapters pointed at
 // them. aibo only runs the user's own, unmodified executables, and never
 // installs one, signs in for Claude Code, or reads its credentials.
@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -149,8 +150,7 @@ const (
 // new enough. (Signed out, it still starts: it says so itself.)
 func (s Status) Usable() bool { return s.State == Ready || s.State == NotLoggedIn }
 
-// Options configures a Registry. The zero value looks where a Mac keeps
-// things.
+// Options configures a Registry. The zero value uses the platform defaults.
 type Options struct {
 	// Paths are the executables the user chose, by kind.
 	Paths map[agent.Kind]string
@@ -179,16 +179,18 @@ type Registry struct {
 
 // New returns the registry, every Agent still to check (Detect).
 func New(o Options) *Registry {
-	if o.Shell == "" {
-		o.Shell = os.Getenv("SHELL")
-	}
-	if o.Shell == "" {
-		o.Shell = "/bin/zsh"
-	}
 	if o.Home == "" {
 		o.Home, _ = os.UserHomeDir()
 	}
-	if o.Dirs == nil {
+	if o.Shell == "" && runtime.GOOS != "windows" {
+		o.Shell = os.Getenv("SHELL")
+		if o.Shell == "" {
+			o.Shell = "/bin/zsh"
+		}
+	}
+	if o.Dirs == nil && runtime.GOOS == "windows" {
+		o.Dirs = []string{filepath.Join(o.Home, ".local", "bin")}
+	} else if o.Dirs == nil {
 		o.Dirs = append([]string{filepath.Join(o.Home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin", filepath.Join(o.Home, ".npm-global", "bin")},
 			globDirs(filepath.Join(o.Home, ".nvm", "versions", "node", "*", "bin"))...)
 	}
@@ -401,7 +403,10 @@ func (r *Registry) MarkNotLoggedIn(kind agent.Kind) {
 
 // Detect finds and checks every Agent, the login shell's PATH first.
 func (r *Registry) Detect(ctx context.Context) {
-	p, _ := ShellPath(ctx, r.o.Shell)
+	var p string
+	if runtime.GOOS != "windows" {
+		p, _ = ShellPath(ctx, r.o.Shell)
+	}
 	r.mu.Lock()
 	r.shellPath = p
 	r.mu.Unlock()
@@ -463,6 +468,9 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 	r.mu.Lock()
 	chosen, shellPath := r.paths[spec.Kind], r.shellPath
 	r.mu.Unlock()
+	if runtime.GOOS == "windows" {
+		shellPath = os.Getenv("PATH")
+	}
 	switch {
 	case chosen != "":
 		if !executable(chosen) {
@@ -564,7 +572,13 @@ func older(a, b string) bool {
 
 func executable(p string) bool {
 	fi, err := os.Stat(p)
-	return err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0
+	if err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(filepath.Ext(p), ".exe")
+	}
+	return fi.Mode()&0o111 != 0
 }
 
 func findIn(name string, dirs []string) (string, bool) {
@@ -572,11 +586,41 @@ func findIn(name string, dirs []string) (string, bool) {
 		if d == "" {
 			continue
 		}
-		if p := filepath.Join(d, name); executable(p) {
+		p := filepath.Join(d, name)
+		if runtime.GOOS == "windows" {
+			if !filepath.IsAbs(d) {
+				continue
+			}
+			p += ".exe"
+		}
+		if executable(p) {
 			return p, true
+		}
+		if runtime.GOOS == "windows" && name == "codex" {
+			if p := npmCodex(d); p != "" {
+				return p, true
+			}
 		}
 	}
 	return "", false
+}
+
+// npm's Windows launcher wraps a native executable shipped in its platform package.
+func npmCodex(dir string) string {
+	if _, err := os.Stat(filepath.Join(dir, "codex.cmd")); err != nil {
+		return ""
+	}
+	arch, triple := "x64", "x86_64-pc-windows-msvc"
+	if runtime.GOARCH == "arm64" {
+		arch, triple = "arm64", "aarch64-pc-windows-msvc"
+	}
+	root := filepath.Join(dir, "node_modules", "@openai", "codex", "node_modules", "@openai", "codex-win32-"+arch, "vendor", triple)
+	for _, sub := range []string{"bin", "codex"} {
+		if p := filepath.Join(root, sub, "codex.exe"); executable(p) {
+			return p
+		}
+	}
+	return ""
 }
 
 // checkTimeout bounds each check an Agent's executable runs.
