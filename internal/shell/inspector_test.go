@@ -1,7 +1,10 @@
 package shell_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/fake"
@@ -9,6 +12,65 @@ import (
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/ui"
 )
+
+func TestInspectorFileSelectionFollowsWorkspace(t *testing.T) {
+	w, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(nil)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "src"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "src", "file.txt"), []byte("hello"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ws, _ := w.AddWorkspace(root)
+	first, _ := w.NewSession(ws.ID, fake.Kind, "")
+	second, _ := w.NewSession(ws.ID, fake.Kind, "")
+	other, _ := w.AddWorkspace(t.TempDir())
+	third, _ := w.NewSession(other.ID, fake.Kind, "")
+	sh := shell.New(w, shell.Options{})
+	defer sh.Close()
+	sh.Open(first.ID)
+	tt := ui.NewTester(sh.View, 850, 650)
+	wait := func(label string) {
+		t.Helper()
+		for until := time.Now().Add(3 * time.Second); time.Now().Before(until); {
+			tt.Frame()
+			if tt.HasText(label) {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatalf("missing %s: %q", label, tt.Texts())
+	}
+	click := func(label string) {
+		t.Helper()
+		wait(label)
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+	}
+	click("会话详情")
+	click("工作区文件")
+	click("src")
+	click("file.txt")
+	wait("src/file.txt")
+	sh.Open(second.ID)
+	wait("src/file.txt")
+	sh.Open(third.ID)
+	wait("目录为空")
+	if tt.HasText("src/file.txt") {
+		t.Fatal("previous workspace preview still visible")
+	}
+	sh.Open(first.ID)
+	wait("src/file.txt")
+	click("返回")
+	wait("file.txt")
+}
 
 func TestInspectorBesideConversationAndAboveNarrowDraft(t *testing.T) {
 	w, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(nil)}})

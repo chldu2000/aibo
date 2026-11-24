@@ -1,4 +1,11 @@
 {
+  "workspaceFiles": "Workspace files",
+  "workspaceLoading": "Loading…",
+  "filePreviewLimited": "Preview limited to 512 KiB",
+  "directoryEmpty": "Empty directory",
+  "directoryLimited": "Directory listing truncated",
+  "filePreviewBinary": "Binary file or unsupported text encoding",
+  "filePreviewSpecial": "Links and special files have no text preview",
   "delegationHistory": "Subagent activity",
   "childRecordedSteps": "Recorded steps",
   "noChildMessages": "No child messages have been recorded.",

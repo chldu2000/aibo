@@ -1,4 +1,11 @@
 {
+  "workspaceFiles": "工作区文件",
+  "workspaceLoading": "正在读取…",
+  "filePreviewLimited": "仅预览前 512 KiB",
+  "directoryEmpty": "目录为空",
+  "directoryLimited": "目录条目过多，已截断",
+  "filePreviewBinary": "二进制文件或不支持的文本编码",
+  "filePreviewSpecial": "链接与特殊文件无法预览文本",
   "delegationHistory": "子 Agent 活动",
   "childRecordedSteps": "已记录步骤",
   "noChildMessages": "尚未记录到子消息。",

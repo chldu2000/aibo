@@ -12,10 +12,11 @@ import (
 
 // detailsUI is the session details panel.
 type detailsUI struct {
-	open     bool
-	session  string
-	page     workbench.ActivityKind
-	selected string
+	open       bool
+	session    string
+	page       string
+	selected   string
+	workspaces map[string]*workspacePanel
 	// confirming is a dangerous mode waiting for a second click.
 	confirming string
 }
@@ -34,7 +35,9 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 			if s.detail.page != "" {
 				title = s.inspectorTitle()
 				if iconButton(c, "chevron.left", locales.Back()).Clicked() {
-					if s.detail.selected != "" {
+					if s.detail.page == "files" && s.workspacePanel(x.WorkspaceID).file != "" {
+						s.workspacePanel(x.WorkspaceID).file = ""
+					} else if s.detail.selected != "" {
 						s.detail.selected = ""
 					} else {
 						s.detail.page = ""
@@ -47,9 +50,12 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 			}
 		})
 		ui.Scroll(c).Key(string(s.detail.page) + "/" + s.detail.selected).Grow(1).MinHeight(0).Children(func() {
-			if s.detail.page == "" {
+			switch s.detail.page {
+			case "":
 				s.details(c, x)
-			} else {
+			case "files":
+				s.filePage(c, x.WorkspaceID)
+			default:
 				s.activityPage(c, x)
 			}
 		})
@@ -74,6 +80,9 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 			}
 			if ui.Button(c, locales.DelegationHistory()).Clicked() {
 				s.openActivities(x.ID, workbench.Delegations, false)
+			}
+			if ui.Button(c, locales.WorkspaceFiles()).Clicked() {
+				s.detail.page = "files"
 			}
 		})
 		kv("Agent", func() {

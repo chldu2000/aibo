@@ -22,6 +22,8 @@ var known = []struct {
 	say    func() string
 	detail bool
 }{
+	{workbench.ErrPreviewBinary, locales.FilePreviewBinary, false},
+	{workbench.ErrPreviewSpecial, locales.FilePreviewSpecial, false},
 	{workbench.ErrNotDirectory, locales.ErrNotDirectory, false},
 	{workbench.ErrWorkspaceExists, locales.ErrWorkspaceExists, false},
 	{workbench.ErrNoSuchWorkspace, locales.ErrNoSuchWorkspace, false},

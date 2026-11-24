@@ -12,14 +12,17 @@ import (
 )
 
 func (s *Shell) inspectorTitle() string {
-	if s.detail.page == workbench.Delegations {
+	if s.detail.page == "files" {
+		return locales.WorkspaceFiles()
+	}
+	if s.detail.page == string(workbench.Delegations) {
 		return locales.DelegationHistory()
 	}
 	return locales.CommandHistory()
 }
 
 func (s *Shell) openActivities(id string, kind workbench.ActivityKind, fromBadge bool) {
-	s.detail.open, s.detail.page, s.detail.selected = true, kind, ""
+	s.detail.open, s.detail.page, s.detail.selected = true, string(kind), ""
 	s.detail.confirming = ""
 	if fromBadge {
 		for _, a := range workbench.Activities(s.view(id).msgs, kind) {
@@ -56,12 +59,12 @@ func callState(a workbench.Activity) string {
 
 func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 	v := s.view(x.ID)
-	items := workbench.Activities(v.msgs, s.detail.page)
+	items := workbench.Activities(v.msgs, workbench.ActivityKind(s.detail.page))
 	ui.Column(c).Gap(6).Padding(4).Children(func() {
 		for _, a := range items {
 			if a.ID == s.detail.selected {
 				ui.Text(c, callState(a)).FontSize(12).TextColor(c.Theme().TextMuted)
-				if s.detail.page == workbench.Delegations {
+				if s.detail.page == string(workbench.Delegations) {
 					s.delegationDetail(c, v, a)
 				} else {
 					s.commandDetail(c, v, a)

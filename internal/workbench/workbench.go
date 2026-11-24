@@ -156,14 +156,15 @@ type Workbench struct {
 	done      chan struct{} // closed when the workbench closes
 	pumps     sync.WaitGroup
 
-	mu         sync.Mutex
-	closing    bool
-	modelLists map[agent.Kind]*modelListEntry
-	workspaces []model.Workspace
-	sessions   map[string]*session
-	refs       map[string]*model.Reference
-	listeners  map[int]func(Change)
-	nextL      int
+	mu          sync.Mutex
+	closing     bool
+	modelLists  map[agent.Kind]*modelListEntry
+	browseReads map[workspaceReadKey]*workspaceRead
+	workspaces  []model.Workspace
+	sessions    map[string]*session
+	refs        map[string]*model.Reference
+	listeners   map[int]func(Change)
+	nextL       int
 }
 
 // session is a session's state in memory.
@@ -291,6 +292,9 @@ func (w *Workbench) Close() error {
 	w.closing = true
 	close(w.done)
 	for _, entry := range w.modelLists {
+		entry.cancel()
+	}
+	for _, entry := range w.browseReads {
 		entry.cancel()
 	}
 	var natives []agent.Session

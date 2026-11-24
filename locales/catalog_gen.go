@@ -34,6 +34,76 @@ type Messages struct{ locale string }
 // source language.
 func In(locale string) Messages { return Messages{locale} }
 
+// WorkspaceFiles says "Workspace files"
+// in the language the app shows.
+func WorkspaceFiles() string { return In(i18n.Locale()).WorkspaceFiles() }
+
+// WorkspaceFiles says "Workspace files"
+// in the language of msgs.
+func (msgs Messages) WorkspaceFiles() string {
+	return Catalog.Format(msgs.locale, "workspaceFiles", nil)
+}
+
+// WorkspaceLoading says "Loading…"
+// in the language the app shows.
+func WorkspaceLoading() string { return In(i18n.Locale()).WorkspaceLoading() }
+
+// WorkspaceLoading says "Loading…"
+// in the language of msgs.
+func (msgs Messages) WorkspaceLoading() string {
+	return Catalog.Format(msgs.locale, "workspaceLoading", nil)
+}
+
+// FilePreviewLimited says "Preview limited to 512 KiB"
+// in the language the app shows.
+func FilePreviewLimited() string { return In(i18n.Locale()).FilePreviewLimited() }
+
+// FilePreviewLimited says "Preview limited to 512 KiB"
+// in the language of msgs.
+func (msgs Messages) FilePreviewLimited() string {
+	return Catalog.Format(msgs.locale, "filePreviewLimited", nil)
+}
+
+// DirectoryEmpty says "Empty directory"
+// in the language the app shows.
+func DirectoryEmpty() string { return In(i18n.Locale()).DirectoryEmpty() }
+
+// DirectoryEmpty says "Empty directory"
+// in the language of msgs.
+func (msgs Messages) DirectoryEmpty() string {
+	return Catalog.Format(msgs.locale, "directoryEmpty", nil)
+}
+
+// DirectoryLimited says "Directory listing truncated"
+// in the language the app shows.
+func DirectoryLimited() string { return In(i18n.Locale()).DirectoryLimited() }
+
+// DirectoryLimited says "Directory listing truncated"
+// in the language of msgs.
+func (msgs Messages) DirectoryLimited() string {
+	return Catalog.Format(msgs.locale, "directoryLimited", nil)
+}
+
+// FilePreviewBinary says "Binary file or unsupported text encoding"
+// in the language the app shows.
+func FilePreviewBinary() string { return In(i18n.Locale()).FilePreviewBinary() }
+
+// FilePreviewBinary says "Binary file or unsupported text encoding"
+// in the language of msgs.
+func (msgs Messages) FilePreviewBinary() string {
+	return Catalog.Format(msgs.locale, "filePreviewBinary", nil)
+}
+
+// FilePreviewSpecial says "Links and special files have no text preview"
+// in the language the app shows.
+func FilePreviewSpecial() string { return In(i18n.Locale()).FilePreviewSpecial() }
+
+// FilePreviewSpecial says "Links and special files have no text preview"
+// in the language of msgs.
+func (msgs Messages) FilePreviewSpecial() string {
+	return Catalog.Format(msgs.locale, "filePreviewSpecial", nil)
+}
+
 // DelegationHistory says "Subagent activity"
 // in the language the app shows.
 func DelegationHistory() string { return In(i18n.Locale()).DelegationHistory() }
