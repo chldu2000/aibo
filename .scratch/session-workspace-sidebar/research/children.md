@@ -1,0 +1,21 @@
+# 子 Agent 归属与消息读取
+
+Claude Code 的前台委派已有真实子步骤可供侧栏展示。Codex 当前可展示父会话里的协作工具卡，独立子线程历史有上游只读接口，接入前仍需核对本机协议。两者都应区分“父工具调用已返回”和“子 Agent 已结束”。[Claude 回放测试](../../../internal/agent/claude/parse_test.go#L166) · [Codex 映射](../../../internal/agent/codex/parse.go#L123) · [Codex 协作条目定义](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts)
+
+## Claude Code
+
+- **仓库实证**。Claude Code 2.1.318 的前台委派在样本第 72 行产生 `Agent` 工具调用，输入含描述、类型、提示词及 `run_in_background: false`。第 75–79 行的委派提示、子工具 `Read`、读取结果和子回复均用 `parent_tool_use_id` 指回这次调用，子工具的结果再以 `tool_use_id` 对应子工具。父、子 assistant 信封共用父 `session_id`。第 80 行是父工具返回的报告，里面的 `agentId` 位于文本内。[真实样本](../../../internal/agent/claude/testdata/sub.jsonl#L72) · [采样版本](../../aibo-v1/issues/02-claude-adapter.md)
+- **aibo 已存**。子消息挂在父工具消息的 `Children`，随父消息保存在 SQLite `messages.detail`。模型里的 `Children[].AgentID` 是子回复或工具的条目标识。解析器接收整条子回复、非空思考、子工具及结果，跳过普通 `user/text`，所以样本中的提示词只能从父工具输入展示。已离线运行 `TestSubagentNestsInItsCall` 通过，该次回放的子条目恰为一次带结果的 `Read` 和一条含 `hello` 的子回复。[解析器](../../../internal/agent/claude/parse.go#L280) · [模型](../../../internal/model/model.go#L104) · [持久化](../../../internal/store/store.go#L600) · [回放断言](../../../internal/agent/claude/parse_test.go#L166)
+- **上游独立记录**。Claude Code 文档确认每个子 Agent 在父原生会话目录下有独立 `subagents/agent-{agentId}.jsonl`，受清理期限约束。官方 SDK 提供 `list_subagents` 和 `get_subagent_messages`。TypeScript SDK v0.3.292 起还可由子消息的 `agent_id` 对应任务的 `task_id`，按 `run_id` 区分同一任务的多次运行，按可选 `tool_use_id` 接回父工具调用。任务的 `parent_task_id` 可表明嵌套归属。部分内建类型会省略报告文本里的 ID。aibo 的 Go CLI 流尚未验证这些结构化字段、独立读取及后台或续跑行为。[Claude 子记录](https://code.claude.com/docs/en/sub-agents) · [SDK 子 Agent 标识](https://code.claude.com/docs/en/agent-sdk/subagents) · [SDK 任务事件](https://code.claude.com/docs/en/agent-sdk/typescript#sdktaskstartedmessage) · [官方 SDK 导出](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/__init__.py)
+
+## Codex
+
+- **仓库实证范围**。现有 Codex 回放覆盖命令、文件与中断，没有委派 JSONL。当前解析器把所有 `collabAgentToolCall` 映射成名为 `agent` 的卡，输入取 `prompt`，输出为空，完成事件记录调用是否失败。工具消息保留一份 `Raw`，完成通知覆盖开始通知；若该份原始数据有接收线程或状态，后续可尝试解码。通知按已注册的 `threadId` 分发，适配器未注册新生子线程，当前不会将其消息拼进父卡。[现有样本](../../../internal/agent/codex/testdata) · [采样记录](../../aibo-v1/issues/03-codex-adapter.md) · [工具映射](../../../internal/agent/codex/parse.go#L123) · [原始事件更新](../../../internal/workbench/events.go#L168) · [线程分发](../../../internal/agent/codex/codex.go#L387)
+- **上游 0.169.0 协议**。`spawnAgent` 条目的 `id` 识别调用，`senderThreadId` 和成功创建后返回的 `receiverThreadIds` 给出委派两端。子线程元数据 `parentThreadId` 可复核直接父级；`sessionId` 仅指会话树，`forkedFromId` 指分叉。其他协作操作如 `wait`、`sendInput`、`resumeAgent` 可以引用已有子线程。条目的 `status` 表示这次调用的状态，`agentsStates[childId]` 提供目标上次已知状态及可空消息。还有带 `agentThreadId` 的 `subAgentActivity`，可表示开始、交互、中断、完成。这些结构已由上游定义，本仓库尚无对应实录。[线程定义](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server-protocol/schema/typescript/v2/Thread.ts) · [协作条目](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts) · [目标状态](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server-protocol/schema/typescript/v2/CollabAgentState.ts) · [活动类型](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server-protocol/schema/typescript/v2/SubAgentActivityKind.ts)
+- **独立读取**。已知子 `threadId` 时，可先 `thread/read` 取元数据，再用 `thread/turns/list` 的 `itemsView: "full"` 分页读取已存消息；支持条目分页的存储还提供 `thread/items/list`。0.169.0 的 `thread/read` 仍声明 `includeTurns`，对分页线程已弃用。读取无需启动新轮次。子线程尚未落盘、已清理或读取失败时，可保留已知任务与状态快照。目标安装版本的子历史在父轮结束、重启后是否可取，仍需实测。[0.169.0 读取参数](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server-protocol/schema/typescript/v2/ThreadReadParams.ts) · [官方历史读取说明](https://developers.openai.com/codex/app-server#list-thread-turns)
+
+## 侧栏可据以显示的内容
+
+父卡及子步骤已落盘时，可按 aibo 会话 ID 和父消息序号定位，只读展示已记录的任务、子步骤与返回报告。只有工具卡时，可显示调用记录、已知任务及结果，并说明“没有记录到子消息”。缺失或已结束的父工具无法接纳迟到的子事件；崩溃恢复只将 SQLite 顶层流式消息标为中断，嵌套 JSON 可能仍写着运行中。此时可展示持久化的步骤，子进度标为未知，避免把历史快照计入当前运行数。[消息归属](../../../internal/workbench/events.go#L269) · [启动恢复](../../../internal/workbench/workbench.go#L223) · [存储恢复与重载](../../../internal/store/store.go#L409)
+
+下一次契约采样应分别覆盖两个并发子任务、后台完成或续跑、父轮已结束后到达子事件，以及重启后按父子 ID 只读读取。Claude 需同时留下父调用 ID、任务/运行 ID 及可读的子消息；Codex 需对照 spawn 调用成功与子任务仍在运行的时段，并核对分页结果中的线程、轮次和条目 ID。若只能复现工具卡，验收应限于该层可观察内容。[仓库协议验证约定](../../../docs/agents/conventions.md)
