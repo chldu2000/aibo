@@ -1,4 +1,7 @@
 {
+  "backgroundUnknown": "Background status unknown",
+  "backgroundListed": "Running in the latest terminal snapshot",
+  "backgroundAbsent": "Absent from the latest terminal snapshot",
   "workspaceRefresh": "Refresh workspace",
   "gitGone": "This change is no longer listed",
   "gitUnmerged": "Resolve the conflict to compare these versions",

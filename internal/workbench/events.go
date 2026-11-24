@@ -123,6 +123,9 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		touch(i, true)
 	case agent.ToolStarted:
 		tool := &model.Tool{Name: e.Name, Input: e.Input}
+		if e.NativeThread != "" {
+			tool.NativeThread, tool.NativeItem = e.NativeThread, e.ToolID
+		}
 		if e.Parent != "" {
 			w.child(s, e.Parent, now, touch, func(p *model.Message) {
 				c := childItem(p, "t:"+e.ToolID, model.ToolCall, now)
@@ -184,7 +187,17 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 			break
 		}
 		i, ok := s.items[itemKey("t", e.ToolID)]
-		if !ok || s.msgs[i].State.Ended() {
+		if !ok && e.NativeThread != "" {
+			// Background commands can complete after turn/completed.
+			for j := len(s.msgs) - 1; j >= 0; j-- {
+				t := s.msgs[j].Tool
+				if t != nil && t.NativeThread == e.NativeThread && t.NativeItem == e.ToolID && !t.Done {
+					i, ok = j, true
+					break
+				}
+			}
+		}
+		if !ok || (s.msgs[i].State.Ended() && (e.NativeThread == "" || s.msgs[i].Tool == nil || s.msgs[i].Tool.Done)) {
 			break
 		}
 		finish(&s.msgs[i])

@@ -130,8 +130,10 @@ type Mention struct {
 
 // Tool is a tool call: what the Agent called, and what came back.
 type Tool struct {
-	Name  string
-	Input json.RawMessage
+	NativeThread string `json:",omitempty"`
+	NativeItem   string `json:",omitempty"`
+	Name         string
+	Input        json.RawMessage
 	// Output is the result, cut to MaxToolOutput bytes (Truncated).
 	Output    string
 	IsError   bool

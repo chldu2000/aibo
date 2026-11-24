@@ -314,11 +314,12 @@ type ReplyDone struct {
 
 // ToolStarted reports a tool call the Agent made, with its input.
 type ToolStarted struct {
-	ToolID string
-	Parent string
-	Name   string
-	Input  json.RawMessage
-	Raw    json.RawMessage
+	NativeThread string
+	ToolID       string
+	Parent       string
+	Name         string
+	Input        json.RawMessage
+	Raw          json.RawMessage
 }
 
 // ToolOutputDelta appends a chunk of output to an active tool call.
@@ -326,6 +327,7 @@ type ToolOutputDelta struct{ ToolID, Text string }
 
 // ToolFinished reports a tool call's result.
 type ToolFinished struct {
+	NativeThread string
 	// KeepStreamedOutput means the completion omitted its aggregate.
 	KeepStreamedOutput bool
 	ToolID             string

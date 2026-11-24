@@ -70,7 +70,7 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 				if s.detail.page == string(workbench.Delegations) {
 					s.delegationDetail(c, v, a)
 				} else {
-					s.commandDetail(c, v, a)
+					s.commandDetail(c, x.ID, v, a)
 				}
 				return
 			}
@@ -85,6 +85,9 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 				ui.Column(c).Gap(3).MinWidth(0).Grow(1).Children(func() {
 					ui.Text(c, label).MaxLines(2).TextColor(c.Theme().Text)
 					ui.Text(c, callState(a)).FontSize(11).TextColor(c.Theme().TextMuted)
+					if s.detail.page == string(workbench.Commands) && s.wb.TerminalState(x.ID, a.Message.Tool) == workbench.TerminalListed {
+						ui.Text(c, locales.BackgroundListed()).FontSize(11).TextColor(c.Theme().TextMuted)
+					}
 				})
 			})
 			if row.Clicked() {
@@ -125,8 +128,16 @@ func (s *Shell) delegationDetail(c *ui.Context, v *sessionView, a workbench.Acti
 	activityResult(c, v, a)
 }
 
-func (s *Shell) commandDetail(c *ui.Context, v *sessionView, a workbench.Activity) {
+func (s *Shell) commandDetail(c *ui.Context, id string, v *sessionView, a workbench.Activity) {
 	tool := a.Message.Tool
+	label := locales.BackgroundUnknown()
+	switch s.wb.TerminalState(id, tool) {
+	case workbench.TerminalListed:
+		label = locales.BackgroundListed()
+	case workbench.TerminalAbsent:
+		label = locales.BackgroundAbsent()
+	}
+	ui.Text(c, label).FontSize(12).TextColor(c.Theme().TextMuted)
 	var cmd struct{ Command, Cwd string }
 	_ = json.Unmarshal(tool.Input, &cmd)
 	if cmd.Command == "" {

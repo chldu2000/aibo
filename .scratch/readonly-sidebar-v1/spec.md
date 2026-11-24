@@ -61,6 +61,8 @@ Status: ready-for-agent
 
 ## Further Notes
 
+Codex CLI 0.172.0 的后台清单只覆盖当前连接已加载的线程。Windows 样本记录了父轮结束后仍在运行的任务、从清单消失、审批拒绝，以及新连接查询失败；断线或缺少真实快照时显示未知。Claude Code 沿用命令记录。[脱敏后台实录](../../internal/agent/codex/testdata/sidebar-background-0.172.0.jsonl)
+
 Windows 上的 Codex CLI 0.172.0 已验证并发命令按线程、轮次和条目分段报告输出。完成事件提供聚合文本时替换增量，没有输出的命令可返回 null。[脱敏协议实录](../../internal/agent/codex/testdata/sidebar-command-0.172.0.jsonl)
 
 [规划地图](../session-workspace-sidebar/map.md)记录了用户确认的原则及尚待评审的细节。本规格将布局、历史降级和刷新行为写成可测试的交付默认值，原规划中的四张未决票继续保留。协议依据见[终端活动](../session-workspace-sidebar/research/terminal.md)、[子 Agent 消息](../session-workspace-sidebar/research/children.md)和[工作区文件与 Git](../session-workspace-sidebar/research/workspace.md)。

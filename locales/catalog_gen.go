@@ -34,6 +34,36 @@ type Messages struct{ locale string }
 // source language.
 func In(locale string) Messages { return Messages{locale} }
 
+// BackgroundUnknown says "Background status unknown"
+// in the language the app shows.
+func BackgroundUnknown() string { return In(i18n.Locale()).BackgroundUnknown() }
+
+// BackgroundUnknown says "Background status unknown"
+// in the language of msgs.
+func (msgs Messages) BackgroundUnknown() string {
+	return Catalog.Format(msgs.locale, "backgroundUnknown", nil)
+}
+
+// BackgroundListed says "Running in the latest terminal snapshot"
+// in the language the app shows.
+func BackgroundListed() string { return In(i18n.Locale()).BackgroundListed() }
+
+// BackgroundListed says "Running in the latest terminal snapshot"
+// in the language of msgs.
+func (msgs Messages) BackgroundListed() string {
+	return Catalog.Format(msgs.locale, "backgroundListed", nil)
+}
+
+// BackgroundAbsent says "Absent from the latest terminal snapshot"
+// in the language the app shows.
+func BackgroundAbsent() string { return In(i18n.Locale()).BackgroundAbsent() }
+
+// BackgroundAbsent says "Absent from the latest terminal snapshot"
+// in the language of msgs.
+func (msgs Messages) BackgroundAbsent() string {
+	return Catalog.Format(msgs.locale, "backgroundAbsent", nil)
+}
+
 // WorkspaceRefresh says "Refresh workspace"
 // in the language the app shows.
 func WorkspaceRefresh() string { return In(i18n.Locale()).WorkspaceRefresh() }

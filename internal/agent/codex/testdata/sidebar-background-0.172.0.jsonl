@@ -1,0 +1,12 @@
+{"observation":"background","params":{"threadId":"thread-1","turnEnded":false,"data":{"data":[],"nextCursor":null}}}
+{"method":"item/started","params":{"threadId":"thread-1","turnId":"turn-1","item":{"type":"commandExecution","id":"cmd-1","processId":"proc-1","status":"inProgress","aggregatedOutput":null,"exitCode":null,"command":"pwsh.exe -Command \"Write-Output 'AIBO_BG'; Start-Sleep -Seconds 18; Write-Output 'AIBO_FINISHED'\"","cwd":"C:\\sample"}}}
+{"observation":"background","params":{"threadId":"thread-1","turnEnded":false,"data":{"data":[{"itemId":"cmd-1","processId":"proc-1"}],"nextCursor":null}}}
+{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}
+{"observation":"background","params":{"threadId":"thread-1","turnEnded":true,"data":{"data":[{"itemId":"cmd-1","processId":"proc-1"}],"nextCursor":null}}}
+{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"type":"commandExecution","id":"cmd-1","processId":"proc-1","status":"completed","aggregatedOutput":"AIBO_BG\r\nAIBO_FINISHED\r\n","exitCode":0,"command":"pwsh.exe -Command \"Write-Output 'AIBO_BG'; Start-Sleep -Seconds 18; Write-Output 'AIBO_FINISHED'\"","cwd":"C:\\sample"}}}
+{"observation":"background","params":{"threadId":"thread-1","turnEnded":true,"data":{"data":[],"nextCursor":null}}}
+{"method":"item/started","params":{"threadId":"thread-1","turnId":"turn-2","item":{"type":"commandExecution","id":"cmd-2","processId":null,"status":"inProgress","aggregatedOutput":null,"exitCode":null,"command":"pwsh.exe -Command \"Write-Output 'AIBO_APPROVAL'\"","cwd":"C:\\sample"}}}
+{"observation":"decline","params":{"threadId":"thread-1","itemId":"cmd-2"}}
+{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-2","item":{"type":"commandExecution","id":"cmd-2","processId":null,"status":"declined","aggregatedOutput":null,"exitCode":null,"command":"pwsh.exe -Command \"Write-Output 'AIBO_APPROVAL'\"","cwd":"C:\\sample"}}}
+{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-2","status":"completed"}}}
+{"observation":"reconnect","params":{"threadId":"thread-1","error":{"code":-32600,"message":"thread not found: thread-1"}}}

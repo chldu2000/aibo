@@ -79,6 +79,7 @@ type item struct {
 }
 
 type notification struct {
+	ThreadID    string `json:"threadId"`
 	Item        item   `json:"item"`
 	ItemID      string `json:"itemId"`
 	Delta       string `json:"delta"`
@@ -223,11 +224,11 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		}
 		if name, input, ok := tool(n.Item); ok {
 			b, _ := json.Marshal(input)
-			return []agent.Event{agent.ToolStarted{ToolID: n.Item.ID, Name: name, Input: b, Raw: params}}
+			return []agent.Event{agent.ToolStarted{NativeThread: n.ThreadID, ToolID: n.Item.ID, Name: name, Input: b, Raw: params}}
 		}
 	case "item/completed":
 		delete(t.commands, n.Item.ID)
-		return t.completed(n.Item, params)
+		return t.completed(n.Item, n.ThreadID, params)
 	case "item/commandExecution/outputDelta":
 		if n.Delta != "" && n.TurnID != "" && t.commands[n.ItemID] == n.TurnID {
 			return []agent.Event{agent.ToolOutputDelta{ToolID: n.ItemID, Text: n.Delta}}
@@ -286,7 +287,7 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 	return nil
 }
 
-func (t *thread) completed(it item, raw json.RawMessage) []agent.Event {
+func (t *thread) completed(it item, nativeThread string, raw json.RawMessage) []agent.Event {
 	switch it.Type {
 	case "agentMessage":
 		out := t.attach(it.ID)
@@ -321,6 +322,7 @@ func (t *thread) completed(it item, raw json.RawMessage) []agent.Event {
 		e := agent.ToolFinished{ToolID: it.ID, Output: out, IsError: failed, Raw: raw}
 		if it.Type == "commandExecution" {
 			e.ExitCode, e.Declined = it.ExitCode, it.Status == "declined"
+			e.NativeThread = nativeThread
 			e.KeepStreamedOutput = it.AggregatedOutput == nil && out == ""
 		}
 		return []agent.Event{e}

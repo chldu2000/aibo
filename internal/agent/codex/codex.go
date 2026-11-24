@@ -151,6 +151,7 @@ func (a *Agent) server(ctx context.Context) (*server, error) {
 
 // server is a running app-server.
 type server struct {
+	version string
 	// log is the diagnostic log; unknown the notifications it did not
 	// know, logged once.
 	log     *slog.Logger
@@ -211,10 +212,15 @@ func startServer(ctx context.Context, path string, env []string, log *slog.Logge
 	s.log.Info("app-server started")
 	go s.read(stdout)
 	init := map[string]any{"clientInfo": map[string]any{"name": "aibo", "version": "0.1"}, "capabilities": map[string]any{"experimentalApi": true}}
-	if err := s.call(ctx, "initialize", init, nil); err != nil {
+	var hello struct {
+		UserAgent string `json:"userAgent"`
+	}
+	if err := s.call(ctx, "initialize", init, &hello); err != nil {
 		s.kill()
 		return nil, fmt.Errorf("%w: initialize: %w", agent.ErrStartFailed, err)
 	}
+	product, _, _ := strings.Cut(hello.UserAgent, " ")
+	_, s.version, _ = strings.Cut(product, "/")
 	if err := s.send(map[string]any{"method": "initialized"}); err != nil {
 		s.kill()
 		return nil, err

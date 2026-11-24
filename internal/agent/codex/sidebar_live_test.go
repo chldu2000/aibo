@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/chldu2000/aibo/internal/agent/codex"
+	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/workbench"
 )
 
@@ -22,14 +23,22 @@ func TestContractSidebarCommandStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	var streamed atomic.Bool
+	var listed atomic.Bool
+	var current atomic.Pointer[model.Tool]
 	if err := e.SetMode(sess.ID, "read-only"); err != nil {
 		t.Fatal(err)
 	}
 	off := e.Subscribe(func(c workbench.Change) {
-		if c.SessionID != sess.ID || c.Message == nil {
+		if c.SessionID != sess.ID {
 			return
 		}
-		tool := c.Message.Tool
+		if c.Message != nil && c.Message.Tool != nil && c.Message.Tool.Name == "shell" {
+			current.Store(c.Message.Tool)
+		}
+		tool := current.Load()
+		if tool != nil && e.TerminalState(sess.ID, tool) == workbench.TerminalListed {
+			listed.Store(true)
+		}
 		if tool != nil && !tool.Done && strings.Contains(tool.Output, "AIBO_FIRST") {
 			streamed.Store(true)
 		}
@@ -39,6 +48,9 @@ func TestContractSidebarCommandStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	msgs := e.idle(t, sess.ID)
+	if !listed.Load() {
+		t.Fatal("running command was never matched to a fresh terminal snapshot")
+	}
 	if !streamed.Load() {
 		for _, m := range msgs {
 			if m.Tool != nil {

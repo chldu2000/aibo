@@ -174,10 +174,11 @@ type Workbench struct {
 
 // session is a session's state in memory.
 type session struct {
-	info    model.Session
-	msgs    []model.Message // nil until loaded
-	markers []model.Marker  // loaded with msgs
-	loaded  bool
+	background *backgroundRead
+	info       model.Session
+	msgs       []model.Message // nil until loaded
+	markers    []model.Marker  // loaded with msgs
+	loaded     bool
 
 	native  agent.Session // nil while not connected
 	running bool
