@@ -338,8 +338,9 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			prompt = locales.ComposerBlocked()
 		}
 		svc := c.Services()
-		// Keyed, so that chips appearing above it keep its focus and caret.
-		input := ui.TextArea(c.Key("draft"+x.ID), &v.draft).Placeholder(prompt).Label(prompt).MinHeight(44).Disabled(blocked).OnPaste(func(text string) bool {
+		// Without a look of its own: the card's glass is the field. Keyed,
+		// so that chips appearing above it keep its focus and caret.
+		input := ui.TextAreaBase(c.Key("draft"+x.ID), &v.draft).Padding(4, 2).Placeholder(prompt).Label(prompt).MinHeight(44).Disabled(blocked).OnPaste(func(text string) bool {
 			if s.pasteFiles(svc, x.ID, text) {
 				return true
 			}
