@@ -21,6 +21,10 @@ Label: wayfinder:map
 - [两家 Agent 能提供哪些可核实的终端活动](issues/01-command-evidence.md) — 已有记录支持只读命令和结果，后台任务存活需要独立信号。
 - [如何识别子 Agent 并取得可归属的消息](issues/02-child-evidence.md) — Claude 前台子步骤已有回放，Codex 独立子历史已有协议依据，仍需真实委派样本。
 - [文件浏览与 Git 差异有哪些可复用的数据来源](issues/03-workspace-evidence.md) — MyGO 提供视图，工作台读取目录和 Git；同一文件的暂存与未暂存改动可分别查看。
+- [从详情和徽章打开侧栏后怎样导航与返回](issues/04-panel-navigation.md) — 宽窗口并排，窄窗口在侧栏内切换列表和单项；收起后回到原草稿，新活动只更新徽章。
+- [用户怎样区分正在执行的活动、已结束的调用和缺失的记录](issues/05-activity-contract.md) — 各状态依据独立证据显示；恢复历史时，没有当期证据的活动显示上次已知状态或未知。
+- [浏览文件与 Git 改动时保留什么并在何时刷新](issues/06-workspace-behavior.md) — 按需读取并遵循忽略规则；暂存和未暂存可分别选中；多窗口共享读取，各窗口保留自己的选择。
+- [哪些只读场景可以独立交付和验收](issues/07-delivery.md) — 先做入口，再并行交付四个基础场景，协议增强最后排期；首期已全部交付。
 
 ## Not yet specified
 
