@@ -24,17 +24,17 @@ Label: wayfinder:map
 
 - [每条内置命令放行、改走控件还是拦下](issues/03-builtin-verdicts.md) — 内置命令走白名单，新出现和没测过的默认拦下；Claude 的提示词型和只读本地命令放行，`model`/`effort`/`compact`/`rename` 改走 aibo 控件，终端专用、`mcp`、`config`、`loop`、`goal` 拦下；Codex 只复现 `model`/`permissions`/`compact`/`rename`/`clear`/`new`，`review` 待契约测试，其余拦下
 
+- [命令清单在什么时候可用](issues/04-list-availability.md) — 打出 `/` 时才取：Claude 提前启动会话自己的原生进程，从 `initialize` 拿清单；Codex 用 `skills/list`；运行时随 `commands_changed`、`skills/changed` 刷新；清单按 Agent、工作区和登录状态缓存在内存；取不到时拦下 `/单词`
+
 ## Not yet specified
 
-- 带参数的命令：参数补全（面板只显示参数提示）。
-- Codex 一条消息带多个 skill。
-- Claude 本地命令附带的结构化数据（`context_usage`、`usage_report`）是否专门渲染。
-- Agent 主动发起的轮次：Claude 的 `loop`、`goal` 与 Codex 的 `goal` 会在用户没有发消息时自己开始轮次，工作台尚不支持，这几条命令先拦下。
-- 分叉会话（Codex `fork`）与 Codex 的 plan 协作模式，在 aibo 里都没有对应概念。
-- MCP 提供的 prompts 是否也作为 Agent 命令出现。
-- ACP Agent 的 available commands 能否套用同一模型。
+（无。剩余的迷雾已在 2026-11-25 划为范围外。）
 
 ## Out of scope
 
 - 在 aibo 里创建、编辑 Agent 命令或 skills，管理插件与市场。
 - aibo 自己的命令（用 `/` 调用工作台功能）。
+- 参数补全、Codex 一条消息带多个 skill、Claude 本地命令附带的结构化数据（`context_usage`、`usage_report`）的专门渲染：都是第一版之后的增强，第一版的规格用不到。
+- Agent 主动发起的轮次（Claude 的 `loop`、`goal`，Codex 的 `goal`）、分叉会话（Codex `fork`）、Codex 的 plan 协作模式：都是工作台的独立功能，相关命令在[内置命令裁定](issues/03-builtin-verdicts.md)里先拦下，等这些功能做出来再改裁定。
+- MCP 提供的 prompts：aibo 启动 Claude 时带 `--strict-mcp-config`，用户自己的 MCP 服务器不会接进来，所以这些 prompts 在 aibo 里本来就看不到；Codex 不把 MCP prompts 作为命令报告。
+- ACP Agent 的 available commands：属于[接入第三个及后续 Agent](../agent-extensibility/map.md)，在那张地图里处理；本地图的命令模型（结构化命令、白名单裁定）要能容纳它。
