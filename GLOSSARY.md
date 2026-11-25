@@ -68,6 +68,10 @@ _Avoid_: 重开会话, 会话迁移
 Agent 自己保存的会话（如 Claude 的 session、Codex 的 thread）。一个会话同一时刻只对应一个原生会话，历史上可以先后对应多个；aibo 只记录其 ID。
 _Avoid_: 底层会话, Agent 会话
 
+**Agent 命令 (Agent Command)**:
+用户在消息开头以 `/` 调用、由 Agent 自己提供的能力，包括 Agent 的内置命令和用户或项目定义的命令与 skills；工作台不实现它们，只负责让用户发现并调用。
+_Avoid_: 斜杠命令, 技能, 指令
+
 **审批请求 (Approval Request)**:
 Agent 在执行操作前向用户请求许可；其结果记为对应工具调用的属性。
 _Avoid_: 权限弹窗, permission prompt
