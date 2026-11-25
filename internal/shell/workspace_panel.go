@@ -70,7 +70,6 @@ func (s *Shell) filePage(c *ui.Context, id string) {
 		ui.Tree(c, func() { s.directoryRows(c, id, ".", p) })
 		return
 	}
-	ui.Text(c, p.file).Bold().TextColor(c.Theme().Text).Selectable()
 	r := s.wb.FilePreview(id, p.file)
 	if !readReady(s, c, r) {
 		return

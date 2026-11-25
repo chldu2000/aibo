@@ -16,10 +16,12 @@ func glyph(body string) *ui.SVG {
 }
 
 var iconFallbacks = map[string]*ui.SVG{
+	"info.circle":                        glyph(`<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-9.5v.5"/>`),
 	"minus":                              glyph(`<path d="M4 12h16"/>`),
 	"square":                             glyph(`<rect x="4" y="4" width="16" height="16" rx="1"/>`),
 	"arrow.down.right.and.arrow.up.left": glyph(`<path d="M3 3l7 7m0-5v5H5m16 11-7-7m5 0h-5v5"/>`),
 	"arrow.turn.down.right":              glyph(`<path d="M5 3v8a4 4 0 0 0 4 4h11m-5-5 5 5-5 5"/>`),
+	"arrow.triangle.branch":              glyph(`<circle cx="6" cy="5" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v12m12-10c0 5-12 3-12 9"/>`),
 	"arrow.up":                           glyph(`<path d="M12 20V4m-7 7 7-7 7 7"/>`),
 	"arrowshape.turn.up.right":           glyph(`<path d="M21 10 13 3v4C6 7 3 12 3 20c3-5 6-7 10-7v4Z"/>`),
 	"at":                                 glyph(`<circle cx="11" cy="12" r="4"/><path d="M15 8v6c0 4 6 2 6-3a9 9 0 1 0-5 9"/>`),

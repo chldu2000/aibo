@@ -31,28 +31,27 @@ func (s *Shell) closeDetails(id string) {
 	s.focusComposer = id
 }
 
-// inspector keeps its navigation visible while the selected content scrolls.
+// inspectorTabs are the panel's pages, in the order of its tabs.
+var inspectorTabs = []struct {
+	page, symbol string
+	label        func() string
+}{
+	{"", "info.circle", locales.DetailsOverview},
+	{"files", "folder", locales.WorkspaceFiles},
+	{"git", "arrow.triangle.branch", locales.GitStatus},
+	{string(workbench.Commands), "terminal", locales.CommandHistory},
+	{string(workbench.Delegations), "person.2", locales.DelegationHistory},
+}
+
+// inspector keeps its tabs visible while the selected content scrolls.
+// The tabs switch pages; Back only leaves what a page opened in itself,
+// a file, a change, a call or a child's history.
 func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
-	panel.Radius(16).Clip().Material(glass.Glass{}).Padding(12).Gap(8).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			title := locales.SessionDetails()
-			if s.detail.page != "" {
-				title = s.inspectorTitle()
-				if iconButton(c, "chevron.left", locales.Back()).Clicked() {
-					if s.detail.history != nil {
-						s.closeChildHistory()
-					} else if s.detail.page == "files" && s.workspacePanel(x.WorkspaceID).file != "" {
-						s.workspacePanel(x.WorkspaceID).file = ""
-					} else if s.detail.page == "git" && s.workspacePanel(x.WorkspaceID).change != nil {
-						s.workspacePanel(x.WorkspaceID).change = nil
-					} else if s.detail.selected != "" {
-						s.detail.selected = ""
-					} else {
-						s.detail.page = ""
-					}
-				}
-			}
-			ui.Text(c, title).Bold().TextColor(c.Theme().Text).Grow(1)
+	t := c.Theme()
+	panel.Radius(16).Clip().Material(glass.Glass{}).Padding(12).Gap(10).Children(func() {
+		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+			s.inspectorTabBar(c)
+			ui.Spacer(c)
 			if s.detail.page == "files" || s.detail.page == "git" {
 				if iconButton(c, "arrow.clockwise", locales.WorkspaceRefresh()).Clicked() {
 					s.wb.RefreshWorkspace(x.WorkspaceID)
@@ -62,6 +61,14 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 				s.closeDetails(x.ID)
 			}
 		})
+		if crumb := s.inspectorCrumb(x); crumb != "" {
+			ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+				if iconButton(c, "chevron.left", locales.Back()).Clicked() {
+					s.inspectorBack(x)
+				}
+				ui.Text(c, crumb).Bold().FontSize(13).TextColor(t.Text).MaxLines(1).TruncateMiddle().Grow(1).MinWidth(0)
+			})
+		}
 		ui.Scroll(c).Key(string(s.detail.page) + "/" + s.detail.selected).Grow(1).MinHeight(0).Children(func() {
 			switch s.detail.page {
 			case "":
@@ -77,6 +84,94 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 	})
 }
 
+// inspectorTabBar is a segmented control of symbols, named by their
+// tooltips, on a faint track that reads on any glass.
+func (s *Shell) inspectorTabBar(c *ui.Context) {
+	t := c.Theme()
+	cur := 0
+	for i, tab := range inspectorTabs {
+		if tab.page == s.detail.page {
+			cur = i
+		}
+	}
+	sel := cur
+	seg := ui.SegmentedBase(c.Key("inspector-tabs"), &sel, len(inspectorTabs))
+	seg.Track.Padding(2).Gap(2).Radius(9).Background(veil(c, 0.06)).Label(locales.DetailsTabs()).Children(func() {
+		for i, tab := range inspectorTabs {
+			label := tab.label()
+			sg := seg.Segment(i).Size(34, 26).Radius(7).AlignItems(ui.Center).Justify(ui.Center).Label(label).Tooltip(label)
+			ink := t.TextMuted
+			switch {
+			case i == sel:
+				sg.Background(raised(c))
+				ink = t.Text
+			case sg.Hovered():
+				sg.Background(veil(c, 0.08))
+				ink = t.Text
+			}
+			sg.Children(func() { icon(c, tab.symbol).Size(15).Color(ink) })
+		}
+	})
+	if sel != cur {
+		s.closeChildHistory()
+		s.detail.page, s.detail.selected, s.detail.confirming = inspectorTabs[sel].page, "", ""
+	}
+}
+
+// veil is a translucent wash of the text's color, a track or a hover on
+// glass that lets the glass show.
+func veil(c *ui.Context, alpha float32) ui.Color {
+	if c.Theme().Dark {
+		return ui.RGBA(255, 255, 255, alpha*1.5)
+	}
+	return ui.RGBA(0, 0, 0, alpha)
+}
+
+// raised is the chosen segment's face, lifted off its track.
+func raised(c *ui.Context) ui.Color {
+	if c.Theme().Dark {
+		return ui.RGBA(255, 255, 255, 0.18)
+	}
+	return ui.RGBA(255, 255, 255, 0.9)
+}
+
+// inspectorCrumb names what the page opened in itself, if anything.
+func (s *Shell) inspectorCrumb(x model.Session) string {
+	switch s.detail.page {
+	case "":
+		return ""
+	case "files":
+		return s.workspacePanel(x.WorkspaceID).file
+	case "git":
+		if ch := s.workspacePanel(x.WorkspaceID).change; ch != nil {
+			return changeName(*ch)
+		}
+		return ""
+	}
+	if s.detail.history != nil {
+		return locales.ChildHistoryOpen()
+	}
+	if s.detail.selected != "" {
+		return "#" + s.detail.selected
+	}
+	return ""
+}
+
+// inspectorBack leaves what the page opened, the innermost first.
+func (s *Shell) inspectorBack(x model.Session) {
+	p := s.workspacePanel(x.WorkspaceID)
+	switch {
+	case s.detail.history != nil:
+		s.closeChildHistory()
+	case s.detail.page == "files":
+		p.file = ""
+	case s.detail.page == "git":
+		p.change = nil
+	default:
+		s.detail.selected = ""
+	}
+}
+
 func (s *Shell) details(c *ui.Context, x model.Session) {
 	t := c.Theme()
 	st := s.wb.Status(x.ID)
@@ -89,20 +184,6 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 	}
 	text := func(s string) { ui.Text(c, s).FontSize(12).TextColor(t.Text).Selectable() }
 	ui.Column(c).Gap(12).Padding(4).Children(func() {
-		ui.Row(c).Gap(6).Wrap().Children(func() {
-			if ui.Button(c, locales.CommandHistory()).Clicked() {
-				s.openActivities(x.ID, workbench.Commands, false)
-			}
-			if ui.Button(c, locales.DelegationHistory()).Clicked() {
-				s.openActivities(x.ID, workbench.Delegations, false)
-			}
-			if ui.Button(c, locales.WorkspaceFiles()).Clicked() {
-				s.detail.page = "files"
-			}
-			if ui.Button(c, locales.GitStatus()).Clicked() {
-				s.detail.page = "git"
-			}
-		})
 		kv("Agent", func() {
 			text(s.agentName(x.Agent))
 		})

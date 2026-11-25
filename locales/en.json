@@ -577,5 +577,7 @@
     }
   },
   "quitRunningDetail": "Quitting interrupts them: replies under way are kept as interrupted, and approvals not answered count as denied.",
-  "refToThis": "Reference in this session"
+  "refToThis": "Reference in this session",
+  "detailsOverview": "Overview",
+  "detailsTabs": "Details pages"
 }

@@ -4437,3 +4437,23 @@ func RefToThis() string { return In(i18n.Locale()).RefToThis() }
 func (msgs Messages) RefToThis() string {
 	return Catalog.Format(msgs.locale, "refToThis", nil)
 }
+
+// DetailsOverview says "Overview"
+// in the language the app shows.
+func DetailsOverview() string { return In(i18n.Locale()).DetailsOverview() }
+
+// DetailsOverview says "Overview"
+// in the language of msgs.
+func (msgs Messages) DetailsOverview() string {
+	return Catalog.Format(msgs.locale, "detailsOverview", nil)
+}
+
+// DetailsTabs says "Details pages"
+// in the language the app shows.
+func DetailsTabs() string { return In(i18n.Locale()).DetailsTabs() }
+
+// DetailsTabs says "Details pages"
+// in the language of msgs.
+func (msgs Messages) DetailsTabs() string {
+	return Catalog.Format(msgs.locale, "detailsTabs", nil)
+}

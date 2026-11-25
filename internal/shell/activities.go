@@ -11,19 +11,6 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func (s *Shell) inspectorTitle() string {
-	if s.detail.page == "git" {
-		return locales.GitStatus()
-	}
-	if s.detail.page == "files" {
-		return locales.WorkspaceFiles()
-	}
-	if s.detail.page == string(workbench.Delegations) {
-		return locales.DelegationHistory()
-	}
-	return locales.CommandHistory()
-}
-
 func (s *Shell) openActivities(id string, kind workbench.ActivityKind, fromBadge bool) {
 	s.detail.open, s.detail.page, s.detail.selected = true, string(kind), ""
 	s.detail.confirming = ""

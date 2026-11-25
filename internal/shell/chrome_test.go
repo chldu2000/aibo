@@ -125,7 +125,7 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 		t.Fatalf("missing completed command: %q", tt.Texts())
 	}
 	click("返回")
-	click("返回")
+	click("概览")
 	for _, w := range []string{"权限模式", "原生会话", "工作区", "归档"} {
 		if !tt.HasText(w) {
 			t.Errorf("details lack %q: %q", w, tt.Texts())

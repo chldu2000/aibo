@@ -437,5 +437,7 @@
   "dataDirFromEnv": "数据目录由环境变量 AIBO_DATA_DIR 指定，不能在这里更改。",
   "quitRunning": "有 {count} 个会话正在运行，确定退出吗？",
   "quitRunningDetail": "退出会中断它们：正在进行的回复保存为“已中断”，还没处理的审批视为拒绝。",
-  "refToThis": "引用给本会话"
+  "refToThis": "引用给本会话",
+  "detailsOverview": "概览",
+  "detailsTabs": "详情页面"
 }

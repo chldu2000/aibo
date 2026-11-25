@@ -71,7 +71,6 @@ func TestInspectorFileSelectionFollowsWorkspace(t *testing.T) {
 	wait("src/file.txt")
 	click("返回")
 	wait("file.txt")
-	click("返回")
 	if out, err := exec.Command("git", "-C", root, "init", "-b", "sidebar-test").CombinedOutput(); err != nil {
 		t.Fatal(err, string(out))
 	}
@@ -79,9 +78,10 @@ func TestInspectorFileSelectionFollowsWorkspace(t *testing.T) {
 	wait("sidebar-test · 尚无提交")
 	wait("?  src/file.txt")
 	click("?  src/file.txt")
-	wait("未跟踪 · ?  src/file.txt")
+	wait("未跟踪")
+	wait("src/file.txt")
 	sh.Open(second.ID)
-	wait("未跟踪 · ?  src/file.txt")
+	wait("src/file.txt")
 	if err := os.Remove(filepath.Join(root, "src", "file.txt")); err != nil {
 		t.Fatal(err)
 	}
