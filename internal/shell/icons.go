@@ -16,6 +16,11 @@ func glyph(body string) *ui.SVG {
 }
 
 var iconFallbacks = map[string]*ui.SVG{
+	"archivebox":                         glyph(`<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9m-9 4h4"/>`),
+	"doc.on.doc":                         glyph(`<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2"/>`),
+	"pencil":                             glyph(`<path d="M16 3l5 5L8 21H3v-5Z"/>`),
+	"trash":                              glyph(`<path d="M4 6h16M9 6V4h6v2m-9 0 1 14a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-14"/>`),
+	"tray.and.arrow.up":                  glyph(`<path d="M3 14v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5h-5a4 4 0 0 1-8 0Zm9-11v9m-4-5 4-4 4 4"/>`),
 	"info.circle":                        glyph(`<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-9.5v.5"/>`),
 	"minus":                              glyph(`<path d="M4 12h16"/>`),
 	"square":                             glyph(`<rect x="4" y="4" width="16" height="16" rx="1"/>`),

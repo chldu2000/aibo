@@ -83,7 +83,7 @@ func (s *Shell) filePage(c *ui.Context, id string) {
 		p.editor = &editor.State{Buffer: buf, ReadOnly: true}
 		p.previewPath, p.previewText = p.file, r.Value.Text
 	}
-	editor.View(c, p.editor).Height(360).Radius(8)
+	editor.View(c, p.editor).Grow(1).MinHeight(120).Radius(8)
 }
 
 func (s *Shell) directoryRows(c *ui.Context, id, dir string, p *workspacePanel) {

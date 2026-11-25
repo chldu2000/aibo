@@ -4457,3 +4457,53 @@ func DetailsTabs() string { return In(i18n.Locale()).DetailsTabs() }
 func (msgs Messages) DetailsTabs() string {
 	return Catalog.Format(msgs.locale, "detailsTabs", nil)
 }
+
+// DetailsSession says "Session"
+// in the language the app shows.
+func DetailsSession() string { return In(i18n.Locale()).DetailsSession() }
+
+// DetailsSession says "Session"
+// in the language of msgs.
+func (msgs Messages) DetailsSession() string {
+	return Catalog.Format(msgs.locale, "detailsSession", nil)
+}
+
+// DetailsRuntime says "Runtime"
+// in the language the app shows.
+func DetailsRuntime() string { return In(i18n.Locale()).DetailsRuntime() }
+
+// DetailsRuntime says "Runtime"
+// in the language of msgs.
+func (msgs Messages) DetailsRuntime() string {
+	return Catalog.Format(msgs.locale, "detailsRuntime", nil)
+}
+
+// DetailsActions says "Actions"
+// in the language the app shows.
+func DetailsActions() string { return In(i18n.Locale()).DetailsActions() }
+
+// DetailsActions says "Actions"
+// in the language of msgs.
+func (msgs Messages) DetailsActions() string {
+	return Catalog.Format(msgs.locale, "detailsActions", nil)
+}
+
+// DetailProcess says "Process"
+// in the language the app shows.
+func DetailProcess() string { return In(i18n.Locale()).DetailProcess() }
+
+// DetailProcess says "Process"
+// in the language of msgs.
+func (msgs Messages) DetailProcess() string {
+	return Catalog.Format(msgs.locale, "detailProcess", nil)
+}
+
+// CopyNativeID says "Copy the native session ID"
+// in the language the app shows.
+func CopyNativeID() string { return In(i18n.Locale()).CopyNativeID() }
+
+// CopyNativeID says "Copy the native session ID"
+// in the language of msgs.
+func (msgs Messages) CopyNativeID() string {
+	return Catalog.Format(msgs.locale, "copyNativeID", nil)
+}

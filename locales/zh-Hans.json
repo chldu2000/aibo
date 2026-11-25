@@ -439,5 +439,10 @@
   "quitRunningDetail": "退出会中断它们：正在进行的回复保存为“已中断”，还没处理的审批视为拒绝。",
   "refToThis": "引用给本会话",
   "detailsOverview": "概览",
-  "detailsTabs": "详情页面"
+  "detailsTabs": "详情页面",
+  "detailsSession": "会话",
+  "detailsRuntime": "运行",
+  "detailsActions": "操作",
+  "detailProcess": "进程",
+  "copyNativeID": "复制原生会话 ID"
 }

@@ -69,7 +69,7 @@ func (s *Shell) gitPage(c *ui.Context, id string) {
 	groups := gitGroups()
 	if p.change != nil {
 		ch := *p.change
-		ui.Column(c).Gap(8).Children(func() {
+		ui.Column(c).Gap(8).Grow(1).MinHeight(0).Children(func() {
 			ui.Row(c).Gap(6).Padding(0, 4).AlignItems(ui.Center).Children(func() {
 				changeCode(c, ch)
 				ui.Text(c, groups[ch.Group]).FontSize(12).TextColor(t.TextMuted)
@@ -188,5 +188,5 @@ func (s *Shell) changeDiff(c *ui.Context, id string, ch workbench.GitChange, p *
 		}
 		p.diffView, p.diffFor, p.diffValue = view, ch, d
 	}
-	editor.DiffView(c, p.diffView).Height(360).Radius(8)
+	editor.DiffView(c, p.diffView).Grow(1).MinHeight(120).Radius(8)
 }
