@@ -147,3 +147,62 @@ func TestInspectorBesideConversationAndAboveNarrowDraft(t *testing.T) {
 		t.Fatalf("focus, draft or other inspector lost: %q", field.Value)
 	}
 }
+
+// Esc and ⌘[ leave what a page opened; Esc on a page closes the panel.
+func TestInspectorKeys(t *testing.T) {
+	w, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{fake.New(nil)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("hello"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ws, _ := w.AddWorkspace(root)
+	x, _ := w.NewSession(ws.ID, fake.Kind, "")
+	sh := shell.New(w, shell.Options{})
+	defer sh.Close()
+	sh.Open(x.ID)
+	tt := ui.NewTester(sh.View, 850, 650)
+	wait := func(label string) {
+		t.Helper()
+		for until := time.Now().Add(3 * time.Second); time.Now().Before(until); {
+			tt.Frame()
+			if tt.HasText(label) {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatalf("missing %s: %q", label, tt.Texts())
+	}
+	click := func(label string) {
+		t.Helper()
+		wait(label)
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+	}
+	click("会话详情")
+	click("工作区文件")
+	click("file.txt")
+	wait("返回")
+	tt.Key(ui.Super, ui.KeyBracketLeft)
+	tt.Frame()
+	if tt.HasText("返回") {
+		t.Fatal("⌘[ did not leave the file")
+	}
+	click("file.txt")
+	wait("返回")
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if tt.HasText("返回") || !tt.HasText("关闭会话详情") {
+		t.Fatalf("Esc did not go back to the files: %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if tt.HasText("关闭会话详情") {
+		t.Fatal("Esc did not close the panel")
+	}
+}

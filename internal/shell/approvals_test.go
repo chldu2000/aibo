@@ -348,9 +348,6 @@ func TestLongCommandApprovalCard(t *testing.T) {
 			saveImage(t, tt.Image(), filepath.Join(p, "10-rules-"+open+".png"))
 		}
 		tt.Key(0, ui.KeyEscape)
-		if err := tt.Click(open); err == nil && open == "会话详情" {
-			frame() // the details close by their button
-		}
 		frame()
 	}
 }

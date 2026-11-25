@@ -95,7 +95,7 @@ func (s *Shell) gitPage(c *ui.Context, id string) {
 			ui.Text(c, branch).Bold().FontSize(13).TextColor(t.Text).Selectable().MaxLines(1).Shrink(1).MinWidth(0)
 		})
 		if len(status.Changes) == 0 {
-			ui.Text(c, locales.GitClean()).FontSize(12).TextColor(t.TextMuted).Padding(0, 6)
+			emptyState(c, "checkmark.circle", locales.GitClean())
 			return
 		}
 		for group, label := range groups {

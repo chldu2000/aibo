@@ -163,7 +163,10 @@ func (s *Shell) pane(c *ui.Context) {
 			}
 		})
 		if s.detail.open {
-			panel := ui.Column(c).Absolute().Top(headerBottom + 8).Right(12).Bottom(16).Key("session-inspector")
+			s.inspectorKeys(c, x, v)
+		}
+		if s.detail.open {
+			panel := ui.Column(c).Absolute().Top(headerBottom + 8).Right(12).Bottom(16).Key("session-inspector").Transition(inspectorMotion)
 			if rail > 0 {
 				panel.Width(rail - 12)
 			} else {

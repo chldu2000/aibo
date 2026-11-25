@@ -55,9 +55,12 @@ func (s *Shell) RefreshVisibleWorkspace() {
 
 func readReady[T any](s *Shell, c *ui.Context, r workbench.Snapshot[T]) bool {
 	if r.Pending {
-		ui.Text(c, locales.WorkspaceLoading()).TextColor(c.Theme().TextMuted)
+		emptyState(c, "circle.dotted", locales.WorkspaceLoading())
 	} else if r.Err != nil {
-		ui.Text(c, s.say(r.Err)).TextColor(c.Theme().Warning).Selectable()
+		ui.Column(c).Gap(8).Padding(40, 16).AlignItems(ui.Center).Children(func() {
+			icon(c, "exclamationmark.circle").Size(24).Color(c.Theme().Warning)
+			ui.Text(c, s.say(r.Err)).FontSize(12).TextColor(c.Theme().Text).TextAlign(ui.Center).Selectable()
+		})
 	} else {
 		return true
 	}
@@ -92,7 +95,11 @@ func (s *Shell) directoryRows(c *ui.Context, id, dir string, p *workspacePanel) 
 		return
 	}
 	if len(r.Value.Entries) == 0 {
-		ui.Text(c, locales.DirectoryEmpty()).TextColor(c.Theme().TextMuted)
+		if dir == "." {
+			emptyState(c, "folder", locales.DirectoryEmpty())
+		} else {
+			ui.Text(c, locales.DirectoryEmpty()).FontSize(12).TextColor(c.Theme().TextMuted)
+		}
 	}
 	for _, entry := range r.Value.Entries {
 		rel := path.Join(dir, entry.Name)

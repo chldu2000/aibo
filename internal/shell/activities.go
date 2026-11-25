@@ -51,34 +51,89 @@ func callState(a workbench.Activity) string {
 	}
 }
 
+// callTone is the symbol and color of a call's state, as callState says
+// it: running, returned, failed, declined, or not known.
+func callTone(c *ui.Context, a workbench.Activity) (string, ui.Color) {
+	t := c.Theme()
+	m, tool := a.Message, a.Message.Tool
+	switch {
+	case tool.Declined || tool.Approval != nil && tool.Approval.Answer != nil &&
+		(tool.Approval.Answer.Kind == agent.Deny || tool.Approval.Answer.Kind == agent.DenyStop):
+		return "xmark.circle", t.TextMuted
+	case a.Active:
+		return "circle.dotted", t.Accent
+	case m.State == model.Interrupted:
+		return "questionmark.circle", t.Warning
+	case tool.IsError:
+		return "exclamationmark.circle", t.Danger
+	case tool.Done:
+		return "checkmark.circle", t.Success
+	}
+	return "questionmark.circle", t.TextMuted
+}
+
+// callStatus is a call's state in a line, its symbol before.
+func callStatus(c *ui.Context, a workbench.Activity) {
+	symbol, ink := callTone(c, a)
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+		icon(c, symbol).Size(13).Color(ink)
+		ui.Text(c, callState(a)).FontSize(12).TextColor(c.Theme().Text)
+	})
+}
+
+// emptyState stands for a page with nothing to show: a symbol and a line,
+// in the middle.
+func emptyState(c *ui.Context, symbol, text string) {
+	t := c.Theme()
+	ui.Column(c).Gap(8).Padding(40, 16).AlignItems(ui.Center).Children(func() {
+		icon(c, symbol).Size(24).Color(t.TextMuted)
+		ui.Text(c, text).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
+	})
+}
+
 func (s *Shell) activityPage(c *ui.Context, x model.Session) {
+	t := c.Theme()
 	v := s.view(x.ID)
-	items := workbench.Activities(v.msgs, workbench.ActivityKind(s.detail.page))
-	ui.Column(c).Gap(6).Padding(4).Children(func() {
-		for _, a := range items {
-			if a.ID == s.detail.selected {
-				ui.Text(c, callState(a)).FontSize(12).TextColor(c.Theme().TextMuted)
-				if s.detail.page == string(workbench.Delegations) {
+	kind := workbench.ActivityKind(s.detail.page)
+	items := workbench.Activities(v.msgs, kind)
+	for _, a := range items {
+		if a.ID == s.detail.selected {
+			ui.Column(c).Gap(12).Children(func() {
+				callStatus(c, a)
+				if kind == workbench.Delegations {
 					s.delegationDetail(c, x.ID, v, a)
 				} else {
 					s.commandDetail(c, x.ID, v, a)
 				}
-				return
-			}
+			})
+			return
 		}
-		s.detail.selected = ""
-		if len(items) == 0 {
-			ui.Text(c, locales.NoActivities()).TextColor(c.Theme().TextMuted)
+	}
+	s.detail.selected = ""
+	if len(items) == 0 {
+		symbol := "terminal"
+		if kind == workbench.Delegations {
+			symbol = "person.2"
 		}
+		emptyState(c, symbol, locales.NoActivities())
+		return
+	}
+	ui.Column(c).Gap(1).Children(func() {
 		for _, a := range items {
-			label := "#" + a.ID + " · " + gist(a.Message.Tool.Input)
+			title := gist(a.Message.Tool.Input)
+			label := "#" + a.ID + " · " + title
+			symbol, ink := callTone(c, a)
 			row := pickRow(c, a.ID, label, func() {
-				ui.Column(c).Gap(3).MinWidth(0).Grow(1).Children(func() {
-					ui.Text(c, label).MaxLines(2).TextColor(c.Theme().Text)
-					ui.Text(c, callState(a)).FontSize(11).TextColor(c.Theme().TextMuted)
-					if s.detail.page == string(workbench.Commands) && s.wb.TerminalState(x.ID, a.Message.Tool) == workbench.TerminalListed {
-						ui.Text(c, locales.BackgroundListed()).FontSize(11).TextColor(c.Theme().TextMuted)
+				ui.Box(c).Padding(2, 0, 0).AlignSelf(ui.Start).Children(func() {
+					icon(c, symbol).Size(14).Color(ink)
+				})
+				ui.Column(c).Gap(2).MinWidth(0).Grow(1).Children(func() {
+					ui.Text(c, title).FontSize(13).MaxLines(2).TextColor(t.Text)
+					state := callState(a)
+					if kind == workbench.Commands && s.wb.TerminalState(x.ID, a.Message.Tool) == workbench.TerminalListed {
+						state += " · " + locales.BackgroundListed()
 					}
+					ui.Text(c, "#"+a.ID+" · "+state).FontSize(11).TextColor(t.TextMuted).MaxLines(1)
 				})
 			})
 			if row.Clicked() {
@@ -107,18 +162,18 @@ func (s *Shell) delegationDetail(c *ui.Context, id string, v *sessionView, a wor
 	var task struct{ Description, Prompt string }
 	_ = json.Unmarshal(m.Tool.Input, &task)
 	if task.Description != "" {
-		ui.Text(c, task.Description).Bold().TextColor(c.Theme().Text)
+		ui.Text(c, task.Description).Bold().FontSize(13).TextColor(c.Theme().Text)
 	}
 	if task.Prompt != "" {
-		ui.Text(c, task.Prompt).Selectable().TextColor(c.Theme().Text)
+		ui.Text(c, task.Prompt).FontSize(12).Selectable().TextColor(c.Theme().Text).Padding(10, 12).Radius(10).Background(veil(c, 0.035))
 	}
-	ui.Text(c, locales.ChildRecordedSteps()).Bold().FontSize(12).TextColor(c.Theme().TextMuted)
+	sectionTitle(c, locales.ChildRecordedSteps())
 	if len(m.Children) == 0 {
-		ui.Text(c, locales.NoChildMessages()).TextColor(c.Theme().TextMuted)
+		ui.Text(c, locales.NoChildMessages()).FontSize(12).TextColor(c.Theme().TextMuted).Padding(0, 6)
 	}
 	for i, child := range m.Children {
 		key := a.ID + "." + strconv.Itoa(i+1)
-		ui.Column(c).Key(key).Gap(4).Padding(8).Radius(8).Background(c.Theme().Surface).Children(func() {
+		ui.Column(c).Key(key).Gap(6).Padding(10, 12).Radius(10).Background(veil(c, 0.035)).Children(func() {
 			if child.Tool == nil {
 				ui.Text(c, child.Text).Selectable().TextColor(c.Theme().Text)
 				return
@@ -131,30 +186,48 @@ func (s *Shell) delegationDetail(c *ui.Context, id string, v *sessionView, a wor
 	activityResult(c, v, a)
 }
 
+// commandDetail shows the command in a block of its own, then where it
+// ran, how it ended and whether its terminal is still there.
 func (s *Shell) commandDetail(c *ui.Context, id string, v *sessionView, a workbench.Activity) {
+	t := c.Theme()
 	tool := a.Message.Tool
-	label := locales.BackgroundUnknown()
-	switch s.wb.TerminalState(id, tool) {
-	case workbench.TerminalListed:
-		label = locales.BackgroundListed()
-	case workbench.TerminalAbsent:
-		label = locales.BackgroundAbsent()
-	}
-	ui.Text(c, label).FontSize(12).TextColor(c.Theme().TextMuted)
 	var cmd struct{ Command, Cwd string }
 	_ = json.Unmarshal(tool.Input, &cmd)
 	if cmd.Command == "" {
 		cmd.Command = pretty(tool.Input)
 	}
-	ui.Text(c, cmd.Command).Font("Menlo").Selectable().TextColor(c.Theme().Text)
-	if cmd.Cwd != "" {
-		ui.Text(c, cmd.Cwd).Selectable().TextColor(c.Theme().TextMuted)
-	} else {
-		ui.Text(c, locales.UnknownCommandDir()).TextColor(c.Theme().TextMuted)
+	ui.Text(c, cmd.Command).Font("Menlo").FontSize(12).Selectable().TextColor(t.Text).Padding(10, 12).Radius(10).Background(veil(c, 0.05))
+	line := func(symbol, text string, ink ui.Color, mono bool) {
+		ui.Row(c).Gap(8).Padding(0, 6).AlignItems(ui.Center).Children(func() {
+			icon(c, symbol).Size(13).Color(t.TextMuted)
+			tx := ui.Text(c, text).FontSize(12).TextColor(ink).Selectable().MaxLines(1).TruncateMiddle().Tooltip(text).Grow(1).MinWidth(0)
+			if mono {
+				tx.Font("Menlo").FontSize(11)
+			}
+		})
 	}
-	if tool.ExitCode != nil {
-		ui.Text(c, locales.CommandExit(strconv.Itoa(*tool.ExitCode))).TextColor(c.Theme().TextMuted)
-	}
+	ui.Column(c).Gap(6).Children(func() {
+		if cmd.Cwd != "" {
+			line("folder", cmd.Cwd, t.Text, true)
+		} else {
+			line("folder", locales.UnknownCommandDir(), t.TextMuted, false)
+		}
+		if tool.ExitCode != nil {
+			ink := t.Text
+			if *tool.ExitCode != 0 {
+				ink = t.Danger
+			}
+			line("number", locales.CommandExit(strconv.Itoa(*tool.ExitCode)), ink, false)
+		}
+		label := locales.BackgroundUnknown()
+		switch s.wb.TerminalState(id, tool) {
+		case workbench.TerminalListed:
+			label = locales.BackgroundListed()
+		case workbench.TerminalAbsent:
+			label = locales.BackgroundAbsent()
+		}
+		line("terminal", label, t.TextMuted, false)
+	})
 	activityResult(c, v, a)
 }
 
@@ -164,12 +237,12 @@ func activityResult(c *ui.Context, v *sessionView, a workbench.Activity) {
 	if tool.Truncated {
 		label = locales.ToolTruncated(label)
 	}
-	ui.Text(c, label).Bold().FontSize(12).TextColor(c.Theme().TextMuted)
+	sectionTitle(c, label)
 	if tool.Output != "" {
 		readOutput(c, &v.open, "inspector/"+a.ID, tool.Output)
 	} else if tool.Done {
-		ui.Text(c, locales.CallEmptyOutput()).TextColor(c.Theme().TextMuted)
+		ui.Text(c, locales.CallEmptyOutput()).FontSize(12).TextColor(c.Theme().TextMuted).Padding(0, 6)
 	} else {
-		ui.Text(c, locales.CallNoResult()).TextColor(c.Theme().TextMuted)
+		ui.Text(c, locales.CallNoResult()).FontSize(12).TextColor(c.Theme().TextMuted).Padding(0, 6)
 	}
 }

@@ -1,6 +1,8 @@
 package shell
 
 import (
+	"time"
+
 	"github.com/chldu2000/aibo/locales"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -88,6 +90,35 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 			}
 		})
 	})
+}
+
+// inspectorMotion slides the panel in from the right edge as it opens,
+// and back out as it closes.
+var inspectorMotion = ui.ElementTransition{
+	Duration: 180 * time.Millisecond,
+	Colors:   true,
+	Enter:    &ui.Motion{X: 24},
+	Exit:     &ui.Motion{X: 24},
+}
+
+// inspectorKeys gives the panel Esc, which leaves what a page opened or
+// else closes the panel, and ⌘[, which goes back; not while a dialog, a
+// menu, a selection or a confirmation has Esc for its own.
+func (s *Shell) inspectorKeys(c *ui.Context, x model.Session, v *sessionView) {
+	if s.settings.open || s.side.renaming != "" || s.side.deleting != "" || s.pull.open || v.sel.on || s.detail.confirming != "" {
+		return
+	}
+	nested := s.inspectorCrumb(x) != ""
+	switch {
+	case c.Shortcut(0, ui.KeyEscape):
+		if nested {
+			s.inspectorBack(x)
+		} else {
+			s.closeDetails(x.ID)
+		}
+	case nested && c.Shortcut(ui.Super, ui.KeyBracketLeft):
+		s.inspectorBack(x)
+	}
 }
 
 // inspectorTabBar is a segmented control of symbols, named by their
