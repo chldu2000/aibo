@@ -22,11 +22,15 @@ Label: wayfinder:map
 
 - [用户怎样调用 Agent 命令、会话怎样记录](issues/02-invoke-and-record.md) — 结构化命令 chip，每条消息最多一个且放在开头，由适配器翻译（Claude `/名字`，Codex `$名字` 加 skill 项）；清单外的 `/单词` 拦下；用户消息记命令名、参数和说明快照，本地命令输出标为“命令输出”；`/clear` 表现为上下文重置
 
+- [每条内置命令放行、改走控件还是拦下](issues/03-builtin-verdicts.md) — 内置命令走白名单，新出现和没测过的默认拦下；Claude 的提示词型和只读本地命令放行，`model`/`effort`/`compact`/`rename` 改走 aibo 控件，终端专用、`mcp`、`config`、`loop`、`goal` 拦下；Codex 只复现 `model`/`permissions`/`compact`/`rename`/`clear`/`new`，`review` 待契约测试，其余拦下
+
 ## Not yet specified
 
 - 带参数的命令：参数补全（面板只显示参数提示）。
 - Codex 一条消息带多个 skill。
 - Claude 本地命令附带的结构化数据（`context_usage`、`usage_report`）是否专门渲染。
+- Agent 主动发起的轮次：Claude 的 `loop`、`goal` 与 Codex 的 `goal` 会在用户没有发消息时自己开始轮次，工作台尚不支持，这几条命令先拦下。
+- 分叉会话（Codex `fork`）与 Codex 的 plan 协作模式，在 aibo 里都没有对应概念。
 - MCP 提供的 prompts 是否也作为 Agent 命令出现。
 - ACP Agent 的 available commands 能否套用同一模型。
 
