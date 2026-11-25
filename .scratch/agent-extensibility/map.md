@@ -15,7 +15,7 @@ Label: wayfinder:map
 
 ## Decisions so far
 
-<!-- 决策票解决后，将票名、链接和结论概要记在这里。 -->
+- [OpenCode 在本机能完成哪些会话操作](issues/01-opencode-local.md) — 1.19.6 的会话操作都能完成，引用快照边界成立；共用进程无法隔离会话的 MCP，须每会话一个进程；续接用 `session/resume`，它不回放历史且采用新的 MCP 参数。
 
 ## Not yet specified
 

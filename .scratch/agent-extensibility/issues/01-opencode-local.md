@@ -2,7 +2,7 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
+Status: resolved
 
 ## Question
 
@@ -17,3 +17,9 @@ Status: open
 | 重启续聊 | 结束并重启进程，以原工作区、原生会话 ID 和本次 MCP 参数续接；确认上一轮上下文可用、时间线无重复、引用仍可读。分别记录 resume 与 load 的回放行为。 |
 
 上游文档说明同一进程中，其他同目录会话也可使用注入的 MCP 服务；这是两会话测试的依据。若先用小型协议客户端取证，注明客户端名称，将 aibo 端到端结果单独记录。
+
+## Answer
+
+OpenCode 1.19.6 通过 `opencode acp` 可以完成新建会话、对话、审批、中断、跨 Agent 读引用和重启续聊。引用的快照边界成立：引用之后源会话追加的消息读不到。共用一个进程时无法隔离会话：同名 MCP 服务会被后建会话的令牌覆盖，不同名的服务则对进程里所有会话可见，未获授权的会话也能读到别人的引用。每会话独立一个进程时隔离成立。`session/resume` 不回放历史，并采用本次传入的 MCP 参数；`session/load` 会先回放全部历史。运行中被中断的命令，工具状态报 `completed`，要结合 `exit: null` 和 `stopReason: cancelled` 判断。模式 `build`/`plan` 是 OpenCode 的 Agent 角色，不是权限模式。以上结果来自协议客户端 `acp-probe` 和真实的 aibo 工作台 MCP 服务，未经 aibo 端到端验证，也未在 Windows 上测试。
+
+[OpenCode 1.19.6 本机 ACP 实测](../research/opencode-local.md)
