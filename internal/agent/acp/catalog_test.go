@@ -192,6 +192,34 @@ func TestProbeFailsThenRetries(t *testing.T) {
 	}
 }
 
+// A launcher's script goes before the Agent's own arguments, and pointing
+// elsewhere forgets the lists another program told.
+func TestConfigureCommand(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	args := filepath.Join(dir, "args")
+	a := New("x", "X", "", []string{"acp"}, "")
+	a.ConfigureCommand(exe, []string{"index.js"}, []string{"AIBO_ACP_FAKE=options", "AIBO_ACP_LOG=" + filepath.Join(dir, "log"), "AIBO_ACP_ARGS=" + args})
+	if _, err := a.Models(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	s, err := a.Start(t.Context(), agent.StartOptions{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if b, _ := os.ReadFile(args); string(b) != "index.js\nacp" {
+		t.Errorf("ran with %q", b)
+	}
+	a.ConfigureCommand(exe, []string{"other.js"}, []string{"AIBO_ACP_FAKE=options-nodelete"})
+	if _, err := a.Models(t.Context()); !errors.Is(err, agent.ErrListsUnknown) {
+		t.Errorf("after another script, models: %v", err)
+	}
+}
+
 // The configuration labels modes; one without a label is Caution. Its
 // default is the mode a session with none starts in.
 func TestModeTags(t *testing.T) {

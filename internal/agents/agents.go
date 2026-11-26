@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -98,8 +99,11 @@ type Status struct {
 	Spec
 	State State
 	// Path is the executable found; Source how it was found.
-	Path    string
-	Source  Source
+	Path   string
+	Source Source
+	// Args go before the Agent's own when Path runs: the script of a
+	// launcher aibo runs past (the Cursor CLI's index.js on Windows).
+	Args    []string
 	Version string
 	// Auth is how it is signed in, as it says.
 	Auth string
@@ -196,7 +200,11 @@ func New(o Options) *Registry {
 		}
 	}
 	if o.Dirs == nil && runtime.GOOS == "windows" {
-		o.Dirs = []string{filepath.Join(o.Home, ".local", "bin"), filepath.Join(o.Home, ".opencode", "bin")}
+		local := os.Getenv("LOCALAPPDATA")
+		if local == "" {
+			local = filepath.Join(o.Home, "AppData", "Local")
+		}
+		o.Dirs = []string{filepath.Join(o.Home, ".local", "bin"), filepath.Join(o.Home, ".opencode", "bin"), filepath.Join(local, "cursor-agent")}
 	} else if o.Dirs == nil {
 		o.Dirs = append([]string{filepath.Join(o.Home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin", filepath.Join(o.Home, ".npm-global", "bin"), filepath.Join(o.Home, ".opencode", "bin")},
 			globDirs(filepath.Join(o.Home, ".nvm", "versions", "node", "*", "bin"))...)
@@ -484,7 +492,7 @@ func (r *Registry) Check(ctx context.Context, kind agent.Kind) {
 			r.codex.Configure(st.Path, env)
 		default:
 			a := r.acp[kind]
-			a.Configure(st.Path, env)
+			a.ConfigureCommand(st.Path, st.Args, env)
 			if kind == OpenCode && st.Version != "" && r.configs[kind].ToolPrefix == nil {
 				prefix := "aibo_"
 				if !older(st.Version, "2.0.0") {
@@ -515,16 +523,20 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 		}
 		st.Path, st.Source = spec.Command, SourceSettings
 	case chosen != "":
-		if !executable(chosen) {
+		p, pre, ok := chosen, []string(nil), executable(chosen)
+		if spec.Command == cursorCommand {
+			p, pre, ok = cursorChosen(chosen)
+		}
+		if !ok {
 			st.State, st.Problem, st.Detail = NotInstalled, ProblemBadPath, chosen
 			return st
 		}
-		st.Path, st.Source = chosen, SourceSettings
+		st.Path, st.Args, st.Source = p, pre, SourceSettings
 	default:
-		if p, ok := findIn(spec.Command, r.o.Dirs); ok {
-			st.Path, st.Source = p, SourceCommon
-		} else if p, ok := findIn(spec.Command, filepath.SplitList(shellPath)); ok {
-			st.Path, st.Source = p, SourcePath
+		if p, pre, ok := findIn(spec.Command, r.o.Dirs); ok {
+			st.Path, st.Args, st.Source = p, pre, SourceCommon
+		} else if p, pre, ok := findIn(spec.Command, filepath.SplitList(shellPath)); ok {
+			st.Path, st.Args, st.Source = p, pre, SourcePath
 		} else {
 			st.State, st.Problem = NotInstalled, ProblemNotFound
 			return st
@@ -538,7 +550,7 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 		return st
 	}
 	env := r.env()
-	out, _, err := run(ctx, st.Path, env, "--version")
+	out, _, err := run(ctx, st.Path, env, append(slices.Clone(st.Args), "--version")...)
 	if err != nil {
 		st.State, st.Problem, st.Detail = Broken, ProblemNoVersion, err.Error()
 		return st
@@ -629,7 +641,9 @@ func executable(p string) bool {
 	return fi.Mode()&0o111 != 0
 }
 
-func findIn(name string, dirs []string) (string, bool) {
+// findIn finds an executable in dirs, with the arguments that go before
+// the Agent's own (Status.Args).
+func findIn(name string, dirs []string) (string, []string, bool) {
 	for _, d := range dirs {
 		if d == "" {
 			continue
@@ -644,15 +658,20 @@ func findIn(name string, dirs []string) (string, bool) {
 			}
 		}
 		if executable(p) {
-			return p, true
+			return p, nil, true
 		}
 		if runtime.GOOS == "windows" && name == "codex" {
 			if p := npmCodex(d); p != "" {
-				return p, true
+				return p, nil, true
+			}
+		}
+		if runtime.GOOS == "windows" && name == cursorCommand {
+			if p, pre, ok := cursorLauncher(d); ok {
+				return p, pre, true
 			}
 		}
 	}
-	return "", false
+	return "", nil, false
 }
 
 // npm's Windows launcher wraps a native executable shipped in its platform package.

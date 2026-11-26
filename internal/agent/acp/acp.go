@@ -26,6 +26,7 @@ type Agent struct {
 	prefix string
 	mu     sync.Mutex
 	path   string
+	pre    []string // before args: a launcher's script (ConfigureCommand)
 	env    []string
 	log    *slog.Logger
 	lists  catalog
@@ -47,12 +48,16 @@ func (a *Agent) SetToolPrefix(prefix string) {
 	defer a.mu.Unlock()
 	a.prefix = prefix
 }
-func (a *Agent) SupportsReadDirs() bool   { return false }
-func (a *Agent) SupportsCompaction() bool { return false }
-func (a *Agent) Configure(path string, env []string) {
+func (a *Agent) SupportsReadDirs() bool              { return false }
+func (a *Agent) SupportsCompaction() bool            { return false }
+func (a *Agent) Configure(path string, env []string) { a.ConfigureCommand(path, nil, env) }
+
+// ConfigureCommand points the Agent at path, which runs with pre before
+// its own arguments: node.exe and the script of a launcher aibo runs past.
+func (a *Agent) ConfigureCommand(path string, pre, env []string) {
 	a.mu.Lock()
-	moved := a.path != path
-	a.path, a.env = path, slices.Clone(env)
+	moved := a.path != path || !slices.Equal(a.pre, pre)
+	a.path, a.pre, a.env = path, slices.Clone(pre), slices.Clone(env)
 	a.mu.Unlock()
 	if moved {
 		a.forget() // another program may offer other models and modes
@@ -94,14 +99,14 @@ func (a *Agent) Start(ctx context.Context, o agent.StartOptions) (agent.Session,
 // launch starts the Agent's process in dir, for a session to talk to.
 func (a *Agent) launch(dir string) (*session, error) {
 	a.mu.Lock()
-	path, env, log := a.path, a.env, a.log
+	path, args, env, log := a.path, append(slices.Clone(a.pre), a.args...), a.env, a.log
 	a.mu.Unlock()
 	if path == "" {
 		return nil, agent.ErrNotFound
 	}
 	// The caller's Start deadline applies to negotiation. The session owns
 	// the process after Start returns.
-	cmd := exec.CommandContext(context.Background(), path, a.args...)
+	cmd := exec.CommandContext(context.Background(), path, args...)
 	agent.BoundProcess(cmd)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)

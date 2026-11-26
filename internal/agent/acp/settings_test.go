@@ -17,6 +17,9 @@ import (
 
 func TestMain(m *testing.M) {
 	if v := os.Getenv("AIBO_ACP_FAKE"); v != "" {
+		if p := os.Getenv("AIBO_ACP_ARGS"); p != "" {
+			os.WriteFile(p, []byte(strings.Join(os.Args[1:], "\n")), 0o600)
+		}
 		fakeAgent(v, os.Getenv("AIBO_ACP_LOG"))
 		os.Exit(0)
 	}
