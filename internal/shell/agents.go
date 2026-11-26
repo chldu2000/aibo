@@ -50,6 +50,11 @@ func sourceText(src agents.Source) string {
 // describe is what aibo knows of an Agent (agents.Spec); for one it does
 // not support, as the fake, its name alone.
 func (s *Shell) describe(kind agent.Kind) agents.Spec {
+	if s.opts.Agents != nil {
+		if st := s.opts.Agents.Status(kind); st.Problem != agents.ProblemUnknown {
+			return st.Spec
+		}
+	}
 	if d, ok := agents.Describe(kind); ok {
 		return d
 	}
@@ -109,7 +114,7 @@ func (s *Shell) agentSettings(c *ui.Context) {
 				}
 			}
 			ui.Row(c).Gap(6).Wrap().Children(func() {
-				if st.State == agents.NotInstalled && s.opts.OpenURL != nil && ui.Button(c, locales.InstallGuide()).Clicked() {
+				if st.State == agents.NotInstalled && st.InstallURL != "" && s.opts.OpenURL != nil && ui.Button(c, locales.InstallGuide()).Clicked() {
 					s.opts.OpenURL(st.InstallURL)
 				}
 				if s.opts.ChooseFile != nil && ui.Button(c, locales.ChoosePath()).Clicked() {

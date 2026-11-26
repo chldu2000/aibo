@@ -14,9 +14,8 @@ import (
 // approvalUI is what an approval card is in the middle of: confirming a
 // permanent rule, or writing why it denies.
 type approvalUI struct {
-	confirming bool
-	denying    bool
-	note       string
+	selected agent.ApprovalOption
+	note     string
 	// rules is set while the rules the options allow show.
 	rules bool
 }
@@ -41,14 +40,17 @@ func answered(a *model.Approval) string {
 	case a.Answer == nil:
 		return ""
 	case a.Note != "":
-		return locales.AnswerWithNote(optionLabel(a.Answer.Kind), a.Note)
+		return locales.AnswerWithNote(optionLabel(*a.Answer), a.Note)
 	}
-	return locales.Answer(optionLabel(a.Answer.Kind))
+	return locales.Answer(optionLabel(*a.Answer))
 }
 
 // optionLabel says what an answer does, short enough for a button.
-func optionLabel(k agent.OptionKind) string {
-	switch k {
+func optionLabel(o agent.ApprovalOption) string {
+	if o.Label != "" {
+		return o.Label
+	}
+	switch o.Kind {
 	case agent.AllowOnce:
 		return locales.OptionAllowOnce()
 	case agent.AllowSession:
@@ -60,7 +62,7 @@ func optionLabel(k agent.OptionKind) string {
 	case agent.DenyStop:
 		return locales.OptionDenyStop()
 	}
-	return string(k)
+	return string(o.Kind)
 }
 
 // approvalTitle says what a request asks for: what requests kept before
@@ -102,10 +104,13 @@ func (s *Shell) approvalCard(c *ui.Context, sessionID string, a *model.Approval)
 		ui.Text(c, answered(a)).FontSize(11).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle()
 		return
 	}
-	st := s.approvalState(a.ID)
+	key := sessionID + "/" + a.ID
+	st := s.approvalState(key)
 	answer := func(o agent.ApprovalOption, note string) {
 		if err := s.wb.Approve(sessionID, a.ID, o.ID, note); err != nil {
 			s.notice = s.failed(locales.ApproveFailed, err)
+		} else {
+			delete(s.approvals, key)
 		}
 	}
 	x, _ := s.wb.Session(sessionID)
@@ -153,9 +158,9 @@ func (s *Shell) approvalCard(c *ui.Context, sessionID string, a *model.Approval)
 		if len(a.Input) > 0 && a.Command == "" && a.Diff == "" && a.Plan == "" {
 			longText(c, pretty(a.Input), 200)
 		}
-		switch {
-		case st.confirming:
-			o := option(a, agent.AllowAlways)
+		switch st.selected.Kind {
+		case agent.AllowAlways:
+			o := st.selected
 			ui.Text(c, locales.ConfirmAlways(where(o))).FontSize(12).TextColor(t.Text)
 			allows(c, o)
 			ui.Row(c).Gap(6).Children(func() {
@@ -163,17 +168,17 @@ func (s *Shell) approvalCard(c *ui.Context, sessionID string, a *model.Approval)
 					answer(o, "")
 				}
 				if ui.Button(c, locales.Cancel()).Clicked() {
-					st.confirming = false
+					st.selected = agent.ApprovalOption{}
 				}
 			})
-		case st.denying:
+		case agent.Deny:
 			ui.TextInput(c, &st.note).Placeholder(locales.DenyPlaceholder()).Label(locales.DenyNote()).AutoFocus()
 			ui.Row(c).Gap(6).Children(func() {
 				if ui.PrimaryButton(c, locales.ConfirmDeny()).Clicked() {
-					answer(option(a, agent.Deny), st.note)
+					answer(st.selected, st.note)
 				}
 				if ui.Button(c, locales.Cancel()).Clicked() {
-					st.denying = false
+					st.selected = agent.ApprovalOption{}
 				}
 			})
 		default:
@@ -183,19 +188,23 @@ func (s *Shell) approvalCard(c *ui.Context, sessionID string, a *model.Approval)
 				for _, o := range a.Options {
 					switch o.Kind {
 					case agent.AllowOnce:
-						if ui.PrimaryButton(c, optionLabel(o.Kind)).Clicked() {
+						if ui.PrimaryButton(c, optionLabel(o)).Clicked() {
 							answer(o, "")
 						}
 					case agent.AllowAlways:
-						if ui.Button(c, locales.OptionMore(optionLabel(o.Kind))).Tooltip(locales.AlwaysTip(where(o), oneLine(strings.Join(grants(o), locales.RuleSep()), 200))).Clicked() {
-							st.confirming = true
+						if ui.Button(c, locales.OptionMore(optionLabel(o))).Tooltip(locales.AlwaysTip(where(o), oneLine(strings.Join(grants(o), locales.RuleSep()), 200))).Clicked() {
+							st.selected = o
 						}
 					case agent.Deny:
-						if ui.Button(c, locales.OptionMore(optionLabel(o.Kind))).Clicked() {
-							st.denying = true
+						if o.NoNote {
+							if ui.Button(c, optionLabel(o)).Clicked() {
+								answer(o, "")
+							}
+						} else if ui.Button(c, locales.OptionMore(optionLabel(o))).Clicked() {
+							st.selected = o
 						}
 					case agent.AllowSession:
-						b := ui.Button(c, optionLabel(o.Kind))
+						b := ui.Button(c, optionLabel(o))
 						if g := grants(o); len(g) > 0 {
 							b.Tooltip(locales.SessionTip(oneLine(strings.Join(g, locales.RuleSep()), 200)))
 						}
@@ -203,7 +212,7 @@ func (s *Shell) approvalCard(c *ui.Context, sessionID string, a *model.Approval)
 							answer(o, "")
 						}
 					default:
-						if ui.Button(c, optionLabel(o.Kind)).Clicked() {
+						if ui.Button(c, optionLabel(o)).Clicked() {
 							answer(o, "")
 						}
 					}
@@ -231,7 +240,7 @@ func allows(c *ui.Context, o agent.ApprovalOption) {
 		return
 	}
 	t := c.Theme()
-	ui.Text(c, locales.LabelColon(optionLabel(o.Kind))).FontSize(11).TextColor(t.TextMuted)
+	ui.Text(c, locales.LabelColon(optionLabel(o))).FontSize(11).TextColor(t.TextMuted)
 	longText(c, strings.Join(g, "\n"), 120)
 }
 
@@ -252,15 +261,6 @@ func longText(c *ui.Context, text string, maxHeight float32) {
 	ui.Scroll(c).MaxHeight(maxHeight).MinWidth(0).Radius(8).Background(t.Surface).Children(func() {
 		ui.Text(c, text).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable().Padding(6, 8)
 	})
-}
-
-func option(a *model.Approval, kind agent.OptionKind) agent.ApprovalOption {
-	for _, o := range a.Options {
-		if o.Kind == kind {
-			return o
-		}
-	}
-	return agent.ApprovalOption{}
 }
 
 // diffView shows a unified diff, its added and removed lines colored.

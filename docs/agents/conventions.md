@@ -7,7 +7,7 @@ v1 之后的约束。能用工具检查的，都在 `scripts/check.sh` 里；提
 ### 分层
 
 ```
-agent（接口与事件） ← claude / codex / fake（适配器）
+agent（接口与事件） ← claude / codex / acp / fake（适配器）
 model ← store ← workbench ← shell ← cmd/aibo
 ```
 
@@ -37,7 +37,7 @@ model ← store ← workbench ← shell ← cmd/aibo
 - 适配器不静默丢弃消息：每种消息要么映射成事件，要么在代码里写明为什么忽略。认不出的消息写进诊断日志。
 - 协议上的新结论，都要附上真实抓取的数据（`testdata/*.jsonl`），加契约测试（`AIBO_CONTRACT=1` 时运行），并回填规格。
 - Agent 升级后，先跑一遍契约测试。
-- 只调用用户本机安装、未经修改的 `claude` / `codex`；不读取、不转交它们的凭据；测试未登录状态时用隔离的配置目录，不动真实的登录状态。
+- 使用用户本机安装的 Claude Code、Codex、OpenCode 或用户登记的 ACP 程序。由 Agent 管理自己的凭据。测试登录状态时使用隔离的配置目录。[ACP Agent 接入说明](../acp-agents.md)
 
 ## 存储
 

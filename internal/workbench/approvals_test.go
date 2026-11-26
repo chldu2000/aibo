@@ -21,6 +21,37 @@ var options = []agent.ApprovalOption{
 	{ID: "stop", Kind: agent.DenyStop},
 }
 
+// ACP can finish a tool after cancellation, before the turn ends. The
+// request and the final partial tool fields must survive a workbench restart.
+func TestToolFinishesWhileApprovalIsPending(t *testing.T) {
+	dir := t.TempDir()
+	sc := newScript()
+	b := open(t, dir, sc.respond)
+	_, s := newSession(t, b)
+	if err := b.Send(s.ID, "test pending request"); err != nil {
+		t.Fatal(err)
+	}
+	out := "part of the output"
+	sc.emit(agent.ToolStarted{ToolID: "t", Name: "shell"},
+		agent.ToolUpdated{ToolID: "t", Name: "echo test", Output: &out},
+		agent.ApprovalRequested{ToolID: "t", ID: "request", Options: options},
+		agent.ToolFinished{ToolID: "t", IsError: true, KeepStreamedOutput: true})
+	sc.endTurn()
+	b.idle(t, s.ID)
+	b.Close()
+	b = open(t, dir, sc.respond)
+	defer b.Close()
+	for _, m := range b.messages(t, s.ID) {
+		if tool := m.Tool; tool != nil {
+			if tool.Name != "echo test" || tool.Output != out || tool.Approval == nil || !tool.Approval.Expired {
+				t.Fatalf("finished tool: %+v", tool)
+			}
+			return
+		}
+	}
+	t.Fatal("missing tool call")
+}
+
 // gated opens a session whose Agent asks to write each path given, one
 // tool call each, waits for the answer and reports it as the result.
 func gated(t *testing.T, dir string, early bool, paths ...string) (*bench, model.Workspace, model.Session) {

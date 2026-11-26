@@ -9,9 +9,11 @@ Label: wayfinder:map
 ## Notes
 
 - aibo 本体无需 Node。用户安装的外部 Agent 可以使用自己的运行时和登录方式。保留 Claude Code、Codex 已有的原生接入路径。[本机 CLI 接入决策](../../docs/adr/0001-drive-the-agents-own-clis.md)
-- 首选设计是在现有 Agent 接口后增加一个 Go ACP 客户端。工作台管理会话时间线和引用快照，Agent 管理原生会话和权限。注册配置、进程隔离粒度和最低能力要求仍待决定。[Agent 接口](../../internal/agent/agent.go) · [注册表](../../internal/agents/agents.go) · [引用快照](../../docs/adr/0002-references-are-snapshots.md) · [原生权限模式](../../docs/adr/0003-agents-own-permission-modes.md)
+- Go ACP 客户端现已接入工作台。每个会话独占进程，使用自己的 HTTP MCP 参数。内置 OpenCode 和通过 `agents.json` 登记的实例共用这一实现。[登记方式与兼容范围](../../docs/acp-agents.md) · [工作台契约](../../internal/contract/opencode_test.go)
 - OpenCode 的本地入口为 `opencode acp`。区分上游文档、具体安装版本的观测和实际通过的 aibo 契约测试。协议结论按仓库约定留存证据，术语沿用词汇表。讨论决策时使用 grilling 和 domain-modeling。[OpenCode ACP 文档](https://opencode.ai/docs/cli/acp/) · [工程约定](../../docs/agents/conventions.md) · [术语表](../../GLOSSARY.md)
 - 可参照 [T3 Code 的接入调研](research/t3-code.md)。T3 把驱动类型和配置实例分开，本地 ACP 命令无需新增代码即可接入；厂商扩展放进专用驱动，通用路径只依赖 ACP。T3 接 OpenCode 用的是专用驱动和 OpenCode 的 HTTP 服务，没走 ACP，因此 `opencode acp` 这条路径没有旁证，要靠实测。T3 为隔离线程，要么每个线程起一个服务，要么每个线程注册不同的工具名；它的方案只能用来提出测试问题，aibo 的进程粒度以实测为准。
+
+- Windows 2.4.2 已复核独立进程、审批与中断、引用快照和重启续接，并记录了异常退出时的协议表现。[Windows 实测](research/opencode-windows.md)
 
 ## Decisions so far
 
@@ -19,7 +21,7 @@ Label: wayfinder:map
 
 ## Not yet specified
 
-第二款 ACP Agent 的选择取决于 OpenCode 暴露了哪些差异。例如，需要观察只有历史回放式续接的实现，还是需要观察只能接收 stdio MCP 的实现？待首轮观测后选择能区分方案的样本。
+只支持回放式续接的测试程序已覆盖配置登记、取消、退出和 `session/load`。另一款真实产品能否通过同一组模型与引用场景，仍需单独验收。[配置测试](../../internal/agents/config_test.go)
 
 ## Out of scope
 

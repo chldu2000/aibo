@@ -22,6 +22,9 @@ func TestContractModels(t *testing.T) {
 	}
 	defer w.Close()
 	for _, a := range r.Agents() {
+		if !w.TellsModels(a.Kind()) {
+			continue
+		}
 		ms, err := w.Models(context.Background(), a.Kind())
 		if err != nil || len(ms) < 2 || ms[0].ID != "" {
 			t.Errorf("%s: %v, %+v", a.Kind(), err, ms)

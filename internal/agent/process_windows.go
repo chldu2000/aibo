@@ -1,4 +1,4 @@
-package agents
+package agent
 
 import (
 	"context"
@@ -11,8 +11,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// The agent may have launched other processes that still hold its pipes.
-func bounded(cmd *exec.Cmd) {
+// BoundProcess hides a local Agent's console and cancels its process tree.
+// The caller must create cmd with exec.CommandContext.
+func BoundProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	cmd.WaitDelay = time.Second
 	cmd.Cancel = func() error {

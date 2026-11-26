@@ -75,7 +75,7 @@ func (s *Shell) badges(c *ui.Context, x model.Session, v *sessionView) {
 			chip(c, "paperclip", locales.BadgeRefs(refs), locales.BadgeRefsLabel(), tintRefs)
 		}
 		ui.Spacer(c)
-		if chip(c, "arrow.down.right.and.arrow.up.left", locales.Compact(), locales.Compact(), tintAction).Clicked() {
+		if s.wb.CanCompact(x.Agent) && chip(c, "arrow.down.right.and.arrow.up.left", locales.Compact(), locales.Compact(), tintAction).Clicked() {
 			if err := s.wb.Compact(x.ID); err != nil {
 				s.notice = s.say(err)
 

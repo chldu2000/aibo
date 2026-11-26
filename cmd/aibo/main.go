@@ -67,11 +67,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	a := &app{def: def, reg: agents.New(agents.Options{}), own: map[string]*mygo.Window{}}
-	a.agents = a.reg.Agents()
-	if os.Getenv("AIBO_DEMO") == "1" {
-		a.agents = append(a.agents, fake.New(fake.Demo))
-	}
+	a := &app{def: def, own: map[string]*mygo.Window{}}
 	mygo.App.OnSecondInstance(func([]string, string) {
 		if w := a.win.Load(); w != nil {
 			w.Focus()
@@ -125,9 +121,16 @@ func (a *app) start() {
 		dir, err := a.resolve()
 		var release func()
 		if err == nil {
+			a.reg, err = agents.Open(dir, agents.Options{})
+		}
+		if err == nil {
 			release, err = appdata.Lock(dir)
 		}
 		if err == nil {
+			a.agents = a.reg.Agents()
+			if os.Getenv("AIBO_DEMO") == "1" {
+				a.agents = append(a.agents, fake.New(fake.Demo))
+			}
 			o := workbench.Options{DataDir: dir, Agents: a.agents, Ready: a.ready, OnNotLoggedIn: a.reg.MarkNotLoggedIn}
 			o.WatchWorkspace = watchWorkspace
 			if l, lerr := diag.Open(dir, nil); lerr == nil {

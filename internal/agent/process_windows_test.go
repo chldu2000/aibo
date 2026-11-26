@@ -1,4 +1,4 @@
-package agents
+package agent
 
 import (
 	"bufio"
@@ -34,7 +34,7 @@ func TestCancelProbeTree(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCancelProbeTree$")
 	cmd.Env = append(os.Environ(), role+"=parent")
-	bounded(cmd)
+	BoundProcess(cmd)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

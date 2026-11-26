@@ -428,6 +428,9 @@ func (rd reader) SearchReference(sessionID string, q mcpserver.SearchReference) 
 // references about to be delivered from other workspaces, reporting
 // whether there were new ones. w.mu is held.
 func (w *Workbench) readDirs(id string, s *session, ws model.Workspace) bool {
+	if a, ok := w.agent(s.info.Agent).(agent.ReadDirSupport); ok && !a.SupportsReadDirs() {
+		return false
+	}
 	added := false
 	for _, r := range w.drafts(id) {
 		d := r.SourceWorkspace

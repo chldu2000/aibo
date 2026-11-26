@@ -16,10 +16,11 @@ const module = "github.com/chldu2000/aibo/"
 // a new package takes its place in the layers deliberately.
 var allowed = map[string][]string{
 	"internal/agent":        {},
+	"internal/agent/acp":    {"internal/agent"},
 	"internal/agent/claude": {"internal/agent"},
 	"internal/agent/codex":  {"internal/agent"},
 	"internal/agent/fake":   {"internal/agent"},
-	"internal/agents":       {"internal/agent", "internal/agent/claude", "internal/agent/codex"},
+	"internal/agents":       {"internal/agent", "internal/agent/acp", "internal/agent/claude", "internal/agent/codex"},
 	"internal/appdata":      {},
 	"internal/diag":         {},
 	"internal/files":        {},

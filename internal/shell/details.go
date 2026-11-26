@@ -305,7 +305,7 @@ func (s *Shell) detailsActions(c *ui.Context, x model.Session, running bool) {
 	ui.Column(c).Gap(6).Children(func() {
 		sectionTitle(c, locales.DetailsActions())
 		ui.Column(c).Radius(10).Background(veil(c, 0.035)).Padding(4).Gap(1).Children(func() {
-			if actionRow(c, "arrow.down.right.and.arrow.up.left", locales.Compact(), t.Text, running).Clicked() && !running {
+			if s.wb.CanCompact(x.Agent) && actionRow(c, "arrow.down.right.and.arrow.up.left", locales.Compact(), t.Text, running).Clicked() && !running {
 				if err := s.wb.Compact(x.ID); err != nil {
 					s.notice = s.say(err)
 				}

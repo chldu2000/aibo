@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/chldu2000/aibo/locales"
@@ -30,7 +29,7 @@ func (s *Shell) openActivities(id string, kind workbench.ActivityKind, fromBadge
 func callState(a workbench.Activity) string {
 	m, tool := a.Message, a.Message.Tool
 	if tool.Declined || tool.Approval != nil && tool.Approval.Answer != nil &&
-		(tool.Approval.Answer.Kind == agent.Deny || tool.Approval.Answer.Kind == agent.DenyStop) {
+		tool.Approval.Answer.Kind.Denies() {
 		return locales.CallDeclined()
 	}
 	switch {
@@ -58,7 +57,7 @@ func callTone(c *ui.Context, a workbench.Activity) (string, ui.Color) {
 	m, tool := a.Message, a.Message.Tool
 	switch {
 	case tool.Declined || tool.Approval != nil && tool.Approval.Answer != nil &&
-		(tool.Approval.Answer.Kind == agent.Deny || tool.Approval.Answer.Kind == agent.DenyStop):
+		tool.Approval.Answer.Kind.Denies():
 		return "xmark.circle", t.TextMuted
 	case a.Active:
 		return "circle.dotted", t.Accent

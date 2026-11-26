@@ -125,6 +125,17 @@ type DirsAtStart interface {
 	DirsAtStart() bool
 }
 
+// ReadDirSupport reports whether a reference can also grant read-only
+// access to its source workspace. Snapshot tools work independently.
+type ReadDirSupport interface {
+	SupportsReadDirs() bool
+}
+
+// CompactionSupport reports whether a session can be compacted on request.
+type CompactionSupport interface {
+	SupportsCompaction() bool
+}
+
 // PermissionMode is one of an Agent's own permission modes: how much it
 // does without asking, under the Agent's own name (ADR 0003).
 type PermissionMode struct {
@@ -336,6 +347,14 @@ type ToolStarted struct {
 // ToolOutputDelta appends a chunk of output to an active tool call.
 type ToolOutputDelta struct{ ToolID, Text string }
 
+// ToolUpdated supplies details an Agent learned after announcing a call.
+type ToolUpdated struct {
+	ToolID, Name string
+	Input        json.RawMessage
+	// Output replaces the current aggregate when supplied by the Agent.
+	Output *string
+}
+
 // ToolFinished reports a tool call's result.
 type ToolFinished struct {
 	NativeThread string
@@ -406,6 +425,10 @@ type ApprovalRequested struct {
 type ApprovalOption struct {
 	ID   string
 	Kind OptionKind
+	// Label is the Agent's own wording when it supplies an option name.
+	Label string `json:",omitempty"`
+	// NoNote means the protocol takes only the option ID on a refusal.
+	NoNote bool `json:",omitempty"`
 	// Grants, for AllowSession and AllowAlways, are what the option
 	// allows, one for each rule; a rule may be as long as a command.
 	Grants []Grant `json:",omitempty"`
@@ -438,8 +461,11 @@ const (
 	AllowSession OptionKind = "allow_session"
 	AllowAlways  OptionKind = "allow_always"
 	Deny         OptionKind = "deny"
+	DenyAlways   OptionKind = "deny_always"
 	DenyStop     OptionKind = "deny_stop"
 )
+
+func (k OptionKind) Denies() bool { return k == Deny || k == DenyStop || k == DenyAlways }
 
 // Compacted reports that the Agent compacted its context. Tokens are
 // zero when the Agent does not say.
@@ -488,6 +514,7 @@ func (ReplyDelta) isEvent()           {}
 func (ThinkingDelta) isEvent()        {}
 func (ReplyDone) isEvent()            {}
 func (ToolStarted) isEvent()          {}
+func (ToolUpdated) isEvent()          {}
 func (ToolFinished) isEvent()         {}
 func (ToolOutputDelta) isEvent()      {}
 func (PlanUpdated) isEvent()          {}

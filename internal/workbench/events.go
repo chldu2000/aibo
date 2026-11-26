@@ -144,6 +144,25 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 			}
 			touch(i, true)
 		}
+	case agent.ToolUpdated:
+		i, ok := s.items[itemKey("t", e.ToolID)]
+		if ok && !s.msgs[i].State.Ended() && s.msgs[i].Tool != nil {
+			t := s.msgs[i].Tool
+			if e.Name != "" {
+				t.Name = e.Name
+			}
+			if len(e.Input) != 0 {
+				t.Input = e.Input
+			}
+			if e.Output != nil {
+				t.Output = *e.Output
+				t.Truncated = len(t.Output) > model.MaxToolOutput
+				if t.Truncated {
+					t.Output = strings.ToValidUTF8(t.Output[:model.MaxToolOutput], "")
+				}
+			}
+			touch(i, false)
+		}
 	case agent.ToolOutputDelta:
 		i, ok := s.items[itemKey("t", e.ToolID)]
 		if !ok || s.msgs[i].State.Ended() {
@@ -177,6 +196,10 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 				m.Tool.Truncated = true
 			}
 			m.Tool.Output, m.Tool.IsError, m.Tool.Done = out, e.IsError, true
+			// A cancellation can finish the call before TurnEnded.
+			if m.Tool.Approval.Pending() {
+				m.Tool.Approval.Expired = true
+			}
 			m.Tool.Declined, m.Tool.ExitCode = e.Declined, e.ExitCode
 			m.State, m.FinishedAt = model.Done, now
 		}

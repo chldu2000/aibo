@@ -25,6 +25,9 @@ func TestContractSignedOut(t *testing.T) {
 	r := registry.New(registry.Options{})
 	r.Detect(context.Background())
 	for _, s := range r.Statuses() {
+		if s.Login == registry.LoginNone {
+			continue
+		}
 		t.Logf("%s: state %d problem %d %s", s.Name, s.State, s.Problem, s.Detail)
 		if s.State != registry.NotLoggedIn {
 			t.Errorf("%s is not signed out: %+v", s.Name, s)

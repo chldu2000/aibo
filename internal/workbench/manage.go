@@ -297,3 +297,10 @@ func (w *Workbench) TellsModels(kind agent.Kind) bool {
 	_, ok := w.agent(kind).(ModelLister)
 	return ok
 }
+
+// CanCompact reports whether the adapter implements manual compaction.
+func (w *Workbench) CanCompact(kind agent.Kind) bool {
+	a := w.agent(kind)
+	c, ok := a.(agent.CompactionSupport)
+	return a != nil && (!ok || c.SupportsCompaction())
+}

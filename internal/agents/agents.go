@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/agent/acp"
 	"github.com/chldu2000/aibo/internal/agent/claude"
 	"github.com/chldu2000/aibo/internal/agent/codex"
 )
@@ -66,6 +67,7 @@ var Specs = []Spec{
 	{Kind: codex.Kind, Name: "Codex", Command: "codex", MinVersion: "0.169.0", InstallURL: "https://github.com/openai/codex#installation",
 		Glyph: []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#2f2f33" stroke="#5a5a62" stroke-width="1"/><g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l4 4-4 4"/><path d="M13 16h5"/></g></svg>`),
 		Login: LoginInApp, HoldsSignedOut: true},
+	{Kind: OpenCode, Name: "OpenCode", Command: "opencode", MinVersion: "1.19.6", InstallURL: "https://opencode.ai/docs/"},
 }
 
 // Describe returns what aibo knows of an Agent, if it supports it.
@@ -165,6 +167,8 @@ type Options struct {
 
 // Registry is the Agents and how they stand.
 type Registry struct {
+	specs  []Spec
+	acp    map[agent.Kind]*acp.Agent
 	claude *claude.Agent
 	codex  *codex.Agent
 	o      Options
@@ -189,12 +193,13 @@ func New(o Options) *Registry {
 		}
 	}
 	if o.Dirs == nil && runtime.GOOS == "windows" {
-		o.Dirs = []string{filepath.Join(o.Home, ".local", "bin")}
+		o.Dirs = []string{filepath.Join(o.Home, ".local", "bin"), filepath.Join(o.Home, ".opencode", "bin")}
 	} else if o.Dirs == nil {
-		o.Dirs = append([]string{filepath.Join(o.Home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin", filepath.Join(o.Home, ".npm-global", "bin")},
+		o.Dirs = append([]string{filepath.Join(o.Home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin", filepath.Join(o.Home, ".npm-global", "bin"), filepath.Join(o.Home, ".opencode", "bin")},
 			globDirs(filepath.Join(o.Home, ".nvm", "versions", "node", "*", "bin"))...)
 	}
-	r := &Registry{claude: claude.New(""), codex: codex.New(""), o: o, status: map[agent.Kind]*Status{}, paths: map[agent.Kind]string{}}
+	r := &Registry{claude: claude.New(""), codex: codex.New(""), o: o, status: map[agent.Kind]*Status{}, paths: map[agent.Kind]string{},
+		specs: append([]Spec(nil), Specs...), acp: map[agent.Kind]*acp.Agent{OpenCode: acp.New(OpenCode, "OpenCode", "", []string{"acp"}, "aibo_")}}
 	for k, p := range o.Paths {
 		r.paths[k] = p
 	}
@@ -295,7 +300,15 @@ func globDirs(pattern string) []string {
 }
 
 // Agents are the adapters, for the workbench.
-func (r *Registry) Agents() []agent.Agent { return []agent.Agent{r.claude, r.codex} }
+func (r *Registry) Agents() []agent.Agent {
+	out := []agent.Agent{r.claude, r.codex}
+	for _, spec := range r.specs {
+		if a := r.acp[spec.Kind]; a != nil {
+			out = append(out, a)
+		}
+	}
+	return out
+}
 
 // Codex is the Codex adapter, for signing in.
 func (r *Registry) Codex() *codex.Agent { return r.codex }
@@ -329,8 +342,8 @@ func (r *Registry) Status(kind agent.Kind) Status {
 
 // Statuses returns every Agent's standing, in Specs' order.
 func (r *Registry) Statuses() []Status {
-	out := make([]Status, len(Specs))
-	for i, s := range Specs {
+	out := make([]Status, len(r.specs))
+	for i, s := range r.specs {
 		out[i] = r.Status(s.Kind)
 	}
 	return out
@@ -378,7 +391,7 @@ func (r *Registry) Ready(kind agent.Kind) error {
 	case !s.Usable():
 		return &UnusableError{s}
 	case s.State == NotLoggedIn:
-		if spec, _ := Describe(kind); spec.HoldsSignedOut {
+		if s.HoldsSignedOut {
 			return ErrNotLoggedIn
 		}
 	}
@@ -411,7 +424,7 @@ func (r *Registry) Detect(ctx context.Context) {
 	r.shellPath = p
 	r.mu.Unlock()
 	var wg sync.WaitGroup
-	for _, s := range Specs {
+	for _, s := range r.specs {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -436,12 +449,11 @@ func (r *Registry) env() []string {
 
 // Check finds and checks one Agent again.
 func (r *Registry) Check(ctx context.Context, kind agent.Kind) {
-	var spec Spec
-	for _, s := range Specs {
-		if s.Kind == kind {
-			spec = s
-		}
+	known := r.Status(kind)
+	if known.Problem == ProblemUnknown {
+		return
 	}
+	spec := known.Spec
 	r.set(Status{Spec: spec, State: Checking})
 	st := r.check(ctx, spec)
 	env := r.env()
@@ -451,6 +463,15 @@ func (r *Registry) Check(ctx context.Context, kind agent.Kind) {
 			r.claude.Configure(st.Path, env)
 		case codex.Kind:
 			r.codex.Configure(st.Path, env)
+		default:
+			r.acp[kind].Configure(st.Path, env)
+			if kind == OpenCode {
+				prefix := "aibo_"
+				if !older(st.Version, "2.0.0") {
+					prefix = "aibo."
+				}
+				r.acp[kind].SetToolPrefix(prefix)
+			}
 		}
 	}
 	r.set(st)
@@ -472,6 +493,12 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 		shellPath = os.Getenv("PATH")
 	}
 	switch {
+	case chosen == "" && filepath.IsAbs(spec.Command):
+		if !executable(spec.Command) {
+			st.State, st.Problem, st.Detail = NotInstalled, ProblemBadPath, spec.Command
+			return st
+		}
+		st.Path, st.Source = spec.Command, SourceSettings
 	case chosen != "":
 		if !executable(chosen) {
 			st.State, st.Problem, st.Detail = NotInstalled, ProblemBadPath, chosen
@@ -490,6 +517,10 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 	}
 	if real, err := filepath.EvalSymlinks(st.Path); err == nil {
 		st.Path = real
+	}
+	if spec.MinVersion == "" {
+		st.State = Ready // Configured executables need only implement ACP.
+		return st
 	}
 	env := r.env()
 	out, _, err := run(ctx, st.Path, env, "--version")
@@ -511,6 +542,8 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 		st.State, st.Auth, st.Problem, st.Detail = claudeLogin(ctx, st.Path, env)
 	case codex.Kind:
 		st.State, st.Auth, st.Problem, st.Detail = codexLogin(ctx, st.Path, env)
+	default:
+		st.State = Ready
 	}
 	return st
 }
@@ -591,7 +624,9 @@ func findIn(name string, dirs []string) (string, bool) {
 			if !filepath.IsAbs(d) {
 				continue
 			}
-			p += ".exe"
+			if !strings.EqualFold(filepath.Ext(p), ".exe") {
+				p += ".exe"
+			}
 		}
 		if executable(p) {
 			return p, true
@@ -639,7 +674,7 @@ func runOut(ctx context.Context, combined bool, path string, env []string, args 
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Env = append(os.Environ(), env...)
-	bounded(cmd)
+	agent.BoundProcess(cmd)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if combined {
@@ -671,7 +706,7 @@ func ShellPath(ctx context.Context, shell string) (string, error) {
 	}
 	cmd := exec.CommandContext(ctx, shell, "-lic", script)
 	cmd.Stdin = nil // /dev/null: nothing to wait for
-	bounded(cmd)
+	agent.BoundProcess(cmd)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil && out.Len() == 0 {
