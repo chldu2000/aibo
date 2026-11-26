@@ -1,0 +1,233 @@
+// Probe: record every ACP frame of Cursor's `agent acp` while running the
+// given steps, and print a summary of each response's settings.
+//
+// usage: probe OUT.jsonl WORKDIR META STEP...
+//
+// META is "plain" (empty clientCapabilities) or "param"
+// (clientCapabilities._meta.parameterizedModelPicker = true).
+// STEP is one of: new, load, resume, delete, list, restart,
+// set:ID=VALUE, mode:VALUE (session/set_mode), model:VALUE (session/set_model).
+// CURSOR_NODE and CURSOR_INDEX name node.exe and index.js.
+package main
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+)
+
+type conn struct {
+	in    io.Writer
+	lines chan []byte
+	rec   *os.File
+	id    int
+}
+
+func (c *conn) write(dir string, b []byte) {
+	fmt.Fprintf(c.rec, "{\"dir\":%q,\"frame\":%s}\n", dir, strings.TrimSpace(string(b)))
+}
+
+func (c *conn) send(v any) {
+	b, _ := json.Marshal(v)
+	c.write("out", b)
+	c.in.Write(append(b, '\n'))
+}
+
+func (c *conn) call(method string, params any) (map[string]any, any) {
+	c.id++
+	c.send(map[string]any{"jsonrpc": "2.0", "id": c.id, "method": method, "params": params})
+	start := time.Now()
+	timeout := time.After(90 * time.Second)
+	for {
+		select {
+		case line, ok := <-c.lines:
+			if !ok {
+				return nil, "agent exited"
+			}
+			c.write("in", line)
+			var m map[string]any
+			if json.Unmarshal(line, &m) != nil {
+				continue
+			}
+			if meth, ok := m["method"].(string); ok {
+				if id, ok := m["id"]; ok { // a request to the client
+					fmt.Println("  <- request", meth)
+					c.send(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32601, "message": "probe"}})
+				} else {
+					note(meth, m["params"])
+				}
+				continue
+			}
+			if v, ok := m["id"].(float64); ok && int(v) == c.id {
+				fmt.Printf("%s (%.1fs)\n", method, time.Since(start).Seconds())
+				if m["error"] != nil {
+					return nil, m["error"]
+				}
+				r, _ := m["result"].(map[string]any)
+				return r, nil
+			}
+		case <-timeout:
+			return nil, "timeout"
+		}
+	}
+}
+
+func note(method string, params any) {
+	p, _ := params.(map[string]any)
+	u, _ := p["update"].(map[string]any)
+	kind, _ := u["sessionUpdate"].(string)
+	switch kind {
+	case "config_option_update":
+		fmt.Println("  <- config_option_update")
+		options(u["configOptions"])
+	case "current_mode_update":
+		fmt.Println("  <- current_mode_update", u["currentModeId"])
+	case "":
+		fmt.Println("  <-", method)
+	default:
+		fmt.Println("  <-", kind)
+	}
+}
+
+func short(v any, n int) string {
+	b, _ := json.Marshal(v)
+	s := string(b)
+	if len(s) > n {
+		s = s[:n] + "…"
+	}
+	return s
+}
+
+func options(v any) {
+	opts, _ := v.([]any)
+	for _, o := range opts {
+		m, _ := o.(map[string]any)
+		fmt.Printf("    option id=%v name=%v category=%v type=%v current=%v\n", m["id"], m["name"], m["category"], m["type"], short(m["currentValue"], 120))
+		vals, _ := m["options"].([]any)
+		var parts []string
+		for _, x := range vals {
+			xm, _ := x.(map[string]any)
+			if g, ok := xm["group"]; ok {
+				parts = append(parts, fmt.Sprintf("[group %v: %d]", g, len(xm["options"].([]any))))
+				continue
+			}
+			parts = append(parts, fmt.Sprintf("%v=%v", xm["value"], xm["name"]))
+		}
+		if len(parts) > 0 {
+			fmt.Printf("      %d values: %s\n", len(parts), short(strings.Join(parts, " | "), 600))
+		}
+		for k := range m {
+			switch k {
+			case "id", "name", "category", "type", "currentValue", "options", "description":
+			default:
+				fmt.Printf("      extra %s=%s\n", k, short(m[k], 200))
+			}
+		}
+	}
+}
+
+func summary(r map[string]any) {
+	for k, v := range r {
+		switch k {
+		case "configOptions":
+			options(v)
+		case "models":
+			m, _ := v.(map[string]any)
+			list, _ := m["availableModels"].([]any)
+			fmt.Printf("    models current=%v count=%d first=%s\n", m["currentModelId"], len(list), short(list, 300))
+		case "modes":
+			fmt.Printf("    modes %s\n", short(v, 400))
+		default:
+			fmt.Printf("    %s=%s\n", k, short(v, 300))
+		}
+	}
+}
+
+func start(dir, meta string, rec *os.File) (*conn, *exec.Cmd) {
+	cmd := exec.Command(os.Getenv("CURSOR_NODE"), os.Getenv("CURSOR_INDEX"), "acp")
+	cmd.Dir = dir
+	cmd.Stderr = os.Stderr
+	w, _ := cmd.StdinPipe()
+	r, _ := cmd.StdoutPipe()
+	if err := cmd.Start(); err != nil {
+		panic(err)
+	}
+	lines := make(chan []byte, 64)
+	go func() {
+		sc := bufio.NewScanner(r)
+		sc.Buffer(make([]byte, 1<<20), 1<<26)
+		for sc.Scan() {
+			lines <- append([]byte(nil), sc.Bytes()...)
+		}
+		close(lines)
+	}()
+	c := &conn{in: w, lines: lines, rec: rec}
+	caps := map[string]any{}
+	if meta == "param" {
+		caps["_meta"] = map[string]any{"parameterizedModelPicker": true}
+	}
+	r0, err := c.call("initialize", map[string]any{"protocolVersion": 1, "clientCapabilities": caps, "clientInfo": map[string]any{"name": "probe", "version": "1"}})
+	if err != nil {
+		fmt.Println("  error", short(err, 400))
+	}
+	summary(r0)
+	return c, cmd
+}
+
+func main() {
+	out, dir, meta := os.Args[1], os.Args[2], os.Args[3]
+	rec, _ := os.Create(out)
+	defer rec.Close()
+	c, cmd := start(dir, meta, rec)
+	stop := func() { cmd.Process.Kill(); cmd.Wait() }
+	defer func() { stop() }()
+	var sid any
+	run := func(method string, params map[string]any) {
+		r, err := c.call(method, params)
+		if err != nil {
+			fmt.Println("  error", short(err, 400))
+			return
+		}
+		if s, ok := r["sessionId"]; ok {
+			sid = s
+		}
+		summary(r)
+	}
+	for _, step := range os.Args[4:] {
+		fmt.Println("==", step)
+		key, value, _ := strings.Cut(step, ":")
+		switch key {
+		case "new":
+			run("session/new", map[string]any{"cwd": dir, "mcpServers": []any{}})
+		case "load", "resume":
+			run("session/"+key, map[string]any{"sessionId": sid, "cwd": dir, "mcpServers": []any{}})
+		case "delete":
+			run("session/delete", map[string]any{"sessionId": sid})
+		case "auth":
+			run("authenticate", map[string]any{"methodId": "cursor_login"})
+		case "list":
+			run("session/list", map[string]any{"cwd": dir})
+		case "restart":
+			stop()
+			c, cmd = start(dir, meta, rec)
+		case "set":
+			id, v, _ := strings.Cut(value, "=")
+			var val any = v
+			if v == "true" || v == "false" {
+				val = v == "true"
+			}
+			run("session/set_config_option", map[string]any{"sessionId": sid, "configId": id, "value": val})
+		case "mode":
+			run("session/set_mode", map[string]any{"sessionId": sid, "modeId": value})
+		case "model":
+			run("session/set_model", map[string]any{"sessionId": sid, "modelId": value})
+		default:
+			fmt.Println("unknown step", step)
+		}
+	}
+}
