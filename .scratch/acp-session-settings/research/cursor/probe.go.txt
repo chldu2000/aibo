@@ -42,7 +42,7 @@ func (c *conn) call(method string, params any) (map[string]any, any) {
 	c.id++
 	c.send(map[string]any{"jsonrpc": "2.0", "id": c.id, "method": method, "params": params})
 	start := time.Now()
-	timeout := time.After(90 * time.Second)
+	timeout := time.After(4 * time.Minute)
 	for {
 		select {
 		case line, ok := <-c.lines:
@@ -56,8 +56,21 @@ func (c *conn) call(method string, params any) (map[string]any, any) {
 			}
 			if meth, ok := m["method"].(string); ok {
 				if id, ok := m["id"]; ok { // a request to the client
-					fmt.Println("  <- request", meth)
-					c.send(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32601, "message": "probe"}})
+					fmt.Println("  <- request", meth, short(m["params"], 900))
+					if meth == "session/request_permission" {
+						choice := ""
+						p, _ := m["params"].(map[string]any)
+						opts, _ := p["options"].([]any)
+						for _, o := range opts {
+							om, _ := o.(map[string]any)
+							if om["kind"] == "allow_once" {
+								choice, _ = om["optionId"].(string)
+							}
+						}
+						c.send(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": choice}}})
+					} else {
+						c.send(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32601, "message": "probe"}})
+					}
 				} else {
 					note(meth, m["params"])
 				}
@@ -204,10 +217,14 @@ func main() {
 		switch key {
 		case "new":
 			run("session/new", map[string]any{"cwd": dir, "mcpServers": []any{}})
+		case "newmcp":
+			run("session/new", map[string]any{"cwd": dir, "mcpServers": []any{map[string]any{"type": "http", "name": "aibo", "url": value, "headers": []any{map[string]any{"name": "Authorization", "value": "Bearer x"}}}}})
 		case "load", "resume":
 			run("session/"+key, map[string]any{"sessionId": sid, "cwd": dir, "mcpServers": []any{}})
 		case "delete":
 			run("session/delete", map[string]any{"sessionId": sid})
+		case "prompt":
+			run("session/prompt", map[string]any{"sessionId": sid, "prompt": []any{map[string]any{"type": "text", "text": value}}})
 		case "auth":
 			run("authenticate", map[string]any{"methodId": "cursor_login"})
 		case "list":

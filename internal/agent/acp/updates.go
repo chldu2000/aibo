@@ -168,7 +168,12 @@ func (s *session) permission(m envelope) {
 	case "execute":
 		a.Action, a.Command, a.Cwd = agent.ActionCommand, input.Command, input.Cwd
 		if a.Command == "" {
+			// The Cursor CLI asks without the input, titling the call with
+			// the command in backticks.
 			a.Command = tc.Title
+			if t := tc.Title; len(t) > 2 && t[0] == '`' && t[len(t)-1] == '`' && !strings.Contains(t[1:len(t)-1], "`") {
+				a.Command = t[1 : len(t)-1]
+			}
 		}
 	case "edit", "delete", "move":
 		a.Action = agent.ActionEdit

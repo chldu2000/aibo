@@ -77,3 +77,15 @@ gemini-4-neon[context=300k,reasoning_effort=high]=gemini-4-neon
 - 发过消息的会话能否 `session/load`，以及恢复后的设置（没发消息，不花用户额度）。
 - 工具审批：`session/request_permission` 的选项（没发消息）。
 - 带标志时 Cursor 会不会主动推 `config_option_update`（比如 Auto 自己换模型）。
+
+## 补充实测：一轮真实消息（05）
+
+实测于 2026-11-26，同一台机器和版本，Auto 模型，`agent` 模式。探针加了 `prompt:` 步骤，审批请求一律答 `allow-once`（`cursor/probe.go.txt`）。抓取在 `internal/agent/acp/testdata/cursor-2026.11.22-turns.jsonl`，路径改写成 `C:/tmp/cursor-ws`。之后用 aibo 的契约测试（`internal/contract/cursor_test.go`）经工作台跑了一遍。
+
+- **审批**：`session/request_permission` 的选项是 `allow_once`（`allow-once`，“Allow once”）、`allow_always`（`allow-always`）、`reject_once`（`reject-once`，“Reject”），和 ACP 规定的一致。只有不在允许列表里的 shell 命令要审批（`content` 写着 “Not in allowlist: echo”）；读文件、搜索、MCP 工具没有问。请求里的 `toolCall` 没有 `rawInput`，`title` 是加了反引号的命令（`` `echo AIBO-ALLOW` ``）；之前的 `tool_call` 通知里有 `rawInput.command`。`toolCallId` 里有换行（`call-…-0\nfc_…_0`）。
+- **工具**：`tool_call` 的 `kind` 有 `execute`、`read`、`search`；结果在 `tool_call_update` 的 `rawOutput` 里（`{"exitCode":0,"stdout":"AIBO-ALLOW\n","stderr":""}`、`{"content":"code: …"}`）。
+- **MCP**：工作台传入的 HTTP MCP 服务器可用，不用 `--approve-mcps`。调用 aibo 的工具时标题是 `aibo: read_reference`，`rawInput` 为 `{"providerIdentifier":"aibo","toolName":"read_reference","args":{…}}`。只靠 aibo 随引用发的摘要（工具名 `aibo_read_reference`，默认前缀）它也会去调这个工具，所以 Cursor 用默认前缀 `aibo_`。
+- **会话**：发过消息的会话出现在 `session/list` 里（带 Cursor 起的 `title`），重启后 `session/load` 先重放历史（`user_message_chunk`、思考、回复、工具调用），回包有 `configOptions`、`models`、`modes`，没有 `sessionId`。之后继续对话正常。
+- **网络失败不算错误**：第一轮遇到 TLS 断开时，Cursor 把 `Error: RetriableError: [aborted] Client network socket disconnected …` 作为回复文字发出，`stopReason` 仍是 `end_turn`。aibo 会把它当成普通回复显示。
+- **启动慢**：同样的 `session/new` 有时 2 秒，有时 25 秒，网络不好时超过 70 秒并失败（`-32603 No model found. Please check your model settings.`）。aibo 启动会话的时限是 45 秒；契约测试里遇到过两次超时，重跑通过。
+- **隔离设置**：`CURSOR_CONFIG_DIR` 指向空目录时登录状态不变（凭据不在配置目录），模型选择写进那个目录的 `cli-config.json`。契约测试靠这个不改用户自己的设置，并检查 `~/.cursor/cli-config.json` 没变。

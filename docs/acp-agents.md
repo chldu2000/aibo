@@ -19,6 +19,8 @@
 - **在 aibo 里换模型会改 Cursor 自己的设置。** Cursor 把通过 ACP 选的模型和各模型的参数写进 `~/.cursor/cli-config.json`，终端里的 Cursor 下次启动就用这个模型，反过来也一样。aibo 只在选择和当前不同时才切换。新会话没有指定模型时，用的是 Cursor 上一次的选择。
 - Cursor 的 **Context**、**Fast** 选项不在 aibo 里显示，用 Cursor 记住的值。
 - 模式是 `agent`、`plan`、`ask`。没有在 `agents.json` 里标注时，`agent` 按“注意”显示并作为默认，`plan`、`ask` 按安全、只读显示。工具审批由 Cursor 自己的配置决定；aibo 不加 `--force`、`--auto-review`、`--sandbox` 这些启动参数。
+- 审批：Cursor 对不在它允许列表里的 shell 命令询问，aibo 显示 Cursor 给的“仅此一次”“始终允许”“拒绝”。读文件、搜索和 aibo 的 MCP 工具（引用）不询问。MCP 工具前缀用默认的 `aibo_`。
+- 网络不稳时，Cursor 有时把错误（`Error: RetriableError: …`）当作回复文字发出，aibo 照原样显示；新建会话也可能要几十秒，超过 aibo 的 45 秒时限时报告 Agent 没能启动，稍后重试即可。
 - Cursor 不能删除会话，但没发过消息的会话在进程结束后就不在它的会话列表里了。aibo 第一次需要列表时，在空的临时目录里用 Cursor 建一个探测会话，只读出模型和模式列表，不切换模型（每次切换都会写进 Cursor 的设置），也不发消息。所以菜单一开始只知道 Cursor 当前模型的推理强度，其他模型的推理强度在会话切到它们之后补上。探测要 10–30 秒。
 
 ## 登记另一个 ACP 实例
@@ -84,5 +86,15 @@ go test ./internal/contract -run '^TestContractOpenCode$' -count=1 -v
 ```
 
 `TestContractOpenCodeSettings` 不发消息，只切换模型、推理强度和模式，再在新进程里续接，检查设置是否保留。默认使用 OpenCode 2.4.2 的免费模型 `opencode/deepseek-v4.1-flash-free`，它支持 `low` 和 `high`。可用 `AIBO_OPENCODE_EFFORT_MODEL` 指定其他模型。
+
+Cursor CLI 的契约测试同样在 `AIBO_CONTRACT=1` 下运行，找不到或未登录时跳过。测试把 Cursor 的设置目录（`CURSOR_CONFIG_DIR`）换成临时目录，不改你自己的 `~/.cursor/cli-config.json`，结束时检查它没有变；登录状态不受影响。`TestContractCursorSettings` 不发消息，检查模型和模式列表、探测会话不留痕迹、切换模型（`AIBO_CURSOR_EFFORT_MODEL`，默认 `claude-opus-5-5`）、推理强度和模式。`TestContractCursor` 用 Auto 发几轮消息，**会用掉你的 Cursor 额度**：读文件、经 MCP 读引用、批准和拒绝 shell 命令、重启后续聊。网络不稳时启动可能超时，重跑即可。
+
+```powershell
+$env:AIBO_CONTRACT = "1"
+$env:CGO_ENABLED = "0"
+go test ./internal/contract -run '^TestContractCursor' -count=1 -v -timeout 20m
+```
+
+Windows Cursor CLI 2026.11.22 已用这两个测试验证。
 
 Windows OpenCode 2.4.2 已用工作台契约验证对话、实际读取引用、同目录双会话隔离、批准、拒绝、等待审批时中断和重启续接。另一个只提供历史回放的测试程序通过 `agents.json` 登记，覆盖 `session/load`、字符串请求 ID 和进程异常退出。该程序用于验证协议差异，其他商用或开源 Agent 仍需各自的实机验收。[Windows 协议记录](../.scratch/agent-extensibility/research/opencode-windows.md) · [macOS OpenCode 1.19.6 协议记录](../.scratch/agent-extensibility/research/opencode-local.md) · [ACP 会话协议](https://agentclientprotocol.com/protocol/v1/session-setup)

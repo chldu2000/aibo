@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -173,5 +174,82 @@ func TestSignedOutAtStart(t *testing.T) {
 	defer s.Close()
 	if err := s.SetMode(t.Context(), "nope"); err == nil || errors.Is(err, agent.ErrNotLoggedIn) {
 		t.Errorf("an invalid mode: %v", err)
+	}
+}
+
+// What the Cursor CLI 2026.11.22 sent in a turn that ran a command it
+// asked to approve: the request has no input, its title the command in
+// backticks; the options are ACP's own. (The capture goes on with
+// session/load in a new process, which replays the conversation first;
+// TestContractCursor resumes through it.)
+func TestCursorTurnCapture(t *testing.T) {
+	f, err := os.Open("testdata/cursor-2026.11.22-turns.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	s := &session{events: make(chan agent.Event, 256), id: "baf3e59e-d689-4299-b074-952e3882dfda", log: agent.Discard, pending: map[string]permission{}, tools: map[string]bool{}}
+	prompts := 0
+	sc := bufio.NewScanner(f)
+	sc.Buffer(nil, 1<<20)
+	for sc.Scan() {
+		var line struct {
+			Dir   string
+			Frame envelope
+		}
+		if err := json.Unmarshal(sc.Bytes(), &line); err != nil {
+			t.Fatal(err)
+		}
+		m := line.Frame
+		if line.Dir == "out" {
+			if m.Method == "session/prompt" {
+				prompts++
+				if prompts == 2 { // the command
+					id, _ := strconv.Atoi(string(m.ID))
+					s.active = id
+				}
+			}
+			continue
+		}
+		if prompts != 2 {
+			continue
+		}
+		if m.Method != "" {
+			s.incoming(m)
+		} else {
+			s.response(m)
+		}
+		if s.active == 0 {
+			break // the turn ended
+		}
+	}
+	close(s.events)
+	var asked *agent.ApprovalRequested
+	var output, reply string
+	var ended bool
+	for ev := range s.events {
+		switch e := ev.(type) {
+		case agent.ApprovalRequested:
+			asked = &e
+		case agent.ToolFinished:
+			output = e.Output
+		case agent.ReplyDelta:
+			reply += e.Text
+		case agent.TurnEnded:
+			ended = !e.Interrupted
+		}
+	}
+	if asked == nil || asked.Command != "echo AIBO-ALLOW" || asked.Action != agent.ActionCommand || len(asked.Options) != 3 {
+		t.Fatalf("approval %+v", asked)
+	}
+	var kinds []agent.OptionKind
+	for _, o := range asked.Options {
+		kinds = append(kinds, o.Kind)
+	}
+	if !slices.Equal(kinds, []agent.OptionKind{agent.AllowOnce, agent.AllowAlways, agent.Deny}) || asked.Options[0].ID != "allow-once" {
+		t.Errorf("options %+v", asked.Options)
+	}
+	if !strings.Contains(output, "AIBO-ALLOW") || !strings.Contains(reply, "DONE") || !ended {
+		t.Errorf("output %q, reply %q, ended %v", output, reply, ended)
 	}
 }
