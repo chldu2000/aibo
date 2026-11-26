@@ -63,7 +63,12 @@ type session struct {
 	learn func(opts []configOption, modes *legacyModes, fresh bool)
 
 	// Only the reader handles streamed messages and tool state.
-	reply    string
+	reply string
+	// unnamed is set while reply is one aibo named, the Agent giving its
+	// chunks no messageId; segment counts the tool calls and plans that
+	// end such a reply, the text after them being another.
+	unnamed  bool
+	segment  int
 	tools    map[string]bool
 	declined map[string]bool
 }
@@ -277,7 +282,7 @@ func (s *session) response(m envelope) {
 	interrupted := end.StopReason == "cancelled" || err != nil
 	if interrupted {
 		// TurnEnded marks an unfinished reply interrupted in the workbench.
-		s.reply = ""
+		s.reply, s.unnamed = "", false
 	} else {
 		s.finishReply()
 	}

@@ -23,7 +23,17 @@ type toolCall struct {
 func (s *session) finishReply() {
 	if s.reply != "" {
 		s.emit(agent.ReplyDone{ReplyID: s.reply})
-		s.reply = ""
+		s.reply, s.unnamed = "", false
+	}
+}
+
+// interrupt ends a reply aibo named, before a tool call or a plan: the
+// text the Agent writes after it is another reply, which shows after
+// them. A reply the Agent named itself (messageId) goes on as it says.
+func (s *session) interrupt() {
+	s.segment++
+	if s.unnamed {
+		s.finishReply()
 	}
 }
 func (s *session) update(raw json.RawMessage, active int) {
@@ -68,6 +78,7 @@ func (s *session) update(raw json.RawMessage, active int) {
 		return
 	}
 	if u.SessionUpdate == "plan" {
+		s.interrupt()
 		p := agent.PlanUpdated{PlanID: "plan-" + strconv.Itoa(active), Raw: raw}
 		for _, e := range u.Entries {
 			p.Items = append(p.Items, agent.PlanItem{Text: e.Content, Status: agent.PlanStatus(e.Status)})
@@ -79,13 +90,15 @@ func (s *session) update(raw json.RawMessage, active int) {
 		s.log.Debug("unsupported ACP reply content", "type", u.Content.Type)
 		return
 	}
-	id := u.MessageID
-	if id == "" {
-		id = "turn-" + strconv.Itoa(active)
+	// Without a messageId (optional in ACP v1, as the Cursor CLI leaves
+	// it), the text between tool calls is one reply.
+	id, unnamed := u.MessageID, u.MessageID == ""
+	if unnamed {
+		id = "turn-" + strconv.Itoa(active) + "-" + strconv.Itoa(s.segment)
 	}
 	if s.reply != id {
 		s.finishReply()
-		s.reply = id
+		s.reply, s.unnamed = id, unnamed
 	}
 	if u.SessionUpdate == "agent_message_chunk" {
 		s.emit(agent.ReplyDelta{ReplyID: id, Text: u.Content.Text, Raw: raw})
@@ -102,6 +115,7 @@ func (s *session) tool(raw json.RawMessage) {
 	updated := agent.ToolUpdated{ToolID: id}
 	if !s.tools[id] {
 		s.tools[id] = true
+		s.interrupt()
 		s.emit(agent.ToolStarted{ToolID: id, Name: t.Title, Input: t.RawInput, Raw: raw})
 	} else {
 		updated.Name, updated.Input = t.Title, t.RawInput

@@ -136,3 +136,36 @@ func TestInterruptedTurnInterruptsItsToolCall(t *testing.T) {
 		t.Errorf("tool call after stop = %+v", m)
 	}
 }
+
+// A reply after a tool call is another message, after it on the
+// timeline, as the ACP adapter makes the replies of an Agent that names
+// none (as the Cursor CLI).
+func TestReplyAfterToolCall(t *testing.T) {
+	sc := newScript()
+	b := open(t, t.TempDir(), sc.respond)
+	defer b.Close()
+	_, s := newSession(t, b)
+	b.Send(s.ID, "跑一下")
+	sc.emit(
+		agent.ReplyDelta{ReplyID: "turn-1-0", Text: "我来运行。"},
+		agent.ReplyDone{ReplyID: "turn-1-0"},
+		agent.ToolStarted{ToolID: "t1", Name: "echo"},
+		agent.ToolFinished{ToolID: "t1", Output: "ok"},
+		agent.ReplyDelta{ReplyID: "turn-1-1", Text: "完成。"},
+		agent.ReplyDone{ReplyID: "turn-1-1"},
+	)
+	sc.endTurn()
+	b.idle(t, s.ID)
+	var got []string
+	for _, m := range b.messages(t, s.ID) {
+		switch m.Kind {
+		case model.AgentReply:
+			got = append(got, "reply "+m.Text)
+		case model.ToolCall:
+			got = append(got, "tool "+m.Tool.Name)
+		}
+	}
+	if want := []string{"reply 我来运行。", "tool echo", "reply 完成。"}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("timeline %q, want %q", got, want)
+	}
+}

@@ -229,14 +229,32 @@ func TestCursorTurnCapture(t *testing.T) {
 	var asked *agent.ApprovalRequested
 	var output, reply string
 	var ended bool
+	// steps are the replies as they begin and end, and the tools as they
+	// start; texts what each reply says.
+	var steps, ids []string
+	texts := map[string]string{}
+	say := func(id string) {
+		if len(ids) == 0 || ids[len(ids)-1] != id {
+			ids = append(ids, id)
+			steps = append(steps, "reply")
+		}
+	}
 	for ev := range s.events {
 		switch e := ev.(type) {
 		case agent.ApprovalRequested:
 			asked = &e
+		case agent.ToolStarted:
+			steps = append(steps, "tool")
+		case agent.ThinkingDelta:
+			say(e.ReplyID)
 		case agent.ToolFinished:
 			output = e.Output
 		case agent.ReplyDelta:
 			reply += e.Text
+			say(e.ReplyID)
+			texts[e.ReplyID] += e.Text
+		case agent.ReplyDone:
+			steps = append(steps, "done")
 		case agent.TurnEnded:
 			ended = !e.Interrupted
 		}
@@ -253,6 +271,14 @@ func TestCursorTurnCapture(t *testing.T) {
 	}
 	if !strings.Contains(output, "AIBO-ALLOW") || !strings.Contains(reply, "DONE") || !ended {
 		t.Errorf("output %q, reply %q, ended %v", output, reply, ended)
+	}
+	// No messageId: the reply before the command and the one after it
+	// are two, in the order they came, the command between them.
+	if !slices.Equal(steps, []string{"reply", "done", "tool", "reply", "done"}) || len(ids) != 2 || ids[0] == ids[1] {
+		t.Fatalf("steps %q, replies %q", steps, ids)
+	}
+	if texts[ids[0]] != "我会在当前目录执行你指定的命令。" || strings.TrimSpace(texts[ids[1]]) != "DONE" {
+		t.Errorf("replies %q then %q", texts[ids[0]], texts[ids[1]])
 	}
 }
 
