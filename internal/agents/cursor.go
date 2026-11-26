@@ -1,6 +1,8 @@
 package agents
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -80,6 +82,38 @@ func cursorNode(p string) (string, []string, bool) {
 		return "", nil, false
 	}
 	return p, []string{script}, true
+}
+
+// cursorLauncherOf is the launcher of the install a version's node.exe
+// belongs to (versions\<version>\node.exe), if it is there: what the user
+// runs in a terminal.
+func cursorLauncherOf(node string) string {
+	root := filepath.Dir(filepath.Dir(filepath.Dir(node)))
+	p := filepath.Join(root, cursorCommand+".cmd")
+	if _, err := os.Stat(p); err != nil || !strings.EqualFold(filepath.Base(filepath.Dir(filepath.Dir(node))), "versions") {
+		return ""
+	}
+	return p
+}
+
+// cursorLogin asks the Cursor CLI how it is signed in (cursor-agent
+// status --format json). It also says the account's email, which aibo
+// does not show.
+func cursorLogin(ctx context.Context, path string, pre, env []string) (State, string, Problem, string) {
+	out, _, err := run(ctx, path, env, append(slices.Clone(pre), "status", "--format", "json")...)
+	var s struct {
+		IsAuthenticated *bool `json:"isAuthenticated"`
+	}
+	if json.Unmarshal([]byte(out), &s) != nil || s.IsAuthenticated == nil {
+		if err != nil {
+			return Broken, "", ProblemNoLogin, err.Error()
+		}
+		return Broken, "", ProblemBadLogin, strings.TrimSpace(out)
+	}
+	if !*s.IsAuthenticated {
+		return NotLoggedIn, "", ProblemSignedOut, ""
+	}
+	return Ready, "", NoProblem, ""
 }
 
 // isCursorCommand reports whether p names the Cursor CLI's executable or

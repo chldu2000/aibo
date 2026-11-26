@@ -33,6 +33,9 @@ var (
 	// ErrListsUnknown: the Agent tells its models and modes only from a
 	// session, and none has started yet.
 	ErrListsUnknown = errors.New("the Agent tells its models and modes once a session starts")
+	// ErrNotLoggedIn: the Agent is signed out, and said so where it could
+	// not emit NotLoggedIn, as in starting a session.
+	ErrNotLoggedIn = errors.New("the Agent is signed out")
 )
 
 // Detail is what err says after sentinel, which it wraps: the Agent's

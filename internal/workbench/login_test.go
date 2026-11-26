@@ -75,3 +75,34 @@ func TestSignedOutAgent(t *testing.T) {
 		t.Errorf("retrying nothing: %v", err)
 	}
 }
+
+// An Agent that says it is signed out as its session starts: nothing is
+// recorded, the words stay with the user, and the Agent is told of.
+func TestSignedOutAtStart(t *testing.T) {
+	sc := newScript()
+	signedOut := make(chan agent.Kind, 4)
+	b := openWith(t, t.TempDir(), sc.respond, workbench.Options{OnNotLoggedIn: func(k agent.Kind) { signedOut <- k }})
+	defer b.Close()
+	_, s := newSession(t, b)
+	b.fake.FailStarts(fmt.Errorf("%w: session/new: %w: ACP -32000: Authentication required", agent.ErrStartFailed, agent.ErrNotLoggedIn))
+	if err := b.Send(s.ID, "你好"); !errors.Is(err, agent.ErrNotLoggedIn) {
+		t.Fatalf("send: %v", err)
+	}
+	if k := <-signedOut; k != fake.Kind {
+		t.Errorf("told of %q", k)
+	}
+	if n := len(b.messages(t, s.ID)); n != 0 {
+		t.Errorf("%d messages recorded", n)
+	}
+	if st := b.Status(s.ID); st.Running || st.NeedsLogin || !errors.Is(st.Error, agent.ErrNotLoggedIn) {
+		t.Errorf("status = %+v", st)
+	}
+	// Another failure to start tells of no sign-in.
+	b.fake.FailStarts(agent.ErrStartFailed)
+	b.Send(s.ID, "你好")
+	select {
+	case k := <-signedOut:
+		t.Errorf("told of %q", k)
+	default:
+	}
+}

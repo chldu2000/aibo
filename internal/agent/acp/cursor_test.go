@@ -3,9 +3,11 @@ package acp
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -151,5 +153,25 @@ func TestClientMeta(t *testing.T) {
 		if got := caps(); got != want {
 			t.Errorf("a session told %s, want %s", got, want)
 		}
+	}
+}
+
+// An Agent that answers session/new with ACP's auth_required (-32000), as
+// the Cursor CLI signed out does, did not start because it is signed out.
+func TestSignedOutAtStart(t *testing.T) {
+	a, _, _ := fakeACP(t, "options-nodelete-signedout")
+	_, err := a.Start(t.Context(), agent.StartOptions{Workspace: t.TempDir()})
+	if !errors.Is(err, agent.ErrNotLoggedIn) || !errors.Is(err, agent.ErrStartFailed) || !strings.Contains(err.Error(), "Authentication required") {
+		t.Fatalf("start: %v", err)
+	}
+	// Another error is not taken for it.
+	b, _, _ := fakeACP(t, "options")
+	s, err := b.Start(t.Context(), agent.StartOptions{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.SetMode(t.Context(), "nope"); err == nil || errors.Is(err, agent.ErrNotLoggedIn) {
+		t.Errorf("an invalid mode: %v", err)
 	}
 }

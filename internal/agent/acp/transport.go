@@ -247,7 +247,11 @@ func (s *session) response(m envelope) {
 		if err == nil && r.receive != nil {
 			err = r.receive(m.Result)
 		}
-		r.result <- err
+		if m.Error != nil && m.Error.Code == -32000 { // ACP's auth_required
+			r.result <- fmt.Errorf("%w: %w", agent.ErrNotLoggedIn, err)
+		} else {
+			r.result <- err
+		}
 		s.mu.Lock()
 		delete(s.requests, id)
 		s.mu.Unlock()

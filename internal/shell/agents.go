@@ -169,10 +169,10 @@ func (s *Shell) terminalLogin(c *ui.Context, st agents.Status) {
 	ui.Text(c, locales.TerminalLogin(d.Command, d.Name)).FontSize(12).TextColor(t.Text)
 	ui.Row(c).Gap(6).Children(func() {
 		if ui.Button(c, locales.CopyCommand()).Clicked() {
-			c.WriteClipboard(st.Path)
+			c.WriteClipboard(st.TerminalPath())
 		}
 		if s.opts.OpenTerminal != nil && ui.Button(c, locales.OpenInTerminal(d.Command)).Clicked() {
-			s.opts.OpenTerminal(st.Path)
+			s.opts.OpenTerminal(st.TerminalPath())
 		}
 	})
 }
@@ -273,7 +273,7 @@ func (s *Shell) loginBanner(c *ui.Context, x model.Session, st workbench.Status)
 		ui.Text(c, text).TextColor(t.Text).Grow(1)
 		if d.Login == agents.LoginTerminal && r != nil && s.opts.OpenTerminal != nil {
 			if ui.Button(c, locales.OpenInTerminal(d.Command)).Clicked() {
-				s.opts.OpenTerminal(r.Status(x.Agent).Path)
+				s.opts.OpenTerminal(r.Status(x.Agent).TerminalPath())
 			}
 		}
 		if ui.Button(c, locales.GoSignIn()).Clicked() {

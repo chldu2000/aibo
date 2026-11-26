@@ -39,6 +39,7 @@ type Agent struct {
 
 	mu          sync.Mutex
 	resumeFails string
+	startFails  error
 	starts      []agent.StartOptions
 	modelSets   []ModelSet
 	nextID      int
@@ -91,6 +92,14 @@ func (a *Agent) FailResumes(why string) {
 	a.resumeFails = why
 }
 
+// FailStarts makes every Start fail with err, as an Agent signed out does
+// (agent.ErrNotLoggedIn); nil starts again.
+func (a *Agent) FailStarts(err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.startFails = err
+}
+
 // DirsAtStart says whether a session given ReadDirs must start again.
 func (a *Agent) DirsAtStart() bool { return a.RestartsForDirs }
 
@@ -104,6 +113,10 @@ func (a *Agent) Starts() []agent.StartOptions {
 func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Session, error) {
 	a.mu.Lock()
 	a.starts = append(a.starts, opts)
+	if err := a.startFails; err != nil {
+		a.mu.Unlock()
+		return nil, err
+	}
 	if opts.ResumeID != "" && a.resumeFails != "" {
 		why := a.resumeFails
 		a.mu.Unlock()

@@ -16,7 +16,7 @@ import (
 
 // fakeCursor lays out a Cursor CLI install on Windows whose node.exe is a
 // fake CLI of the given version; it returns the install and its node.exe.
-func fakeCursor(t *testing.T, version string) (string, string) {
+func fakeCursor(t *testing.T, version string, loggedIn ...bool) (string, string) {
 	t.Helper()
 	root := t.TempDir()
 	dir := filepath.Join(root, "versions", version+"-e9042b2")
@@ -28,7 +28,7 @@ func fakeCursor(t *testing.T, version string) (string, string) {
 			t.Fatal(err)
 		}
 	}
-	return root, fakecli.Install(t, dir, "node", version+"-e9042b2", true)
+	return root, fakecli.Install(t, dir, "node", version+"-e9042b2", len(loggedIn) == 0 || loggedIn[0])
 }
 
 // The Cursor CLI comes with aibo, as OpenCode does: found through its
@@ -98,6 +98,16 @@ func TestCursorDetected(t *testing.T) {
 	st := r.Status(agents.Cursor)
 	if st.State != agents.Ready || st.Version != "2026.11.22" || st.Path != node || len(st.Args) != 1 || filepath.Base(st.Args[0]) != "index.js" {
 		t.Fatalf("status = %+v", st)
+	}
+	// The launcher is what the user runs to sign in; no account is shown.
+	if launcher := filepath.Join(root, "cursor-agent.cmd"); st.Launcher != launcher || st.TerminalPath() != launcher || st.Auth != "" || st.Login != agents.LoginTerminal {
+		t.Errorf("launcher %q, terminal %q, auth %q, login %v", st.Launcher, st.TerminalPath(), st.Auth, st.Login)
+	}
+	out, _ := fakeCursor(t, "2026.11.22", false)
+	r = agents.New(agents.Options{Shell: shellWith(t), Dirs: []string{out}})
+	r.Check(context.Background(), agents.Cursor)
+	if st := r.Status(agents.Cursor); st.State != agents.NotLoggedIn || st.Problem != agents.ProblemSignedOut {
+		t.Errorf("signed out: %+v", st)
 	}
 	// From PATH, as the installer leaves it.
 	r = agents.New(agents.Options{Shell: shellWith(t, root), Dirs: []string{}})

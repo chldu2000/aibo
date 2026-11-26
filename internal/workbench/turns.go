@@ -169,6 +169,20 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 // (Recover).
 func (w *Workbench) startFailed(id string, err error) {
 	w.log.Warn("native session did not start", "session", id, "error", err.Error())
+	if errors.Is(err, agent.ErrNotLoggedIn) && w.loggedOut != nil {
+		// Nothing was sent: the words stay in the composer, for after
+		// signing in, and there is nothing to retry.
+		w.mu.Lock()
+		s, ok := w.sessions[id]
+		var kind agent.Kind
+		if ok {
+			kind = s.info.Agent
+		}
+		w.mu.Unlock()
+		if ok {
+			go w.loggedOut(kind)
+		}
+	}
 	if !errors.Is(err, agent.ErrResumeFailed) {
 		w.fail(id, StepStart, err)
 		return

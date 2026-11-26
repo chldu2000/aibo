@@ -8,7 +8,7 @@
 
 ## 使用 Cursor CLI
 
-按 [Cursor 的说明](https://cursor.com/docs/cli/installation) 安装 Cursor CLI，在终端里运行 `cursor-agent login` 登录。aibo 预置了 **Cursor**，启动命令为 `cursor-agent acp`（安装脚本同时装了 `agent`，aibo 不找这个太常见的名字）。要求 2026.11.22 或更新的版本。
+按 [Cursor 的说明](https://cursor.com/docs/cli/installation) 安装 Cursor CLI，在终端里运行 `cursor-agent login` 登录。Agent 设置页用 `cursor-agent status --format json` 检查是否已登录（不显示账号），未登录时给出在终端里登录的按钮；登录后点 **重新检测**。会话启动时 Cursor 报告未登录（ACP 的 `-32000`）时，消息不会发出，留在输入框里，设置页随之显示未登录。aibo 预置了 **Cursor**，启动命令为 `cursor-agent acp`（安装脚本同时装了 `agent`，aibo 不找这个太常见的名字）。要求 2026.11.22 或更新的版本。
 
 - **Windows**：安装脚本只装启动脚本（`%LOCALAPPDATA%\cursor-agent\cursor-agent.cmd` 和 `.ps1`），由它经 PowerShell 运行 `versions\<最新版本>\node.exe index.js`。aibo 在 `%LOCALAPPDATA%\cursor-agent` 和 PATH 里找到这个安装后，直接运行最新版本目录里的 `node.exe` 和 `index.js`，这样结束会话时 Cursor 的进程也会结束。在 **编辑…** 里把命令改成别处的 `cursor-agent.cmd` 或某个版本目录里的 `node.exe` 也可以。启动脚本会先把下载好的更新换上来，aibo 不做这一步：更新在下次从终端运行 Cursor 时生效。
 - **macOS / Linux**：安装脚本放的是 `~/.local/bin/cursor-agent`，按普通可执行文件查找。尚未实测。
@@ -70,7 +70,8 @@
 | 重启续聊 | 优先使用 `session/resume`。只支持 `session/load` 时，在其响应前跳过历史回放，已有时间线由 aibo 保管。如果 Agent 无法恢复原生会话，工作台进入已有的恢复流程。 |
 | 模型、推理强度与模式 | 按 ACP 的 `configOptions` 读取和切换：category 为 `model`、`thought_level`、`mode` 的配置项分别对应输入框底部的模型、推理强度和权限模式菜单，名称和取值沿用 Agent 的原文（例如 OpenCode 的 `default`）。只提供旧接口 `modes` 的 Agent 用 `session/set_mode` 切换模式。列表要在会话里才能拿到：Agent 声明支持 `session/delete` 时，aibo 第一次需要列表时在空的临时目录里建一个探测会话，逐个模型读出推理强度，然后删除它；不支持删除的 Agent 不探测，先用它新建一个会话后菜单才有内容（预置 Cursor 例外，见上）。之后每个会话看到的列表也会更新菜单。模式的风险等级来自 `modes` 字段（见上），没有标注的按“注意”显示。OpenCode 的 `build`、`plan` 是 Agent 角色，实际权限由 `opencode.json` 决定；预置 OpenCode 在自己的配置没有 `modes` 时，把 `plan` 标为安全、只读，`build` 标为注意、默认。写了 `modes` 就只用写出的标注。预置 Cursor 同样有内置标注，并请求参数化的模型列表（见“使用 Cursor CLI”）。 |
 | 附件 | 文件以路径发送，图片仅在对端声明支持时发送。 |
-| 其他操作 | 通用适配器暂不提供手动压缩、外部目录授权或 Agent 自定义斜杠命令。登录、模型供应商和工具权限规则由本机 Agent 管理。 |
+| 登录 | 登录、模型供应商和工具权限规则由本机 Agent 管理。任何 ACP Agent 在启动会话或一轮对话中返回 `-32000`（ACP 的 `auth_required`）时，aibo 按未登录处理：提示先登录，消息不发出。只有预置 Cursor 能事先检查登录状态。 |
+| 其他操作 | 通用适配器暂不提供手动压缩、外部目录授权或 Agent 自定义斜杠命令。 |
 
 ## 验证
 

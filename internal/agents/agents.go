@@ -69,7 +69,8 @@ var Specs = []Spec{
 		Glyph: []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#2f2f33" stroke="#5a5a62" stroke-width="1"/><g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l4 4-4 4"/><path d="M13 16h5"/></g></svg>`),
 		Login: LoginInApp, HoldsSignedOut: true},
 	{Kind: OpenCode, Name: "OpenCode", Command: "opencode", MinVersion: "1.19.6", InstallURL: "https://opencode.ai/docs/"},
-	{Kind: Cursor, Name: "Cursor", Command: cursorCommand, MinVersion: "2026.11.22", InstallURL: "https://cursor.com/docs/cli/installation"},
+	{Kind: Cursor, Name: "Cursor", Command: cursorCommand, MinVersion: "2026.11.22", InstallURL: "https://cursor.com/docs/cli/installation",
+		Login: LoginTerminal},
 }
 
 // Describe returns what aibo knows of an Agent, if it supports it.
@@ -104,8 +105,10 @@ type Status struct {
 	Source Source
 	// Args go before the Agent's own when Path runs: the script of a
 	// launcher aibo runs past (the Cursor CLI's index.js on Windows).
-	Args    []string
-	Version string
+	Args []string
+	// Launcher is that launcher, which the user runs (TerminalPath).
+	Launcher string
+	Version  string
 	// Auth is how it is signed in, as it says.
 	Auth string
 	// Problem is why it is not ready, if it is not; Detail what the
@@ -152,6 +155,15 @@ const (
 	// ProblemSignedOut: it is signed out.
 	ProblemSignedOut
 )
+
+// TerminalPath is the executable for the user to run in a terminal, as to
+// sign in: the launcher aibo runs past, else Path.
+func (s Status) TerminalPath() string {
+	if s.Launcher != "" {
+		return s.Launcher
+	}
+	return s.Path
+}
 
 // Usable reports whether sessions can start with the Agent: installed and
 // new enough. (Signed out, it still starts: it says so itself.)
@@ -417,8 +429,9 @@ func (r *Registry) Ready(kind agent.Kind) error {
 	return nil
 }
 
-// ErrNotLoggedIn is Ready's error for an Agent signed out.
-var ErrNotLoggedIn = errors.New("the Agent is signed out")
+// ErrNotLoggedIn is Ready's error for an Agent signed out: the one an
+// adapter reports when the Agent says so (agent.ErrNotLoggedIn).
+var ErrNotLoggedIn = agent.ErrNotLoggedIn
 
 // MarkNotLoggedIn records that a session found the Agent signed out.
 func (r *Registry) MarkNotLoggedIn(kind agent.Kind) {
@@ -545,6 +558,9 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 	if real, err := filepath.EvalSymlinks(st.Path); err == nil {
 		st.Path = real
 	}
+	if len(st.Args) > 0 {
+		st.Launcher = cursorLauncherOf(st.Path)
+	}
 	if spec.MinVersion == "" {
 		st.State = Ready // Configured executables need only implement ACP.
 		return st
@@ -569,6 +585,8 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 		st.State, st.Auth, st.Problem, st.Detail = claudeLogin(ctx, st.Path, env)
 	case codex.Kind:
 		st.State, st.Auth, st.Problem, st.Detail = codexLogin(ctx, st.Path, env)
+	case Cursor:
+		st.State, st.Auth, st.Problem, st.Detail = cursorLogin(ctx, st.Path, st.Args, env)
 	default:
 		st.State = Ready
 	}

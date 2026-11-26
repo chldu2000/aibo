@@ -32,6 +32,12 @@ func RunIfCLI() {
 		fmt.Println(version)
 	case "auth status":
 		fmt.Printf(`{"loggedIn":%s,"authMethod":"claude.ai","subscriptionType":"pro"}`, login)
+	case "status --format json": // the Cursor CLI
+		if login == "true" {
+			fmt.Println(`{"status":"authenticated","isAuthenticated":true,"hasAccessToken":true,"hasRefreshToken":true,"userInfo":{"email":"someone@example.com"}}`)
+		} else {
+			fmt.Println(`{"status":"unauthenticated","isAuthenticated":false,"hasAccessToken":false,"hasRefreshToken":false,"message":"Not logged in"}`)
+		}
 	case "login status":
 		if login == "true" {
 			fmt.Fprintln(os.Stderr, "Logged in using ChatGPT")

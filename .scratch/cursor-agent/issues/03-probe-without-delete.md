@@ -17,7 +17,7 @@ Status: resolved
 - [x] 推理强度仍然从真实会话学：只知道探测会话当前模型的推理强度，其他模型的在用户切到它们时补上（02 之前就有的 `record` 合并逻辑）
 - [x] 超时：实测 `session/new` 8–25 秒，`catalog.go` 的探测超时 2 分钟够用；网络不稳时会失败，沿用“下次再试”
 - [x] 测试：假 ACP Agent 加一种 `options-ephemeral`（不报告 `delete`），确认探测只发 `session/new`，列表可用，`changed` 回调一次
-- [x] 契约测试（`AIBO_CONTRACT=1`，04 一起做）：探测前后 `session/list` 都为空，`cli-config.json` 的 `selectedModel` 不变
+- [x] （移到 05）契约测试（`AIBO_CONTRACT=1`）：探测前后 `session/list` 都为空，`cli-config.json` 的 `selectedModel` 不变
 
 ## 不做
 
