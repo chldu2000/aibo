@@ -149,6 +149,7 @@ type Workbench struct {
 	fileLists fileLists
 	st        *store.Store
 	mcp       *mcpserver.Server
+	agentsMu  sync.RWMutex // agent lookups also run with mu held
 	agents    []agent.Agent
 	now       func() time.Time
 	budgets   refs.Budgets
@@ -351,6 +352,8 @@ func (w *Workbench) notify(c Change) {
 
 // Agents lists the Agents new sessions can use.
 func (w *Workbench) Agents() []AgentInfo {
+	w.agentsMu.RLock()
+	defer w.agentsMu.RUnlock()
 	out := make([]AgentInfo, len(w.agents))
 	for i, a := range w.agents {
 		out[i] = AgentInfo{Kind: a.Kind(), Name: a.Name()}
@@ -359,12 +362,25 @@ func (w *Workbench) Agents() []AgentInfo {
 }
 
 func (w *Workbench) agent(kind agent.Kind) agent.Agent {
+	w.agentsMu.RLock()
+	defer w.agentsMu.RUnlock()
 	for _, a := range w.agents {
 		if a.Kind() == kind {
 			return a
 		}
 	}
 	return nil
+}
+
+// RegisterAgent makes a newly configured adapter available to all windows.
+func (w *Workbench) RegisterAgent(a agent.Agent) {
+	if l, ok := a.(agent.LogSetter); ok {
+		l.SetLog(w.log.With("agent", string(a.Kind())))
+	}
+	w.agentsMu.Lock()
+	w.agents = append(w.agents, a)
+	w.agentsMu.Unlock()
+	w.notify(Change{})
 }
 
 // AddWorkspace adds the directory at path as a workspace, identified by

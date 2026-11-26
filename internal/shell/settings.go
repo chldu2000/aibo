@@ -16,8 +16,9 @@ import (
 
 // settingsUI is the global settings' modal.
 type settingsUI struct {
-	open bool
-	tab  int
+	addAgent *agentForm
+	open     bool
+	tab      int
 	// move is the data directory the user chose to move to, waiting for
 	// confirmation; moving is set while it moves.
 	move   *dataMove
@@ -70,7 +71,10 @@ func (s *Shell) settingsModal(c *ui.Context) {
 			case 0:
 				s.generalSettings(c)
 			case agentsTab:
-				s.agentSettings(c)
+				_, height := c.Size()
+				ui.Scroll(c).MaxHeight(max(180, height-180)).Children(func() {
+					ui.Column(c).Gap(10).Children(func() { s.agentSettings(c) })
+				})
 			default:
 				s.advancedSettings(c)
 			}

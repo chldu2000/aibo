@@ -172,3 +172,48 @@ func TestInvalidACPConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestAddACPPreservesExistingConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	r, err := agents.Open(dir, agents.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "agents.json")
+	// The user edited the file while aibo was open.
+	initial := []byte(`[{"id":"existing","name":"Existing","command":"first"}]`)
+	if err = os.WriteFile(path, initial, 0600); err != nil {
+		t.Fatal(err)
+	}
+	c := agents.ACPConfig{ID: "existing", Name: "Another", Command: "other"}
+	if _, err := r.AddACP(c); !errors.Is(err, agents.ErrIDInUse) {
+		t.Fatalf("duplicate ID: %v", err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != string(initial) {
+		t.Fatal("rejected save changed the file")
+	}
+	c.ID = "another"
+	if _, err = r.AddACP(c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.AddACP(c); !errors.Is(err, agents.ErrIDInUse) {
+		t.Fatal(err)
+	}
+	reopened, err := agents.Open(dir, agents.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Status("another").Name != "Another" || reopened.Status("existing").Name != "Existing" {
+		t.Fatal("missing saved Agent")
+	}
+	if err = os.WriteFile(path, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.ID = "retry"
+	if _, err = r.AddACP(c); err == nil || r.Status(c.ID).Problem != agents.ProblemUnknown {
+		t.Fatal("published an Agent after a failed save")
+	}
+	if got, _ := os.ReadFile(path); string(got) != "{" {
+		t.Fatal("overwrote invalid configuration")
+	}
+}

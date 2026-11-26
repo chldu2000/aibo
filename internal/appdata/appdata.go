@@ -27,7 +27,7 @@ const DBFile = "aibo.db"
 
 // dataFiles are what a data directory holds, besides the database's
 // backups: what moves with it.
-var dataFiles = []string{DBFile, DBFile + "-wal", DBFile + "-shm", "attachments"}
+var dataFiles = []string{DBFile, DBFile + "-wal", DBFile + "-shm", "attachments", "agents.json"}
 
 // Errors of the data directory.
 var (

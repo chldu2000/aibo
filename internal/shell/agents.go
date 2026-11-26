@@ -81,6 +81,13 @@ func (s *Shell) agentSettings(c *ui.Context) {
 		ui.Text(c, locales.NoDetection()).TextColor(t.TextMuted)
 		return
 	}
+	if form := s.settings.addAgent; form != nil {
+		s.addAgentForm(c, form)
+		return
+	}
+	if ui.Button(c, locales.AddAgent()).Clicked() {
+		s.settings.addAgent = &agentForm{prefix: agents.DefaultToolPrefix}
+	}
 	for _, st := range r.Statuses() {
 		ui.Column(c).Key(string(st.Kind)).Gap(6).Padding(12).Radius(12).Background(t.Surface).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {

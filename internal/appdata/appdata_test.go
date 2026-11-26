@@ -95,6 +95,9 @@ func TestMoveToAnEmptyFolder(t *testing.T) {
 	from, to := t.TempDir(), t.TempDir()
 	seed(t, from)
 	appdata.SaveConfig(from, appdata.Config{DataDir: to})
+	if err := os.WriteFile(filepath.Join(from, "agents.json"), []byte("[]"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	os.WriteFile(filepath.Join(from, "aibo.db.v1.bak"), []byte("old"), 0o644)
 
 	if err := appdata.Move(from, to); err != nil {
@@ -102,6 +105,9 @@ func TestMoveToAnEmptyFolder(t *testing.T) {
 	}
 	if appdata.HasData(from) {
 		t.Error("the data stayed behind")
+	}
+	if data, err := os.ReadFile(filepath.Join(to, "agents.json")); err != nil || string(data) != "[]" {
+		t.Fatal("Agent configuration did not move")
 	}
 	if _, err := os.Stat(filepath.Join(from, "attachments")); err == nil {
 		t.Error("the attachments stayed behind")

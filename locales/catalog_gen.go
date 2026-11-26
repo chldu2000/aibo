@@ -2354,6 +2354,156 @@ func (msgs Messages) Save() string {
 	return Catalog.Format(msgs.locale, "save", nil)
 }
 
+// AddAgent says "Add Agent…"
+// in the language the app shows.
+func AddAgent() string { return In(i18n.Locale()).AddAgent() }
+
+// AddAgent says "Add Agent…"
+// in the language of msgs.
+func (msgs Messages) AddAgent() string {
+	return Catalog.Format(msgs.locale, "addAgent", nil)
+}
+
+// AddACPAgent says "Add an ACP Agent"
+// in the language the app shows.
+func AddACPAgent() string { return In(i18n.Locale()).AddACPAgent() }
+
+// AddACPAgent says "Add an ACP Agent"
+// in the language of msgs.
+func (msgs Messages) AddACPAgent() string {
+	return Catalog.Format(msgs.locale, "addACPAgent", nil)
+}
+
+// ACPRequirements says "Choose a local Agent that supports ACP v1 over stdio and HTTP MCP."
+// in the language the app shows.
+func ACPRequirements() string { return In(i18n.Locale()).ACPRequirements() }
+
+// ACPRequirements says "Choose a local Agent that supports ACP v1 over stdio and HTTP MCP."
+// in the language of msgs.
+func (msgs Messages) ACPRequirements() string {
+	return Catalog.Format(msgs.locale, "aCPRequirements", nil)
+}
+
+// AgentDisplayName says "Display name"
+// in the language the app shows.
+func AgentDisplayName() string { return In(i18n.Locale()).AgentDisplayName() }
+
+// AgentDisplayName says "Display name"
+// in the language of msgs.
+func (msgs Messages) AgentDisplayName() string {
+	return Catalog.Format(msgs.locale, "agentDisplayName", nil)
+}
+
+// AgentIdentifier says "Agent ID"
+// in the language the app shows.
+func AgentIdentifier() string { return In(i18n.Locale()).AgentIdentifier() }
+
+// AgentIdentifier says "Agent ID"
+// in the language of msgs.
+func (msgs Messages) AgentIdentifier() string {
+	return Catalog.Format(msgs.locale, "agentIdentifier", nil)
+}
+
+// AgentFieldInput says "Enter {field}"
+// in the language the app shows.
+func AgentFieldInput(field string) string { return In(i18n.Locale()).AgentFieldInput(field) }
+
+// AgentFieldInput says "Enter {field}"
+// in the language of msgs.
+func (msgs Messages) AgentFieldInput(field string) string {
+	return Catalog.Format(msgs.locale, "agentFieldInput", map[string]any{"field": field})
+}
+
+// AgentIDHint says "Start the ID with a lowercase letter. Use only lowercase letters, digits, hyphens and underscores."
+// in the language the app shows.
+func AgentIDHint() string { return In(i18n.Locale()).AgentIDHint() }
+
+// AgentIDHint says "Start the ID with a lowercase letter. Use only lowercase letters, digits, hyphens and underscores."
+// in the language of msgs.
+func (msgs Messages) AgentIDHint() string {
+	return Catalog.Format(msgs.locale, "agentIDHint", nil)
+}
+
+// AgentIDInUse says "This ID is in use or reserved. Choose another ID."
+// in the language the app shows.
+func AgentIDInUse() string { return In(i18n.Locale()).AgentIDInUse() }
+
+// AgentIDInUse says "This ID is in use or reserved. Choose another ID."
+// in the language of msgs.
+func (msgs Messages) AgentIDInUse() string {
+	return Catalog.Format(msgs.locale, "agentIDInUse", nil)
+}
+
+// AgentNameRequired says "Enter a display name."
+// in the language the app shows.
+func AgentNameRequired() string { return In(i18n.Locale()).AgentNameRequired() }
+
+// AgentNameRequired says "Enter a display name."
+// in the language of msgs.
+func (msgs Messages) AgentNameRequired() string {
+	return Catalog.Format(msgs.locale, "agentNameRequired", nil)
+}
+
+// AgentCommand says "Executable"
+// in the language the app shows.
+func AgentCommand() string { return In(i18n.Locale()).AgentCommand() }
+
+// AgentCommand says "Executable"
+// in the language of msgs.
+func (msgs Messages) AgentCommand() string {
+	return Catalog.Format(msgs.locale, "agentCommand", nil)
+}
+
+// AgentCommandHint says "Enter an executable name or absolute path."
+// in the language the app shows.
+func AgentCommandHint() string { return In(i18n.Locale()).AgentCommandHint() }
+
+// AgentCommandHint says "Enter an executable name or absolute path."
+// in the language of msgs.
+func (msgs Messages) AgentCommandHint() string {
+	return Catalog.Format(msgs.locale, "agentCommandHint", nil)
+}
+
+// BrowseExecutable says "Browse…"
+// in the language the app shows.
+func BrowseExecutable() string { return In(i18n.Locale()).BrowseExecutable() }
+
+// BrowseExecutable says "Browse…"
+// in the language of msgs.
+func (msgs Messages) BrowseExecutable() string {
+	return Catalog.Format(msgs.locale, "browseExecutable", nil)
+}
+
+// AgentArguments says "Startup arguments"
+// in the language the app shows.
+func AgentArguments() string { return In(i18n.Locale()).AgentArguments() }
+
+// AgentArguments says "Startup arguments"
+// in the language of msgs.
+func (msgs Messages) AgentArguments() string {
+	return Catalog.Format(msgs.locale, "agentArguments", nil)
+}
+
+// AgentArgumentsHint says "Optional. Enter one argument per line. Paths with spaces can go on one line without quotes."
+// in the language the app shows.
+func AgentArgumentsHint() string { return In(i18n.Locale()).AgentArgumentsHint() }
+
+// AgentArgumentsHint says "Optional. Enter one argument per line. Paths with spaces can go on one line without quotes."
+// in the language of msgs.
+func (msgs Messages) AgentArgumentsHint() string {
+	return Catalog.Format(msgs.locale, "agentArgumentsHint", nil)
+}
+
+// AgentToolPrefix says "MCP tool prefix"
+// in the language the app shows.
+func AgentToolPrefix() string { return In(i18n.Locale()).AgentToolPrefix() }
+
+// AgentToolPrefix says "MCP tool prefix"
+// in the language of msgs.
+func (msgs Messages) AgentToolPrefix() string {
+	return Catalog.Format(msgs.locale, "agentToolPrefix", nil)
+}
+
 // BudgetRanges says "{error} Allowed: a page 1000–200000, one output from 200 to the page's size, read_message a page 1000–500000, idl…"
 // in the language the app shows.
 func BudgetRanges(error string) string { return In(i18n.Locale()).BudgetRanges(error) }

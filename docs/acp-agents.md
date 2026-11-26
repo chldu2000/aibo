@@ -8,6 +8,10 @@
 
 ## 登记另一个 ACP 实例
 
+打开 **设置 → Agent → 添加 Agent…**，填写显示名称、稳定的 Agent ID 和可执行文件。启动参数每行填写一个，路径中的空格会保留。若该 Agent 使用自己的 MCP 工具命名方式，可修改工具前缀。保存后 aibo 会检测可执行文件，并将新 Agent 加入新建会话菜单。配置会保存在当前数据目录的 `agents.json` 中，下次启动仍然有效。
+
+### 手动编辑配置文件
+
 在 **aibo 当前数据目录** 中创建 UTF-8 编码的 `agents.json`，然后重启 aibo。默认目录在 Windows 上是 `%LOCALAPPDATA%\aibo`，在 macOS 上是 `~/Library/Application Support/aibo`。如果更改过数据目录或设置了 `AIBO_DATA_DIR`，使用更改后的目录。
 
 下面的配置用已安装的 OpenCode 增加一个名为 **OpenCode Lab** 的实例。也可以换成其他本机 ACP 程序的命令和参数。

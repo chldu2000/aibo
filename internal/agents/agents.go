@@ -167,11 +167,13 @@ type Options struct {
 
 // Registry is the Agents and how they stand.
 type Registry struct {
-	specs  []Spec
-	acp    map[agent.Kind]*acp.Agent
-	claude *claude.Agent
-	codex  *codex.Agent
-	o      Options
+	configMu   sync.Mutex
+	configPath string
+	specs      []Spec
+	acp        map[agent.Kind]*acp.Agent
+	claude     *claude.Agent
+	codex      *codex.Agent
+	o          Options
 
 	mu        sync.Mutex
 	login     LoginState
@@ -301,6 +303,8 @@ func globDirs(pattern string) []string {
 
 // Agents are the adapters, for the workbench.
 func (r *Registry) Agents() []agent.Agent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	out := []agent.Agent{r.claude, r.codex}
 	for _, spec := range r.specs {
 		if a := r.acp[spec.Kind]; a != nil {
@@ -342,9 +346,11 @@ func (r *Registry) Status(kind agent.Kind) Status {
 
 // Statuses returns every Agent's standing, in Specs' order.
 func (r *Registry) Statuses() []Status {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	out := make([]Status, len(r.specs))
 	for i, s := range r.specs {
-		out[i] = r.Status(s.Kind)
+		out[i] = *r.status[s.Kind]
 	}
 	return out
 }
@@ -424,7 +430,7 @@ func (r *Registry) Detect(ctx context.Context) {
 	r.shellPath = p
 	r.mu.Unlock()
 	var wg sync.WaitGroup
-	for _, s := range r.specs {
+	for _, s := range r.Statuses() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -464,13 +470,16 @@ func (r *Registry) Check(ctx context.Context, kind agent.Kind) {
 		case codex.Kind:
 			r.codex.Configure(st.Path, env)
 		default:
-			r.acp[kind].Configure(st.Path, env)
+			r.mu.Lock()
+			a := r.acp[kind]
+			r.mu.Unlock()
+			a.Configure(st.Path, env)
 			if kind == OpenCode {
 				prefix := "aibo_"
 				if !older(st.Version, "2.0.0") {
 					prefix = "aibo."
 				}
-				r.acp[kind].SetToolPrefix(prefix)
+				a.SetToolPrefix(prefix)
 			}
 		}
 	}
