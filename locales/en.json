@@ -513,6 +513,8 @@
   "modelLabel": "Model: {model}",
   "modelHeading": "Model",
   "modelsLoading": "Loading the models…",
+  "modelSearch": "Search models",
+  "noModelsFound": "No matching models",
   "modelsFailed": "Cannot read the models",
   "useModel": "Use the model {model}",
   "effortLabel": "Reasoning effort: {effort}",

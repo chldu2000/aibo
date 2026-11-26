@@ -3,6 +3,8 @@ package shell_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -258,5 +260,125 @@ func TestChangeModelAndEffort(t *testing.T) {
 	click("会话详情")
 	if !tt.HasText("Tiny") {
 		t.Errorf("details: %q", tt.Texts())
+	}
+}
+
+// manyModels is a fake Agent that tells as many models as the Cursor CLI
+// does, more than the window has room for: m1 to m50, named Model 1 to
+// Model 50.
+type manyModels struct{ *fake.Agent }
+
+func (manyModels) Models(context.Context) ([]agent.Model, error) {
+	var ms []agent.Model
+	for i := 1; i <= 50; i++ {
+		ms = append(ms, agent.Model{ID: fmt.Sprintf("m%d", i), Name: fmt.Sprintf("Model %d", i)})
+	}
+	return ms, nil
+}
+
+// A long model list scrolls, opens on the model in use, and can be
+// searched, by mouse or keyboard; a short one has no search.
+func TestLongModelList(t *testing.T) {
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{manyModels{fake.New(nil)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	x, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	if err := wb.SetModel(x.ID, "m40", ""); err != nil {
+		t.Fatal(err)
+	}
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 800)
+	frame := func() {
+		for i := 0; i < 3; i++ {
+			tt.Frame()
+			tt.Advance(time.Second)
+			time.Sleep(5 * time.Millisecond) // the models load off the main thread
+		}
+	}
+	until := func(what string, cond func() bool) {
+		t.Helper()
+		for i := 0; i < 200 && !cond(); i++ {
+			frame()
+		}
+		if !cond() {
+			t.Fatalf("never %s: %q", what, tt.Texts())
+		}
+	}
+	click := func(s string) {
+		t.Helper()
+		if err := tt.Click(s); err != nil {
+			t.Fatalf("%v; the window shows %q", err, tt.Texts())
+		}
+		frame()
+	}
+	model := func() string { got, _ := wb.Session(x.ID); return got.Model }
+	open := func() {
+		t.Helper()
+		if _, shown := tt.Find("搜索模型"); shown { // open still: close it first
+			tt.Key(0, ui.KeyEscape)
+			frame()
+		}
+		until("shows the model", func() bool { return tt.HasText("模型：Model ") })
+		for _, s := range tt.Texts() {
+			if strings.HasPrefix(s, "模型：Model ") {
+				click(s)
+				break
+			}
+		}
+		until("lists the models", func() bool { return tt.HasText("使用模型 Model 1") })
+	}
+
+	// The model in use, far down the list, is in view: it can be chosen.
+	open()
+	if _, ok := tt.Find("搜索模型"); !ok {
+		t.Fatal("no search for 50 models")
+	}
+	click("使用模型 Model 40")
+	if m := model(); m != "m40" {
+		t.Errorf("chose %q", m)
+	}
+	// The rows are taller than the menu has room for (480 at most): the
+	// list scrolls, to Model 40 as it opened.
+	open()
+	first, _ := tt.Find("使用模型 Model 1")
+	last, _ := tt.Find("使用模型 Model 50")
+	if last.Y-first.Y < 480 {
+		t.Fatalf("Model 1 to Model 50 span %v: they fit the menu, the test proves nothing", last.Y-first.Y)
+	}
+
+	// Searched: the name or the ID, any case.
+	tt.Type("MODEL 5")
+	frame()
+	if !tt.HasText("使用模型 Model 50") || tt.HasText("使用模型 Model 40") {
+		t.Fatalf("searching Model 5 shows %q", tt.Texts())
+	}
+	click("使用模型 Model 50")
+	if m := model(); m != "m50" {
+		t.Errorf("chose %q", m)
+	}
+	open()
+	tt.Type("nothing")
+	frame()
+	if !tt.HasText("没有匹配的模型") {
+		t.Errorf("no match shows %q", tt.Texts())
+	}
+
+	// By keyboard: the arrows move among the matches, Enter takes one.
+	open()
+	tt.Type("model 4")
+	frame()
+	tt.Key(0, ui.KeyDown)
+	frame()
+	tt.Key(0, ui.KeyDown)
+	frame()
+	tt.Key(0, ui.KeyEnter)
+	frame()
+	if m := model(); m != "m40" { // Model 4, then Model 40
+		t.Errorf("chose %q by keyboard", m)
+	}
+	if tt.HasText("使用模型 Model 1") {
+		t.Error("the menu stayed open")
 	}
 }

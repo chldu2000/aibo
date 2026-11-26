@@ -4238,6 +4238,26 @@ func (msgs Messages) ModelsLoading() string {
 	return Catalog.Format(msgs.locale, "modelsLoading", nil)
 }
 
+// ModelSearch says "Search models"
+// in the language the app shows.
+func ModelSearch() string { return In(i18n.Locale()).ModelSearch() }
+
+// ModelSearch says "Search models"
+// in the language of msgs.
+func (msgs Messages) ModelSearch() string {
+	return Catalog.Format(msgs.locale, "modelSearch", nil)
+}
+
+// NoModelsFound says "No matching models"
+// in the language the app shows.
+func NoModelsFound() string { return In(i18n.Locale()).NoModelsFound() }
+
+// NoModelsFound says "No matching models"
+// in the language of msgs.
+func (msgs Messages) NoModelsFound() string {
+	return Catalog.Format(msgs.locale, "noModelsFound", nil)
+}
+
 // ModelsFailed says "Cannot read the models"
 // in the language the app shows.
 func ModelsFailed() string { return In(i18n.Locale()).ModelsFailed() }

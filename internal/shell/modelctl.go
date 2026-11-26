@@ -2,6 +2,7 @@ package shell
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agents"
@@ -32,6 +33,31 @@ func (s *Shell) modelsOf(kind agent.Kind, demand workbench.ModelDemand) workbenc
 // modelState is the composer's model and effort menus.
 type modelState struct {
 	models, efforts bool
+	// query filters a long model list (modelSearchFrom); chosen is the
+	// match the arrow keys are on, -1 for none.
+	query  string
+	chosen int
+	// reveal scrolls the model in use into view, once the list shows.
+	reveal bool
+}
+
+// modelSearchFrom is how many models make the menu offer a search: a
+// list as long as the Cursor CLI's (49) is hard to look through.
+const modelSearchFrom = 12
+
+// matchModels are the models whose name or ID has q, any case.
+func matchModels(ms []agent.Model, q string) []agent.Model {
+	q = strings.ToLower(strings.TrimSpace(q))
+	if q == "" {
+		return ms
+	}
+	var out []agent.Model
+	for _, m := range ms {
+		if strings.Contains(strings.ToLower(m.Name), q) || strings.Contains(strings.ToLower(m.ID), q) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // using is the model and the effort a session runs on, as far as known:
@@ -112,6 +138,7 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 	if mb.Clicked() && !running {
 		st.models, st.efforts = !st.models, false
 		if st.models {
+			st.query, st.chosen, st.reveal = "", -1, true
 			demand := workbench.LoadModels
 			if ms.Err != nil {
 				demand = workbench.RetryModels
@@ -123,6 +150,9 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 		st.models, st.efforts = false, false
 	}
 	ui.Popover(c, mb, &st.models, func() {
+		// The menu opens by the composer: as tall as the window has room
+		// for above it, the heading and the search outside the scrolling.
+		room := mb.Bounds().Y - headerBottom - 16
 		ui.Column(c).Width(320).Gap(2).Padding(8).Children(func() {
 			ui.Text(c, locales.ModelHeading()).Bold().TextColor(t.Text).Padding(0, 6, 4)
 			switch {
@@ -131,23 +161,69 @@ func (s *Shell) modelControls(c *ui.Context, x model.Session, running bool) {
 			case ms.Err != nil:
 				ui.Text(c, withDetail(locales.ModelsFailed(), s.say(ms.Err))).FontSize(11).TextColor(t.Warning).Padding(4, 6)
 			}
-			for _, m := range ms.Models {
-				if pickRow(c, "m"+m.ID, locales.UseModel(m.Name), func() {
-					symbol := "circle"
-					if u.m != nil && u.m.ID == m.ID {
-						symbol = "checkmark.circle.fill"
-					}
-					icon(c, symbol).Size(14).Color(t.Accent)
-					ui.Column(c).Grow(1).Children(func() {
-						ui.Text(c, m.Name).TextColor(t.Text)
-						if m.Description != "" {
-							ui.Text(c, m.Description).FontSize(11).TextColor(t.TextMuted).MaxLines(2)
-						}
-					})
-				}).Clicked() {
-					s.setModel(x, m, x.Effort)
-					st.models = false
+			list := ms.Models
+			search := len(list) >= modelSearchFrom
+			pick := func(m agent.Model) {
+				s.setModel(x, m, x.Effort)
+				st.models = false
+			}
+			// moved: the arrow keys moved the choice this frame, which
+			// comes into view then, not in every frame.
+			moved := false
+			if search {
+				room -= 44
+				in := ui.TextInput(c, &st.query).Placeholder(locales.ModelSearch()).Label(locales.ModelSearch()).AutoFocus().Margin(0, 0, 4)
+				if in.Changed() {
+					st.chosen = -1
 				}
+				list = matchModels(list, st.query)
+				st.chosen = min(st.chosen, len(list)-1)
+				if c.Shortcut(0, ui.KeyDown) && len(list) > 0 {
+					st.chosen, moved = min(st.chosen+1, len(list)-1), true
+				}
+				if c.Shortcut(0, ui.KeyUp) && len(list) > 0 {
+					st.chosen, moved = max(st.chosen-1, 0), true
+				}
+				// Enter takes the choice, or the first match.
+				if in.Submitted() && len(list) > 0 {
+					pick(list[max(st.chosen, 0)])
+					return
+				}
+				if len(list) == 0 {
+					ui.Text(c, locales.NoModelsFound()).FontSize(12).TextColor(t.TextMuted).Padding(4, 6)
+				}
+			}
+			ui.Scroll(c).MaxHeight(max(160, min(480, room-40))).MinWidth(0).Children(func() {
+				ui.Column(c).Gap(2).Children(func() {
+					for i, m := range list {
+						inUse := u.m != nil && u.m.ID == m.ID
+						row := pickRow(c, "m"+m.ID, locales.UseModel(m.Name), func() {
+							symbol := "circle"
+							if inUse {
+								symbol = "checkmark.circle.fill"
+							}
+							icon(c, symbol).Size(14).Color(t.Accent)
+							ui.Column(c).Grow(1).Children(func() {
+								ui.Text(c, m.Name).TextColor(t.Text)
+								if m.Description != "" {
+									ui.Text(c, m.Description).FontSize(11).TextColor(t.TextMuted).MaxLines(2)
+								}
+							})
+						})
+						if i == st.chosen {
+							row.Background(t.SurfaceHover)
+						}
+						if i == st.chosen && moved || inUse && st.reveal {
+							row.ScrollIntoView()
+						}
+						if row.Clicked() {
+							pick(m)
+						}
+					}
+				})
+			})
+			if len(ms.Models) > 0 {
+				st.reveal = false
 			}
 		})
 	})

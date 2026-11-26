@@ -418,6 +418,8 @@
   "modelLabel": "模型：{model}",
   "modelHeading": "模型",
   "modelsLoading": "正在读取模型列表……",
+  "modelSearch": "搜索模型",
+  "noModelsFound": "没有匹配的模型",
   "modelsFailed": "读不到模型列表",
   "useModel": "使用模型 {model}",
   "effortLabel": "推理强度：{effort}",
