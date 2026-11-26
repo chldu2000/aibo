@@ -52,6 +52,8 @@ type session struct {
 	options                   []configOption
 	modes                     *legacyModes
 	defaultModel, defaultMode string
+	// learn passes the settings a session sees to its Agent (Agent.learn).
+	learn func(opts []configOption, modes *legacyModes, fresh bool)
 
 	// Only the reader handles streamed messages and tool state.
 	reply    string

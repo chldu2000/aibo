@@ -24,9 +24,10 @@
 - 不存在的值返回 `-32602 Invalid params: effort not found: bogus`。
 - 关掉进程，新进程里 `session/resume`：回包的 `configOptions` 保留模型、推理强度（`max`）和模式（`plan`）。
 - `session/delete` 返回 `{}`，之后 `session/list`（同一 `cwd`）为空。
+- 项目级配置会改变模式列表：工作区里的 `opencode.json` 登记 `{"agent":{"reviewer":{"mode":"primary"}}}` 后，`mode` 的可选值是 `build | plan | reviewer`；模型列表不变（这次只登记了 agent）。这次探测的会话没有删除。
 
 ## 没有验证
 
 - OpenCode 自己改模式时是否推送 `config_option_update`（`plan` 没有自动切回 `build` 的机制，没有触发条件）。
-- 项目级 `opencode.json` 里登记的 primary agent、提供方是否出现在列表里，列表是否随工作区变化。
+- 项目级 `opencode.json` 登记的提供方是否改变模型列表。
 - 只提供旧接口（`modes` + `session/set_mode`）的 ACP Agent：手头没有，适配器测试用测试程序模拟。

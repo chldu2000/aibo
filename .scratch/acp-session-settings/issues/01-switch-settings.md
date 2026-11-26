@@ -31,7 +31,7 @@ Status: resolved
   - `configOption` 记下 `ID`、`Name`、`Category`、`Type`、当前值和可选值（`choices()` 展开分组）。`option(opts, category)` 先按 category 找，没有 category 的项才按同名 ID 找。
   - 会话保存最近一次的完整列表（`options`）。`set_config_option` 的回包和 `config_option_update` 都整体替换。旧接口的 `modes` 单独保存。
   - `defaultModel`、`defaultMode` 取会话开始时的值：`SetModel("", …)`、`SetMode("")` 回到它们。空推理强度设成 `default`，Agent 不提供 `default` 时不设。
-  - `report()` 根据当前列表报告：有模型或推理强度时发 `SettingsReported`（`default` 报成空），有模式时发 `ModeReported`。
+  - `report()` 根据当前列表报告：有模型或推理强度时发 `SettingsReported`，有模式时发 `ModeReported`。（02 起推理强度按原文报告，`default` 不再报成空，和菜单里的取值一致。）
 - 启动时先设好 `StartOptions` 的模型、推理强度和模式，**最后报告一次**。原因：先报告 `build` 再切到 `plan` 时，工作台会把前一条当成 Agent 自己改了模式，把会话的模式改成 `build`（`workbench/events.go` 的 `ModeReported`）。
 - `SetModel`、`SetMode` 无论成败都报告一次，换模型成功、设推理强度失败时界面也能看到真实状态。`SetModel` 运行中仍返回 `ErrBusy`；`SetMode` 不拦运行中的调用，和接口说明“对之后的请求生效”一致，但 OpenCode 在轮次中途能否切换没有测。
 - `current_mode_update` 只在会话有旧接口的 `modes` 时生效。同时给出两种接口的 Agent，以 `configOptions` 为准。

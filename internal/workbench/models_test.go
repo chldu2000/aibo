@@ -1,9 +1,12 @@
 package workbench_test
 
 import (
+	"context"
 	"errors"
+	"sync"
 	"testing"
 
+	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/workbench"
 )
@@ -78,5 +81,63 @@ func TestSetModel(t *testing.T) {
 	}
 	if err := b2.SetModel("nope", "m", ""); !errors.Is(err, workbench.ErrNoSuchSession) {
 		t.Errorf("no such session: %v", err)
+	}
+}
+
+// listsAgent tells models, which can change as it runs
+// (agent.ListsChanger).
+type listsAgent struct {
+	*fake.Agent
+	mu      sync.Mutex
+	models  []agent.Model
+	changed func()
+}
+
+func (a *listsAgent) Kind() agent.Kind { return "lists" }
+func (a *listsAgent) Models(context.Context) ([]agent.Model, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.models, nil
+}
+func (a *listsAgent) OnListsChanged(f func()) { a.mu.Lock(); a.changed = f; a.mu.Unlock() }
+func (a *listsAgent) tell(ms ...agent.Model) {
+	a.mu.Lock()
+	a.models = ms
+	f := a.changed
+	a.mu.Unlock()
+	f()
+}
+
+// When an Agent says its lists changed, they are read again; an Agent
+// configured again starts afresh, and what the old one says is ignored.
+func TestListsChanged(t *testing.T) {
+	b := open(t, t.TempDir(), newScript().respond)
+	defer b.Close()
+	a := &listsAgent{Agent: b.fake, models: []agent.Model{{ID: "one"}}}
+	b.RegisterAgent(a)
+	loaded := func(id string) func() bool {
+		return func() bool {
+			l := b.ModelList("lists", workbench.ModelSource{}, workbench.LoadModels)
+			return !l.Loading && len(l.Models) == 1 && l.Models[0].ID == id
+		}
+	}
+	b.waitFor(t, "the first list", loaded("one"))
+	v := b.ListsVersion("lists")
+	a.tell(agent.Model{ID: "two"})
+	if b.ListsVersion("lists") == v {
+		t.Error("the version stayed")
+	}
+	if l := b.ModelList("lists", workbench.ModelSource{}, workbench.PeekModels); len(l.Models) != 0 {
+		t.Errorf("the old list is still cached: %+v", l)
+	}
+	b.waitFor(t, "the told list", loaded("two"))
+
+	next := &listsAgent{Agent: b.fake, models: []agent.Model{{ID: "three"}}}
+	b.RegisterAgent(next)
+	b.waitFor(t, "the new Agent's list", loaded("three"))
+	v = b.ListsVersion("lists")
+	a.tell(agent.Model{ID: "old"})
+	if b.ListsVersion("lists") != v {
+		t.Error("the replaced Agent changed the lists")
 	}
 }

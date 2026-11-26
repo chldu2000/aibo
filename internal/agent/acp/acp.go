@@ -28,6 +28,7 @@ type Agent struct {
 	path   string
 	env    []string
 	log    *slog.Logger
+	lists  catalog
 }
 
 func New(kind agent.Kind, name, command string, args []string, toolPrefix string) *Agent {
@@ -50,8 +51,12 @@ func (a *Agent) SupportsReadDirs() bool   { return false }
 func (a *Agent) SupportsCompaction() bool { return false }
 func (a *Agent) Configure(path string, env []string) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	moved := a.path != path
 	a.path, a.env = path, slices.Clone(env)
+	a.mu.Unlock()
+	if moved {
+		a.forget() // another program may offer other models and modes
+	}
 }
 func (a *Agent) SetLog(log *slog.Logger) { a.mu.Lock(); defer a.mu.Unlock(); a.log = log }
 
@@ -59,7 +64,7 @@ type capabilities struct {
 	LoadSession         bool
 	MCPCapabilities     struct{ HTTP bool }
 	PromptCapabilities  struct{ Image bool }
-	SessionCapabilities struct{ Resume *struct{} }
+	SessionCapabilities struct{ Resume, Delete *struct{} }
 }
 
 type sessionInfo struct {
@@ -69,6 +74,22 @@ type sessionInfo struct {
 }
 
 func (a *Agent) Start(ctx context.Context, o agent.StartOptions) (agent.Session, error) {
+	s, err := a.launch(o.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	s.learn = a.learn
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	if err = s.initialize(ctx, o); err != nil {
+		s.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// launch starts the Agent's process in dir, for a session to talk to.
+func (a *Agent) launch(dir string) (*session, error) {
 	a.mu.Lock()
 	path, env, log := a.path, a.env, a.log
 	a.mu.Unlock()
@@ -79,34 +100,36 @@ func (a *Agent) Start(ctx context.Context, o agent.StartOptions) (agent.Session,
 	// the process after Start returns.
 	cmd := exec.CommandContext(context.Background(), path, a.args...)
 	agent.BoundProcess(cmd)
-	cmd.Dir = o.Workspace
+	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	s, err := launch(cmd, log)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", agent.ErrStartFailed, err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
-	if err = s.initialize(ctx, o); err != nil {
-		s.Close()
-		return nil, err
-	}
 	return s, nil
 }
 
-func (s *session) initialize(ctx context.Context, o agent.StartOptions) error {
+// handshake negotiates ACP v1 and returns what the Agent can do.
+func (s *session) handshake(ctx context.Context) (capabilities, error) {
 	var hello struct {
 		ProtocolVersion   int
 		AgentCapabilities capabilities
 	}
 	err := s.call(ctx, "initialize", object{"protocolVersion": 1, "clientCapabilities": object{}, "clientInfo": object{"name": "aibo", "version": "1"}}, func(raw json.RawMessage) error { return json.Unmarshal(raw, &hello) })
 	if err != nil {
-		return fmt.Errorf("%w: initialize: %w", agent.ErrStartFailed, err)
+		return capabilities{}, fmt.Errorf("%w: initialize: %w", agent.ErrStartFailed, err)
 	}
 	if hello.ProtocolVersion != 1 {
-		return fmt.Errorf("%w: unsupported ACP version %d", agent.ErrStartFailed, hello.ProtocolVersion)
+		return capabilities{}, fmt.Errorf("%w: unsupported ACP version %d", agent.ErrStartFailed, hello.ProtocolVersion)
 	}
-	caps := hello.AgentCapabilities
+	return hello.AgentCapabilities, nil
+}
+
+func (s *session) initialize(ctx context.Context, o agent.StartOptions) error {
+	caps, err := s.handshake(ctx)
+	if err != nil {
+		return err
+	}
 	s.image = caps.PromptCapabilities.Image
 	servers := []object{}
 	if o.MCP != nil {
@@ -143,7 +166,7 @@ func (s *session) initialize(ctx context.Context, o agent.StartOptions) error {
 		}
 		s.id = id
 		s.emit(agent.NativeSessionStarted{ID: id})
-		s.configure(info.ConfigOptions, info.Modes)
+		s.configure(info.ConfigOptions, info.Modes, o.ResumeID == "")
 		return nil
 	})
 	if err != nil {

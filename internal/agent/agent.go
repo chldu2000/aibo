@@ -30,6 +30,9 @@ var (
 	ErrBusy = errors.New("the Agent is busy")
 	// ErrClosed: the native session was closed, or its process ended.
 	ErrClosed = errors.New("the native session is closed")
+	// ErrListsUnknown: the Agent tells its models and modes only from a
+	// session, and none has started yet.
+	ErrListsUnknown = errors.New("the Agent tells its models and modes once a session starts")
 )
 
 // Detail is what err says after sentinel, which it wraps: the Agent's
@@ -172,6 +175,13 @@ const (
 // the Agent shows them.
 type ModeLister interface {
 	PermissionModes(ctx context.Context) ([]PermissionMode, error)
+}
+
+// ListsChanger is an Agent whose models or permission modes can change
+// as it runs, as an ACP Agent learns them from its sessions: after
+// changed, the workbench reads them again.
+type ListsChanger interface {
+	OnListsChanged(changed func())
 }
 
 // Rule is something the user allowed for the rest of a session, which

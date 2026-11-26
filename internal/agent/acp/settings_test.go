@@ -49,12 +49,12 @@ func TestOpenCodeSettingsCapture(t *testing.T) {
 	}
 	defer f.Close()
 	want := [][]string{
-		{"model=opencode/big-pickle", "effort=", "mode=build"},               // session/new
-		{"model=opencode/deepseek-v4.1-flash-free", "effort=", "mode=build"}, // an effort appears, at its default
+		{"model=opencode/big-pickle", "effort=", "mode=build"},                      // session/new
+		{"model=opencode/deepseek-v4.1-flash-free", "effort=default", "mode=build"}, // an effort appears, at its default
 		{"model=opencode/deepseek-v4.1-flash-free", "effort=high", "mode=build"},
 		{"model=opencode/deepseek-v4.1-flash-free", "effort=high", "mode=plan"},
-		{"model=opencode/mimo-v2.6-flash-free", "effort=", "mode=plan"},     // and goes
-		{"model=opencode/deepseek-v4.1-flash-free", "effort=", "mode=plan"}, // back at the default
+		{"model=opencode/mimo-v2.6-flash-free", "effort=", "mode=plan"},            // and goes
+		{"model=opencode/deepseek-v4.1-flash-free", "effort=default", "mode=plan"}, // back at the default
 		{"model=opencode/deepseek-v4.1-flash-free", "effort=max", "mode=plan"},
 		{"model=opencode/deepseek-v4.1-flash-free", "effort=max", "mode=plan"}, // resumed
 	}
@@ -75,7 +75,7 @@ func TestOpenCodeSettingsCapture(t *testing.T) {
 			continue
 		}
 		if info.SessionID != "" {
-			s.configure(info.ConfigOptions, info.Modes)
+			s.configure(info.ConfigOptions, info.Modes, info.SessionID != "")
 		} else {
 			s.replace(info.ConfigOptions)
 		}
@@ -114,7 +114,7 @@ func TestReportedUpdates(t *testing.T) {
 		t.Errorf("unknown modes reported %q", got)
 	}
 	s = &session{events: make(chan agent.Event, 8), log: agent.Discard}
-	s.configure(nil, &legacyModes{CurrentModeID: "ask"})
+	s.configure(nil, &legacyModes{CurrentModeID: "ask"}, true)
 	s.update(json.RawMessage(`{"sessionUpdate":"current_mode_update","currentModeId":"code"}`), 0)
 	if got := settingsOf(s); !slices.Equal(got, []string{"mode=code"}) {
 		t.Errorf("current_mode_update reported %q", got)
@@ -200,7 +200,7 @@ func TestSwitchSettings(t *testing.T) {
 	if err := s.SetMode(ctx, ""); err != nil {
 		t.Fatal(err)
 	}
-	if got := reports(s); !slices.Equal(got, []string{"model=m2", "effort=", "mode=build", "model=m2", "effort=", "mode=plan", "model=m2", "effort=", "mode=build"}) {
+	if got := reports(s); !slices.Equal(got, []string{"model=m2", "effort=default", "mode=build", "model=m2", "effort=default", "mode=plan", "model=m2", "effort=default", "mode=build"}) {
 		t.Errorf("after defaults, reported %q", got)
 	}
 	if err := s.SetMode(ctx, "nope"); err == nil {
@@ -237,14 +237,17 @@ func TestLegacyModes(t *testing.T) {
 
 // fakeAgent answers ACP on stdio. "options" offers models m2 (its
 // default, which takes efforts), m0 (efforts too) and m1 (none), and
-// modes build and plan, as configOptions; "legacy" offers only modes
-// code and architect, as modes. Each request that changes a setting is
+// modes build and plan, as configOptions, and can delete sessions;
+// "options-nodelete" cannot. "legacy" offers only modes code and
+// architect, as modes, and cannot delete sessions. Each request that changes a setting is
 // logged as key=value.
 func fakeAgent(kind, logPath string) {
-	logf, _ := os.Create(logPath)
+	// A probe and a session can share the log.
+	logf, _ := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	legacy, deletes := strings.Contains(kind, "legacy"), !strings.Contains(kind, "nodelete") && !strings.Contains(kind, "legacy")
 	defer logf.Close()
 	model, effort, mode := "m2", "default", "build"
-	if kind == "legacy" {
+	if legacy {
 		mode = "code"
 	}
 	choices := func(vs ...string) []map[string]string {
@@ -281,14 +284,21 @@ func fakeAgent(kind, logPath string) {
 		}
 		switch req.Method {
 		case "initialize":
-			reply(map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{}}, "")
+			caps := map[string]any{}
+			if deletes {
+				caps["sessionCapabilities"] = map[string]any{"delete": map[string]any{}}
+			}
+			reply(map[string]any{"protocolVersion": 1, "agentCapabilities": caps}, "")
 		case "session/new":
 			fmt.Fprintln(logf, "session/new")
-			if kind == "legacy" {
+			if legacy {
 				reply(map[string]any{"sessionId": "s1", "modes": map[string]any{"currentModeId": mode, "availableModes": []map[string]string{{"id": "code", "name": "Code"}, {"id": "architect", "name": "Architect"}}}}, "")
 			} else {
 				reply(map[string]any{"sessionId": "s1", "configOptions": opts()}, "")
 			}
+		case "session/delete":
+			fmt.Fprintln(logf, "session/delete")
+			reply(map[string]any{}, "")
 		case "session/set_mode":
 			fmt.Fprintf(logf, "set_mode=%s\n", req.Params.ModeID)
 			mode = req.Params.ModeID

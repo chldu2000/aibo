@@ -292,10 +292,17 @@ func (w *Workbench) Received(id string) int {
 	return len(w.delivered(id))
 }
 
-// TellsModels reports whether an Agent tells its models (Models).
+// TellsModels reports whether an Agent tells its models (Models); an
+// Agent that can tell may say it has none to offer.
 func (w *Workbench) TellsModels(kind agent.Kind) bool {
-	_, ok := w.agent(kind).(ModelLister)
-	return ok
+	a := w.agent(kind)
+	if _, ok := a.(ModelLister); !ok {
+		return false
+	}
+	if t, ok := a.(interface{ TellsModels() bool }); ok {
+		return t.TellsModels()
+	}
+	return true
 }
 
 // CanCompact reports whether the adapter implements manual compaction.

@@ -1,7 +1,11 @@
 package contract
 
 import (
+	"bytes"
+	"context"
+	"log/slog"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -93,4 +97,65 @@ func TestContractOpenCodeSettings(t *testing.T) {
 		t.Fatalf("resumed with %+v in %q", set, mode)
 	}
 	t.Logf("OpenCode %s: %s, effort %s, mode %s", st.Version, set.Model, set.Effort, mode)
+}
+
+// Probe the installed OpenCode for its models, their efforts and its
+// modes, which it deletes the probe session after.
+func TestContractOpenCodeLists(t *testing.T) {
+	if os.Getenv("AIBO_CONTRACT") != "1" {
+		t.Skip("set AIBO_CONTRACT=1 to run OpenCode")
+	}
+	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+		t.Setenv(key, t.TempDir())
+	}
+	t.Setenv("OPENCODE_DISABLE_AUTOUPDATE", "1")
+	m := os.Getenv("AIBO_OPENCODE_EFFORT_MODEL")
+	if m == "" {
+		m = "opencode/deepseek-v4.1-flash-free"
+	}
+	r := registry.New(registry.Options{})
+	if p := os.Getenv("AIBO_OPENCODE"); p != "" {
+		r.SetPath(t.Context(), registry.OpenCode, p)
+	} else {
+		r.Detect(t.Context())
+	}
+	var a agent.Agent
+	for _, x := range r.Agents() {
+		if x.Kind() == registry.OpenCode {
+			a = x
+		}
+	}
+	var logs bytes.Buffer
+	a.(agent.LogSetter).SetLog(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	start := time.Now()
+	ms, err := a.(interface {
+		Models(context.Context) ([]agent.Model, error)
+	}).Models(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	modes, err := a.(agent.ModeLister).PermissionModes(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var efforts []string
+	for _, x := range ms {
+		if x.ID == m {
+			efforts = x.Efforts
+		}
+	}
+	if !slices.Contains(efforts, "low") || !slices.Contains(efforts, "high") {
+		t.Errorf("efforts of %s: %q", m, efforts)
+	}
+	var ids []string
+	for _, x := range modes {
+		ids = append(ids, x.ID)
+	}
+	if !slices.Contains(ids, "build") || !slices.Contains(ids, "plan") {
+		t.Errorf("modes %q", ids)
+	}
+	if logs.Len() > 0 {
+		t.Errorf("the probe warned: %s", logs.String())
+	}
+	t.Logf("%d models, modes %q, probed in %s", len(ms), ids, time.Since(start).Round(time.Millisecond))
 }

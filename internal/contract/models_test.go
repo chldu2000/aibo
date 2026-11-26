@@ -26,7 +26,9 @@ func TestContractModels(t *testing.T) {
 			continue
 		}
 		ms, err := w.Models(context.Background(), a.Kind())
-		if err != nil || len(ms) < 2 || ms[0].ID != "" {
+		// Only Claude Code names its default with an empty ID; Codex and ACP
+		// Agents keep each model's own, the default's too.
+		if err != nil || len(ms) < 2 {
 			t.Errorf("%s: %v, %+v", a.Kind(), err, ms)
 		}
 		var names []string

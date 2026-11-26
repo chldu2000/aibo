@@ -10,28 +10,40 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// modes are the permission modes an Agent told, loaded once.
+// modes are the permission modes an Agent told.
 type modes struct {
 	list    []agent.PermissionMode
 	loading bool
+	// version is the workbench's ListsVersion they were read at.
+	version int
 }
 
 // modesOf are an Agent's permission modes, loading them the first time;
-// none while they load, or when it does not tell.
+// none while they load, or when it does not tell. They load again when the
+// Agent says they changed.
 func (s *Shell) modesOf(kind agent.Kind) []agent.PermissionMode {
 	if s.modes == nil {
 		s.modes = map[agent.Kind]*modes{}
 	}
-	if m, ok := s.modes[kind]; ok {
+	version := s.wb.ListsVersion(kind)
+	if m, ok := s.modes[kind]; ok && (m.loading || m.version == version) {
 		return m.list
 	}
-	m := &modes{loading: true}
+	m := &modes{loading: true, version: version}
+	if old, ok := s.modes[kind]; ok {
+		m.list = old.list // until the new ones come
+	}
 	s.modes[kind] = m
 	go func() {
-		list, _ := s.wb.PermissionModes(context.Background(), kind)
-		s.later(func() { m.loading, m.list = false, list })
+		list, err := s.wb.PermissionModes(context.Background(), kind)
+		s.later(func() {
+			m.loading = false
+			if err == nil {
+				m.list = list
+			}
+		})
 	}()
-	return nil
+	return m.list
 }
 
 // modeOf is the session's permission mode as far as known: the one chosen,

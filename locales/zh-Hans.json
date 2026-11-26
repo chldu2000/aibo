@@ -72,6 +72,7 @@
   "errAgentNotFound": "没有找到 Agent 的可执行文件。",
   "errAgentStartFailed": "Agent 启动失败",
   "errAgentBusy": "Agent 正在回复。",
+  "errListsUnknown": "这个 Agent 要在会话开始后才列出模型和模式。请先用它新建一个会话，再试一次。",
   "errAgentClosed": "Agent 的会话已关闭",
   "errNotLoggedIn": "Agent 未登录。",
   "errNoInAppLogin": "这个 Agent 不能在 aibo 里登录。",

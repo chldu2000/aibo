@@ -93,10 +93,10 @@ func option(opts []configOption, category string) (configOption, bool) {
 }
 
 // configure keeps what a session reported as it started, and its
-// defaults: what empty asks for later.
-func (s *session) configure(opts []configOption, modes *legacyModes) {
+// defaults: what empty asks for later. fresh is a new session, whose
+// settings are the Agent's defaults.
+func (s *session) configure(opts []configOption, modes *legacyModes, fresh bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.options, s.modes = opts, modes
 	if o, ok := option(opts, categoryModel); ok {
 		s.defaultModel = o.current()
@@ -105,6 +105,15 @@ func (s *session) configure(opts []configOption, modes *legacyModes) {
 		s.defaultMode = o.current()
 	} else if modes != nil {
 		s.defaultMode = modes.CurrentModeID
+	}
+	var seen *legacyModes
+	if modes != nil {
+		c := *modes
+		seen = &c
+	}
+	s.mu.Unlock()
+	if s.learn != nil {
+		s.learn(opts, seen, fresh)
 	}
 }
 
@@ -116,10 +125,15 @@ func (s *session) replace(opts []configOption) {
 	s.mu.Lock()
 	s.options = opts
 	s.mu.Unlock()
+	if s.learn != nil {
+		s.learn(opts, nil, false)
+	}
 }
 
 // report says what the session uses now: SettingsReported when the
 // Agent tells its model or effort, ModeReported when it tells its mode.
+// The effort is the Agent's own word, "default" too, as the effort menu
+// lists it (Agent.Models).
 func (s *session) report() {
 	s.mu.Lock()
 	opts, legacy := s.options, s.modes != nil
@@ -131,11 +145,7 @@ func (s *session) report() {
 	model, hasModel := option(opts, categoryModel)
 	effort, hasEffort := option(opts, categoryEffort)
 	if hasModel || hasEffort {
-		e := effort.current()
-		if e == defaultEffort {
-			e = ""
-		}
-		s.emit(agent.SettingsReported{Model: model.current(), Effort: e})
+		s.emit(agent.SettingsReported{Model: model.current(), Effort: effort.current()})
 	}
 	if mode, ok := option(opts, categoryMode); ok {
 		s.emit(agent.ModeReported{ID: mode.current()})

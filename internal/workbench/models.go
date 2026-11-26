@@ -112,3 +112,48 @@ func (w *Workbench) ModelList(kind agent.Kind, source ModelSource, demand ModelD
 	}()
 	return entry.list
 }
+
+// watchLists has the workbench read an Agent's models and permission
+// modes again when the Agent says they changed (agent.ListsChanger), as
+// an ACP Agent learning them from its sessions.
+func (w *Workbench) watchLists(a agent.Agent) {
+	l, ok := a.(agent.ListsChanger)
+	if !ok {
+		return
+	}
+	kind := a.Kind()
+	l.OnListsChanged(func() {
+		if w.agent(kind) != a {
+			return // replaced since
+		}
+		w.mu.Lock()
+		if w.closing {
+			w.mu.Unlock()
+			return
+		}
+		w.forgetLists(kind)
+		w.mu.Unlock()
+		w.notify(Change{})
+	})
+}
+
+// forgetLists drops what was read of an Agent's lists; w.mu is held.
+func (w *Workbench) forgetLists(kind agent.Kind) {
+	if entry := w.modelLists[kind]; entry != nil {
+		entry.cancel()
+		delete(w.modelLists, kind)
+	}
+	if w.listVersions == nil {
+		w.listVersions = make(map[agent.Kind]int)
+	}
+	w.listVersions[kind]++
+}
+
+// ListsVersion changes whenever an Agent's models or permission modes may
+// have: when it is configured again, or says they changed. A window that
+// keeps them reads them again.
+func (w *Workbench) ListsVersion(kind agent.Kind) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.listVersions[kind]
+}

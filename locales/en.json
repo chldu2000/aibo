@@ -72,6 +72,7 @@
   "errAgentNotFound": "The Agent's executable was not found.",
   "errAgentStartFailed": "The Agent did not start",
   "errAgentBusy": "The Agent is busy replying.",
+  "errListsUnknown": "This Agent lists its models and modes only after a session starts. Start a session with it, then try again.",
   "errAgentClosed": "The Agent's session has closed",
   "errNotLoggedIn": "The Agent is signed out.",
   "errNoInAppLogin": "This Agent cannot sign in in aibo.",

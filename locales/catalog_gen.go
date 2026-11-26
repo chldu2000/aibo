@@ -754,6 +754,16 @@ func (msgs Messages) ErrAgentBusy() string {
 	return Catalog.Format(msgs.locale, "errAgentBusy", nil)
 }
 
+// ErrListsUnknown says "This Agent lists its models and modes only after a session starts. Start a session with it, then try again."
+// in the language the app shows.
+func ErrListsUnknown() string { return In(i18n.Locale()).ErrListsUnknown() }
+
+// ErrListsUnknown says "This Agent lists its models and modes only after a session starts. Start a session with it, then try again."
+// in the language of msgs.
+func (msgs Messages) ErrListsUnknown() string {
+	return Catalog.Format(msgs.locale, "errListsUnknown", nil)
+}
+
 // ErrAgentClosed says "The Agent's session has closed"
 // in the language the app shows.
 func ErrAgentClosed() string { return In(i18n.Locale()).ErrAgentClosed() }

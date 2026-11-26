@@ -164,6 +164,7 @@ type Workbench struct {
 	mu             sync.Mutex
 	closing        bool
 	modelLists     map[agent.Kind]*modelListEntry
+	listVersions   map[agent.Kind]int
 	browseReads    map[workspaceReadKey]*workspaceRead
 	watches        map[string]*workspaceWatch
 	watchWorkspace func(context.Context, string, func()) error
@@ -260,6 +261,9 @@ func Open(o Options) (*Workbench, error) {
 	}
 	w := &Workbench{log: log, st: st, agents: slices.Clone(o.Agents), now: o.Now, budgets: settings.Budgets, idle: settings.IdleTimeout, settings: settings, ready: o.Ready, loggedOut: o.OnNotLoggedIn, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
 	w.watchWorkspace = o.WatchWorkspace
+	for _, a := range o.Agents {
+		w.watchLists(a)
+	}
 	if w.workspaces, err = st.Workspaces(); err != nil {
 		st.Close()
 		return nil, err
@@ -383,6 +387,9 @@ func (w *Workbench) RegisterAgent(a agent.Agent) {
 func (w *Workbench) UnregisterAgent(kind agent.Kind) { w.replaceAgent(kind, nil) }
 
 func (w *Workbench) replaceAgent(kind agent.Kind, a agent.Agent) {
+	if a != nil {
+		w.watchLists(a)
+	}
 	w.mu.Lock()
 	w.agentsMu.Lock()
 	i := slices.IndexFunc(w.agents, func(existing agent.Agent) bool { return existing.Kind() == kind })
@@ -396,6 +403,7 @@ func (w *Workbench) replaceAgent(kind agent.Kind, a agent.Agent) {
 	}
 	w.agentsMu.Unlock()
 	var idle []agent.Session
+	w.forgetLists(kind)
 	if i >= 0 {
 		for id, s := range w.sessions {
 			if s.info.Agent != kind {
