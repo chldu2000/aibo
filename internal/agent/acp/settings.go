@@ -93,6 +93,49 @@ func option(opts []configOption, category string) (configOption, bool) {
 	return configOption{}, false
 }
 
+// effortOption is the reasoning effort. An Agent can file more than one
+// option under thought_level: the Cursor CLI puts a boolean thinking
+// switch (true/false) ahead of the effort. The effort is the one whose
+// values are not only true and false. With no such option, Cursor's Auto
+// offers optimize_for (intelligence, balanced, cost) under model_config,
+// and that is the menu. Context and fast stay out of it.
+func effortOption(opts []configOption) (configOption, bool) {
+	var toggle configOption
+	var sawToggle bool
+	for _, o := range opts {
+		if o.Category != categoryEffort && !(o.Category == "" && o.ID == categoryEffort) {
+			continue
+		}
+		if booleanChoices(o) {
+			if !sawToggle {
+				toggle, sawToggle = o, true
+			}
+			continue
+		}
+		return o, true
+	}
+	for _, o := range opts {
+		if o.ID == "optimize_for" {
+			return o, true
+		}
+	}
+	return toggle, sawToggle
+}
+
+// booleanChoices reports a true/false switch, as Cursor's thinking option.
+func booleanChoices(o configOption) bool {
+	cs := o.choices()
+	if len(cs) == 0 {
+		return false
+	}
+	for _, c := range cs {
+		if c.Value != "true" && c.Value != "false" {
+			return false
+		}
+	}
+	return true
+}
+
 // configure keeps what a session reported as it started, and its
 // defaults: what empty asks for later. fresh is a new session, whose
 // settings are the Agent's defaults.
@@ -150,7 +193,7 @@ func (s *session) report() {
 	}
 	s.mu.Unlock()
 	model, hasModel := option(opts, categoryModel)
-	effort, hasEffort := option(opts, categoryEffort)
+	effort, hasEffort := effortOption(opts)
 	if hasModel || hasEffort {
 		s.emit(agent.SettingsReported{Model: model.current(), Effort: effort.current()})
 	}
@@ -203,7 +246,7 @@ func (s *session) setModel(ctx context.Context, model, effort string) error {
 	s.mu.Lock()
 	opts = s.options
 	s.mu.Unlock()
-	o, ok := option(opts, categoryEffort)
+	o, ok := effortOption(opts)
 	if !ok {
 		if effort != "" {
 			return fmt.Errorf("ACP agent offers no reasoning effort for model %q", model)

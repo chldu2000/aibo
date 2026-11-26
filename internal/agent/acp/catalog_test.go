@@ -89,6 +89,27 @@ func TestProbeLists(t *testing.T) {
 	}
 }
 
+// cursor/list_available_models fills every model's effort, so the probe
+// does not set each model. A boolean thought_level loses to the effort
+// beside it, and optimize_for stands in where there is no effort.
+func TestProbeUsesModelCatalog(t *testing.T) {
+	a, requests, changed := fakeACP(t, "options-listed")
+	ms, err := a.Models(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"m2:M2:low,high,default:default", "m0:M0:low,max:", "m1:M1:intelligence,balanced,cost:"}
+	if got := modelsText(ms); !slices.Equal(got, want) {
+		t.Errorf("models\n got %q\nwant %q", got, want)
+	}
+	if got := requests(); !slices.Equal(got, []string{"session/new", "cursor/list_available_models", "session/delete"}) {
+		t.Errorf("requests %q", got)
+	}
+	if n := changed.Load(); n != 1 {
+		t.Errorf("said its lists changed %d times", n)
+	}
+}
+
 // An Agent that cannot delete a probe session tells its lists once a
 // session started.
 func TestListsLearnedFromSessions(t *testing.T) {

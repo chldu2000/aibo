@@ -15,13 +15,13 @@
 
 模型、推理强度和模式：
 
-- aibo 握手时请求 Cursor 的参数化模型列表（`clientCapabilities._meta.parameterizedModelPicker`），模型菜单是 Cursor 的模型 ID 和名称，**Auto** 是 `default`。推理强度是当前模型的单独一项，名称和取值随模型变（`effort`、`reasoning_effort` 或 `reasoning`），Auto 和部分模型没有。Cursor 的推理强度没有“默认”一档；每个模型记着自己上次用的推理强度，换模型不重置。
+- aibo 握手时请求 Cursor 的参数化模型列表（`clientCapabilities._meta.parameterizedModelPicker`），模型菜单是 Cursor 的模型 ID 和名称。**Auto** 的 ID 是 `default` 或 `auto-smart`（随账号而变）。推理强度是当前模型的一项，名称和取值随模型变（`effort`、`reasoning_effort` 或 `reasoning`）。有的模型把思考开关（`thinking`，取值 `true` / `false`）也标成同一类并且排在前面，aibo 用取值不是 `true` / `false` 的那一项。`auto-smart` 没有推理强度，它的 **Optimize For**（`intelligence` / `balanced` / `cost`）显示在推理强度菜单里。没有这些项的模型（包括 ID 为 `default` 的 Auto）菜单里没有推理强度。Cursor 的推理强度没有“默认”一档；每个模型记着自己上次用的推理强度，换模型不重置。
 - **在 aibo 里换模型会改 Cursor 自己的设置。** Cursor 把通过 ACP 选的模型和各模型的参数写进 `~/.cursor/cli-config.json`，终端里的 Cursor 下次启动就用这个模型，反过来也一样。aibo 只在选择和当前不同时才切换。新会话没有指定模型时，用的是 Cursor 上一次的选择。
 - Cursor 的 **Context**、**Fast** 选项不在 aibo 里显示，用 Cursor 记住的值。
 - 模式是 `agent`、`plan`、`ask`。没有在 `agents.json` 里标注时，`agent` 按“注意”显示并作为默认，`plan`、`ask` 按安全、只读显示。工具审批由 Cursor 自己的配置决定；aibo 不加 `--force`、`--auto-review`、`--sandbox` 这些启动参数。
 - 审批：Cursor 对不在它允许列表里的 shell 命令询问，aibo 显示 Cursor 给的“仅此一次”“始终允许”“拒绝”。读文件、搜索和 aibo 的 MCP 工具（引用）不询问。MCP 工具前缀用默认的 `aibo_`。
 - 网络不稳时，Cursor 有时把错误（`Error: RetriableError: …`）当作回复文字发出，aibo 照原样显示；新建会话也可能要几十秒。aibo 为 Cursor 等 90 秒（其他 Agent 45 秒），超过时报告 Agent 没能启动，稍后重试即可。
-- Cursor 不能删除会话，但没发过消息的会话在进程结束后就不在它的会话列表里了。aibo 第一次需要列表时，在空的临时目录里用 Cursor 建一个探测会话，只读出模型和模式列表，不切换模型（每次切换都会写进 Cursor 的设置），也不发消息。所以菜单一开始只知道 Cursor 当前模型的推理强度，其他模型的推理强度在会话切到它们之后补上。探测要 10–30 秒。
+- Cursor 不能删除会话，但没发过消息的会话在进程结束后就不在它的会话列表里了。aibo 第一次需要列表时，在空的临时目录里用 Cursor 建一个探测会话，只读出模型和模式，不切换模型（每次切换都会写进 Cursor 的设置），也不发消息。各模型的推理强度来自 `cursor/list_available_models`，这一次调用不改当前模型。探测要 10–30 秒。
 
 ## 登记另一个 ACP 实例
 

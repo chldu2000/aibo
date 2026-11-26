@@ -215,6 +215,31 @@ func TestSwitchSettings(t *testing.T) {
 	}
 }
 
+// A thinking switch filed under thought_level is not the effort, and
+// Auto's optimize_for is, when the model has no effort of its own.
+func TestEffortBesideThinking(t *testing.T) {
+	ctx := context.Background()
+	s, requests := start(t, "options-thinking", agent.StartOptions{})
+	if got := reports(s); !slices.Equal(got, []string{"model=m2", "effort=high", "mode=build"}) {
+		t.Fatalf("reported %q", got)
+	}
+	if err := s.SetModel(ctx, "m2", "low"); err != nil {
+		t.Fatal(err)
+	}
+	if got := reports(s); !slices.Equal(got, []string{"model=m2", "effort=low", "mode=build"}) {
+		t.Errorf("after the effort, reported %q", got)
+	}
+	if err := s.SetModel(ctx, "m0", "cost"); err != nil {
+		t.Fatal(err)
+	}
+	if got := reports(s); !slices.Equal(got, []string{"model=m0", "effort=cost", "mode=build"}) {
+		t.Errorf("on auto, reported %q", got)
+	}
+	if got := requests(); !slices.Equal(got, []string{"session/new", "effort=low", "model=m0", "optimize_for=cost"}) {
+		t.Errorf("requests %q", got)
+	}
+}
+
 func TestLegacyModes(t *testing.T) {
 	ctx := context.Background()
 	s, requests := start(t, "legacy", agent.StartOptions{Mode: "architect"})
@@ -248,10 +273,15 @@ func fakeAgent(kind, logPath string) {
 	// A probe and a session can share the log.
 	logf, _ := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	legacy, deletes := strings.Contains(kind, "legacy"), !strings.Contains(kind, "nodelete") && !strings.Contains(kind, "legacy")
+	thinking := strings.Contains(kind, "thinking")
 	defer logf.Close()
 	model, effort, mode := "m2", "default", "build"
+	think, profile := "true", "balanced"
 	if legacy {
 		mode = "code"
+	}
+	if thinking {
+		effort = "high"
 	}
 	choices := func(vs ...string) []map[string]string {
 		var out []map[string]string
@@ -262,7 +292,14 @@ func fakeAgent(kind, logPath string) {
 	}
 	opts := func() []map[string]any {
 		o := []map[string]any{{"id": "model", "category": "model", "type": "select", "currentValue": model, "options": choices("m2", "m0", "m1")}}
-		if model != "m1" {
+		switch {
+		case thinking && model == "m2":
+			// The boolean thinking switch is listed first, as Cursor does.
+			o = append(o, map[string]any{"id": "thinking", "category": "thought_level", "type": "select", "currentValue": think, "options": choices("false", "true")})
+			o = append(o, map[string]any{"id": "effort", "category": "thought_level", "type": "select", "currentValue": effort, "options": choices("low", "high")})
+		case thinking && model == "m0":
+			o = append(o, map[string]any{"id": "optimize_for", "category": "model_config", "type": "select", "currentValue": profile, "options": choices("intelligence", "balanced", "cost")})
+		case model != "m1":
 			o = append(o, map[string]any{"id": "effort", "category": "thought_level", "type": "select", "currentValue": effort, "options": choices("low", "high", "default")})
 		}
 		return append(o, map[string]any{"id": "mode", "category": "mode", "type": "select", "currentValue": mode, "options": choices("build", "plan")})
@@ -322,8 +359,12 @@ func fakeAgent(kind, logPath string) {
 			switch {
 			case p.ConfigID == "model" && slices.Contains([]string{"m0", "m1", "m2"}, p.Value):
 				model, effort = p.Value, "default"
+			case p.ConfigID == "thinking" && thinking && model == "m2" && (p.Value == "true" || p.Value == "false"):
+				think = p.Value
 			case p.ConfigID == "effort" && model != "m1" && slices.Contains([]string{"low", "high", "default"}, p.Value):
 				effort = p.Value
+			case p.ConfigID == "optimize_for" && thinking && model == "m0" && slices.Contains([]string{"intelligence", "balanced", "cost"}, p.Value):
+				profile = p.Value
 			case p.ConfigID == "mode" && (p.Value == "build" || p.Value == "plan"):
 				mode = p.Value
 			default:
@@ -331,6 +372,20 @@ func fakeAgent(kind, logPath string) {
 				continue
 			}
 			reply(map[string]any{"configOptions": opts()}, "")
+		case "cursor/list_available_models":
+			if !strings.Contains(kind, "listed") {
+				reply(nil, "method not supported")
+				continue
+			}
+			fmt.Fprintln(logf, "cursor/list_available_models")
+			reply(map[string]any{"models": []map[string]any{
+				{"value": "m2", "name": "M2", "configOptions": []map[string]any{{"id": "effort", "category": "thought_level", "type": "select", "currentValue": "high", "options": choices("low", "high", "default")}}},
+				{"value": "m0", "name": "M0", "configOptions": []map[string]any{
+					{"id": "thinking", "category": "thought_level", "type": "select", "currentValue": "true", "options": choices("false", "true")},
+					{"id": "effort", "category": "thought_level", "type": "select", "currentValue": "max", "options": choices("low", "max")},
+				}},
+				{"value": "m1", "name": "M1", "configOptions": []map[string]any{{"id": "optimize_for", "category": "model_config", "type": "select", "currentValue": "balanced", "options": choices("intelligence", "balanced", "cost")}}},
+			}}, "")
 		default:
 			reply(nil, "method not supported")
 		}

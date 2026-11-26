@@ -126,8 +126,20 @@ func TestContractCursorSettings(t *testing.T) {
 	for _, x := range ms {
 		ids[x.ID] = x
 	}
-	if _, ok := ids["default"]; !ok || len(ms) < 2 {
+	auto := ""
+	for _, id := range []string{"default", "auto-smart"} {
+		if _, ok := ids[id]; ok {
+			auto = id
+		}
+	}
+	if auto == "" || len(ms) < 2 {
 		t.Fatalf("models %+v", ms)
+	}
+	if auto == "auto-smart" && !slices.Equal(ids[auto].Efforts, []string{"intelligence", "balanced", "cost"}) {
+		t.Errorf("auto efforts %q", ids[auto].Efforts)
+	}
+	if x, ok := ids["claude-opus-5"]; ok && (slices.Contains(x.Efforts, "true") || !slices.Contains(x.Efforts, "high")) {
+		t.Errorf("claude-opus-5 efforts %q", x.Efforts)
 	}
 	if _, ok := ids[m]; !ok {
 		t.Fatalf("no model %s among %d", m, len(ms))
@@ -188,12 +200,20 @@ func TestContractCursorSettings(t *testing.T) {
 	if set, mode := settled(); set.Effort != "low" || mode != "agent" {
 		t.Fatalf("switched to %+v in %q", set, mode)
 	}
-	// Auto takes no effort.
-	if err := s.SetModel(t.Context(), "default", ""); err != nil {
+	// Auto: default has no effort; auto-smart's menu is optimize_for.
+	if err := s.SetModel(t.Context(), auto, ""); err != nil {
 		t.Fatal(err)
 	}
-	if set, _ := settled(); set.Model != "default" || set.Effort != "" {
+	if set, _ := settled(); set.Model != auto || auto == "default" && set.Effort != "" || auto == "auto-smart" && !slices.Contains([]string{"intelligence", "balanced", "cost"}, set.Effort) {
 		t.Fatalf("on Auto: %+v", set)
+	}
+	if auto == "auto-smart" {
+		if err := s.SetModel(t.Context(), auto, "cost"); err != nil {
+			t.Fatal(err)
+		}
+		if set, _ := settled(); set.Effort != "cost" {
+			t.Fatalf("auto cost: %+v", set)
+		}
 	}
 	ms, _ = a.Models(t.Context())
 	for _, x := range ms {

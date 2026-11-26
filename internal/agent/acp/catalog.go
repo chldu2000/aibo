@@ -226,17 +226,29 @@ func (a *Agent) probeLists(gen int) error {
 	if err != nil {
 		return err
 	}
+	// cursor/list_available_models lists every model's effort without
+	// setting one, so a probe does not change the user's own choice.
+	// An Agent without the method keeps the walk below.
+	listed, err := s.modelCatalog(ctx)
+	if err != nil {
+		s.log.Debug("ACP model catalog unavailable", "error", err)
+		listed = nil
+	} else if len(listed) > 0 {
+		a.applyEfforts(effortsByModel(listed))
+	}
 	s.mu.Lock()
 	opts := s.options
 	s.mu.Unlock()
-	if o, ok := option(opts, categoryModel); ok && deletes {
-		first := o.current()
-		for _, c := range o.choices() {
-			if c.Value == first {
-				continue // configure saw its efforts
-			}
-			if err := s.setOption(ctx, o.ID, c.Value); err != nil {
-				s.log.Debug("ACP probe could not set a model", "error", err)
+	if len(listed) == 0 {
+		if o, ok := option(opts, categoryModel); ok && deletes {
+			first := o.current()
+			for _, c := range o.choices() {
+				if c.Value == first {
+					continue // configure saw its efforts
+				}
+				if err := s.setOption(ctx, o.ID, c.Value); err != nil {
+					s.log.Debug("ACP probe could not set a model", "error", err)
+				}
 			}
 		}
 	}
@@ -252,6 +264,67 @@ func (a *Agent) probeLists(gen int) error {
 		changed()
 	}
 	return nil
+}
+
+// listedModel is one model from cursor/list_available_models, with the
+// options it takes. The method is Cursor's; other Agents do not have it.
+type listedModel struct {
+	Value, Name   string
+	ConfigOptions []configOption
+}
+
+func (s *session) modelCatalog(ctx context.Context) ([]listedModel, error) {
+	var out struct{ Models []listedModel }
+	err := s.call(ctx, "cursor/list_available_models", object{}, func(raw json.RawMessage) error {
+		return json.Unmarshal(raw, &out)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out.Models, nil
+}
+
+// effortsByModel is each model's effort values, from effortOption.
+func effortsByModel(models []listedModel) map[string][]string {
+	out := map[string][]string{}
+	for _, m := range models {
+		if m.Value == "" {
+			continue
+		}
+		e, ok := effortOption(m.ConfigOptions)
+		if !ok {
+			out[m.Value] = nil
+			continue
+		}
+		var vals []string
+		for _, c := range e.choices() {
+			vals = append(vals, c.Value)
+		}
+		out[m.Value] = vals
+	}
+	return out
+}
+
+// applyEfforts fills the efforts a catalog reported. A model the catalog
+// lists with none loses whatever a session had learned.
+func (a *Agent) applyEfforts(byID map[string][]string) {
+	if len(byID) == 0 {
+		return
+	}
+	c := &a.lists
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, m := range c.models {
+		e, ok := byID[m.ID]
+		if !ok {
+			continue
+		}
+		c.models[i].Efforts = e
+		c.models[i].DefaultEffort = ""
+		if slices.Contains(e, defaultEffort) {
+			c.models[i].DefaultEffort = defaultEffort
+		}
+	}
 }
 
 // forget drops the lists, for the next ask to probe again; a probe still
@@ -293,7 +366,7 @@ func (a *Agent) record(opts []configOption, modes *legacyModes, fresh, notify bo
 			known[m.ID] = m.Efforts
 		}
 		current := o.current()
-		e, hasEffort := option(opts, categoryEffort)
+		e, hasEffort := effortOption(opts)
 		var list []agent.Model
 		for _, ch := range o.choices() {
 			m := agent.Model{ID: ch.Value, Name: ch.Name, Description: ch.Description, Efforts: known[ch.Value]}
