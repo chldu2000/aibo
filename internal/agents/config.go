@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/agent/acp"
@@ -46,6 +47,9 @@ type builtinACP struct {
 	// undeleted: it cannot delete sessions, but keeps none that got no
 	// prompt, so its lists can be probed for (acp.SetProbeWithoutDelete).
 	undeleted bool
+	// start bounds starting a session (acp.SetStartTimeout); 0 is the
+	// adapter's default.
+	start time.Duration
 }
 
 var builtinACPs = []builtinACP{
@@ -56,7 +60,9 @@ var builtinACPs = []builtinACP{
 	// It has no session/delete; a session without a prompt is gone from
 	// session/list once its process ends (2026.11.22).
 	{config: ACPConfig{ID: Cursor, Name: "Cursor", Command: cursorCommand, Args: []string{"acp"}}, modes: cursorModes,
-		meta: map[string]any{"parameterizedModelPicker": true}, undeleted: true},
+		meta: map[string]any{"parameterizedModelPicker": true}, undeleted: true,
+		// Its session/new took from 2 to 25 seconds, and once past 45 (06).
+		start: 90 * time.Second},
 }
 
 func builtin(id agent.Kind) (builtinACP, bool) {
@@ -229,6 +235,7 @@ func (r *Registry) applyACP(c ACPConfig) agent.Agent {
 	a.SetModeTags(c.modeTags())
 	a.SetClientMeta(b.meta)
 	a.SetProbeWithoutDelete(b.undeleted)
+	a.SetStartTimeout(b.start)
 	r.acp[c.ID] = a
 	return a
 }

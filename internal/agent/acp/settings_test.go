@@ -297,6 +297,9 @@ func fakeAgent(kind, logPath string) {
 			reply(map[string]any{"protocolVersion": 1, "agentCapabilities": caps}, "")
 		case "session/new":
 			fmt.Fprintln(logf, "session/new")
+			if strings.Contains(kind, "slow") {
+				time.Sleep(time.Second)
+			}
 			if strings.Contains(kind, "signedout") {
 				enc.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32000, "message": "Authentication required"}})
 				continue

@@ -138,9 +138,15 @@ func (s *session) write(ctx context.Context, msg object) error {
 	msg["jsonrpc"] = "2.0"
 	return json.NewEncoder(s.stdin).Encode(msg)
 }
+
+// call sends a request and waits for its answer: until ctx is done, or for
+// 45 seconds when ctx has no deadline of its own (Start's, a probe's).
 func (s *session) call(ctx context.Context, method string, params object, receive func(json.RawMessage) error) error {
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 45*time.Second)
+		defer cancel()
+	}
 	r := request{receive: receive, result: make(chan error, 1)}
 	s.mu.Lock()
 	s.next++

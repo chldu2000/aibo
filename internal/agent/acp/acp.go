@@ -30,6 +30,7 @@ type Agent struct {
 	pre    []string // before args: a launcher's script (ConfigureCommand)
 	env    []string
 	meta   map[string]any // SetClientMeta
+	start  time.Duration  // SetStartTimeout; 0 is defaultStart
 	log    *slog.Logger
 	lists  catalog
 }
@@ -67,6 +68,19 @@ func (a *Agent) ConfigureCommand(path string, pre, env []string) {
 }
 func (a *Agent) SetLog(log *slog.Logger) { a.mu.Lock(); defer a.mu.Unlock(); a.log = log }
 
+// defaultStart bounds starting a session: the handshake, session/new or its
+// resumption, and the settings asked for.
+const defaultStart = 45 * time.Second
+
+// SetStartTimeout bounds starting a session of this Agent, as the Cursor
+// CLI's, whose session/new can take a minute on a slow network; 0 is
+// the default (45 seconds).
+func (a *Agent) SetStartTimeout(d time.Duration) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.start = d
+}
+
 // SetClientMeta sets what every handshake tells the Agent in
 // clientCapabilities._meta: an extension of its own, as the Cursor CLI's
 // parameterizedModelPicker. Nil tells nothing.
@@ -98,7 +112,13 @@ func (a *Agent) Start(ctx context.Context, o agent.StartOptions) (agent.Session,
 	a.lists.mu.Lock()
 	s.preferMode = a.lists.configuredDefault()
 	a.lists.mu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	a.mu.Lock()
+	limit := a.start
+	a.mu.Unlock()
+	if limit == 0 {
+		limit = defaultStart
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	if err = s.initialize(ctx, o); err != nil {
 		s.Close()

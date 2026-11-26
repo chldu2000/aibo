@@ -2,6 +2,7 @@ package acp
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chldu2000/aibo/internal/agent"
 )
@@ -252,4 +254,20 @@ func TestCursorTurnCapture(t *testing.T) {
 	if !strings.Contains(output, "AIBO-ALLOW") || !strings.Contains(reply, "DONE") || !ended {
 		t.Errorf("output %q, reply %q, ended %v", output, reply, ended)
 	}
+}
+
+// Starting a session is bounded by the Agent's start timeout, which its
+// requests keep to, rather than each its own 45 seconds.
+func TestStartTimeout(t *testing.T) {
+	a, _, _ := fakeACP(t, "options-nodelete-slow")
+	a.SetStartTimeout(300 * time.Millisecond)
+	if _, err := a.Start(t.Context(), agent.StartOptions{Workspace: t.TempDir()}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("a start slower than its timeout: %v", err)
+	}
+	a.SetStartTimeout(10 * time.Second)
+	s, err := a.Start(t.Context(), agent.StartOptions{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
 }
