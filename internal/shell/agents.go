@@ -89,8 +89,11 @@ func (s *Shell) agentSettings(c *ui.Context) {
 		if ui.Button(c, locales.AddAgent()).Disabled(s.agentChangeBusy).Clicked() {
 			s.settings.addAgent = &agentForm{prefix: agents.DefaultToolPrefix}
 		}
-		if _, ok := r.ACPConfig(agents.OpenCode); !ok && ui.Button(c, locales.RestoreOpenCode()).Disabled(s.agentChangeBusy).Clicked() {
-			s.changeACP(nil, agents.OpenCode, r.RestoreOpenCode)
+		for _, id := range agents.BuiltinACP() {
+			d, _ := agents.Describe(id)
+			if _, ok := r.ACPConfig(id); !ok && ui.Button(c, locales.RestoreACP(d.Name)).Disabled(s.agentChangeBusy).Clicked() {
+				s.changeACP(nil, id, func() (agent.Agent, error) { return r.RestoreACP(id) })
+			}
 		}
 	})
 	if s.settings.agentErr != "" {

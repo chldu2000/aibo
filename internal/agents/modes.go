@@ -34,6 +34,15 @@ var openCodeModes = map[string]ModeConfig{
 	"plan":  {Risk: "safe", ReadOnly: true},
 }
 
+// cursorModes label the Cursor CLI's modes: agent, the default, has every
+// tool, with approvals as the CLI's own configuration says; plan and ask
+// edit nothing and run no commands, as the CLI describes them.
+var cursorModes = map[string]ModeConfig{
+	"agent": {Risk: "caution", Default: true},
+	"plan":  {Risk: "safe", ReadOnly: true},
+	"ask":   {Risk: "safe", ReadOnly: true},
+}
+
 func validateModes(modes map[string]ModeConfig) error {
 	defaults := 0
 	for id, m := range modes {
@@ -54,11 +63,11 @@ func validateModes(modes map[string]ModeConfig) error {
 }
 
 // modeTags are the labels the adapter applies: the configuration's, or,
-// for OpenCode without any, the built-in ones.
+// for a built-in ACP Agent without any, the built-in ones.
 func (c ACPConfig) modeTags() map[string]acp.ModeTag {
 	modes := c.Modes
-	if modes == nil && c.ID == OpenCode {
-		modes = openCodeModes
+	if b, ok := builtin(c.ID); ok && modes == nil {
+		modes = b.modes
 	}
 	tags := make(map[string]acp.ModeTag, len(modes))
 	for id, m := range modes {

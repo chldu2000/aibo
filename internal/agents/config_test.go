@@ -254,15 +254,15 @@ func TestOpenCodeEditRemoveAndRestoreSurviveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	r = reopen()
-	if _, ok := r.ACPConfig(agents.OpenCode); ok || len(r.Agents()) != 2 {
+	if _, ok := r.ACPConfig(agents.OpenCode); ok || len(r.Agents()) != 3 {
 		t.Fatal("deleted OpenCode returned after restart")
 	}
-	if _, err := r.RestoreOpenCode(); err != nil {
+	if _, err := r.RestoreACP(agents.OpenCode); err != nil {
 		t.Fatal(err)
 	}
 	r = reopen()
 	got, ok := r.ACPConfig(agents.OpenCode)
-	if !ok || len(r.Agents()) != 3 || got.Command != "opencode" || !slices.Equal(got.Args, []string{"acp"}) || got.ToolPrefix != nil {
+	if !ok || len(r.Agents()) != 4 || got.Command != "opencode" || !slices.Equal(got.Args, []string{"acp"}) || got.ToolPrefix != nil {
 		t.Fatalf("restored configuration = %+v", got)
 	}
 }

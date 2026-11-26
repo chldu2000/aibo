@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"slices"
@@ -28,6 +29,7 @@ type Agent struct {
 	path   string
 	pre    []string // before args: a launcher's script (ConfigureCommand)
 	env    []string
+	meta   map[string]any // SetClientMeta
 	log    *slog.Logger
 	lists  catalog
 }
@@ -65,6 +67,15 @@ func (a *Agent) ConfigureCommand(path string, pre, env []string) {
 }
 func (a *Agent) SetLog(log *slog.Logger) { a.mu.Lock(); defer a.mu.Unlock(); a.log = log }
 
+// SetClientMeta sets what every handshake tells the Agent in
+// clientCapabilities._meta: an extension of its own, as the Cursor CLI's
+// parameterizedModelPicker. Nil tells nothing.
+func (a *Agent) SetClientMeta(meta map[string]any) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.meta = maps.Clone(meta)
+}
+
 type capabilities struct {
 	LoadSession         bool
 	MCPCapabilities     struct{ HTTP bool }
@@ -99,7 +110,7 @@ func (a *Agent) Start(ctx context.Context, o agent.StartOptions) (agent.Session,
 // launch starts the Agent's process in dir, for a session to talk to.
 func (a *Agent) launch(dir string) (*session, error) {
 	a.mu.Lock()
-	path, args, env, log := a.path, append(slices.Clone(a.pre), a.args...), a.env, a.log
+	path, args, env, log, meta := a.path, append(slices.Clone(a.pre), a.args...), a.env, a.log, a.meta
 	a.mu.Unlock()
 	if path == "" {
 		return nil, agent.ErrNotFound
@@ -114,6 +125,7 @@ func (a *Agent) launch(dir string) (*session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", agent.ErrStartFailed, err)
 	}
+	s.clientMeta = meta
 	return s, nil
 }
 
@@ -123,7 +135,11 @@ func (s *session) handshake(ctx context.Context) (capabilities, error) {
 		ProtocolVersion   int
 		AgentCapabilities capabilities
 	}
-	err := s.call(ctx, "initialize", object{"protocolVersion": 1, "clientCapabilities": object{}, "clientInfo": object{"name": "aibo", "version": "1"}}, func(raw json.RawMessage) error { return json.Unmarshal(raw, &hello) })
+	caps := object{}
+	if s.clientMeta != nil {
+		caps["_meta"] = s.clientMeta
+	}
+	err := s.call(ctx, "initialize", object{"protocolVersion": 1, "clientCapabilities": caps, "clientInfo": object{"name": "aibo", "version": "1"}}, func(raw json.RawMessage) error { return json.Unmarshal(raw, &hello) })
 	if err != nil {
 		return capabilities{}, fmt.Errorf("%w: initialize: %w", agent.ErrStartFailed, err)
 	}

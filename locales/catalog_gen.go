@@ -2464,14 +2464,14 @@ func (msgs Messages) RemoveACPDetails() string {
 	return Catalog.Format(msgs.locale, "removeACPDetails", nil)
 }
 
-// RestoreOpenCode says "Restore default OpenCode"
+// RestoreACP says "Restore default {name}"
 // in the language the app shows.
-func RestoreOpenCode() string { return In(i18n.Locale()).RestoreOpenCode() }
+func RestoreACP(name string) string { return In(i18n.Locale()).RestoreACP(name) }
 
-// RestoreOpenCode says "Restore default OpenCode"
+// RestoreACP says "Restore default {name}"
 // in the language of msgs.
-func (msgs Messages) RestoreOpenCode() string {
-	return Catalog.Format(msgs.locale, "restoreOpenCode", nil)
+func (msgs Messages) RestoreACP(name string) string {
+	return Catalog.Format(msgs.locale, "restoreACP", map[string]any{"name": name})
 }
 
 // AutoToolPrefix says "Automatic by OpenCode version"

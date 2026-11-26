@@ -69,6 +69,7 @@ var Specs = []Spec{
 		Glyph: []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#2f2f33" stroke="#5a5a62" stroke-width="1"/><g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l4 4-4 4"/><path d="M13 16h5"/></g></svg>`),
 		Login: LoginInApp, HoldsSignedOut: true},
 	{Kind: OpenCode, Name: "OpenCode", Command: "opencode", MinVersion: "1.19.6", InstallURL: "https://opencode.ai/docs/"},
+	{Kind: Cursor, Name: "Cursor", Command: cursorCommand, MinVersion: "2026.11.22", InstallURL: "https://cursor.com/docs/cli/installation"},
 }
 
 // Describe returns what aibo knows of an Agent, if it supports it.
@@ -217,7 +218,9 @@ func New(o Options) *Registry {
 	for _, s := range Specs {
 		r.status[s.Kind] = &Status{Spec: s, State: Checking}
 	}
-	r.applyACP(defaultOpenCode())
+	for _, b := range builtinACPs {
+		r.applyACP(b.config)
+	}
 	r.codex.OnAccount(r.accountChanged)
 	return r
 }
@@ -515,16 +518,13 @@ func (r *Registry) check(ctx context.Context, spec Spec) Status {
 	if runtime.GOOS == "windows" {
 		shellPath = os.Getenv("PATH")
 	}
+	if chosen == "" && filepath.IsAbs(spec.Command) {
+		chosen = spec.Command
+	}
 	switch {
-	case chosen == "" && filepath.IsAbs(spec.Command):
-		if !executable(spec.Command) {
-			st.State, st.Problem, st.Detail = NotInstalled, ProblemBadPath, spec.Command
-			return st
-		}
-		st.Path, st.Source = spec.Command, SourceSettings
 	case chosen != "":
 		p, pre, ok := chosen, []string(nil), executable(chosen)
-		if spec.Command == cursorCommand {
+		if spec.Kind == Cursor || isCursorCommand(chosen) {
 			p, pre, ok = cursorChosen(chosen)
 		}
 		if !ok {

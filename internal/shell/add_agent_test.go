@@ -126,8 +126,8 @@ func TestAddAgentFromSettings(t *testing.T) {
 	}
 	click(locales.RemoveACPLabel("OpenCode"))
 	click(locales.ConfirmRemoveLabel())
-	waitText(locales.RestoreOpenCode())
-	click(locales.RestoreOpenCode())
+	waitText(locales.RestoreACP("OpenCode"))
+	click(locales.RestoreACP("OpenCode"))
 	waitText("OpenCode")
 	if got, ok := r.ACPConfig(agents.OpenCode); !ok || got.Command != "opencode" || !slices.Equal(got.Args, []string{"acp"}) {
 		t.Fatalf("restored OpenCode configuration = %+v", got)

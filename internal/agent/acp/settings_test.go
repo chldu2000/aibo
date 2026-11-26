@@ -287,6 +287,9 @@ func fakeAgent(kind, logPath string) {
 		}
 		switch req.Method {
 		case "initialize":
+			if p := os.Getenv("AIBO_ACP_INIT"); p != "" {
+				os.WriteFile(p, sc.Bytes(), 0o600)
+			}
 			caps := map[string]any{}
 			if deletes {
 				caps["sessionCapabilities"] = map[string]any{"delete": map[string]any{}}

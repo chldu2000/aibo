@@ -313,7 +313,7 @@
   "confirmRemoveLabel": "Confirm removing",
   "confirmRemoveACP": "Remove {name} from aibo?",
   "removeACPDetails": "This removes the launch configuration. Conversations stay in your history and an active turn can finish.",
-  "restoreOpenCode": "Restore default OpenCode",
+  "restoreACP": "Restore default {name}",
   "autoToolPrefix": "Automatic by OpenCode version",
   "agentConfigChanged": "The Agent configuration changed. Restart aibo to load it before editing again.",
   "aCPRequirements": "Choose a local Agent that supports ACP v1 over stdio and HTTP MCP.",

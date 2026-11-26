@@ -16,7 +16,10 @@ import (
 	"github.com/chldu2000/aibo/internal/agent/acp"
 )
 
-const OpenCode agent.Kind = "opencode"
+const (
+	OpenCode agent.Kind = "opencode"
+	Cursor   agent.Kind = "cursor"
+)
 const DefaultToolPrefix = "aibo_"
 
 type ACPConfig struct {
@@ -25,10 +28,66 @@ type ACPConfig struct {
 	Command    string     `json:"command,omitempty"`
 	Args       []string   `json:"args,omitempty"`
 	ToolPrefix *string    `json:"toolPrefix,omitempty"`
-	// Modes label the Agent's modes by ID (ModeConfig); nil for OpenCode
-	// is its built-in labels.
-	Modes   map[string]ModeConfig `json:"modes,omitempty"`
-	Removed bool                  `json:"removed,omitempty"`
+	// Modes label the Agent's modes by ID (ModeConfig); nil for a built-in
+	// ACP Agent is its built-in labels.
+	Modes map[string]ModeConfig `json:"modes,omitempty"`
+	// Removed is set for a built-in ACP Agent the user removed.
+	Removed bool `json:"removed,omitempty"`
+}
+
+// builtinACP is an ACP Agent aibo comes with: there unless the user
+// removes it, and restorable to this configuration.
+type builtinACP struct {
+	config ACPConfig
+	// modes label its modes while its own configuration labels none.
+	modes map[string]ModeConfig
+	// meta is what aibo tells it in clientCapabilities._meta.
+	meta map[string]any
+}
+
+var builtinACPs = []builtinACP{
+	{config: ACPConfig{ID: OpenCode, Name: "OpenCode", Command: "opencode", Args: []string{"acp"}}, modes: openCodeModes},
+	// The Cursor CLI's models are bare IDs, their effort an option of its
+	// own, only when the client asks for its parameterized picker; else
+	// each model is one value with its parameters fixed in brackets.
+	{config: ACPConfig{ID: Cursor, Name: "Cursor", Command: cursorCommand, Args: []string{"acp"}}, modes: cursorModes,
+		meta: map[string]any{"parameterizedModelPicker": true}},
+}
+
+func builtin(id agent.Kind) (builtinACP, bool) {
+	for _, b := range builtinACPs {
+		if b.config.ID == id {
+			b.config.Args = slices.Clone(b.config.Args)
+			return b, true
+		}
+	}
+	return builtinACP{}, false
+}
+
+// BuiltinACP lists the ACP Agents aibo comes with, which can be restored
+// once removed (RestoreACP).
+func BuiltinACP() []agent.Kind {
+	out := make([]agent.Kind, len(builtinACPs))
+	for i, b := range builtinACPs {
+		out[i] = b.config.ID
+	}
+	return out
+}
+
+func isBuiltinACP(id agent.Kind) bool {
+	_, ok := builtin(id)
+	return ok
+}
+
+// runsBuiltin reports whether command runs the built-in Agent's own
+// executable (or its launcher), whose version aibo checks: an executable
+// the user put in its place may be any ACP program.
+func runsBuiltin(b builtinACP, command string) bool {
+	base := strings.ToLower(filepath.Base(command))
+	for _, ext := range []string{".exe", ".cmd", ".ps1"} {
+		base = strings.TrimSuffix(base, ext)
+	}
+	return base == b.config.Command
 }
 
 var configID = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
@@ -41,19 +100,15 @@ var (
 	ErrConfigChanged  = errors.New("Agent configuration has changed")
 )
 
-func defaultOpenCode() ACPConfig {
-	return ACPConfig{ID: OpenCode, Name: "OpenCode", Command: "opencode", Args: []string{"acp"}}
-}
-
 func (c ACPConfig) validate() error {
 	if !configID.MatchString(string(c.ID)) {
 		return ErrInvalidID
 	}
-	if _, ok := Describe(c.ID); ok && c.ID != OpenCode || c.ID == "fake" {
+	if _, ok := Describe(c.ID); ok && !isBuiltinACP(c.ID) || c.ID == "fake" {
 		return ErrIDInUse
 	}
 	if c.Removed {
-		if c.ID != OpenCode {
+		if !isBuiltinACP(c.ID) {
 			return ErrInvalidID
 		}
 		return nil
@@ -144,12 +199,12 @@ func (r *Registry) applyACP(c ACPConfig) agent.Agent {
 		prefix = *c.ToolPrefix
 	}
 	spec := Spec{Kind: c.ID, Name: c.Name, Command: c.Command}
-	if c.ID == OpenCode {
-		builtin, _ := Describe(OpenCode)
-		spec.InstallURL = builtin.InstallURL
-		base := filepath.Base(c.Command)
-		if strings.EqualFold(base, "opencode") || strings.EqualFold(base, "opencode.exe") {
-			spec.MinVersion = builtin.MinVersion
+	b, isBuiltin := builtin(c.ID)
+	if isBuiltin {
+		d, _ := Describe(c.ID)
+		spec.InstallURL, spec.Glyph, spec.Login = d.InstallURL, d.Glyph, d.Login
+		if runsBuiltin(b, c.Command) {
+			spec.MinVersion = d.MinVersion
 		}
 	}
 	if i >= 0 {
@@ -167,6 +222,7 @@ func (r *Registry) applyACP(c ACPConfig) agent.Agent {
 	r.status[c.ID] = &Status{Spec: spec, State: Checking}
 	a := acp.New(c.ID, c.Name, "", c.Args, prefix)
 	a.SetModeTags(c.modeTags())
+	a.SetClientMeta(b.meta)
 	r.acp[c.ID] = a
 	return a
 }
@@ -174,7 +230,7 @@ func (r *Registry) applyACP(c ACPConfig) agent.Agent {
 // AddACP appends to the current file, preserving entries edited since Open.
 // The adapter becomes visible only after the replacement file is in place.
 func (r *Registry) AddACP(c ACPConfig) (agent.Agent, error) {
-	if c.ID == OpenCode || c.Removed {
+	if isBuiltinACP(c.ID) || c.Removed {
 		return nil, ErrIDInUse
 	}
 	return r.saveACP(c, true)
@@ -192,8 +248,14 @@ func (r *Registry) RemoveACP(id agent.Kind) error {
 	return err
 }
 
-func (r *Registry) RestoreOpenCode() (agent.Agent, error) {
-	return r.saveACP(defaultOpenCode(), true)
+// RestoreACP brings back a built-in ACP Agent the user removed, with its
+// built-in configuration.
+func (r *Registry) RestoreACP(id agent.Kind) (agent.Agent, error) {
+	b, ok := builtin(id)
+	if !ok {
+		return nil, ErrInvalidID
+	}
+	return r.saveACP(b.config, true)
 }
 
 func (r *Registry) saveACP(c ACPConfig, add bool) (agent.Agent, error) {
@@ -225,14 +287,14 @@ func (r *Registry) saveACP(c ACPConfig, add bool) (agent.Agent, error) {
 	var disk ACPConfig
 	if index >= 0 {
 		disk = configs[index]
-	} else if c.ID == OpenCode {
-		disk = defaultOpenCode()
+	} else if b, ok := builtin(c.ID); ok {
+		disk = b.config
 	}
-	if !add && !current.equal(disk) || add && c.ID == OpenCode && !disk.Removed {
+	if !add && !current.equal(disk) || add && isBuiltinACP(c.ID) && !disk.Removed {
 		return nil, ErrConfigChanged
 	}
 	switch {
-	case c.Removed && c.ID != OpenCode:
+	case c.Removed && !isBuiltinACP(c.ID):
 		configs = slices.Delete(configs, index, index+1)
 	case index >= 0:
 		configs[index] = c

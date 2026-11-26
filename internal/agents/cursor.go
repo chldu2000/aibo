@@ -82,6 +82,13 @@ func cursorNode(p string) (string, []string, bool) {
 	return p, []string{script}, true
 }
 
+// isCursorCommand reports whether p names the Cursor CLI's executable or
+// launcher, as another Agent ID's command may.
+func isCursorCommand(p string) bool {
+	b, _ := builtin(Cursor)
+	return runsBuiltin(b, p)
+}
+
 // cursorChosen is what runs for an executable the user chose for the
 // Cursor CLI: on Windows its launcher or a version's node.exe, otherwise
 // the executable itself.

@@ -242,7 +242,7 @@
   "confirmRemoveLabel": "确定移除",
   "confirmRemoveACP": "从 aibo 移除 {name}？",
   "removeACPDetails": "将移除启动配置。历史会话会保留，正在运行的轮次可以完成。",
-  "restoreOpenCode": "恢复默认 OpenCode",
+  "restoreACP": "恢复默认 {name}",
   "autoToolPrefix": "按 OpenCode 版本自动选择",
   "agentConfigChanged": "Agent 配置已更改，请重启 aibo 加载最新配置后再编辑。",
   "aCPRequirements": "选择支持 ACP v1 标准输入输出和 HTTP MCP 的本机 Agent。",

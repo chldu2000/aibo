@@ -12,7 +12,7 @@ import (
 // Each fake executable runs this test binary with its own version and login state.
 func RunIfCLI() {
 	name := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
-	if name != "claude" && name != "codex" {
+	if name != "claude" && name != "codex" && name != "node" {
 		return
 	}
 	b, err := os.ReadFile(os.Args[0] + ".status")
@@ -20,7 +20,14 @@ func RunIfCLI() {
 		os.Exit(2)
 	}
 	version, login, _ := strings.Cut(string(b), " ")
-	switch strings.Join(os.Args[1:], " ") {
+	args := os.Args[1:]
+	if name == "node" { // the Cursor CLI on Windows: node.exe index.js …
+		if len(args) == 0 || filepath.Base(args[0]) != "index.js" {
+			os.Exit(2)
+		}
+		args = args[1:]
+	}
+	switch strings.Join(args, " ") {
 	case "--version":
 		fmt.Println(version)
 	case "auth status":

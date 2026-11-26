@@ -41,6 +41,10 @@ type session struct {
 	writeLock      chan struct{}
 	control        sync.Mutex // serialize outgoing turns, answers and cancellation
 
+	// clientMeta is what the handshake tells the Agent in
+	// clientCapabilities._meta (Agent.SetClientMeta).
+	clientMeta map[string]any
+
 	// The reader sets id during the handshake, before Start returns.
 	id                        string
 	image                     bool
