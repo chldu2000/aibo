@@ -188,6 +188,45 @@ func TestReplyStreamsThenEnds(t *testing.T) {
 	}
 }
 
+func TestChangedAgentTakesEffectBetweenTurns(t *testing.T) {
+	sc := newScript()
+	b := open(t, t.TempDir(), sc.respond)
+	defer b.Close()
+	ws, s := newSession(t, b)
+	if err := b.Send(s.ID, "first"); err != nil {
+		t.Fatal(err)
+	}
+	next := newScript()
+	replacement := fake.New(next.respond)
+	b.RegisterAgent(replacement)
+	sc.emit(agent.ReplyDelta{ReplyID: "r", Text: "original reply"})
+	sc.endTurn()
+	b.idle(t, s.ID)
+	first, _ := b.Session(s.ID)
+	if b.Status(s.ID).Connected || first.NativeID() == "" || len(b.Agents()) != 1 {
+		t.Fatal("replacement did not retire the old connection")
+	}
+	if err := b.Send(s.ID, "second"); err != nil {
+		t.Fatal(err)
+	}
+	if starts := replacement.Starts(); len(starts) != 1 || starts[0].ResumeID != first.NativeID() {
+		t.Fatalf("replacement starts = %+v", starts)
+	}
+	b.UnregisterAgent(fake.Kind)
+	next.emit(agent.ReplyDelta{ReplyID: "r2", Text: "last reply"})
+	next.endTurn()
+	b.idle(t, s.ID)
+	if _, err := b.NewSession(ws.ID, fake.Kind, ""); !errors.Is(err, workbench.ErrUnknownAgent) {
+		t.Fatal(err)
+	}
+	if b.Status(s.ID).Connected || len(b.Agents()) != 0 {
+		t.Fatal("removed Agent is still available")
+	}
+	check(t, b.messages(t, s.ID),
+		want{1, model.UserMessage, model.Done, "first"}, want{2, model.AgentReply, model.Done, "original reply"},
+		want{3, model.UserMessage, model.Done, "second"}, want{4, model.AgentReply, model.Done, "last reply"})
+}
+
 func TestChangesCarryStreamingMessages(t *testing.T) {
 	sc := newScript()
 	b := open(t, t.TempDir(), sc.respond)

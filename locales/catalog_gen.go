@@ -2374,6 +2374,116 @@ func (msgs Messages) AddACPAgent() string {
 	return Catalog.Format(msgs.locale, "addACPAgent", nil)
 }
 
+// EditACP says "Edit…"
+// in the language the app shows.
+func EditACP() string { return In(i18n.Locale()).EditACP() }
+
+// EditACP says "Edit…"
+// in the language of msgs.
+func (msgs Messages) EditACP() string {
+	return Catalog.Format(msgs.locale, "editACP", nil)
+}
+
+// EditACPLabel says "Edit {name}"
+// in the language the app shows.
+func EditACPLabel(name string) string { return In(i18n.Locale()).EditACPLabel(name) }
+
+// EditACPLabel says "Edit {name}"
+// in the language of msgs.
+func (msgs Messages) EditACPLabel(name string) string {
+	return Catalog.Format(msgs.locale, "editACPLabel", map[string]any{"name": name})
+}
+
+// RemoveACP says "Remove…"
+// in the language the app shows.
+func RemoveACP() string { return In(i18n.Locale()).RemoveACP() }
+
+// RemoveACP says "Remove…"
+// in the language of msgs.
+func (msgs Messages) RemoveACP() string {
+	return Catalog.Format(msgs.locale, "removeACP", nil)
+}
+
+// RemoveACPLabel says "Remove {name}"
+// in the language the app shows.
+func RemoveACPLabel(name string) string { return In(i18n.Locale()).RemoveACPLabel(name) }
+
+// RemoveACPLabel says "Remove {name}"
+// in the language of msgs.
+func (msgs Messages) RemoveACPLabel(name string) string {
+	return Catalog.Format(msgs.locale, "removeACPLabel", map[string]any{"name": name})
+}
+
+// ConfirmRemove says "Remove"
+// in the language the app shows.
+func ConfirmRemove() string { return In(i18n.Locale()).ConfirmRemove() }
+
+// ConfirmRemove says "Remove"
+// in the language of msgs.
+func (msgs Messages) ConfirmRemove() string {
+	return Catalog.Format(msgs.locale, "confirmRemove", nil)
+}
+
+// ConfirmRemoveLabel says "Confirm removing"
+// in the language the app shows.
+func ConfirmRemoveLabel() string { return In(i18n.Locale()).ConfirmRemoveLabel() }
+
+// ConfirmRemoveLabel says "Confirm removing"
+// in the language of msgs.
+func (msgs Messages) ConfirmRemoveLabel() string {
+	return Catalog.Format(msgs.locale, "confirmRemoveLabel", nil)
+}
+
+// ConfirmRemoveACP says "Remove {name} from aibo?"
+// in the language the app shows.
+func ConfirmRemoveACP(name string) string { return In(i18n.Locale()).ConfirmRemoveACP(name) }
+
+// ConfirmRemoveACP says "Remove {name} from aibo?"
+// in the language of msgs.
+func (msgs Messages) ConfirmRemoveACP(name string) string {
+	return Catalog.Format(msgs.locale, "confirmRemoveACP", map[string]any{"name": name})
+}
+
+// RemoveACPDetails says "This removes the launch configuration. Conversations stay in your history and an active turn can finish."
+// in the language the app shows.
+func RemoveACPDetails() string { return In(i18n.Locale()).RemoveACPDetails() }
+
+// RemoveACPDetails says "This removes the launch configuration. Conversations stay in your history and an active turn can finish."
+// in the language of msgs.
+func (msgs Messages) RemoveACPDetails() string {
+	return Catalog.Format(msgs.locale, "removeACPDetails", nil)
+}
+
+// RestoreOpenCode says "Restore default OpenCode"
+// in the language the app shows.
+func RestoreOpenCode() string { return In(i18n.Locale()).RestoreOpenCode() }
+
+// RestoreOpenCode says "Restore default OpenCode"
+// in the language of msgs.
+func (msgs Messages) RestoreOpenCode() string {
+	return Catalog.Format(msgs.locale, "restoreOpenCode", nil)
+}
+
+// AutoToolPrefix says "Automatic by OpenCode version"
+// in the language the app shows.
+func AutoToolPrefix() string { return In(i18n.Locale()).AutoToolPrefix() }
+
+// AutoToolPrefix says "Automatic by OpenCode version"
+// in the language of msgs.
+func (msgs Messages) AutoToolPrefix() string {
+	return Catalog.Format(msgs.locale, "autoToolPrefix", nil)
+}
+
+// AgentConfigChanged says "The Agent configuration changed. Restart aibo to load it before editing again."
+// in the language the app shows.
+func AgentConfigChanged() string { return In(i18n.Locale()).AgentConfigChanged() }
+
+// AgentConfigChanged says "The Agent configuration changed. Restart aibo to load it before editing again."
+// in the language of msgs.
+func (msgs Messages) AgentConfigChanged() string {
+	return Catalog.Format(msgs.locale, "agentConfigChanged", nil)
+}
+
 // ACPRequirements says "Choose a local Agent that supports ACP v1 over stdio and HTTP MCP."
 // in the language the app shows.
 func ACPRequirements() string { return In(i18n.Locale()).ACPRequirements() }

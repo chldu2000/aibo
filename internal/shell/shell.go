@@ -101,7 +101,8 @@ type Shell struct {
 	// detail is the session details panel.
 	detail detailsUI
 	// settings is the global settings' modal.
-	settings settingsUI
+	settings        settingsUI
+	agentChangeBusy bool
 	// level is the approval control's popover.
 	// modes are the permission modes each Agent told; modeMenu the
 	// composer's popover of them.

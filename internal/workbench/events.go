@@ -254,11 +254,6 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		}
 		s.loose = append(s.loose, looseApproval{toolID: e.ToolID, a: a})
 	case agent.TurnEnded:
-		if s.restart && s.native != nil {
-			// A rule was revoked during the turn: start again without it.
-			s.restart = false
-			go w.detach(id, s).Close()
-		}
 		end := model.Done
 		if e.Interrupted {
 			end = model.Interrupted
@@ -374,7 +369,8 @@ func (w *Workbench) endTurn(id string, s *session, state model.MessageState) []m
 		changed = append(changed, m.Clone())
 	}
 	sort.Slice(changed, func(i, j int) bool { return changed[i].Seq < changed[j].Seq })
-	s.running, s.items, s.loose = false, nil, nil
+	w.finishRun(id, s)
+	s.items, s.loose = nil, nil
 	return changed
 }
 

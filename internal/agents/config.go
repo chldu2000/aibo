@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -20,10 +21,11 @@ const DefaultToolPrefix = "aibo_"
 
 type ACPConfig struct {
 	ID         agent.Kind `json:"id"`
-	Name       string     `json:"name"`
-	Command    string     `json:"command"`
+	Name       string     `json:"name,omitempty"`
+	Command    string     `json:"command,omitempty"`
 	Args       []string   `json:"args,omitempty"`
 	ToolPrefix *string    `json:"toolPrefix,omitempty"`
+	Removed    bool       `json:"removed,omitempty"`
 }
 
 var configID = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
@@ -33,14 +35,25 @@ var (
 	ErrIDInUse        = errors.New("duplicate or reserved Agent ID")
 	ErrMissingName    = errors.New("missing Agent name")
 	ErrInvalidCommand = errors.New("expected an executable name or absolute path")
+	ErrConfigChanged  = errors.New("Agent configuration has changed")
 )
+
+func defaultOpenCode() ACPConfig {
+	return ACPConfig{ID: OpenCode, Name: "OpenCode", Command: "opencode", Args: []string{"acp"}}
+}
 
 func (c ACPConfig) validate() error {
 	if !configID.MatchString(string(c.ID)) {
 		return ErrInvalidID
 	}
-	if _, ok := Describe(c.ID); ok || c.ID == "fake" {
+	if _, ok := Describe(c.ID); ok && c.ID != OpenCode || c.ID == "fake" {
 		return ErrIDInUse
+	}
+	if c.Removed {
+		if c.ID != OpenCode {
+			return ErrInvalidID
+		}
+		return nil
 	}
 	if strings.TrimSpace(c.Name) == "" {
 		return ErrMissingName
@@ -61,7 +74,7 @@ func Open(dir string, o Options) (*Registry, error) {
 		return nil, err
 	}
 	for _, c := range configs {
-		r.registerACP(c)
+		r.applyACP(c)
 	}
 	return r, nil
 }
@@ -96,14 +109,56 @@ func readConfigs(path string) ([]ACPConfig, error) {
 	return configs, nil
 }
 
-// registerACP is called at startup or with the registry lock held.
-func (r *Registry) registerACP(c ACPConfig) agent.Agent {
+// ACPConfig returns the editable launch configuration, including implicit defaults.
+func (r *Registry) ACPConfig(id agent.Kind) (ACPConfig, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.configs[id]
+	c.Args = slices.Clone(c.Args)
+	if c.ToolPrefix != nil {
+		p := *c.ToolPrefix
+		c.ToolPrefix = &p
+	}
+	return c, ok
+}
+
+// applyACP is called at startup or with the registry lock held.
+func (r *Registry) applyACP(c ACPConfig) agent.Agent {
+	i := slices.IndexFunc(r.specs, func(s Spec) bool { return s.Kind == c.ID })
+	if c.Removed {
+		if i >= 0 {
+			r.specs = slices.Delete(r.specs, i, i+1)
+		}
+		delete(r.configs, c.ID)
+		delete(r.acp, c.ID)
+		delete(r.status, c.ID)
+		delete(r.paths, c.ID)
+		return nil
+	}
 	prefix := DefaultToolPrefix
 	if c.ToolPrefix != nil {
 		prefix = *c.ToolPrefix
 	}
 	spec := Spec{Kind: c.ID, Name: c.Name, Command: c.Command}
-	r.specs = append(r.specs, spec)
+	if c.ID == OpenCode {
+		builtin, _ := Describe(OpenCode)
+		spec.InstallURL = builtin.InstallURL
+		base := filepath.Base(c.Command)
+		if strings.EqualFold(base, "opencode") || strings.EqualFold(base, "opencode.exe") {
+			spec.MinVersion = builtin.MinVersion
+		}
+	}
+	if i >= 0 {
+		r.specs[i] = spec
+	} else {
+		r.specs = append(r.specs, spec)
+	}
+	c.Args = slices.Clone(c.Args)
+	if c.ToolPrefix != nil {
+		p := *c.ToolPrefix
+		c.ToolPrefix = &p
+	}
+	r.configs[c.ID] = c
 	r.status[c.ID] = &Status{Spec: spec, State: Checking}
 	a := acp.New(c.ID, c.Name, "", c.Args, prefix)
 	r.acp[c.ID] = a
@@ -113,27 +168,72 @@ func (r *Registry) registerACP(c ACPConfig) agent.Agent {
 // AddACP appends to the current file, preserving entries edited since Open.
 // The adapter becomes visible only after the replacement file is in place.
 func (r *Registry) AddACP(c ACPConfig) (agent.Agent, error) {
-	if err := c.validate(); err != nil {
-		return nil, err
+	if c.ID == OpenCode || c.Removed {
+		return nil, ErrIDInUse
+	}
+	return r.saveACP(c, true)
+}
+
+func (r *Registry) EditACP(c ACPConfig) (agent.Agent, error) {
+	if c.Removed {
+		return nil, ErrInvalidID
+	}
+	return r.saveACP(c, false)
+}
+
+func (r *Registry) RemoveACP(id agent.Kind) error {
+	_, err := r.saveACP(ACPConfig{ID: id, Removed: true}, false)
+	return err
+}
+
+func (r *Registry) RestoreOpenCode() (agent.Agent, error) {
+	return r.saveACP(defaultOpenCode(), true)
+}
+
+func (r *Registry) saveACP(c ACPConfig, add bool) (agent.Agent, error) {
+	if !c.Removed {
+		if err := c.validate(); err != nil {
+			return nil, err
+		}
 	}
 	r.configMu.Lock()
 	defer r.configMu.Unlock()
 	if r.configPath == "" {
 		return nil, errors.New("Agent registry has no data directory")
 	}
-	if r.Status(c.ID).Problem != ProblemUnknown {
+	current, exists := r.ACPConfig(c.ID)
+	if add && exists {
 		return nil, ErrIDInUse
+	}
+	if !add && !exists {
+		return nil, ErrConfigChanged
 	}
 	configs, err := readConfigs(r.configPath)
 	if err != nil {
 		return nil, err
 	}
-	for _, existing := range configs {
-		if existing.ID == c.ID {
-			return nil, ErrIDInUse
-		}
+	index := slices.IndexFunc(configs, func(d ACPConfig) bool { return d.ID == c.ID })
+	if index >= 0 && add && !configs[index].Removed {
+		return nil, ErrIDInUse
 	}
-	data, err := json.MarshalIndent(append(configs, c), "", "  ")
+	var disk ACPConfig
+	if index >= 0 {
+		disk = configs[index]
+	} else if c.ID == OpenCode {
+		disk = defaultOpenCode()
+	}
+	if !add && !current.equal(disk) || add && c.ID == OpenCode && !disk.Removed {
+		return nil, ErrConfigChanged
+	}
+	switch {
+	case c.Removed && c.ID != OpenCode:
+		configs = slices.Delete(configs, index, index+1)
+	case index >= 0:
+		configs[index] = c
+	default:
+		configs = append(configs, c)
+	}
+	data, err := json.MarshalIndent(configs, "", "  ")
 	if err != nil {
 		return nil, err
 	}
@@ -155,5 +255,12 @@ func (r *Registry) AddACP(c ACPConfig) (agent.Agent, error) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.registerACP(c), nil
+	return r.applyACP(c), nil
+}
+
+func (c ACPConfig) equal(other ACPConfig) bool {
+	p, q := c.ToolPrefix, other.ToolPrefix
+	return c.ID == other.ID && c.Name == other.Name && c.Command == other.Command &&
+		c.Removed == other.Removed && slices.Equal(c.Args, other.Args) &&
+		(p == q || p != nil && q != nil && *p == *q)
 }

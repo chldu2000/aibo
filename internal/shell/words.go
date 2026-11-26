@@ -60,6 +60,7 @@ var known = []struct {
 	{agent.ErrClosed, locales.ErrAgentClosed, true},
 	{agents.ErrNotLoggedIn, locales.ErrNotLoggedIn, false},
 	{agents.ErrInvalidID, locales.AgentIDHint, false},
+	{agents.ErrConfigChanged, locales.AgentConfigChanged, false},
 	{agents.ErrIDInUse, locales.AgentIDInUse, false},
 	{agents.ErrInvalidCommand, locales.AgentCommandHint, false},
 	{agents.ErrMissingName, locales.AgentNameRequired, false},

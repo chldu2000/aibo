@@ -140,6 +140,12 @@ func (a *app) start() {
 				log.Print("diagnostic log: ", lerr)
 			}
 			a.wb, err = workbench.Open(o)
+			if err == nil {
+				if err = a.loadAgentPaths(); err != nil {
+					a.wb.Close()
+					a.wb = nil
+				}
+			}
 			if err != nil {
 				a.closeDiag()
 				release()
@@ -160,11 +166,39 @@ func (a *app) start() {
 	}
 	// The Agents are looked for once the window is up: the login shell
 	// can take a moment.
-	var paths map[agent.Kind]string
-	a.wb.Pref("agentPaths", &paths)
-	a.reg.SetPaths(paths)
 	mygo.RunOnMain(a.show)
 	a.reg.Detect(context.Background())
+}
+
+// Older versions kept the executable chosen for each ACP Agent in a separate
+// preference. Move it into the editable launch configuration before showing it.
+func (a *app) loadAgentPaths() error {
+	var paths map[agent.Kind]string
+	if _, err := a.wb.Pref("agentPaths", &paths); err != nil {
+		return err
+	}
+	changed := false
+	for kind, path := range paths {
+		if cfg, ok := a.reg.ACPConfig(kind); ok {
+			if path != "" && cfg.Command != path {
+				cfg.Command = path
+				adapter, err := a.reg.EditACP(cfg)
+				if err != nil {
+					return err
+				}
+				a.wb.RegisterAgent(adapter)
+			}
+		} else if a.reg.Status(kind).Problem != agents.ProblemUnknown {
+			continue
+		}
+		delete(paths, kind)
+		changed = true
+	}
+	a.reg.SetPaths(paths)
+	if changed {
+		return a.wb.SetPref("agentPaths", paths)
+	}
+	return nil
 }
 
 // ready says why a message cannot go to an Agent now; the demo's is

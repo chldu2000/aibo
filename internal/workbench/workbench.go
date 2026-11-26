@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -206,8 +207,7 @@ type session struct {
 	// lastActive is when the session last did something, for idle
 	// disconnection.
 	lastActive time.Time
-	// restart is set when the native session must start again, without
-	// a revoked rule, once its turn ends.
+	// restart defers a launch configuration or rule change until the turn ends.
 	restart bool
 	// loose are approval requests whose tool call has not started, by
 	// the tool call's ID, in the order they came.
@@ -258,7 +258,7 @@ func Open(o Options) (*Workbench, error) {
 			l.SetLog(log.With("agent", string(a.Kind())))
 		}
 	}
-	w := &Workbench{log: log, st: st, agents: o.Agents, now: o.Now, budgets: settings.Budgets, idle: settings.IdleTimeout, settings: settings, ready: o.Ready, loggedOut: o.OnNotLoggedIn, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
+	w := &Workbench{log: log, st: st, agents: slices.Clone(o.Agents), now: o.Now, budgets: settings.Budgets, idle: settings.IdleTimeout, settings: settings, ready: o.Ready, loggedOut: o.OnNotLoggedIn, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
 	w.watchWorkspace = o.WatchWorkspace
 	if w.workspaces, err = st.Workspaces(); err != nil {
 		st.Close()
@@ -377,9 +377,41 @@ func (w *Workbench) RegisterAgent(a agent.Agent) {
 	if l, ok := a.(agent.LogSetter); ok {
 		l.SetLog(w.log.With("agent", string(a.Kind())))
 	}
+	w.replaceAgent(a.Kind(), a)
+}
+
+func (w *Workbench) UnregisterAgent(kind agent.Kind) { w.replaceAgent(kind, nil) }
+
+func (w *Workbench) replaceAgent(kind agent.Kind, a agent.Agent) {
+	w.mu.Lock()
 	w.agentsMu.Lock()
-	w.agents = append(w.agents, a)
+	i := slices.IndexFunc(w.agents, func(existing agent.Agent) bool { return existing.Kind() == kind })
+	switch {
+	case i >= 0 && a == nil:
+		w.agents = slices.Delete(w.agents, i, i+1)
+	case i >= 0:
+		w.agents[i] = a
+	case a != nil:
+		w.agents = append(w.agents, a)
+	}
 	w.agentsMu.Unlock()
+	var idle []agent.Session
+	if i >= 0 {
+		for id, s := range w.sessions {
+			if s.info.Agent != kind {
+				continue
+			}
+			if s.running {
+				s.restart = true
+			} else if s.native != nil {
+				idle = append(idle, w.detach(id, s))
+			}
+		}
+	}
+	w.mu.Unlock()
+	for _, n := range idle {
+		n.Close()
+	}
 	w.notify(Change{})
 }
 
@@ -449,12 +481,13 @@ func (w *Workbench) workspace(id string) (model.Workspace, bool) {
 // NewSession creates a session in a workspace with one Agent. No Agent
 // process starts until its first message is sent.
 func (w *Workbench) NewSession(workspaceID string, kind agent.Kind, modelName string) (model.Session, error) {
+	w.mu.Lock()
 	if w.agent(kind) == nil {
+		w.mu.Unlock()
 		return model.Session{}, fmt.Errorf("%s：%w", kind, ErrUnknownAgent)
 	}
 	now := w.now()
 	x := model.Session{ID: newID("s_"), WorkspaceID: workspaceID, Agent: kind, Model: modelName, CreatedAt: now, ActiveAt: now}
-	w.mu.Lock()
 	x.Mode = w.settings.DefaultModes[kind]
 	if _, ok := w.workspace(workspaceID); !ok {
 		w.mu.Unlock()

@@ -169,6 +169,7 @@ type Options struct {
 type Registry struct {
 	configMu   sync.Mutex
 	configPath string
+	configs    map[agent.Kind]ACPConfig
 	specs      []Spec
 	acp        map[agent.Kind]*acp.Agent
 	claude     *claude.Agent
@@ -201,13 +202,14 @@ func New(o Options) *Registry {
 			globDirs(filepath.Join(o.Home, ".nvm", "versions", "node", "*", "bin"))...)
 	}
 	r := &Registry{claude: claude.New(""), codex: codex.New(""), o: o, status: map[agent.Kind]*Status{}, paths: map[agent.Kind]string{},
-		specs: append([]Spec(nil), Specs...), acp: map[agent.Kind]*acp.Agent{OpenCode: acp.New(OpenCode, "OpenCode", "", []string{"acp"}, "aibo_")}}
+		specs: append([]Spec(nil), Specs...), acp: map[agent.Kind]*acp.Agent{}, configs: map[agent.Kind]ACPConfig{}}
 	for k, p := range o.Paths {
 		r.paths[k] = p
 	}
 	for _, s := range Specs {
 		r.status[s.Kind] = &Status{Spec: s, State: Checking}
 	}
+	r.applyACP(defaultOpenCode())
 	r.codex.OnAccount(r.accountChanged)
 	return r
 }
@@ -455,14 +457,25 @@ func (r *Registry) env() []string {
 
 // Check finds and checks one Agent again.
 func (r *Registry) Check(ctx context.Context, kind agent.Kind) {
-	known := r.Status(kind)
-	if known.Problem == ProblemUnknown {
+	r.mu.Lock()
+	known := r.status[kind]
+	if known == nil {
+		r.mu.Unlock()
 		return
 	}
 	spec := known.Spec
-	r.set(Status{Spec: spec, State: Checking})
+	checking := &Status{Spec: spec, State: Checking}
+	r.status[kind] = checking
+	r.mu.Unlock()
+	r.changed()
 	st := r.check(ctx, spec)
 	env := r.env()
+	r.mu.Lock()
+	// A replacement, removal or newer check invalidates this probe.
+	if r.status[kind] != checking {
+		r.mu.Unlock()
+		return
+	}
 	if st.Usable() {
 		switch kind {
 		case claude.Kind:
@@ -470,11 +483,9 @@ func (r *Registry) Check(ctx context.Context, kind agent.Kind) {
 		case codex.Kind:
 			r.codex.Configure(st.Path, env)
 		default:
-			r.mu.Lock()
 			a := r.acp[kind]
-			r.mu.Unlock()
 			a.Configure(st.Path, env)
-			if kind == OpenCode {
+			if kind == OpenCode && st.Version != "" && r.configs[kind].ToolPrefix == nil {
 				prefix := "aibo_"
 				if !older(st.Version, "2.0.0") {
 					prefix = "aibo."
@@ -483,12 +494,7 @@ func (r *Registry) Check(ctx context.Context, kind agent.Kind) {
 			}
 		}
 	}
-	r.set(st)
-}
-
-func (r *Registry) set(s Status) {
-	r.mu.Lock()
-	r.status[s.Kind] = &s
+	r.status[kind] = &st
 	r.mu.Unlock()
 	r.changed()
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -215,5 +216,76 @@ func TestAddACPPreservesExistingConfiguration(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(path); string(got) != "{" {
 		t.Fatal("overwrote invalid configuration")
+	}
+}
+
+func TestOpenCodeEditRemoveAndRestoreSurviveRestart(t *testing.T) {
+	dir := t.TempDir()
+	reopen := func() *agents.Registry {
+		t.Helper()
+		r, err := agents.Open(dir, agents.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	r := reopen()
+	cfg, _ := r.ACPConfig(agents.OpenCode)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Command, cfg.Args = exe, []string{"-test.run=^TestACPExecutable$"}
+	if _, err := r.EditACP(cfg); err != nil {
+		t.Fatal(err)
+	}
+	r = reopen()
+	r.Check(t.Context(), agents.OpenCode)
+	t.Setenv("AIBO_TEST_ACP", "1")
+	adapter := r.Agents()[2]
+	ctx, cancel := context.WithTimeout(t.Context(), 12*time.Second)
+	defer cancel()
+	session, err := adapter.Start(ctx, agent.StartOptions{Workspace: dir, ResumeID: "saved", MCP: &agent.MCPServer{URL: "http://localhost/new", Token: "fresh"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Close()
+	if err := r.RemoveACP(agents.OpenCode); err != nil {
+		t.Fatal(err)
+	}
+	r = reopen()
+	if _, ok := r.ACPConfig(agents.OpenCode); ok || len(r.Agents()) != 2 {
+		t.Fatal("deleted OpenCode returned after restart")
+	}
+	if _, err := r.RestoreOpenCode(); err != nil {
+		t.Fatal(err)
+	}
+	r = reopen()
+	got, ok := r.ACPConfig(agents.OpenCode)
+	if !ok || len(r.Agents()) != 3 || got.Command != "opencode" || !slices.Equal(got.Args, []string{"acp"}) || got.ToolPrefix != nil {
+		t.Fatalf("restored configuration = %+v", got)
+	}
+}
+
+func TestACPExternalEditIsPreserved(t *testing.T) {
+	dir := t.TempDir()
+	r, err := agents.Open(dir, agents.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := r.ACPConfig(agents.OpenCode)
+	data := []byte(`[{"id":"opencode","name":"Edited outside","command":"opencode","args":["acp"]}]`)
+	path := filepath.Join(dir, "agents.json")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.EditACP(cfg); !errors.Is(err, agents.ErrConfigChanged) {
+		t.Fatal(err)
+	}
+	if err := r.RemoveACP(cfg.ID); !errors.Is(err, agents.ErrConfigChanged) {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != string(data) {
+		t.Fatalf("external edit overwritten: %s, %v", got, err)
 	}
 }

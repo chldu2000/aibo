@@ -17,6 +17,7 @@ import (
 // settingsUI is the global settings' modal.
 type settingsUI struct {
 	addAgent *agentForm
+	agentErr string
 	open     bool
 	tab      int
 	// move is the data directory the user chose to move to, waiting for

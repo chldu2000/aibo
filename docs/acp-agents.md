@@ -2,13 +2,19 @@
 
 ## 使用 OpenCode
 
-安装 OpenCode，并在它自己的终端里确认模型可用。打开 aibo 的 Agent 设置页，检查 OpenCode 的路径和版本。Windows 默认会查找 `%USERPROFILE%\.opencode\bin\opencode.exe` 和 PATH，macOS 也会查找 `~/.opencode/bin`。如果装在别处，在设置页选择可执行文件。新建会话时选择 **OpenCode** 即可。aibo 直接运行 `opencode acp`，主程序使用 Go 实现 ACP 客户端。
+安装 OpenCode，并在它自己的终端里确认模型可用。打开 aibo 的 Agent 设置页，检查 OpenCode 的路径和版本。Windows 默认会查找 `%USERPROFILE%\.opencode\bin\opencode.exe` 和 PATH，macOS 也会查找 `~/.opencode/bin`。如果装在别处，点击 OpenCode 卡片上的 **编辑…** 选择可执行文件。新建会话时选择 **OpenCode** 即可。默认启动命令为 `opencode acp`。
 
 要把已有对话交给 OpenCode，从源会话创建会话引用并发送到 OpenCode 会话。aibo 随消息发送摘要，OpenCode 可以通过 MCP 工具读取该引用确定的消息范围。接收方只获得快照的访问权，源工作区目录不会加入它的可读目录列表。
 
 ## 登记另一个 ACP 实例
 
 打开 **设置 → Agent → 添加 Agent…**，填写显示名称、稳定的 Agent ID 和可执行文件。启动参数每行填写一个，路径中的空格会保留。若该 Agent 使用自己的 MCP 工具命名方式，可修改工具前缀。保存后 aibo 会检测可执行文件，并将新 Agent 加入新建会话菜单。配置会保存在当前数据目录的 `agents.json` 中，下次启动仍然有效。
+
+### 修改和移除
+
+在 **设置 → Agent** 中，点击 OpenCode 或自定义 Agent 卡片上的 **编辑…**，即可修改显示名称、可执行文件、启动参数和 MCP 工具前缀。参数每行一个，例如 `--config` 与含空格的配置路径应分别占一行，路径无需加引号。Agent ID 固定，旧会话仍指向同一实例。保存后，新会话和已有会话的下一轮使用新配置，正在进行的轮次可以完成。
+
+点击卡片上的 **移除…** 并确认后，该 Agent 会从新建会话菜单移除。历史消息仍可查看。要继续使用原会话，可用相同 ID 重新添加 Agent，或点击 **恢复默认 OpenCode**。恢复后的 OpenCode 使用默认命令 `opencode` 和启动参数 `acp`。续聊还需要 Agent 保有对应的原生会话数据。
 
 ### 手动编辑配置文件
 
@@ -30,13 +36,13 @@
 
 | 字段 | 含义 |
 | --- | --- |
-| `id` | 会话持久化的身份。以小写英文字母开头，后续可用小写字母、数字、下划线和连字符。每套配置需要自己的 ID。`claude`、`codex`、`opencode`、`fake` 已保留。 |
+| `id` | 会话持久化的身份。以小写英文字母开头，后续可用小写字母、数字、下划线和连字符。每套配置需要自己的 ID。`claude`、`codex`、`fake` 已保留，`opencode` 专用于修改预置 OpenCode 实例。 |
 | `name` | 工作台显示名，可以改名。 |
 | `command` | 可执行文件的名称或绝对路径。Windows 选择 `.exe`。对于脚本型 Agent，可填写本机运行时的可执行文件，将脚本绝对路径放在 `args` 中。 |
 | `args` | 启动参数数组，默认空数组。每项作为一个参数直接传入，其中的空格无需再加引号。 |
 | `toolPrefix` | 引用摘要中，Agent 在 MCP 工具名前看到的前缀。默认 `aibo_`。OpenCode 1.19.6 使用 `aibo_read_reference`，2.4.2 的 Code Mode 使用 `aibo.read_reference`。内置 OpenCode 会根据检测到的版本选择。 |
 
-移动或重装可执行文件后，保留原 `id` 并更新路径。aibo 将用原生会话 ID 请求续接，成功还需要 Agent 自己保有相应会话。临时移除登记后，已有时间线仍保存在 aibo 中。重新登记原 `id` 并恢复对应的可执行文件和原生会话数据后即可续聊。请为另一个不同的 Agent 分配新的 `id`。
+文件中没有 `opencode` 条目时，aibo 加载预置 OpenCode。在设置页移除它会保存 `{"id":"opencode","removed":true}`，重启后仍然生效。移除自定义 Agent 则直接删去对应条目。请为不同的 Agent 分配不同的 `id`。
 
 ## 兼容范围
 

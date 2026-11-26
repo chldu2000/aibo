@@ -94,7 +94,42 @@ func TestAddAgentFromSettings(t *testing.T) {
 	if err = json.Unmarshal(b, &cfg); err != nil || len(cfg) != 1 || !slices.Equal(cfg[0].Args, []string{"serve", "path with spaces"}) {
 		t.Fatalf("configuration %s, %v", b, err)
 	}
+	click(locales.EditACPLabel("Local ACP"))
+	fill(locales.AgentDisplayName(), "Local edited")
+	fill(locales.AgentArguments(), "serve\n--config\npath with spaces")
+	click(locales.Save())
+	waitText("Local edited")
+	if got, _ := r.ACPConfig("local-acp"); !slices.Equal(got.Args, []string{"serve", "--config", "path with spaces"}) {
+		t.Fatalf("edited arguments = %q", got.Args)
+	}
+	click(locales.RemoveACPLabel("Local edited"))
+	click(locales.Cancel())
 	click(locales.CloseSettings())
 	click(locales.NewSessionIn(filepath.Base(ws.Path)))
-	click(locales.NewSessionWith("Local ACP"))
+	click(locales.NewSessionWith("Local edited"))
+	tt.Key(ui.Super, ui.KeyComma)
+	frame()
+	click(locales.TabAgents())
+	click(locales.RemoveACPLabel("Local edited"))
+	click(locales.ConfirmRemoveLabel())
+	waitText(locales.AddAgent())
+	if _, exists := r.ACPConfig("local-acp"); exists || len(w.Sessions()) != 1 {
+		t.Fatal("deletion did not preserve exactly the existing conversation")
+	}
+	click(locales.EditACPLabel("OpenCode"))
+	fill(locales.AgentCommand(), exe)
+	fill(locales.AgentArguments(), "--stdio")
+	click(locales.Save())
+	waitText(locales.AddAgent())
+	if got, _ := r.ACPConfig(agents.OpenCode); !slices.Equal(got.Args, []string{"--stdio"}) || got.ToolPrefix != nil {
+		t.Fatalf("edited OpenCode configuration = %+v", got)
+	}
+	click(locales.RemoveACPLabel("OpenCode"))
+	click(locales.ConfirmRemoveLabel())
+	waitText(locales.RestoreOpenCode())
+	click(locales.RestoreOpenCode())
+	waitText("OpenCode")
+	if got, ok := r.ACPConfig(agents.OpenCode); !ok || got.Command != "opencode" || !slices.Equal(got.Args, []string{"acp"}) {
+		t.Fatalf("restored OpenCode configuration = %+v", got)
+	}
 }

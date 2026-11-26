@@ -85,8 +85,16 @@ func (s *Shell) agentSettings(c *ui.Context) {
 		s.addAgentForm(c, form)
 		return
 	}
-	if ui.Button(c, locales.AddAgent()).Clicked() {
-		s.settings.addAgent = &agentForm{prefix: agents.DefaultToolPrefix}
+	ui.Row(c).Gap(6).Wrap().Children(func() {
+		if ui.Button(c, locales.AddAgent()).Disabled(s.agentChangeBusy).Clicked() {
+			s.settings.addAgent = &agentForm{prefix: agents.DefaultToolPrefix}
+		}
+		if _, ok := r.ACPConfig(agents.OpenCode); !ok && ui.Button(c, locales.RestoreOpenCode()).Disabled(s.agentChangeBusy).Clicked() {
+			s.changeACP(nil, agents.OpenCode, r.RestoreOpenCode)
+		}
+	})
+	if s.settings.agentErr != "" {
+		ui.Text(c, s.settings.agentErr).TextColor(t.Warning)
 	}
 	for _, st := range r.Statuses() {
 		ui.Column(c).Key(string(st.Kind)).Gap(6).Padding(12).Radius(12).Background(t.Surface).Children(func() {
@@ -124,14 +132,25 @@ func (s *Shell) agentSettings(c *ui.Context) {
 				if st.State == agents.NotInstalled && st.InstallURL != "" && s.opts.OpenURL != nil && ui.Button(c, locales.InstallGuide()).Clicked() {
 					s.opts.OpenURL(st.InstallURL)
 				}
-				if s.opts.ChooseFile != nil && ui.Button(c, locales.ChoosePath()).Clicked() {
+				cfg, editable := r.ACPConfig(st.Kind)
+				if editable && ui.Button(c, locales.EditACP()).Label(locales.EditACPLabel(st.Name)).Disabled(s.agentChangeBusy).Clicked() {
+					s.settings.addAgent = editAgentForm(cfg)
+				}
+				if !editable && s.opts.ChooseFile != nil && ui.Button(c, locales.ChoosePath()).Clicked() {
 					s.choosePath(st.Kind)
 				}
-				if _, chosen := r.Paths()[st.Kind]; chosen && ui.Button(c, locales.AutoPath()).Clicked() {
+				if _, chosen := r.Paths()[st.Kind]; !editable && chosen && ui.Button(c, locales.AutoPath()).Clicked() {
 					s.setPath(st.Kind, "")
 				}
 				if ui.Button(c, locales.Recheck()).Label(locales.RecheckAgent(st.Name)).Disabled(st.State == agents.Checking).Clicked() {
 					go r.Check(context.Background(), st.Kind)
+				}
+				// Removing goes last and in the danger color, as deleting a
+				// session does.
+				if editable && ui.Button(c, locales.RemoveACP()).Label(locales.RemoveACPLabel(st.Name)).TextColor(t.Danger).Disabled(s.agentChangeBusy).Clicked() {
+					form := editAgentForm(cfg)
+					form.removing = true
+					s.settings.addAgent = form
 				}
 			})
 		})

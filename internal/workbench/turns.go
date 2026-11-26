@@ -127,7 +127,7 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 	m := model.Message{Kind: model.UserMessage, State: model.Done, Text: text, Mentions: mentions, Attachments: o.Attachments, CreatedAt: now, FinishedAt: now}
 	seq, err := w.st.AppendMessage(id, m)
 	if err != nil {
-		s.running = false
+		w.finishRun(id, s)
 		w.mu.Unlock()
 		return err
 	}
@@ -139,7 +139,7 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 	}
 	if len(drafts) > 0 {
 		if err := w.st.Deliver(m.Refs, seq); err != nil {
-			s.running = false
+			w.finishRun(id, s)
 			w.mu.Unlock()
 			return err
 		}
@@ -175,7 +175,8 @@ func (w *Workbench) startFailed(id string, err error) {
 	}
 	w.mu.Lock()
 	if s, ok := w.sessions[id]; ok {
-		s.running, s.resumeFailed, s.readOnly = false, err, false
+		w.finishRun(id, s)
+		s.resumeFailed, s.readOnly = err, false
 	}
 	w.mu.Unlock()
 	w.notify(Change{SessionID: id})
@@ -216,7 +217,8 @@ func (w *Workbench) fail(id string, step Step, err error) {
 	w.log.Warn("turn failed to start", "session", id, "step", string(step), "error", err.Error())
 	w.mu.Lock()
 	if s, ok := w.sessions[id]; ok {
-		s.running, s.err = false, &Failure{step, err}
+		w.finishRun(id, s)
+		s.err = &Failure{step, err}
 	}
 	w.mu.Unlock()
 	w.notify(Change{SessionID: id})

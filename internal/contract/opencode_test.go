@@ -13,6 +13,46 @@ import (
 	"github.com/chldu2000/aibo/internal/model"
 )
 
+// Exercise the edited launch arguments with the installed Agent without
+// sending a prompt to the model provider.
+func TestContractEditedOpenCode(t *testing.T) {
+	if os.Getenv("AIBO_CONTRACT") != "1" {
+		t.Skip("set AIBO_CONTRACT=1 to run OpenCode")
+	}
+	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+		t.Setenv(key, t.TempDir())
+	}
+	t.Setenv("OPENCODE_DISABLE_AUTOUPDATE", "1")
+	dir := t.TempDir()
+	r, err := registry.Open(dir, registry.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := r.ACPConfig(registry.OpenCode)
+	if path := os.Getenv("AIBO_OPENCODE"); path != "" {
+		cfg.Command = path
+	}
+	cfg.Args = append(cfg.Args, "--print-logs")
+	a, err := r.EditACP(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Check(t.Context(), cfg.ID)
+	st := r.Status(cfg.ID)
+	if !st.Usable() {
+		t.Fatal(st)
+	}
+	s, err := a.Start(t.Context(), agent.StartOptions{Workspace: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if ev, ok := (<-s.Events()).(agent.NativeSessionStarted); !ok || ev.ID == "" {
+		t.Fatal("missing native session after launching edited configuration")
+	}
+	t.Logf("OpenCode %s started with %v", st.Version, cfg.Args)
+}
+
 // Exercise the installed executable through the same discovery, MCP, storage,
 // approval and recovery paths as the desktop app. Use only synthetic messages.
 func TestContractOpenCode(t *testing.T) {
