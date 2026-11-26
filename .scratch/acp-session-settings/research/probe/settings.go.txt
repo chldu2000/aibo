@@ -1,0 +1,107 @@
+// Probe: record every ACP frame while switching model, effort and mode,
+// then resume the session in a new process and delete it.
+//
+// usage: probe OPENCODE WORKDIR OUT.jsonl
+package main
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+)
+
+type conn struct {
+	in  io.Writer
+	out *bufio.Scanner
+	rec *os.File
+	id  int
+}
+
+func (c *conn) write(dir string, b []byte) {
+	fmt.Fprintf(c.rec, "{\"dir\":%q,\"frame\":%s}\n", dir, strings.TrimSpace(string(b)))
+}
+
+func (c *conn) call(method string, params any) map[string]any {
+	c.id++
+	b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": c.id, "method": method, "params": params})
+	c.write("out", b)
+	c.in.Write(append(b, '\n'))
+	for c.out.Scan() {
+		line := c.out.Bytes()
+		var m map[string]any
+		json.Unmarshal(line, &m)
+		if m["method"] != nil {
+			c.write("in", line)
+			continue
+		}
+		c.write("in", line)
+		if v, ok := m["id"].(float64); ok && int(v) == c.id {
+			if m["error"] != nil {
+				fmt.Println("ERROR", method, m["error"])
+			}
+			r, _ := m["result"].(map[string]any)
+			return r
+		}
+	}
+	return nil
+}
+
+func summary(label string, r map[string]any) {
+	fmt.Print(label, ":")
+	opts, _ := r["configOptions"].([]any)
+	for _, o := range opts {
+		m := o.(map[string]any)
+		fmt.Printf(" %v=%v", m["id"], m["currentValue"])
+	}
+	fmt.Println()
+}
+
+func start(bin, dir string, rec *os.File) (*conn, *exec.Cmd) {
+	cmd := exec.Command(bin, "acp")
+	cmd.Dir = dir
+	w, _ := cmd.StdinPipe()
+	r, _ := cmd.StdoutPipe()
+	if err := cmd.Start(); err != nil {
+		panic(err)
+	}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 1<<20), 1<<24)
+	c := &conn{in: w, out: sc, rec: rec}
+	c.call("initialize", map[string]any{"protocolVersion": 1, "clientCapabilities": map[string]any{}, "clientInfo": map[string]any{"name": "probe", "version": "1"}})
+	return c, cmd
+}
+
+func main() {
+	bin, dir := os.Args[1], os.Args[2]
+	rec, _ := os.Create(os.Args[3])
+	defer rec.Close()
+	set := func(c *conn, sid any, key, value string) {
+		summary("set "+key+"="+value, c.call("session/set_config_option", map[string]any{"sessionId": sid, "configId": key, "value": value}))
+	}
+	c, cmd := start(bin, dir, rec)
+	r := c.call("session/new", map[string]any{"cwd": dir, "mcpServers": []any{}})
+	summary("new", r)
+	sid := r["sessionId"]
+	set(c, sid, "model", "opencode/deepseek-v4.1-flash-free")
+	set(c, sid, "effort", "high")
+	set(c, sid, "mode", "plan")
+	set(c, sid, "model", "opencode/mimo-v2.6-flash-free")
+	set(c, sid, "model", "opencode/deepseek-v4.1-flash-free")
+	set(c, sid, "effort", "max")
+	set(c, sid, "effort", "bogus")
+	cmd.Process.Kill()
+	cmd.Wait()
+
+	c, cmd = start(bin, dir, rec)
+	summary("resume", c.call("session/resume", map[string]any{"sessionId": sid, "cwd": dir, "mcpServers": []any{}}))
+	fmt.Println("delete:", c.call("session/delete", map[string]any{"sessionId": sid}))
+	l := c.call("session/list", map[string]any{"cwd": dir})
+	b, _ := json.Marshal(l)
+	fmt.Println("list after delete:", strings.Contains(string(b), fmt.Sprint(sid)), len(b))
+	cmd.Process.Kill()
+	cmd.Wait()
+}

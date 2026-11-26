@@ -28,10 +28,10 @@ func (s *session) finishReply() {
 }
 func (s *session) update(raw json.RawMessage, active int) {
 	var u struct {
-		SessionUpdate, MessageID string
-		Content                  struct{ Type, Text string }
-		ConfigOptions            []configOption
-		Entries                  []struct{ Content, Status string }
+		SessionUpdate, MessageID, CurrentModeID string
+		Content                                 struct{ Type, Text string }
+		ConfigOptions                           []configOption
+		Entries                                 []struct{ Content, Status string }
 	}
 	// Tool content is an array; decode its own schema below.
 	var tag struct{ SessionUpdate string }
@@ -46,11 +46,17 @@ func (s *session) update(raw json.RawMessage, active int) {
 		return
 	case "config_option_update":
 		if json.Unmarshal(raw, &u) == nil {
-			s.settings(u.ConfigOptions)
+			s.replace(u.ConfigOptions)
+			s.report()
 		}
 		return
-	case "available_commands_update", "current_mode_update", "session_info_update", "usage_update", "user_message_chunk":
-		// Commands and agent roles have no workbench equivalents. Usage, metadata
+	case "current_mode_update":
+		if json.Unmarshal(raw, &u) == nil {
+			s.modeChanged(u.CurrentModeID)
+		}
+		return
+	case "available_commands_update", "session_info_update", "usage_update", "user_message_chunk":
+		// Commands have no workbench equivalent. Usage, metadata
 		// and user echoes are not timeline messages.
 		return
 	case "plan", "agent_message_chunk", "agent_thought_chunk":

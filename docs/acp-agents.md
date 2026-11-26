@@ -65,4 +65,6 @@ $env:CGO_ENABLED = "0"
 go test ./internal/contract -run '^TestContractOpenCode$' -count=1 -v
 ```
 
+`TestContractOpenCodeSettings` 不发消息，只切换模型、推理强度和模式，再在新进程里续接，检查设置是否保留。默认使用 OpenCode 2.4.2 的免费模型 `opencode/deepseek-v4.1-flash-free`，它支持 `low` 和 `high`。可用 `AIBO_OPENCODE_EFFORT_MODEL` 指定其他模型。
+
 Windows OpenCode 2.4.2 已用工作台契约验证对话、实际读取引用、同目录双会话隔离、批准、拒绝、等待审批时中断和重启续接。另一个只提供历史回放的测试程序通过 `agents.json` 登记，覆盖 `session/load`、字符串请求 ID 和进程异常退出。该程序用于验证协议差异，其他商用或开源 Agent 仍需各自的实机验收。[Windows 协议记录](../.scratch/agent-extensibility/research/opencode-windows.md) · [macOS OpenCode 1.19.6 协议记录](../.scratch/agent-extensibility/research/opencode-local.md) · [ACP 会话协议](https://agentclientprotocol.com/protocol/v1/session-setup)

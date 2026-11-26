@@ -62,13 +62,10 @@ type capabilities struct {
 	SessionCapabilities struct{ Resume *struct{} }
 }
 
-type configOption struct {
-	ID, Category string
-	CurrentValue json.RawMessage
-}
 type sessionInfo struct {
 	SessionID     string
 	ConfigOptions []configOption
+	Modes         *legacyModes
 }
 
 func (a *Agent) Start(ctx context.Context, o agent.StartOptions) (agent.Session, error) {
@@ -146,17 +143,21 @@ func (s *session) initialize(ctx context.Context, o agent.StartOptions) error {
 		}
 		s.id = id
 		s.emit(agent.NativeSessionStarted{ID: id})
-		s.settings(info.ConfigOptions)
+		s.configure(info.ConfigOptions, info.Modes)
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("%w: %s: %w", failure, method, err)
 	}
-	if o.Model != "" || o.Effort != "" {
-		if err = s.SetModel(ctx, o.Model, o.Effort); err != nil {
-			return fmt.Errorf("%w: %w", agent.ErrStartFailed, err)
-		}
+	// Report once the session has its settings: a mode reported before
+	// would read as the Agent changing its mode itself.
+	if err = s.setModel(ctx, o.Model, o.Effort); err == nil {
+		err = s.setMode(ctx, o.Mode)
 	}
+	if err != nil {
+		return fmt.Errorf("%w: %w", agent.ErrStartFailed, err)
+	}
+	s.report()
 	return nil
 }
 
@@ -182,56 +183,6 @@ func (s *session) Send(ctx context.Context, t agent.Turn) error {
 	blocks = append(blocks, object{"type": "text", "text": msg.String()})
 	return s.prompt(ctx, blocks)
 }
-func (s *session) SetMode(context.Context, string) error {
-	return errors.New("ACP agent does not expose permission modes")
-}
 func (s *session) Compact(context.Context) error {
 	return errors.New("ACP does not expose a compaction operation")
-}
-func (s *session) SetModel(ctx context.Context, model, effort string) error {
-	s.mu.Lock()
-	key, current, original, busy := s.modelKey, s.currentModel, s.defaultModel, s.active != 0
-	s.mu.Unlock()
-	if busy {
-		return agent.ErrBusy
-	}
-	if effort != "" {
-		return errors.New("ACP adapter does not support reasoning effort")
-	}
-	if model == "" {
-		model = original
-	}
-	if current == model {
-		return nil
-	}
-	if key == "" || model == "" {
-		return errors.New("ACP agent does not expose a model selection")
-	}
-	return s.call(ctx, "session/set_config_option", object{"sessionId": s.id, "configId": key, "value": model}, func(raw json.RawMessage) error {
-		var info sessionInfo
-		if err := json.Unmarshal(raw, &info); err != nil {
-			return err
-		}
-		s.settings(info.ConfigOptions)
-		return nil
-	})
-}
-func (s *session) settings(opts []configOption) {
-	for _, opt := range opts {
-		if opt.Category != "model" && opt.ID != "model" {
-			continue
-		}
-		var value string
-		if json.Unmarshal(opt.CurrentValue, &value) != nil {
-			return
-		}
-		s.mu.Lock()
-		if s.modelKey == "" {
-			s.defaultModel = value
-		}
-		s.modelKey, s.currentModel = opt.ID, value
-		s.mu.Unlock()
-		s.emit(agent.SettingsReported{Model: value})
-		return
-	}
 }

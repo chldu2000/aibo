@@ -42,14 +42,16 @@ type session struct {
 	control        sync.Mutex // serialize outgoing turns, answers and cancellation
 
 	// The reader sets id during the handshake, before Start returns.
-	id                                   string
-	image                                bool
-	mu                                   sync.Mutex
-	next, active                         int
-	cancelling                           bool
-	requests                             map[int]request
-	pending                              map[string]permission
-	modelKey, currentModel, defaultModel string
+	id                        string
+	image                     bool
+	mu                        sync.Mutex
+	next, active              int
+	cancelling                bool
+	requests                  map[int]request
+	pending                   map[string]permission
+	options                   []configOption
+	modes                     *legacyModes
+	defaultModel, defaultMode string
 
 	// Only the reader handles streamed messages and tool state.
 	reply    string
