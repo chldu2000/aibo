@@ -1,6 +1,6 @@
 # 03: 不能删除会话的 Agent 也能预先列出模型和模式
 
-Status: ready-for-agent
+Status: resolved
 
 **Blocked by:** 02
 
@@ -12,13 +12,25 @@ Status: ready-for-agent
 - 只调 `session/new` 时，`cli-config.json` 写入 `selectedModel` 等字段，值就是会话的当前模型（原来的选择），等于没变。
 - **探测时换模型会改全局设置**：每换一次，`selectedModel` 和 `modelSelectionHistory` 都变。所以轻探测不能像 OpenCode 那样逐个模型切换去读推理强度。
 
-- [ ] `acp.Agent` 加一个开关，表示“不能删除，但空会话不留痕迹”；`agents` 只为 Cursor 打开
-- [ ] 打开时，`ready` 的后台探测只 `session/new`，`learn` 记下模型和模式列表，然后结束进程；不调 `set_config_option`
-- [ ] 推理强度仍然从真实会话学：只知道探测会话当前模型的推理强度，其他模型的在用户切到它们时补上（02 之前就有的 `record` 合并逻辑）
-- [ ] 超时：实测 `session/new` 8–25 秒，`catalog.go` 的探测超时 2 分钟够用；网络不稳时会失败，沿用“下次再试”
-- [ ] 测试：假 ACP Agent 加一种 `options-ephemeral`（不报告 `delete`），确认探测只发 `session/new`，列表可用，`changed` 回调一次
-- [ ] 契约测试（`AIBO_CONTRACT=1`，04 一起做）：探测前后 `session/list` 都为空，`cli-config.json` 的 `selectedModel` 不变
+- [x] `acp.Agent` 加一个开关，表示“不能删除，但空会话不留痕迹”；`agents` 只为 Cursor 打开
+- [x] 打开时，`ready` 的后台探测只 `session/new`，`learn` 记下模型和模式列表，然后结束进程；不调 `set_config_option`
+- [x] 推理强度仍然从真实会话学：只知道探测会话当前模型的推理强度，其他模型的在用户切到它们时补上（02 之前就有的 `record` 合并逻辑）
+- [x] 超时：实测 `session/new` 8–25 秒，`catalog.go` 的探测超时 2 分钟够用；网络不稳时会失败，沿用“下次再试”
+- [x] 测试：假 ACP Agent 加一种 `options-ephemeral`（不报告 `delete`），确认探测只发 `session/new`，列表可用，`changed` 回调一次
+- [x] 契约测试（`AIBO_CONTRACT=1`，04 一起做）：探测前后 `session/list` 都为空，`cli-config.json` 的 `selectedModel` 不变
 
 ## 不做
 
 为了推理强度去探测时切换模型。会改用户的全局设置，代价比菜单里暂时没有推理强度大。
+
+## 实现说明
+
+- `internal/agent/acp/catalog.go`：
+  - `Agent.SetProbeWithoutDelete(on)`：Agent 不能删除会话、但不保留没发过消息的会话。打开后，`probeLists` 在握手报告没有 `delete` 时不再返回 `errNoProbe`，而是只 `session/new`，由 `configure` → `learn` 记下列表，结束进程；不逐个设置模型，也不 `session/delete`。能删除的 Agent 照旧逐个模型探测再删除。
+  - `forget` 不清这个开关（它属于 Agent，不属于某个程序路径）。
+- `internal/agents/config.go`：`builtinACP.undeleted`，只有 Cursor 打开；`applyACP` 设置到适配器。
+- 推理强度：探测只知道 Cursor 当前模型的（新安装是 Auto，没有推理强度）；其他模型的由切到它们的会话补上，沿用 `record` 的合并。
+- 测试：`TestProbeWithoutDelete`（`internal/agent/acp/catalog_test.go`）用已有的 `options-nodelete` 假 Agent 打开开关，没有另加 `options-ephemeral`：探测只发 `session/new`，模型和模式列表可用，`changed` 一次；之后在 m0 上的会话补上 m0 的推理强度。原有的 `TestListsLearnedFromSessions` 确认不打开开关时仍不探测。
+- 用本机 Cursor 2026.11.22 临时验证过：探测 27 秒，49 个模型、3 个模式；之后新进程里 `session/list` 为空；`cli-config.json` 写入了 Auto（`selectedModel`、`model` 等字段，`hasChangedDefaultModel` 仍为 `false`），即原来的默认，已恢复备份。
+- 契约测试里的“探测前后 `session/list` 都为空，`selectedModel` 不变”放在 05。
+- 文档：`docs/acp-agents.md` 的 Cursor 一节改为说明这种探测，兼容范围表注明 Cursor 例外。

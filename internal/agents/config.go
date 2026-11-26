@@ -43,6 +43,9 @@ type builtinACP struct {
 	modes map[string]ModeConfig
 	// meta is what aibo tells it in clientCapabilities._meta.
 	meta map[string]any
+	// undeleted: it cannot delete sessions, but keeps none that got no
+	// prompt, so its lists can be probed for (acp.SetProbeWithoutDelete).
+	undeleted bool
 }
 
 var builtinACPs = []builtinACP{
@@ -50,8 +53,10 @@ var builtinACPs = []builtinACP{
 	// The Cursor CLI's models are bare IDs, their effort an option of its
 	// own, only when the client asks for its parameterized picker; else
 	// each model is one value with its parameters fixed in brackets.
+	// It has no session/delete; a session without a prompt is gone from
+	// session/list once its process ends (2026.11.22).
 	{config: ACPConfig{ID: Cursor, Name: "Cursor", Command: cursorCommand, Args: []string{"acp"}}, modes: cursorModes,
-		meta: map[string]any{"parameterizedModelPicker": true}},
+		meta: map[string]any{"parameterizedModelPicker": true}, undeleted: true},
 }
 
 func builtin(id agent.Kind) (builtinACP, bool) {
@@ -223,6 +228,7 @@ func (r *Registry) applyACP(c ACPConfig) agent.Agent {
 	a := acp.New(c.ID, c.Name, "", c.Args, prefix)
 	a.SetModeTags(c.modeTags())
 	a.SetClientMeta(b.meta)
+	a.SetProbeWithoutDelete(b.undeleted)
 	r.acp[c.ID] = a
 	return a
 }

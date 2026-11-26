@@ -140,6 +140,41 @@ func TestListsLearnedFromSessions(t *testing.T) {
 	}
 }
 
+// An Agent that cannot delete, but keeps no session without a prompt, is
+// probed by starting a session alone: no model is set (the Cursor CLI
+// keeps each choice for the user's own sessions), none deleted.
+func TestProbeWithoutDelete(t *testing.T) {
+	a, requests, changed := fakeACP(t, "options-nodelete")
+	a.SetProbeWithoutDelete(true)
+	ms, err := a.Models(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := modelsText(ms); !slices.Equal(got, []string{"m2:M2:low,high,default:default", "m0:M0::", "m1:M1::"}) {
+		t.Errorf("models %q", got)
+	}
+	modes, _ := a.PermissionModes(t.Context())
+	if got := modesText(modes); !slices.Equal(got, []string{"build:BUILD:default", "plan:PLAN"}) {
+		t.Errorf("modes %q", got)
+	}
+	if got := requests(); !slices.Equal(got, []string{"session/new"}) {
+		t.Errorf("requests %q", got)
+	}
+	if n := changed.Load(); n != 1 {
+		t.Errorf("said its lists changed %d times", n)
+	}
+	// The other models' efforts come from the sessions on them.
+	s, err := a.Start(t.Context(), agent.StartOptions{Workspace: t.TempDir(), Model: "m0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ms, _ = a.Models(t.Context())
+	if got := modelsText(ms); !slices.Equal(got, []string{"m2:M2:low,high,default:default", "m0:M0:low,high,default:default", "m1:M1::"}) {
+		t.Errorf("after a session on m0, models %q", got)
+	}
+}
+
 // A resumed session tells the modes, but not which is the default.
 func TestResumedSessionKeepsDefault(t *testing.T) {
 	a := New("x", "X", "", nil, "")

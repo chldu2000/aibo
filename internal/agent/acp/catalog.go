@@ -19,7 +19,9 @@ import (
 // a session is on, so the Agent learns them: from a probe session, walked
 // through every model and then deleted, when the Agent can delete
 // sessions; and from every session it runs. A probe is not run for an
-// Agent that cannot delete it, which would keep it in its history.
+// Agent that cannot delete it, which would keep it in its history, unless
+// the Agent keeps no session that got no prompt (SetProbeWithoutDelete):
+// then the probe reads what session/new tells, changing no setting.
 
 // errNoProbe: the Agent cannot delete a probe session.
 var errNoProbe = errors.New("ACP agent cannot delete sessions")
@@ -35,7 +37,10 @@ type catalog struct {
 	probe    chan struct{}
 	probeErr error
 	noProbe  bool
-	changed  func()
+	// undeleted is set for an Agent that keeps no session without a
+	// prompt: a probe needs no session/delete (SetProbeWithoutDelete).
+	undeleted bool
+	changed   func()
 	// gen counts forget: a probe of an earlier program records nothing.
 	gen int
 	// tags label the modes, from the Agent's configuration.
@@ -48,6 +53,21 @@ func (a *Agent) OnListsChanged(changed func()) {
 	a.lists.mu.Lock()
 	a.lists.changed = changed
 	a.lists.mu.Unlock()
+}
+
+// SetProbeWithoutDelete says the Agent keeps no session that got no
+// prompt, as the Cursor CLI, which cannot delete sessions: its probe only
+// starts a session and reads the lists, without walking the models (each
+// a change of setting the Cursor CLI keeps for the user's own sessions)
+// or deleting it. The efforts of the models it was not on come from the
+// sessions that use them.
+func (a *Agent) SetProbeWithoutDelete(on bool) {
+	a.lists.mu.Lock()
+	defer a.lists.mu.Unlock()
+	a.lists.undeleted = on
+	if on {
+		a.lists.noProbe = false
+	}
 }
 
 // TellsModels is false once the Agent is known to offer no model choice.
@@ -154,8 +174,13 @@ func (a *Agent) ready(ctx context.Context) error {
 }
 
 // probeLists starts a session in an empty directory, without MCP, sets
-// each model in turn for its efforts, and deletes the session.
+// each model in turn for its efforts, and deletes the session; for an
+// Agent that cannot delete it but keeps no session without a prompt, it
+// only starts it.
 func (a *Agent) probeLists(gen int) error {
+	a.lists.mu.Lock()
+	undeleted := a.lists.undeleted
+	a.lists.mu.Unlock()
 	dir, err := os.MkdirTemp("", "aibo-acp-probe-")
 	if err != nil {
 		return err
@@ -173,7 +198,8 @@ func (a *Agent) probeLists(gen int) error {
 	if err != nil {
 		return err
 	}
-	if caps.SessionCapabilities.Delete == nil {
+	deletes := caps.SessionCapabilities.Delete != nil
+	if !deletes && !undeleted {
 		return errNoProbe
 	}
 	// One notice once the probe is done, rather than one per model.
@@ -203,7 +229,7 @@ func (a *Agent) probeLists(gen int) error {
 	s.mu.Lock()
 	opts := s.options
 	s.mu.Unlock()
-	if o, ok := option(opts, categoryModel); ok {
+	if o, ok := option(opts, categoryModel); ok && deletes {
 		first := o.current()
 		for _, c := range o.choices() {
 			if c.Value == first {
@@ -214,8 +240,10 @@ func (a *Agent) probeLists(gen int) error {
 			}
 		}
 	}
-	if err := s.call(ctx, "session/delete", object{"sessionId": s.id}, nil); err != nil {
-		s.log.Warn("ACP probe session not deleted", "error", err)
+	if deletes {
+		if err := s.call(ctx, "session/delete", object{"sessionId": s.id}, nil); err != nil {
+			s.log.Warn("ACP probe session not deleted", "error", err)
+		}
 	}
 	a.lists.mu.Lock()
 	changed := a.lists.changed
