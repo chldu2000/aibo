@@ -79,6 +79,9 @@ func (a *Agent) Start(ctx context.Context, o agent.StartOptions) (agent.Session,
 		return nil, err
 	}
 	s.learn = a.learn
+	a.lists.mu.Lock()
+	s.preferMode = a.lists.configuredDefault()
+	a.lists.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	if err = s.initialize(ctx, o); err != nil {

@@ -322,6 +322,7 @@
   "agentFieldInput": "Enter {field}",
   "agentIDHint": "Start the ID with a lowercase letter. Use only lowercase letters, digits, hyphens and underscores.",
   "agentIDInUse": "This ID is in use or reserved. Choose another ID.",
+  "agentModesInvalid": "The modes in agents.json are invalid. Each mode needs an ID, its risk must be safe, caution or danger, and an Agent can have only one default mode.",
   "agentNameRequired": "Enter a display name.",
   "agentCommand": "Executable",
   "agentCommandHint": "Enter an executable name or absolute path.",

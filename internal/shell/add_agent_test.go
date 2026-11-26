@@ -133,3 +133,70 @@ func TestAddAgentFromSettings(t *testing.T) {
 		t.Fatalf("restored OpenCode configuration = %+v", got)
 	}
 }
+
+// Editing an Agent in the settings keeps the mode labels that only
+// agents.json holds.
+func TestEditKeepsModeLabels(t *testing.T) {
+	dir := t.TempDir()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, _ := json.Marshal(exe)
+	seed := `[{"id":"labelled","name":"Labelled","command":` + string(command) + `,"modes":{"bypassPermissions":{"risk":"danger"}}}]`
+	if err := os.WriteFile(filepath.Join(dir, "agents.json"), []byte(seed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := agents.Open(dir, agents.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := workbench.Open(workbench.Options{DataDir: dir, Agents: r.Agents(), Ready: r.Ready})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	tt := ui.NewTester(shell.New(w, shell.Options{Agents: r}).View, 1100, 850)
+	frame := func() {
+		for range 3 {
+			tt.Frame()
+		}
+	}
+	click := func(label string) {
+		t.Helper()
+		if err := tt.Click(label); err != nil {
+			t.Fatalf("%s: %v; %v", label, err, tt.Texts())
+		}
+		frame()
+	}
+	frame()
+	tt.Key(ui.Super, ui.KeyComma)
+	frame()
+	click(locales.TabAgents())
+	click(locales.EditACPLabel("Labelled"))
+	click(locales.AgentFieldInput(locales.AgentDisplayName()))
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("Renamed")
+	frame()
+	click(locales.Save())
+	deadline := time.Now().Add(4 * time.Second)
+	for {
+		got, _ := r.ACPConfig("labelled")
+		if got.Name == "Renamed" {
+			if got.Modes["bypassPermissions"].Risk != "danger" {
+				t.Fatalf("modes after editing = %+v", got.Modes)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("never saved: %+v", got)
+		}
+		time.Sleep(5 * time.Millisecond)
+		frame()
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "agents.json"))
+	var saved []agents.ACPConfig
+	if err := json.Unmarshal(b, &saved); err != nil || len(saved) != 1 || saved[0].Modes["bypassPermissions"].Risk != "danger" {
+		t.Fatalf("agents.json = %s, %v", b, err)
+	}
+}

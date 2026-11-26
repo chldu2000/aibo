@@ -150,6 +150,10 @@ func TestContractOpenCodeLists(t *testing.T) {
 	var ids []string
 	for _, x := range modes {
 		ids = append(ids, x.ID)
+		// The built-in labels (agents.openCodeModes).
+		if x.ID == "plan" && (x.Risk != agent.Safe || !x.ReadOnly) || x.ID == "build" && (x.Risk != agent.Caution || !x.Default) {
+			t.Errorf("mode %+v", x)
+		}
 	}
 	if !slices.Contains(ids, "build") || !slices.Contains(ids, "plan") {
 		t.Errorf("modes %q", ids)

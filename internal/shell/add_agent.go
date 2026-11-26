@@ -114,6 +114,7 @@ func (s *Shell) saveAgent(f *agentForm) {
 	}
 	if orig := f.original; orig != nil {
 		cfg.ID = orig.ID
+		cfg.Modes = orig.Modes // labelled in agents.json only
 		if f.args == strings.Join(orig.Args, "\n") {
 			cfg.Args = orig.Args
 		}

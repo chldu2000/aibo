@@ -32,3 +32,11 @@ Agent 自己切换了模式（例如 Claude 的计划被批准后离开 plan）�
 - 旧数据迁移：`ask`、`edits`、`auto` 按 Agent 换成各家的模式 ID。Codex 的 `ask` 和 `edits` 原来就是同一种设置，都换成 Ask for approval。
 - 新会话没设默认模式时，用 Agent 标为默认的模式：Claude Code 是 Manual，就是它自己的默认；Codex 是 Ask for approval，也就是 aibo 一直用的设置。不用 Codex 自己的默认：它随项目是否受信任而不同（未受信任的目录是 Read only），升级后同样的操作会突然改不了文件（用户决定，2026-11-22）。
 - 跨工作区的只读限制、“本会话内始终允许”的规则和模式无关，照旧。
+
+## 补充（2026-11-26）：ACP Agent
+
+通过 ACP 接入的 Agent，会话模式（`configOptions` 里 category 为 `mode` 的配置项，或旧接口的 `modes`）同样作为权限模式显示，名字和说明用 Agent 的原文。例如 OpenCode 的 `build`、`plan`：它们是 OpenCode 的内置 Agent 角色，实际权限由 `opencode.json` 决定，但 Claude Code 的 `plan` 本来就在权限模式里，选择方式也一样，不另设“Agent 角色”的概念。
+
+ACP 不报告风险和只读，aibo 也不按模式名字推断（不同 Agent 的同名模式含义可能不同）。风险、只读和默认模式来自 Agent 配置（`agents.json` 的 `modes`）；没有标注的模式按 Caution、非只读处理。预置 OpenCode 自带 `plan`（Safe、只读）和 `build`（Caution、默认）的标注。
+
+不选的做法：只显示配置里标注过的模式。这样更保守，但每接一个 Agent 都要先写配置才能切换模式（用户决定，2026-11-26）。代价是标注之前，危险的模式按 Caution 显示，切换前不会再确认；`docs/acp-agents.md` 提醒用户为这类模式加标注。

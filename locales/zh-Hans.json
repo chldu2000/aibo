@@ -251,6 +251,7 @@
   "agentFieldInput": "填写{field}",
   "agentIDHint": "ID 以小写英文字母开头，只能包含小写字母、数字、连字符和下划线。",
   "agentIDInUse": "这个 ID 已使用或已保留，请换一个 ID。",
+  "agentModesInvalid": "agents.json 里的 modes 无效：每个模式都要有 ID，risk 只能是 safe、caution 或 danger，每个 Agent 最多一个默认模式。",
   "agentNameRequired": "请输入显示名称。",
   "agentCommand": "可执行文件",
   "agentCommandHint": "请输入可执行文件名或绝对路径。",

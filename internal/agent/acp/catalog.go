@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"reflect"
 	"slices"
@@ -37,6 +38,8 @@ type catalog struct {
 	changed  func()
 	// gen counts forget: a probe of an earlier program records nothing.
 	gen int
+	// tags label the modes, from the Agent's configuration.
+	tags map[string]ModeTag
 }
 
 // OnListsChanged is called back after a session teaches the Agent other
@@ -70,8 +73,10 @@ func (a *Agent) Models(ctx context.Context) ([]agent.Model, error) {
 	return out, nil
 }
 
-// PermissionModes are the Agent's session modes. ACP tells no risk: each
-// is Caution, and none read-only. Default is the mode of a new session.
+// PermissionModes are the Agent's session modes. ACP tells no risk: the
+// configuration's tags do (SetModeTags), and a mode without one is
+// Caution, not read-only. Default is the one the tags name, else the mode
+// of a new session.
 func (a *Agent) PermissionModes(ctx context.Context) ([]agent.PermissionMode, error) {
 	if err := a.ready(ctx); err != nil {
 		return nil, err
@@ -79,8 +84,15 @@ func (a *Agent) PermissionModes(ctx context.Context) ([]agent.PermissionMode, er
 	a.lists.mu.Lock()
 	defer a.lists.mu.Unlock()
 	out := slices.Clone(a.lists.modes)
+	def := a.lists.defaultMode
+	if d := a.lists.configuredDefault(); d != "" && slices.ContainsFunc(out, func(m agent.PermissionMode) bool { return m.ID == d }) {
+		def = d
+	}
 	for i := range out {
-		out[i].Default = out[i].ID == a.lists.defaultMode
+		if t, ok := a.lists.tags[out[i].ID]; ok {
+			out[i].Risk, out[i].ReadOnly = t.Risk, t.ReadOnly
+		}
+		out[i].Default = out[i].ID == def
 	}
 	return out, nil
 }
@@ -309,4 +321,32 @@ func mode(id, name, description string) agent.PermissionMode {
 		name = id
 	}
 	return agent.PermissionMode{ID: id, Name: name, Description: description, Risk: agent.Caution}
+}
+
+// ModeTag is what the Agent's configuration says of one of its modes,
+// which ACP does not tell: how risky it is, whether it changes no files,
+// and whether it is the mode of a new session.
+type ModeTag struct {
+	Risk     agent.Risk
+	ReadOnly bool
+	Default  bool
+}
+
+// SetModeTags labels the Agent's modes by ID. A mode without a tag is
+// Caution, not read-only.
+func (a *Agent) SetModeTags(tags map[string]ModeTag) {
+	a.lists.mu.Lock()
+	defer a.lists.mu.Unlock()
+	a.lists.tags = maps.Clone(tags)
+}
+
+// configuredDefault is the mode the configuration makes the default, if
+// any.
+func (c *catalog) configuredDefault() string {
+	for id, t := range c.tags {
+		if t.Default {
+			return id
+		}
+	}
+	return ""
 }

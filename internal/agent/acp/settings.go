@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/chldu2000/aibo/internal/agent"
 )
@@ -105,6 +106,12 @@ func (s *session) configure(opts []configOption, modes *legacyModes, fresh bool)
 		s.defaultMode = o.current()
 	} else if modes != nil {
 		s.defaultMode = modes.CurrentModeID
+	}
+	if p := s.preferMode; p != "" {
+		o, ok := option(opts, categoryMode)
+		if ok && o.offers(p) || !ok && modes != nil && slices.ContainsFunc(modes.AvailableModes, func(m struct{ ID, Name, Description string }) bool { return m.ID == p }) {
+			s.defaultMode = p
+		}
 	}
 	var seen *legacyModes
 	if modes != nil {

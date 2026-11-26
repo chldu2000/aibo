@@ -191,3 +191,39 @@ func TestProbeFailsThenRetries(t *testing.T) {
 		t.Fatalf("after the fix: %v, %+v", err, ms)
 	}
 }
+
+// The configuration labels modes; one without a label is Caution. Its
+// default is the mode a session with none starts in.
+func TestModeTags(t *testing.T) {
+	a, requests, _ := fakeACP(t, "options")
+	a.SetModeTags(map[string]ModeTag{"plan": {Risk: agent.Safe, ReadOnly: true, Default: true}, "gone": {Risk: agent.Danger}})
+	modes, err := a.PermissionModes(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(modes) != 2 || modes[0].ID != "build" || modes[0].Risk != agent.Caution || modes[0].ReadOnly || modes[0].Default ||
+		modes[1].ID != "plan" || modes[1].Risk != agent.Safe || !modes[1].ReadOnly || !modes[1].Default {
+		t.Fatalf("modes %+v", modes)
+	}
+	s, err := a.Start(t.Context(), agent.StartOptions{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if got := reports(s); !slices.Contains(got, "mode=plan") || slices.Contains(got, "mode=build") {
+		t.Errorf("a session with no mode reported %q", got)
+	}
+	if err := s.SetMode(t.Context(), "build"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMode(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := reports(s); !slices.Equal(got[len(got)-1:], []string{"mode=plan"}) {
+		t.Errorf("back to the default, reported %q", got)
+	}
+	got := requests()
+	if !slices.Equal(got[len(got)-4:], []string{"session/new", "mode=plan", "mode=build", "mode=plan"}) {
+		t.Errorf("requests %q", got)
+	}
+}

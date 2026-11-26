@@ -2554,6 +2554,16 @@ func (msgs Messages) AgentIDInUse() string {
 	return Catalog.Format(msgs.locale, "agentIDInUse", nil)
 }
 
+// AgentModesInvalid says "The modes in agents.json are invalid. Each mode needs an ID, its risk must be safe, caution or danger, and an Agent c…"
+// in the language the app shows.
+func AgentModesInvalid() string { return In(i18n.Locale()).AgentModesInvalid() }
+
+// AgentModesInvalid says "The modes in agents.json are invalid. Each mode needs an ID, its risk must be safe, caution or danger, and an Agent c…"
+// in the language of msgs.
+func (msgs Messages) AgentModesInvalid() string {
+	return Catalog.Format(msgs.locale, "agentModesInvalid", nil)
+}
+
 // AgentNameRequired says "Enter a display name."
 // in the language the app shows.
 func AgentNameRequired() string { return In(i18n.Locale()).AgentNameRequired() }

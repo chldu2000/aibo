@@ -25,7 +25,10 @@ type ACPConfig struct {
 	Command    string     `json:"command,omitempty"`
 	Args       []string   `json:"args,omitempty"`
 	ToolPrefix *string    `json:"toolPrefix,omitempty"`
-	Removed    bool       `json:"removed,omitempty"`
+	// Modes label the Agent's modes by ID (ModeConfig); nil for OpenCode
+	// is its built-in labels.
+	Modes   map[string]ModeConfig `json:"modes,omitempty"`
+	Removed bool                  `json:"removed,omitempty"`
 }
 
 var configID = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
@@ -61,7 +64,7 @@ func (c ACPConfig) validate() error {
 	if strings.TrimSpace(c.Command) == "" || (!filepath.IsAbs(c.Command) && (filepath.Base(c.Command) != c.Command || c.Command == "." || c.Command == "..")) {
 		return ErrInvalidCommand
 	}
-	return nil
+	return validateModes(c.Modes)
 }
 
 // Open adds the explicitly configured ACP instances from the aibo data
@@ -115,6 +118,7 @@ func (r *Registry) ACPConfig(id agent.Kind) (ACPConfig, bool) {
 	defer r.mu.Unlock()
 	c, ok := r.configs[id]
 	c.Args = slices.Clone(c.Args)
+	c.Modes = cloneModes(c.Modes)
 	if c.ToolPrefix != nil {
 		p := *c.ToolPrefix
 		c.ToolPrefix = &p
@@ -158,9 +162,11 @@ func (r *Registry) applyACP(c ACPConfig) agent.Agent {
 		p := *c.ToolPrefix
 		c.ToolPrefix = &p
 	}
+	c.Modes = cloneModes(c.Modes)
 	r.configs[c.ID] = c
 	r.status[c.ID] = &Status{Spec: spec, State: Checking}
 	a := acp.New(c.ID, c.Name, "", c.Args, prefix)
+	a.SetModeTags(c.modeTags())
 	r.acp[c.ID] = a
 	return a
 }
@@ -262,5 +268,5 @@ func (c ACPConfig) equal(other ACPConfig) bool {
 	p, q := c.ToolPrefix, other.ToolPrefix
 	return c.ID == other.ID && c.Name == other.Name && c.Command == other.Command &&
 		c.Removed == other.Removed && slices.Equal(c.Args, other.Args) &&
-		(p == q || p != nil && q != nil && *p == *q)
+		(p == q || p != nil && q != nil && *p == *q) && equalModes(c.Modes, other.Modes)
 }

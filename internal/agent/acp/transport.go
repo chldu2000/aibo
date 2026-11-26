@@ -52,6 +52,9 @@ type session struct {
 	options                   []configOption
 	modes                     *legacyModes
 	defaultModel, defaultMode string
+	// preferMode is the configuration's default mode (ModeTag), which an
+	// empty mode asks for in place of the Agent's own when it offers it.
+	preferMode string
 	// learn passes the settings a session sees to its Agent (Agent.learn).
 	learn func(opts []configOption, modes *legacyModes, fresh bool)
 
