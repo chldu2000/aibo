@@ -32,6 +32,7 @@ var iconFallbacks = map[string]*ui.SVG{
 	"arrow.down.right.and.arrow.up.left": glyph(`<path d="M3 3l7 7m0-5v5H5m16 11-7-7m5 0h-5v5"/>`),
 	"arrow.turn.down.right":              glyph(`<path d="M5 3v8a4 4 0 0 0 4 4h11m-5-5 5 5-5 5"/>`),
 	"arrow.triangle.branch":              glyph(`<circle cx="6" cy="5" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v12m12-10c0 5-12 3-12 9"/>`),
+	"arrow.down":                         glyph(`<path d="M12 4v16m-7-7 7 7 7-7"/>`),
 	"arrow.up":                           glyph(`<path d="M12 20V4m-7 7 7-7 7 7"/>`),
 	"arrowshape.turn.up.right":           glyph(`<path d="M21 10 13 3v4C6 7 3 12 3 20c3-5 6-7 10-7v4Z"/>`),
 	"at":                                 glyph(`<circle cx="11" cy="12" r="4"/><path d="M15 8v6c0 4 6 2 6-3a9 9 0 1 0-5 9"/>`),

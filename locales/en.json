@@ -252,6 +252,8 @@
     }
   },
   "noSessionsFound": "No sessions found",
+  "jumpToEnd": "Jump to the latest (⌘↓)",
+  "newBelow": "New messages below: jump to the latest (⌘↓)",
   "searching": "Searching…",
   "searchMore": "{count} more not shown. Narrow the search to find them.",
   "@searchMore": {

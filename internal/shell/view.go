@@ -189,6 +189,7 @@ func (s *Shell) pane(c *ui.Context) {
 				s.composer(c, x, v)
 			}
 		})
+		s.jumpToEnd(c, v, s.wb.Status(x.ID).Running, rail+24, bottomRoom(v.composerHeight)-8)
 		if h := composer.Bounds().H; h != v.composerHeight {
 			// The messages take the new room in the next frame.
 			v.composerHeight = h

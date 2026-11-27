@@ -1928,6 +1928,26 @@ func (msgs Messages) NoSessionsFound() string {
 	return Catalog.Format(msgs.locale, "noSessionsFound", nil)
 }
 
+// JumpToEnd says "Jump to the latest (⌘↓)"
+// in the language the app shows.
+func JumpToEnd() string { return In(i18n.Locale()).JumpToEnd() }
+
+// JumpToEnd says "Jump to the latest (⌘↓)"
+// in the language of msgs.
+func (msgs Messages) JumpToEnd() string {
+	return Catalog.Format(msgs.locale, "jumpToEnd", nil)
+}
+
+// NewBelow says "New messages below: jump to the latest (⌘↓)"
+// in the language the app shows.
+func NewBelow() string { return In(i18n.Locale()).NewBelow() }
+
+// NewBelow says "New messages below: jump to the latest (⌘↓)"
+// in the language of msgs.
+func (msgs Messages) NewBelow() string {
+	return Catalog.Format(msgs.locale, "newBelow", nil)
+}
+
 // Searching says "Searching…"
 // in the language the app shows.
 func Searching() string { return In(i18n.Locale()).Searching() }

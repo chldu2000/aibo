@@ -156,6 +156,9 @@ type sessionView struct {
 	// composerHeight is how tall the composer and what floats above it were
 	// last frame, which the messages leave room for under their last.
 	composerHeight float32
+	// follow is what the view knows of the messages' end, for the button
+	// back to it.
+	follow follow
 }
 
 // New returns the shell of wb.
