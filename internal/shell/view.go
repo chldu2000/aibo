@@ -30,6 +30,9 @@ func (s *Shell) View(c *ui.Context) {
 		s.deleteDialog(c)
 		return
 	}
+	if micaSidebar(c) {
+		c.Root().Background(ui.Transparent)
+	}
 	s.settingsModal(c)
 	root := ui.Split(c, &s.split, func() {
 		s.sidebar(c)

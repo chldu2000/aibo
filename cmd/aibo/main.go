@@ -459,10 +459,16 @@ func (a *app) openWindow(sessionID string) {
 
 func newShellWindow(sh *shell.Shell, title string, width, height int) *mygo.Window {
 	const customControls = runtime.GOOS == "windows"
+	// Mica behind the sidebar on Windows; the sidebar material on macOS,
+	// where Mica would be the material under the window.
+	vibrancy := mygo.VibrancySidebar
+	if runtime.GOOS == "windows" {
+		vibrancy = mygo.VibrancyMica
+	}
 	w := mygo.NewWindow(mygo.WindowOptions{
 		Title: title, Width: width, Height: height,
 		TitleBarStyle: mygo.TitleBarHiddenInset, HideWindowButtons: customControls,
-		Transparent: true, Vibrancy: mygo.VibrancySidebar,
+		Transparent: true, Vibrancy: vibrancy,
 		Content: ui.View(sh.View),
 	})
 	if customControls {

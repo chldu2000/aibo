@@ -1,6 +1,8 @@
 package shell
 
 import (
+	"runtime"
+
 	"github.com/chldu2000/aibo/locales"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -19,44 +21,55 @@ type sidebarUI struct {
 	deleting           string
 }
 
-// sidebar is the floating Liquid Glass sidebar: search, the workspaces
-// with their sessions, and the archived ones. Fill ignores margins, so
-// the gap around the glass is the outer box's padding.
+// sidebar is the sidebar, from edge to edge of the window: search, the
+// workspaces with their sessions, and the archived ones. Where the window
+// shows Mica (micaSidebar) it draws nothing under them; elsewhere it is
+// Liquid Glass.
 func (s *Shell) sidebar(c *ui.Context) {
 	t := c.Theme()
-	ui.Box(c).Fill().Padding(8).Children(func() {
-		ui.Column(c).Fill().Radius(16).Material(glass.Glass{Native: true}).Children(func() {
-			// The header, from under the traffic lights, moves the window;
-			// its search and buttons take their own presses.
-			ui.Column(c).Gap(6).Padding(max(c.TitleBar().Bottom+6, 10), 10, 4).DragWindow().Children(func() {
-				ui.Row(c).Padding(0, 6, 4).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "aibo").Bold().FontSize(15).TextColor(t.Text)
-					ui.Spacer(c)
-					if iconButton(c, "folder.badge.plus", locales.AddWorkspace()).Clicked() {
-						s.addWorkspace()
-					}
-				})
-				ui.TextInput(c, &s.side.query).Placeholder(locales.SearchSessions()).Label(locales.SearchSessions())
-			})
-			ui.Scroll(c).Grow(1).Children(func() {
-				ui.Column(c).Gap(2).Padding(4, 10, 10).Children(func() {
-					if s.side.query != "" {
-						s.searchResults(c)
-					} else {
-						s.workspaceGroups(c)
-					}
-				})
-			})
-			ui.Row(c).Padding(8, 10).AlignItems(ui.Center).Children(func() {
-				if iconButton(c, "gearshape", locales.SettingsButton()).Clicked() {
-					s.openSettings()
-				}
+	side := ui.Column(c).Fill()
+	if !micaSidebar(c) {
+		side.Material(glass.Glass{Native: true})
+	}
+	side.Children(func() {
+		// The header, from under the traffic lights, moves the window;
+		// its search and buttons take their own presses.
+		ui.Column(c).Gap(6).Padding(max(c.TitleBar().Bottom+6, 10), 10, 4).DragWindow().Children(func() {
+			ui.Row(c).Padding(0, 6, 4).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "aibo").Bold().FontSize(15).TextColor(t.Text)
 				ui.Spacer(c)
+				if iconButton(c, "folder.badge.plus", locales.AddWorkspace()).Clicked() {
+					s.addWorkspace()
+				}
 			})
+			ui.TextInput(c, &s.side.query).Placeholder(locales.SearchSessions()).Label(locales.SearchSessions())
+		})
+		ui.Scroll(c).Grow(1).Children(func() {
+			ui.Column(c).Gap(2).Padding(4, 10, 10).Children(func() {
+				if s.side.query != "" {
+					s.searchResults(c)
+				} else {
+					s.workspaceGroups(c)
+				}
+			})
+		})
+		ui.Row(c).Padding(8, 10).AlignItems(ui.Center).Children(func() {
+			if iconButton(c, "gearshape", locales.SettingsButton()).Clicked() {
+				s.openSettings()
+			}
+			ui.Spacer(c)
 		})
 	})
 	s.renameDialog(c)
 	s.deleteDialog(c)
+}
+
+// micaSidebar reports whether the sidebar shows the window's Mica: on
+// Windows 11 22H2 and later, where DWM draws it behind the window, under
+// a root without a background. Glass would not show it: its shader
+// samples only what the frame painted.
+func micaSidebar(c *ui.Context) bool {
+	return runtime.GOOS == "windows" && c.Vibrancy()
 }
 
 func (s *Shell) workspaceGroups(c *ui.Context) {
