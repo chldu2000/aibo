@@ -2242,16 +2242,34 @@ func (msgs Messages) NewSessionChoose() string {
 	return Catalog.Format(msgs.locale, "newSessionChoose", nil)
 }
 
-// NewSessionWithIn says "New {agent} session in {workspace}"
+// FilterWorkspaces says "Filter workspaces"
 // in the language the app shows.
-func NewSessionWithIn(agent string, workspace string) string {
-	return In(i18n.Locale()).NewSessionWithIn(agent, workspace)
+func FilterWorkspaces() string { return In(i18n.Locale()).FilterWorkspaces() }
+
+// FilterWorkspaces says "Filter workspaces"
+// in the language of msgs.
+func (msgs Messages) FilterWorkspaces() string {
+	return Catalog.Format(msgs.locale, "filterWorkspaces", nil)
 }
 
-// NewSessionWithIn says "New {agent} session in {workspace}"
+// PickWorkspace says "Choose the workspace {name}"
+// in the language the app shows.
+func PickWorkspace(name string) string { return In(i18n.Locale()).PickWorkspace(name) }
+
+// PickWorkspace says "Choose the workspace {name}"
 // in the language of msgs.
-func (msgs Messages) NewSessionWithIn(agent string, workspace string) string {
-	return Catalog.Format(msgs.locale, "newSessionWithIn", map[string]any{"agent": agent, "workspace": workspace})
+func (msgs Messages) PickWorkspace(name string) string {
+	return Catalog.Format(msgs.locale, "pickWorkspace", map[string]any{"name": name})
+}
+
+// NoWorkspaceMatches says "No workspace matches"
+// in the language the app shows.
+func NoWorkspaceMatches() string { return In(i18n.Locale()).NoWorkspaceMatches() }
+
+// NoWorkspaceMatches says "No workspace matches"
+// in the language of msgs.
+func (msgs Messages) NoWorkspaceMatches() string {
+	return Catalog.Format(msgs.locale, "noWorkspaceMatches", nil)
 }
 
 // AgentUnusable says "{agent} cannot start a session now: {why}"

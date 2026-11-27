@@ -59,27 +59,50 @@ func TestNewSessionShortcut(t *testing.T) {
 		t.Errorf("the new session's composer does not have the focus")
 	}
 
-	// ⇧⌘N asks, each workspace with its Agents.
+	// ⇧⌘N asks: the workspaces on the left, the open session's chosen;
+	// the chosen one's Agents on the right.
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyN)
 	frame(tt)
-	choice := "在 " + filepath.Base(one.Path) + " 用 Alpha 新建"
-	if !tt.HasText(choice) || !tt.HasText("在 "+filepath.Base(two.Path)+" 用 Beta 新建") {
-		t.Fatalf("no choices: %q", tt.Texts())
+	pickOne, pickTwo := "选择工作区 "+filepath.Base(one.Path), "选择工作区 "+filepath.Base(two.Path)
+	if !tt.HasText(pickOne) || !tt.HasText(pickTwo) || tt.HasText(one.Path) {
+		t.Fatalf("the open session's workspace is not chosen: %q", tt.Texts())
 	}
-	click(t, tt, choice)
+	if !tt.HasText("用 Alpha 新建会话") || !tt.HasText("用 Beta 新建会话") {
+		t.Fatalf("no Agents: %q", tt.Texts())
+	}
+	// The filter narrows the workspaces, and the one left is chosen.
+	tt.Type(filepath.Base(one.Path))
+	frame(tt)
+	if tt.HasText(pickTwo) || !tt.HasText(one.Path) {
+		t.Errorf("the filter does not narrow: %q", tt.Texts())
+	}
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Key(0, ui.KeyBackspace)
+	frame(tt)
+	click(t, tt, pickOne)
+	click(t, tt, "用 Alpha 新建会话")
 	all = wb.Sessions()
 	if len(all) != count+2 {
 		t.Fatalf("choosing made %d sessions", len(all)-count-1)
 	}
-	if tt.HasText(choice) {
-		t.Error("the choices stay")
+	var made model.Session
+	for _, y := range all {
+		if !before[y.ID] && y.ID != newest.ID {
+			made = y
+		}
+	}
+	if made.WorkspaceID != one.ID || made.Agent != "alpha" {
+		t.Errorf("chose a %s session in %s, want alpha in %s", made.Agent, made.WorkspaceID, one.ID)
+	}
+	if tt.HasText(pickOne) {
+		t.Error("the dialog stays")
 	}
 	keys := "Ctrl+Shift+N"
 	if runtime.GOOS == "darwin" {
 		keys = "⇧⌘N"
 	}
 	click(t, tt, "选择工作区和 Agent 新建（"+keys+"）")
-	if !tt.HasText(choice) {
+	if !tt.HasText(pickOne) {
 		t.Errorf("the button does not ask: %q", tt.Texts())
 	}
 }
