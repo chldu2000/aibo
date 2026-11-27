@@ -51,6 +51,8 @@ func (s *Shell) reply(c *ui.Context, v *sessionView, m model.Message) {
 	}
 	switch {
 	case m.Text == "":
+	case m.CommandOutput:
+		commandOutput(c, m)
 	case m.State == model.Streaming:
 		markdown.Stream(c, m.Text, &s.md)
 	default:

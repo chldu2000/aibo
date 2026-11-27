@@ -160,3 +160,82 @@ func TestCommandPanel(t *testing.T) {
 		t.Errorf("sent: %+v", turns)
 	}
 }
+
+// The timeline shows a command a message invoked as its chip, what a
+// command printed as its output, a command that said nothing, and the
+// context the Agent cleared. A command given no choice opens the menu of
+// its control.
+func TestCommandTimeline(t *testing.T) {
+	f := fake.New(func(_ context.Context, _ agent.StartOptions, turn agent.Turn, emit func(agent.Event)) {
+		if turn.Command == nil {
+			return
+		}
+		switch turn.Command.Name {
+		case "context":
+			emit(agent.ReplyDone{ReplyID: "out", Text: "Context: 12k tokens", CommandOutput: true})
+		case "clear":
+			emit(agent.ContextReset{})
+			emit(agent.NativeSessionStarted{ID: "after-clear"})
+		}
+	})
+	f.SetCommands([]agent.Command{
+		{Name: "context", Description: "Show the context", Builtin: true},
+		{Name: "init", Description: "Write AGENTS.md", Builtin: true},
+		{Name: "clear", Description: "Clear the context", Builtin: true, Handling: agent.ByReset},
+		{Name: "permissions", Description: "Choose the mode", Builtin: true, Handling: agent.ByMode},
+	}, false)
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{f}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	ws, _ := wb.AddWorkspace(t.TempDir())
+	x, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	wb.CommandList(x.ID, workbench.ModelSource{}, workbench.LoadCommands)
+	for wb.CommandList(x.ID, workbench.ModelSource{}, workbench.PeekCommands).Loading {
+		time.Sleep(5 * time.Millisecond)
+	}
+	for _, o := range []workbench.Outgoing{{Command: "context"}, {Command: "init", Text: "for Go"}, {Command: "clear"}} {
+		if err := wb.SendMessage(x.ID, o); err != nil {
+			t.Fatal(err)
+		}
+		for wb.Status(x.ID).Running {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1100, 800)
+	frame := func() {
+		for i := 0; i < 3; i++ {
+			tt.Frame()
+			tt.Advance(time.Second)
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	frame()
+	for _, want := range []string{"命令 /context", "/context", "命令输出", "Context: 12k tokens", "命令 /init", "for Go", "命令已执行，没有输出", "命令 /clear", "上下文已重置：Agent 换了新的原生会话"} {
+		if !tt.HasText(want) {
+			if _, ok := tt.Find(want); !ok {
+				t.Errorf("the timeline lacks %q: %q", want, tt.Texts())
+			}
+		}
+	}
+	if p := os.Getenv("AIBO_SCREENSHOT"); p != "" {
+		saveImage(t, tt.Image(), filepath.Join(p, "12-timeline.png"))
+	}
+
+	// "/permissions" with no mode: its menu opens.
+	if err := tt.Click("给 假 Agent 发消息"); err != nil {
+		t.Fatal(err)
+	}
+	frame()
+	tt.Type("/permissions ")
+	frame()
+	tt.Key(0, ui.KeyEnter)
+	frame()
+	if !tt.HasText("假 Agent 的权限模式") {
+		t.Errorf("no mode menu: %q", tt.Texts())
+	}
+	if _, ok := tt.Find("移除命令 /permissions"); ok {
+		t.Error("the chip stayed")
+	}
+}

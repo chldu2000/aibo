@@ -231,7 +231,10 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 					if len(m.Attachments) > 0 {
 						s.sentAttachments(c, m)
 					}
-					if m.Text != "" {
+					switch {
+					case m.Command != nil:
+						sentCommand(c, m)
+					case m.Text != "":
 						ui.Text(c, m.Text).Selectable().TextColor(t.Text).Padding(8, 12).Radius(12).Background(t.Surface)
 					}
 				case model.ToolCall:
@@ -547,9 +550,14 @@ func (s *Shell) reveal(sessionID string, from, to int) {
 }
 
 // divider shows a marker as a line across the session: where the Agent
-// compacted its context, or a new native session took over.
+// compacted its context, or a new native session took over. A command
+// that said nothing is a line of its own, under its message.
 func divider(c *ui.Context, mk model.Marker) {
 	t := c.Theme()
+	if mk.Kind == model.CommandRan {
+		ui.Text(c, locales.CommandRan()).FontSize(11).TextColor(t.TextMuted).Padding(0, 0, 0, 58)
+		return
+	}
 	text := locales.NewNativeSession()
 	if mk.Kind == model.Compaction {
 		text = locales.CompactedAuto()

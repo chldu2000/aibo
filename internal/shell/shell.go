@@ -309,6 +309,15 @@ func (s *Shell) send(id string, text string) bool {
 		}
 	}
 	if err := s.wb.SendMessage(id, o); err != nil {
+		var pick *workbench.PickError
+		if errors.As(err, &pick) {
+			// Chosen with the control instead: its menu opens.
+			s.openControl(id, pick.Control)
+			if v := s.views[id]; v != nil {
+				v.command = nil
+			}
+			return true
+		}
 		// A native session that cannot be resumed has its own banner.
 		if !errors.Is(err, agent.ErrResumeFailed) && !errors.Is(err, workbench.ErrNeedsRecovery) && !errors.Is(err, agents.ErrNotLoggedIn) {
 			s.notice = s.say(err)

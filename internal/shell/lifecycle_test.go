@@ -146,5 +146,5 @@ func TestResumeFailureBanner(t *testing.T) {
 	if tt.HasText("原生会话无法续接") {
 		t.Errorf("the banner stayed: %q", tt.Texts())
 	}
-	shows("已切换到新的 Agent 原生会话", "本会话 · #1–#2（2 条）", "给 假 Agent 发消息")
+	shows("上下文已重置：Agent 换了新的原生会话", "本会话 · #1–#2（2 条）", "给 假 Agent 发消息")
 }

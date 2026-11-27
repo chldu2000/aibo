@@ -710,6 +710,36 @@ func (msgs Messages) RemoveCommand(name string) string {
 	return Catalog.Format(msgs.locale, "removeCommand", map[string]any{"name": name})
 }
 
+// SentCommand says "Command /{name}"
+// in the language the app shows.
+func SentCommand(name string) string { return In(i18n.Locale()).SentCommand(name) }
+
+// SentCommand says "Command /{name}"
+// in the language of msgs.
+func (msgs Messages) SentCommand(name string) string {
+	return Catalog.Format(msgs.locale, "sentCommand", map[string]any{"name": name})
+}
+
+// CommandOutput says "Command output"
+// in the language the app shows.
+func CommandOutput() string { return In(i18n.Locale()).CommandOutput() }
+
+// CommandOutput says "Command output"
+// in the language of msgs.
+func (msgs Messages) CommandOutput() string {
+	return Catalog.Format(msgs.locale, "commandOutput", nil)
+}
+
+// CommandRan says "The command ran, and said nothing"
+// in the language the app shows.
+func CommandRan() string { return In(i18n.Locale()).CommandRan() }
+
+// CommandRan says "The command ran, and said nothing"
+// in the language of msgs.
+func (msgs Messages) CommandRan() string {
+	return Catalog.Format(msgs.locale, "commandRan", nil)
+}
+
 // ErrNothingToCompact says "The session is empty: there is nothing to compact."
 // in the language the app shows.
 func ErrNothingToCompact() string { return In(i18n.Locale()).ErrNothingToCompact() }
@@ -1526,11 +1556,11 @@ func (msgs Messages) ShowInSource() string {
 	return Catalog.Format(msgs.locale, "showInSource", nil)
 }
 
-// NewNativeSession says "Switched to a new native session of the Agent"
+// NewNativeSession says "Context reset: the Agent is on a new native session"
 // in the language the app shows.
 func NewNativeSession() string { return In(i18n.Locale()).NewNativeSession() }
 
-// NewNativeSession says "Switched to a new native session of the Agent"
+// NewNativeSession says "Context reset: the Agent is on a new native session"
 // in the language of msgs.
 func (msgs Messages) NewNativeSession() string {
 	return Catalog.Format(msgs.locale, "newNativeSession", nil)

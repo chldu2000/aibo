@@ -1,7 +1,7 @@
 # 时间线显示命令，以及改走控件时打开菜单
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 06, 07
 
 ## What to build
@@ -16,6 +16,21 @@ Blocked by: 06, 07
 
 ## Acceptance criteria
 
-- [ ] MyGO Tester 覆盖：时间线上的 chip 和悬停说明；命令输出的样式；“命令已执行”那一行；不带参数的 `/model` 打开模型菜单。
-- [ ] 旧消息（没有命令字段）显示不变。
-- [ ] 两种语言的冒烟测试通过。
+- [x] MyGO Tester 覆盖：时间线上的 chip 和悬停说明；命令输出的样式；“命令已执行”那一行；不带参数的 `/model` 打开模型菜单。
+- [x] 旧消息（没有命令字段）显示不变。
+- [x] 两种语言的冒烟测试通过。
+
+## 实现说明
+
+- 带命令快照的用户消息：气泡里先是命令 chip（`/名字`，悬停显示快照里的说明），后面跟着参数（`sentCommand`）。chip 的 Label 是“命令 /名字”。
+- 带 `CommandOutput` 的回复：加框，上方一行“命令输出”，正文用等宽浅色字（`commandOutput`）。回复本来就不显示模型名。
+- `CommandRan` 标记：消息下方一行“命令已执行，没有输出”，不画分隔线。
+- 重置标记两种情形都适用（`Recover` 换了新的原生会话，以及 Agent 自己清空上下文），措辞改成“上下文已重置：Agent 换了新的原生会话”（英文 “Context reset: the Agent is on a new native session”）。
+- 收到 `PickError` 时打开对应的菜单：模型命令打开模型菜单，推理强度命令打开推理强度菜单，权限命令打开权限模式菜单。同时清掉 chip 和草稿，因为接下来要在菜单里选。
+- 截图看过（`TestCommandTimeline` 可以用 `AIBO_SCREENSHOT` 保存截图）。
+
+### 没有验证
+
+- 推理强度菜单是直接改状态打开的，测试只覆盖了权限模式菜单。
+- 没有在真机上点过。
+- `Menlo` 字体在 Windows 上会回退到别的字体，没有逐一检查效果。

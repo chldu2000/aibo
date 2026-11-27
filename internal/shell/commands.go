@@ -254,3 +254,49 @@ func (s *Shell) commandChip(c *ui.Context, v *sessionView) {
 		}
 	})
 }
+
+// openControl opens the menu of the control a command given no choice
+// names (workbench.PickError).
+func (s *Shell) openControl(id string, control agent.Handling) {
+	x, ok := s.wb.Session(id)
+	if !ok {
+		return
+	}
+	switch control {
+	case agent.ByMode:
+		s.modeMenu = modeState{open: true}
+	case agent.ByEffort:
+		s.modelsOf(x.Agent, workbench.LoadModels)
+		s.modelMenu.models, s.modelMenu.efforts = false, true
+	default:
+		s.modelsOf(x.Agent, workbench.LoadModels)
+		s.modelMenu = modelState{models: true, chosen: -1, reveal: true}
+	}
+}
+
+// sentCommand shows the command a user message invoked, with what it
+// was said to do as it was sent, and the words after it.
+func sentCommand(c *ui.Context, m model.Message) {
+	t := c.Theme()
+	ui.Row(c).Gap(8).Padding(8, 12).Radius(12).Background(t.Surface).AlignItems(ui.Start).Children(func() {
+		chip := ui.Row(c).Padding(1, 6).Radius(6).BorderWidth(1).BorderColor(t.Accent).Label(locales.SentCommand(m.Command.Name)).Children(func() {
+			ui.Text(c, "/"+m.Command.Name).Font("Menlo").FontSize(12).Bold().TextColor(t.Accent).NoWrap()
+		})
+		if m.Command.Description != "" {
+			chip.Tooltip(m.Command.Description)
+		}
+		if m.Text != "" {
+			ui.Text(c, m.Text).Selectable().TextColor(t.Text).Grow(1).Shrink(1).MinWidth(0)
+		}
+	})
+}
+
+// commandOutput shows what an Agent command printed: not the model's
+// words.
+func commandOutput(c *ui.Context, m model.Message) {
+	t := c.Theme()
+	ui.Column(c).Gap(4).Padding(8, 12).Radius(10).BorderWidth(1).BorderColor(t.Border).Children(func() {
+		ui.Text(c, locales.CommandOutput()).FontSize(11).Bold().TextColor(t.TextMuted)
+		ui.Text(c, m.Text).Font("Menlo").FontSize(12).TextColor(t.TextMuted).Selectable()
+	})
+}
