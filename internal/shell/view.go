@@ -186,12 +186,13 @@ func (s *Shell) pane(c *ui.Context) {
 			for _, a := range s.wb.LooseApprovals(x.ID) {
 				s.approvalCard(c, x.ID, &a)
 			}
+			// The composer, as the selection bar in its place, is as wide as
+			// the messages at most, under them.
 			if v.sel.on {
 				s.pull = pull{}
-				s.selectionBar(c, x, v)
+				ui.Row(c).Justify(ui.Center).Children(func() { s.selectionBar(c, x, v) })
 			} else {
 				s.badges(c, x, v)
-				// The composer is as wide as the messages at most, under them.
 				ui.Row(c).Justify(ui.Center).Children(func() { s.composer(c, x, v) })
 			}
 		})

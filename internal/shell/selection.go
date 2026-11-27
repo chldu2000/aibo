@@ -141,7 +141,7 @@ func (s *Shell) selectionBar(c *ui.Context, x model.Session, v *sessionView) {
 		}
 	}
 	n := sel.chosen.Len()
-	ui.Column(c).Gap(8).Padding(10, 12).Radius(18).Material(glass.Glass{}).Children(func() {
+	ui.Column(c).Gap(8).Padding(10, 12).Radius(18).Grow(1).MaxWidth(streamWidth).Material(glass.Glass{}).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if n == 0 {
 				ui.Text(c, locales.SelectHint()).TextColor(t.TextMuted)

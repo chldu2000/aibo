@@ -121,6 +121,17 @@ func TestComposerWidth(t *testing.T) {
 		t.Errorf("the composer's field starts at %v, the messages at %v", field.X, reply.X)
 	}
 
+	// So is the selection bar in its place.
+	click(t, tt, "选择消息以引用或复制")
+	hint, send := find("点击消息设起点，Shift+点击扩展，也可以拖选"), find("发给…")
+	if d := hint.X - reply.X; d < 0 || d > 20 {
+		t.Errorf("the selection bar starts at %v, the messages at %v", hint.X, reply.X)
+	}
+	if send.X+send.W > reply.X+828 {
+		t.Errorf("the selection bar runs to %v, past the messages (to %v)", send.X+send.W, reply.X+828)
+	}
+	click(t, tt, "取消")
+
 	tt.SetSize(700, 800)
 	frame(tt)
 	if field := find(prompt); field.W < 700-32-60 {
