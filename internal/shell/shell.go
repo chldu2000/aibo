@@ -168,6 +168,9 @@ type sessionView struct {
 	// hover is the message the pointer was over last frame, by its seq,
 	// which shows its number then; 0 when none.
 	hover int
+	// listWidth is how wide the messages' list was last frame, which centers
+	// them in it.
+	listWidth float32
 	// bannersOpen shows all the notices above the composer, past two.
 	bannersOpen bool
 	// follow is what the view knows of the messages' end, for the button

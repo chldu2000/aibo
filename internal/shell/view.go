@@ -243,7 +243,7 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 	if gutter {
 		indent += gutterWidth + 10
 	}
-	return ui.List(c, &v.list, n, func(i int) {
+	list := ui.List(c, &v.list, n, func(i int) {
 		if i >= len(rows) {
 			s.working(c, x, st, indent)
 			return
@@ -321,11 +321,41 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 			v.hover = 0
 			c.After(0)
 		}
-	}).Padding(76, 20, bottomRoom(v.composerHeight)).Gap(10).Children(func() {
+	}).Padding(76, streamRight(v.listWidth), bottomRoom(v.composerHeight), streamLeft(v.listWidth, gutter)).Gap(10).Children(func() {
 		if len(v.msgs) == 0 {
 			ui.Text(c, locales.StartConversation()).TextColor(t.TextMuted).Margin(ui.Auto)
 		}
 	})
+	// The messages center in the next frame, as the list's width changed.
+	if w := list.Bounds().W; w != v.listWidth {
+		v.listWidth = w
+		c.After(0)
+	}
+	return list
+}
+
+// streamWidth is how wide the messages run at most: their text, and the
+// padding of their rows.
+const streamWidth = 820 + 8
+
+// streamRight is the room right of the messages in a list wide: as much
+// as centers them, at least 20.
+func streamRight(wide float32) float32 {
+	if wide <= 0 {
+		return 20
+	}
+	return max(20, (wide-streamWidth)/2)
+}
+
+// streamLeft is the room left of them. The numbers' column, while it
+// shows, takes from it, so the messages stay where they are while there
+// is room for it.
+func streamLeft(wide float32, gutter bool) float32 {
+	left := streamRight(wide)
+	if gutter {
+		left = max(20, left-(gutterWidth+10))
+	}
+	return left
 }
 
 // banners are notices above the composer, in tinted glass: first those

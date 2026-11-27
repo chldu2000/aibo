@@ -66,14 +66,36 @@ func TestSeqGutter(t *testing.T) {
 	frame(tt)
 	numbers(false)
 
-	// Choosing a range, all show in their column.
+	// Choosing a range, all show in their column, left of the messages,
+	// which stay where they are while the window has room for it.
 	click(t, tt, "选择消息以引用或复制")
 	numbers(true)
-	if x := left(); x < bare+40 {
-		t.Errorf("the column takes no room: %v, bare %v", x, bare)
+	if x := left(); x != bare {
+		t.Errorf("the messages moved from %v to %v", bare, x)
 	}
+	if r, _ := tt.Find("#2"); r.X+r.W > bare {
+		t.Errorf("the number (to %v) is not left of the message (from %v)", r.X+r.W, bare)
+	}
+	// Narrow, it takes room from the messages.
+	tt.SetSize(640, 800)
+	frame(tt)
+	narrow := left()
 	click(t, tt, "取消")
+	if x := left(); narrow < x+40 {
+		t.Errorf("in a narrow window the column takes no room: %v, bare %v", narrow, x)
+	}
+	tt.SetSize(1100, 800)
+	frame(tt)
 	numbers(false)
+
+	// The messages center: a window 400 wider moves them 200.
+	tt.SetSize(1500, 800)
+	frame(tt)
+	if x := left(); x < bare+196 || x > bare+204 {
+		t.Errorf("400 wider, the messages moved from %v to %v, want about %v", bare, x, bare+200)
+	}
+	tt.SetSize(1100, 800)
+	frame(tt)
 
 	// Esc leaves the targets first, then selection mode.
 	click(t, tt, "选择消息以引用或复制")
