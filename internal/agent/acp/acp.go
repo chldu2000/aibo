@@ -124,6 +124,7 @@ func (a *Agent) Start(ctx context.Context, o agent.StartOptions) (agent.Session,
 		s.Close()
 		return nil, err
 	}
+	s.awaitCommands()
 	return s, nil
 }
 
@@ -210,6 +211,10 @@ func (s *session) initialize(ctx context.Context, o agent.StartOptions) error {
 		}
 		s.id = id
 		s.emit(agent.NativeSessionStarted{ID: id})
+		if s.early != nil && s.earlyID == id {
+			s.tellCommands(s.early)
+		}
+		s.early = nil
 		s.configure(info.ConfigOptions, info.Modes, o.ResumeID == "")
 		return nil
 	})
@@ -242,12 +247,18 @@ func (s *session) Send(ctx context.Context, t agent.Turn) error {
 		blocks = append(blocks, object{"type": "image", "mimeType": im.MIME, "data": base64.StdEncoding.EncodeToString(data)})
 	}
 	var msg strings.Builder
-	msg.WriteString(t.Text)
+	msg.WriteString(commandText(t))
 	for _, f := range t.Files {
 		msg.WriteString("\n")
 		msg.WriteString(f.Name())
 	}
-	blocks = append(blocks, object{"type": "text", "text": msg.String()})
+	text := object{"type": "text", "text": msg.String()}
+	if t.Command != nil {
+		// The command starts the prompt, for the Agent to know it.
+		blocks = append([]object{text}, blocks...)
+	} else {
+		blocks = append(blocks, text)
+	}
 	return s.prompt(ctx, blocks)
 }
 func (s *session) Compact(context.Context) error {

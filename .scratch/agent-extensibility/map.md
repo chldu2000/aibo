@@ -18,10 +18,9 @@ Label: wayfinder:map
 ## Decisions so far
 
 - [OpenCode 在本机能完成哪些会话操作](issues/01-opencode-local.md) — 1.19.6 的会话操作都能完成，引用快照边界成立；共用进程无法隔离会话的 MCP，须每会话一个进程；续接用 `session/resume`，它不回放历史且采用新的 MCP 参数。
+- [ACP Agent 的命令怎样接入](issues/06-acp-agent-commands.md) — Agent 报告的命令全部交给它执行，不做白名单（ADR 0009）；清单只能从会话里取，5 秒内没报告就当作没有；`session/new` 应答之前到达的清单先缓存；Cursor 实测会执行 `/名字`。
 
 ## Not yet specified
-
-- [ACP Agent 的命令怎样接入](issues/06-acp-agent-commands.md)：协议上由 Agent 一侧适配器筛选命令（Zed 不做白名单），建议全部交给 Agent；另发现 `session/new` 应答之前到达的 `session/update` 会被丢掉。
 
 只支持回放式续接的测试程序已覆盖配置登记、取消、退出和 `session/load`。另一款真实产品能否通过同一组模型与引用场景，仍需单独验收。[配置测试](../../internal/agents/config_test.go)
 

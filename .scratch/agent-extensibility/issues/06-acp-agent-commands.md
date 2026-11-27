@@ -2,7 +2,7 @@
 
 Type: task
 Label: wayfinder:task
-Status: open
+Status: resolved
 
 ## Question
 
@@ -48,10 +48,35 @@ Claude Code 和 Codex 的 Agent 命令已经可以调用（[调用 Agent 命令]
 
 ## 验收
 
-- [ ] 契约测试（Cursor 和 OpenCode 各一）：
+- [x] 契约测试（Cursor；本机没装 OpenCode，没有跑）：
   - 清单能进 `/` 面板；
   - `/名字 参数` 被 Agent 当作命令执行，而不是普通文字。这一点目前只有规范依据，要实测；
   - 本地命令没有输出时，显示“命令已执行，没有输出”。
-- [ ] 回放测试覆盖 `session/new` 应答之前就到达的 `available_commands_update`。
-- [ ] 记一条 ADR：ACP Agent 的命令全部交给 Agent，不做白名单。
-- [ ] 规格回填进 [调用 Agent 命令](../../agent-commands/spec.md)，或者单独写一份规格。
+- [x] 回放测试覆盖 `session/new` 应答之前就到达的 `available_commands_update`。
+- [x] 记一条 ADR：ACP Agent 的命令全部交给 Agent，不做白名单。
+- [x] 规格回填进 [调用 Agent 命令](../../agent-commands/spec.md)，或者单独写一份规格。
+
+## Answer
+
+按“建议的做法”1–4 实现了；第 5 条（按名字隐藏命令）先不做；第 6 条的限制保留。[ADR 0009](../../../docs/adr/0009-acp-agents-rule-on-their-own-commands.md) 记下了这个决定。
+
+- **`internal/agent/acp/commands.go`**：
+  - `available_commands_update` 转成 `CommandsChanged`，`input.hint` 填进参数提示；没有名字或重名的条目去掉；处理方式一律为“交给 Agent”。
+  - `Agent.Commands` 返回 `ErrCommandsFromSession`，工作台会提前启动会话的进程来取清单。
+  - 会话启动后 5 秒内 Agent 没报告清单，就先报告一份空清单，免得工作台一直等。之后清单到了会替换它；空清单不会排在真清单后面（同一把锁）。
+  - 发送：`/名字 参数` 放在文字块的开头，带命令时文字块排在图片前面。
+- **早到的清单**：会话还没有 ID 时，只缓存最后一条 `available_commands_update`，等 `session/new` 的应答带来会话 ID 后再报告。其他早到的通知照旧丢掉，因为 `session/load` 在应答之前回放的历史要挡在外面。
+- **测试**：
+  - 假 ACP Agent 的 `commands` 类型会在 `session/new` 应答之前推送清单，测试覆盖了缓存和发送；
+  - 也覆盖了 5 秒的空清单兜底、兜底之后清单到达，以及 Cursor 抓取数据的解析。
+- **契约测试**（2026-11-27，Cursor CLI 2026.11.22）：`TestContractCursorCommands` 通过：
+  - 清单有 75 条，项目命令 `.cursor/commands/probe-hello.md` 在里面；
+  - 发出 `/probe-hello` 后，回复里有命令文件里写的暗号，说明 Cursor 确实执行了命令，没有把它当作文字交给模型；
+  - Cursor 原有的两个契约测试也都通过。
+- **文档**：`docs/acp-agents.md` 的兼容范围表加了“Agent 命令”一行，验证一节写了新的契约测试。
+
+### 没有验证
+
+- 本机没装 OpenCode，它的命令没有跑契约测试。
+- 只报告空清单、之后才报告真清单的 Agent，打开面板时会先显示“没有匹配的命令”，等下一次刷新才看到真清单。没有用真实的 Agent 测过。
+- `-race`：本机没有 gcc，跑不了。

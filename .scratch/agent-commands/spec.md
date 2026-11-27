@@ -173,7 +173,7 @@ Status: ready-for-agent
 - 参数补全；Codex 一条消息带多个 skill；`context_usage`、`usage_report` 等结构化附件的专门渲染。
 - Agent 自己发起轮次的命令（Claude 的 `loop`、`goal`，Codex 的 `goal`）、分叉会话（Codex `fork`）、Codex 的 plan 协作模式：先拦下，等工作台支持了再改裁定。
 - MCP 提供的 prompts。
-- ACP Agent 的命令接入（`available_commands_update`）：属于“接入第三个及后续 Agent”那张地图，本规格只保证命令模型能容纳它。
+- ACP Agent 的命令接入（`available_commands_update`）：属于“接入第三个及后续 Agent”那张地图，本规格只保证命令模型能容纳它。后来已按那边的 issue 06 实现：命令全部交给 Agent（ADR 0009）。
 - 读取 Agent 磁盘上的会话记录来拿展开后的提示词（ADR 0001）。
 - 扫描 `.claude/`、`~/.codex/` 等目录来发现命令。
 

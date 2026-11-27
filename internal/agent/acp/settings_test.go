@@ -341,11 +341,23 @@ func fakeAgent(kind, logPath string) {
 				enc.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32000, "message": "Authentication required"}})
 				continue
 			}
+			if strings.Contains(kind, "commands") {
+				// Told before session/new answers, as some Agents do.
+				enc.Encode(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "s1", "update": map[string]any{
+					"sessionUpdate":     "available_commands_update",
+					"availableCommands": []map[string]any{{"name": "web", "description": "Search the web", "input": map[string]any{"hint": "query"}}, {"name": "init", "description": "Write AGENTS.md"}},
+				}}})
+			}
 			if legacy {
 				reply(map[string]any{"sessionId": "s1", "modes": map[string]any{"currentModeId": mode, "availableModes": []map[string]string{{"id": "code", "name": "Code"}, {"id": "architect", "name": "Architect"}}}}, "")
 			} else {
 				reply(map[string]any{"sessionId": "s1", "configOptions": opts()}, "")
 			}
+		case "session/prompt":
+			if p := os.Getenv("AIBO_ACP_PROMPT"); p != "" {
+				os.WriteFile(p, sc.Bytes(), 0o600)
+			}
+			reply(map[string]any{"stopReason": "end_turn"}, "")
 		case "session/delete":
 			fmt.Fprintln(logf, "session/delete")
 			reply(map[string]any{}, "")

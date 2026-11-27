@@ -37,9 +37,15 @@ type session struct {
 	log            *slog.Logger
 	events         chan agent.Event
 	stopping, done chan struct{}
-	closeOnce      sync.Once
-	writeLock      chan struct{}
-	control        sync.Mutex // serialize outgoing turns, answers and cancellation
+	// commands notes that the Agent told its commands; early is an
+	// available_commands_update that came before the session had its ID,
+	// and earlyID the session it is of.
+	commands  commandsTold
+	early     json.RawMessage
+	earlyID   string
+	closeOnce sync.Once
+	writeLock chan struct{}
+	control   sync.Mutex // serialize outgoing turns, answers and cancellation
 
 	// clientMeta is what the handshake tells the Agent in
 	// clientCapabilities._meta (Agent.SetClientMeta).
@@ -91,7 +97,7 @@ func launch(cmd *exec.Cmd, log *slog.Logger) (*session, error) {
 	}
 	s := &session{
 		cmd: cmd, stdin: in, stdout: out, log: log.With("pid", cmd.Process.Pid),
-		events: make(chan agent.Event, 128), stopping: make(chan struct{}), done: make(chan struct{}),
+		events: make(chan agent.Event, 128), stopping: make(chan struct{}), done: make(chan struct{}), commands: commandsTold{ch: make(chan struct{})},
 		writeLock: make(chan struct{}, 1), requests: map[int]request{},
 		pending: map[string]permission{}, tools: map[string]bool{}, declined: map[string]bool{},
 	}
@@ -331,5 +337,12 @@ func (s *session) incoming(m envelope) {
 	// already owns that timeline. Other session IDs cannot affect this one.
 	if valid {
 		s.update(p.Update, active)
+		return
+	}
+	// The commands an Agent tells as session/new runs, before its reply
+	// names the session, are kept for it: the last list, which replaces any.
+	var tag struct{ SessionUpdate string }
+	if s.id == "" && p.SessionID != "" && json.Unmarshal(p.Update, &tag) == nil && tag.SessionUpdate == "available_commands_update" {
+		s.early, s.earlyID = p.Update, p.SessionID
 	}
 }

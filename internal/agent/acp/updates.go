@@ -65,9 +65,11 @@ func (s *session) update(raw json.RawMessage, active int) {
 			s.modeChanged(u.CurrentModeID)
 		}
 		return
-	case "available_commands_update", "session_info_update", "usage_update", "user_message_chunk":
-		// Commands have no workbench equivalent. Usage, metadata
-		// and user echoes are not timeline messages.
+	case "available_commands_update":
+		s.tellCommands(raw)
+		return
+	case "session_info_update", "usage_update", "user_message_chunk":
+		// Usage, metadata and user echoes are not timeline messages.
 		return
 	case "plan", "agent_message_chunk", "agent_thought_chunk":
 	default:
