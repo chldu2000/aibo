@@ -39,10 +39,18 @@ type Outgoing struct {
 	// Attachments are images the Agent sees (ADR 0006), from
 	// AttachImage for this session (ErrAttachmentGone).
 	Attachments []model.Attachment
+	// Command, when set, is the name of the Agent command the message
+	// invokes (ADR 0008), or one of its aliases; Text is then what follows
+	// it, and may be empty.
+	Command string
 }
 
 // SendMessage sends a message, with the references drafted for the
 // session, and starts the Agent's turn.
+//
+// A message that starts with "/word" without invoking a command is not
+// sent (SlashCommandError), unless word is a command the Agent told,
+// which it then invokes; with a space before it, it goes as it is.
 func (w *Workbench) SendMessage(id string, o Outgoing) error {
 	text, mentions := strings.TrimSpace(o.Text), o.Mentions
 	images, err := w.turnImages(id, o.Attachments)
@@ -63,10 +71,26 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 		w.mu.Unlock()
 		return ErrNeedsRecovery
 	}
-	if slashCommand.MatchString(text) {
-		// aibo's record would no longer match the Agent's state.
-		w.mu.Unlock()
-		return ErrSlashCommand
+	if o.Command == "" {
+		if word := slashCommand.FindStringSubmatch(o.Text); word != nil {
+			// Not to be sent as words, which the model could take for a
+			// command it ran.
+			if !w.isCommand(s, word[1]) {
+				err := w.slashError(s, word[1])
+				w.mu.Unlock()
+				return err
+			}
+			o.Command, text = word[1], strings.TrimSpace(strings.TrimPrefix(text, word[0]))
+		}
+	}
+	var cmd *agent.Command
+	if o.Command != "" {
+		c, err := w.invoked(s, o.Command)
+		if err != nil {
+			w.mu.Unlock()
+			return err
+		}
+		cmd = &c
 	}
 	ws, _ := w.workspace(s.info.WorkspaceID)
 	files, ok := turnFiles(mentions, ws.Path, s.info.ReadDirs)
@@ -74,7 +98,7 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 		w.mu.Unlock()
 		return ErrNotReadable
 	}
-	if text == "" && len(w.drafts(id)) == 0 && len(mentions) == 0 && len(images) == 0 {
+	if text == "" && cmd == nil && len(w.drafts(id)) == 0 && len(mentions) == 0 && len(images) == 0 {
 		w.mu.Unlock()
 		return ErrEmptyMessage
 	}
@@ -125,6 +149,9 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 	w.mu.Lock()
 	drafts := w.drafts(id)
 	m := model.Message{Kind: model.UserMessage, State: model.Done, Text: text, Mentions: mentions, Attachments: o.Attachments, CreatedAt: now, FinishedAt: now}
+	if cmd != nil {
+		m.Command = &model.CommandCall{Name: cmd.Name, Description: cmd.Description}
+	}
 	seq, err := w.st.AppendMessage(id, m)
 	if err != nil {
 		w.finishRun(id, s)
@@ -132,6 +159,9 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 		return err
 	}
 	m.Seq = seq
+	if cmd != nil {
+		s.commandSeq = seq
+	}
 	var briefs []string
 	for _, r := range drafts {
 		m.Refs = append(m.Refs, r.ID)
@@ -148,8 +178,8 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 		}
 	}
 	s.msgs = append(s.msgs, m)
-	if s.info.Title == "" && !s.info.TitleManual && text != "" {
-		s.info.Title = defaultTitle(text)
+	if title := commandText(cmd, text); s.info.Title == "" && !s.info.TitleManual && title != "" {
+		s.info.Title = defaultTitle(title)
 		w.st.SetTitle(id, s.info.Title, false)
 	}
 	s.info.ActiveAt, s.lastActive = now, now
@@ -157,7 +187,12 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 	w.mu.Unlock()
 	w.notify(Change{SessionID: id, Message: &m})
 
-	if err := native.Send(context.Background(), agent.Turn{Text: refs.TurnText(briefs, text), Files: files, Images: images}); err != nil {
+	send := text
+	if cmd == nil && slashCommand.MatchString(text) {
+		// Sent with a space before it: words, not a command.
+		send = " " + text
+	}
+	if err := native.Send(context.Background(), agent.Turn{Text: refs.TurnText(briefs, send), Files: files, Images: images, Command: cmd}); err != nil {
 		w.fail(id, StepSend, err)
 		return err
 	}

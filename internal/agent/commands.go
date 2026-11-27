@@ -86,4 +86,10 @@ type CommandsChanged struct {
 	Commands []Command
 }
 
+// ContextReset reports that the Agent cleared its context, as on its
+// "/clear": a NativeSessionStarted with the new native session's ID
+// follows.
+type ContextReset struct{}
+
 func (CommandsChanged) isEvent() {}
+func (ContextReset) isEvent()    {}

@@ -55,29 +55,6 @@ func TestCompactionMarkers(t *testing.T) {
 	check(b2.Markers(s.ID))
 }
 
-func TestSlashCommandsAreRefused(t *testing.T) {
-	sc := newScript()
-	b := open(t, t.TempDir(), sc.respond)
-	defer b.Close()
-	_, s := newSession(t, b)
-	for _, cmd := range []string{"/clear", "/compact", "/model sonnet", "  /review:pr 12"} {
-		if err := b.Send(s.ID, cmd); !errors.Is(err, workbench.ErrSlashCommand) {
-			t.Errorf("%q: %v", cmd, err)
-		}
-	}
-	if n := len(b.messages(t, s.ID)); n != 0 {
-		t.Errorf("%d messages recorded", n)
-	}
-	// Paths and slashes elsewhere are fine.
-	for _, text := range []string{"/Users/me/project 里有什么", "看看 /clear 是什么命令"} {
-		if err := b.Send(s.ID, text); err != nil {
-			t.Errorf("%q: %v", text, err)
-		}
-		sc.endTurn()
-		b.idle(t, s.ID)
-	}
-}
-
 func TestSelfReference(t *testing.T) {
 	sc := newScript()
 	b := open(t, t.TempDir(), sc.respond)

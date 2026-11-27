@@ -184,7 +184,7 @@ func (w *Workbench) Retry(id string) error {
 // finishRun also retires a superseded connection when the turn fails
 // before the Agent can emit TurnEnded. The caller holds w.mu.
 func (w *Workbench) finishRun(id string, s *session) {
-	s.running = false
+	s.running, s.commandSeq = false, 0
 	if s.restart && s.native != nil {
 		go w.detach(id, s).Close()
 	}

@@ -191,8 +191,11 @@ type session struct {
 	// commands are the Agent commands the native session told, nil until
 	// it does.
 	commands []agent.Command
-	running  bool
-	err      error
+	// commandSeq is the message that invoked an Agent command in the
+	// running turn, 0 for none.
+	commandSeq int
+	running    bool
+	err        error
 	// items maps the running turn's replies, tool calls and plans, by
 	// the keys of itemKey, to indexes in msgs.
 	items     map[string]int
@@ -597,8 +600,9 @@ func (w *Workbench) load(id string, s *session) error {
 }
 
 // slashCommand is an Agent's own slash command, as /clear or
-// /model sonnet: a word after the slash, not a path.
-var slashCommand = regexp.MustCompile(`^/[A-Za-z][\w:-]*(\s|$)`)
+// /model sonnet: a word after the slash, not a path. The word is its
+// first group.
+var slashCommand = regexp.MustCompile(`^/([A-Za-z][\w:-]*)(?:\s|$)`)
 
 // Markers returns a session's markers in order.
 func (w *Workbench) Markers(id string) []model.Marker {

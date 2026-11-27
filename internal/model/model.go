@@ -113,6 +113,12 @@ type Message struct {
 	Mentions []Mention `json:",omitempty"`
 	// Attachments are the images a user message carried (ADR 0006).
 	Attachments []Attachment `json:",omitempty"`
+	// Command is the Agent command a user message invoked (ADR 0008);
+	// its Text is then what followed the command.
+	Command *CommandCall `json:",omitempty"`
+	// CommandOutput marks a reply that is what an Agent command printed,
+	// not the model's words.
+	CommandOutput bool `json:",omitempty"`
 	// Raw is the Agent's own event the message came from, for internal
 	// use only.
 	Raw        json.RawMessage
@@ -277,7 +283,19 @@ func (m Message) Clone() Message {
 	m.Refs = append([]string(nil), m.Refs...)
 	m.Mentions = append([]Mention(nil), m.Mentions...)
 	m.Attachments = append([]Attachment(nil), m.Attachments...)
+	if m.Command != nil {
+		c := *m.Command
+		m.Command = &c
+	}
 	return m
+}
+
+// CommandCall is the Agent command a user message invoked: its name, and
+// its description as the Agent told it when the message was sent, kept
+// for when the Agent no longer tells it.
+type CommandCall struct {
+	Name        string
+	Description string `json:",omitempty"`
 }
 
 // MarkerKind is what a marker marks.
@@ -286,8 +304,12 @@ type MarkerKind string
 const (
 	// Compaction marks where the Agent compacted its context.
 	Compaction MarkerKind = "compaction"
-	// Reset marks where a new native session took over.
+	// Reset marks where a new native session took over: one the user
+	// chose (Recover), or the Agent's own after it cleared its context.
 	Reset MarkerKind = "reset"
+	// CommandRan marks an Agent command that ran and said nothing, after
+	// the message that invoked it.
+	CommandRan MarkerKind = "command_ran"
 )
 
 // Marker marks something that happened in a session after message

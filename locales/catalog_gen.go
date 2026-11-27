@@ -594,6 +594,42 @@ func (msgs Messages) ErrSlashCommand() string {
 	return Catalog.Format(msgs.locale, "errSlashCommand", nil)
 }
 
+// ErrNotACommand says "“/{command}” is not a command of {agent}. To send it to the model as it is, start the message with a space."
+// in the language the app shows.
+func ErrNotACommand(command string, agent string) string {
+	return In(i18n.Locale()).ErrNotACommand(command, agent)
+}
+
+// ErrNotACommand says "“/{command}” is not a command of {agent}. To send it to the model as it is, start the message with a space."
+// in the language of msgs.
+func (msgs Messages) ErrNotACommand(command string, agent string) string {
+	return Catalog.Format(msgs.locale, "errNotACommand", map[string]any{"command": command, "agent": agent})
+}
+
+// ErrCommandsUnknown says "The commands of {agent} are not available right now, so “/{command}” cannot be checked. Try again in a moment, or…"
+// in the language the app shows.
+func ErrCommandsUnknown(agent string, command string) string {
+	return In(i18n.Locale()).ErrCommandsUnknown(agent, command)
+}
+
+// ErrCommandsUnknown says "The commands of {agent} are not available right now, so “/{command}” cannot be checked. Try again in a moment, or…"
+// in the language of msgs.
+func (msgs Messages) ErrCommandsUnknown(agent string, command string) string {
+	return Catalog.Format(msgs.locale, "errCommandsUnknown", map[string]any{"agent": agent, "command": command})
+}
+
+// ErrNoCommands says "{agent} has no commands aibo can invoke. To send “/{command}” to the model as it is, start the message with a space."
+// in the language the app shows.
+func ErrNoCommands(agent string, command string) string {
+	return In(i18n.Locale()).ErrNoCommands(agent, command)
+}
+
+// ErrNoCommands says "{agent} has no commands aibo can invoke. To send “/{command}” to the model as it is, start the message with a space."
+// in the language of msgs.
+func (msgs Messages) ErrNoCommands(agent string, command string) string {
+	return Catalog.Format(msgs.locale, "errNoCommands", map[string]any{"agent": agent, "command": command})
+}
+
 // ErrNothingToCompact says "The session is empty: there is nothing to compact."
 // in the language the app shows.
 func ErrNothingToCompact() string { return In(i18n.Locale()).ErrNothingToCompact() }

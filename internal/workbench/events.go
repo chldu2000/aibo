@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -76,7 +77,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 			})
 			break
 		}
-		if i, created, ok := w.item(id, s, itemKey("r", e.ReplyID), model.Message{Kind: model.AgentReply, Text: e.Text, Raw: e.Raw, CreatedAt: now}); ok {
+		if i, created, ok := w.item(id, s, itemKey("r", e.ReplyID), model.Message{Kind: model.AgentReply, Text: e.Text, Raw: e.Raw, CommandOutput: e.CommandOutput, CreatedAt: now}); ok {
 			if !created {
 				s.msgs[i].Text += e.Text
 				if len(e.Raw) > 0 {
@@ -123,6 +124,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		if len(e.Raw) > 0 {
 			m.Raw = e.Raw
 		}
+		m.CommandOutput = m.CommandOutput || e.CommandOutput
 		m.State, m.FinishedAt = model.Done, now
 		touch(i, true)
 	case agent.ToolStarted:
@@ -263,9 +265,20 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 			end = model.Interrupted
 		}
 		w.log.Info("turn ended", "session", id, "interrupted", e.Interrupted, "took", now.Sub(s.since).Round(time.Millisecond))
+		if seq := s.commandSeq; seq != 0 && !e.Interrupted && s.err == nil && len(s.msgs) > 0 && s.msgs[len(s.msgs)-1].Seq == seq &&
+			!slices.ContainsFunc(s.markers, func(m model.Marker) bool { return m.AfterSeq == seq }) {
+			// The command ran, and said nothing: not even a marker, as
+			// "/clear" leaves.
+			w.addMarker(id, s, model.Marker{Kind: model.CommandRan, At: now})
+		}
 		changed = w.endTurn(id, s, end)
 		s.info.ActiveAt, s.lastActive = now, now
 		w.st.Touch(id, now)
+	case agent.ContextReset:
+		// The NativeSessionStarted that follows records the new native
+		// session.
+		w.log.Info("agent context reset", "session", id)
+		w.addMarker(id, s, model.Marker{Kind: model.Reset, At: now})
 	case agent.Compacted:
 		w.log.Info("context compacted", "session", id, "trigger", e.Trigger, "before", e.PreTokens, "after", e.PostTokens)
 		w.addMarker(id, s, model.Marker{Kind: model.Compaction, Trigger: e.Trigger, PreTokens: e.PreTokens, PostTokens: e.PostTokens, At: now})

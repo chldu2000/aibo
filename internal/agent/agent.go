@@ -266,6 +266,10 @@ type Turn struct {
 	// Images are the images the user attached, which the adapter puts
 	// before Text for the model to see (ADR 0006).
 	Images []Image
+	// Command, when set, is the Agent command the turn invokes, as its
+	// Agent told it: the adapter puts it first, the Agent's own way, and
+	// Text is what follows it (ADR 0008).
+	Command *Command
 }
 
 // Image is an image a turn carries: a file the workbench keeps, of a type
@@ -327,6 +331,9 @@ type ReplyDelta struct {
 	Parent  string
 	Text    string
 	Raw     json.RawMessage
+	// CommandOutput marks what an Agent command printed, not the model's
+	// words, as Claude Code's "/context".
+	CommandOutput bool
 }
 
 // ThinkingDelta appends to the reasoning of the reply ReplyID, starting
@@ -344,6 +351,8 @@ type ReplyDone struct {
 	Parent  string
 	Text    string
 	Raw     json.RawMessage
+	// CommandOutput is as ReplyDelta's.
+	CommandOutput bool
 }
 
 // ToolStarted reports a tool call the Agent made, with its input.

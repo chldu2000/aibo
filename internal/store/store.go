@@ -462,6 +462,7 @@ func (s *Store) messages(sessionID string) ([]model.Message, error) {
 				return nil, fmt.Errorf("store: message #%d: %w", m.Seq, err)
 			}
 			m.Tool, m.Plan, m.Children, m.Mentions, m.Attachments = d.Tool, d.Plan, d.Children, d.Mentions, d.Attachments
+			m.Command, m.CommandOutput = d.Command, d.CommandOutput
 		}
 		m.Kind, m.State = model.MessageKind(kind), model.MessageState(state)
 		if raw.Valid {
@@ -608,13 +609,17 @@ type detail struct {
 	Children    []model.Message    `json:"children,omitempty"`
 	Mentions    []model.Mention    `json:"mentions,omitempty"`
 	Attachments []model.Attachment `json:"attachments,omitempty"`
+	Command     *model.CommandCall `json:"command,omitempty"`
+	// CommandOutput marks a reply an Agent command printed.
+	CommandOutput bool `json:"command_output,omitempty"`
 }
 
 func detailOf(m model.Message) any {
-	if m.Tool == nil && m.Plan == nil && m.Children == nil && m.Mentions == nil && m.Attachments == nil {
+	if m.Tool == nil && m.Plan == nil && m.Children == nil && m.Mentions == nil && m.Attachments == nil && m.Command == nil && !m.CommandOutput {
 		return nil
 	}
-	b, err := json.Marshal(detail{Tool: m.Tool, Plan: m.Plan, Children: m.Children, Mentions: m.Mentions, Attachments: m.Attachments})
+	b, err := json.Marshal(detail{Tool: m.Tool, Plan: m.Plan, Children: m.Children, Mentions: m.Mentions, Attachments: m.Attachments,
+		Command: m.Command, CommandOutput: m.CommandOutput})
 	if err != nil {
 		return nil
 	}

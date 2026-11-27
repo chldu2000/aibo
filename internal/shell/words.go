@@ -88,6 +88,10 @@ func (s *Shell) say(err error) string {
 	if errors.As(err, &unusable) {
 		return problem(unusable.Status)
 	}
+	var slash *workbench.SlashCommandError
+	if errors.As(err, &slash) {
+		return saySlash(slash)
+	}
 	for _, k := range known {
 		if errors.Is(err, k.err) {
 			if k.detail {
@@ -168,4 +172,19 @@ func problem(st agents.Status) string {
 		return locales.AgentChecking()
 	}
 	return ""
+}
+
+// saySlash words why "/word" was not sent.
+func saySlash(e *workbench.SlashCommandError) string {
+	name := e.Agent
+	if name == "" {
+		name = locales.TheAgent()
+	}
+	switch e.Reason {
+	case workbench.CommandsUnknown:
+		return locales.ErrCommandsUnknown(name, e.Command)
+	case workbench.NoCommands:
+		return locales.ErrNoCommands(name, e.Command)
+	}
+	return locales.ErrNotACommand(e.Command, name)
 }
