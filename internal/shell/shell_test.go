@@ -165,16 +165,15 @@ func TestToolCallsAndPlans(t *testing.T) {
 	}
 	// The calls that went well fold into a line; the failed one stays.
 	shows("我来看看。", "思考", "计划", "读代码", "写总结", "2 个工具调用", "读了 1 个文件 · 1 个子 Agent", "Bash · cat big.log · 出错")
-	if tt.HasText("Read · go.mod") {
-		t.Error("the group shows its calls folded")
+	if exactly(tt, "Read · go.mod") {
+		t.Error("the group shows its calls unasked")
 	}
 	if tt.HasText("先读 go.mod") || tt.HasText("module example.com/x") {
 		t.Error("folded content shows")
 	}
 	click("思考")
 	shows("先读 go.mod")
-	click("2 个工具调用")
-	click(startingWith(tt, "逐条列出"))
+	click(startingWith(tt, "2 个工具调用"))
 	click("Read · go.mod")
 	shows("参数", "结果", "module example.com/x")
 	click("Agent · 数文件 · 子代理 1 步")

@@ -121,54 +121,38 @@ func groupSummary(msgs []model.Message, group []int) string {
 	return strings.Join(parts, " · ")
 }
 
-// toolGroup is a group of calls: a line that counts what they did, and,
-// open, a symbol for each, which opens its call under them; or all of
-// them, listed. live is set while the turn goes on with the calls.
+// groupSymbols is how many symbols a group shows before it counts the
+// others as one, which lists them all.
+const groupSymbols = 24
+
+// toolGroup is a group of calls: a tinted symbol for each, which opens
+// its call under them, then a count of what they did, which lists them
+// all. live is set while the turn goes on with the calls.
 func (s *Shell) toolGroup(c *ui.Context, v *sessionView, group []int, live bool) {
 	t := c.Theme()
 	v.open.init()
 	msgs := v.msgs
 	first, last := msgs[group[0]].Seq, msgs[group[len(group)-1]].Seq
 	key := fmt.Sprint("group/", first)
-	open := v.open.tools[key]
-	head := ui.Row(c).Key("head").Gap(8).Padding(6, 10).Radius(9).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-		Label(locales.ToolGroupLabel(fmt.Sprint(first), fmt.Sprint(last))).Children(func() {
-		if live {
-			ui.Spinner(c).FontSize(12)
-		} else {
-			symbol := "chevron.right"
-			if open {
-				symbol = "chevron.down"
-			}
-			icon(c, symbol).Size(11).Color(t.TextMuted)
-		}
-		title := locales.ToolGroupCount(len(group))
-		if live {
-			title = locales.ToolGroupLive(len(group))
-		}
-		ui.Text(c, title).FontSize(13).Bold().TextColor(t.Text).NoWrap()
-		ui.Text(c, groupSummary(msgs, group)).FontSize(12).TextColor(t.TextMuted).MaxLines(1).Shrink(1).MinWidth(0)
-	})
-	if head.Hovered() {
-		head.Background(veil(c, 0.05))
-	}
-	if head.Clicked() {
-		open = !open
-	}
-	v.open.tools[key] = open
-	if !open {
-		return
-	}
-	listed := v.open.tools[key+"/all"]
+	span := locales.ToolGroupLabel(fmt.Sprint(first), fmt.Sprint(last))
+	listed := v.open.tools[key]
 	picked := v.open.picked[key]
-	ui.Column(c).Key("open").Gap(4).Padding(0, 0, 0, 10).Children(func() {
+	ui.Column(c).Gap(4).Children(func() {
 		ui.Row(c).Key("symbols").Gap(3).Padding(2, 0).AlignItems(ui.Center).Wrap().Children(func() {
-			for _, i := range group {
+			for n, i := range group {
+				if n == groupSymbols && !listed {
+					more := ui.Text(c, fmt.Sprint("+", len(group)-n)).Key("more").FontSize(11).TextColor(t.TextMuted).Padding(0, 4).
+						Cursor(ui.CursorPointer).Label(locales.ListCalls() + " " + span)
+					if more.Clicked() {
+						listed, picked = true, 0
+					}
+					break
+				}
 				m := msgs[i]
 				k := callKinds[kindOf(m.Tool.Name)]
-				label := toolLabel(m) + " #" + fmt.Sprint(m.Seq)
 				chip := ui.Box(c).Key(m.Seq).Size(22, 22).Radius(6).AlignItems(ui.Center).Justify(ui.Center).
-					Tooltip(toolLabel(m)).Label(label).Cursor(ui.CursorPointer).Background(tinted(c, ui.RGBA(k.tint.R, k.tint.G, k.tint.B, 0.16))).Children(func() {
+					Tooltip(toolLabel(m)).Label(toolLabel(m) + " #" + fmt.Sprint(m.Seq)).Cursor(ui.CursorPointer).
+					Background(tinted(c, ui.RGBA(k.tint.R, k.tint.G, k.tint.B, 0.16))).Children(func() {
 					icon(c, k.symbol).Size(12).Color(k.tint)
 				})
 				if m.Seq == picked && !listed {
@@ -182,13 +166,23 @@ func (s *Shell) toolGroup(c *ui.Context, v *sessionView, group []int, live bool)
 					}
 				}
 			}
-			text := locales.ListCalls()
-			if listed {
-				text = locales.HideCalls()
+			if live {
+				ui.Spinner(c).FontSize(12).Margin(0, 4)
 			}
-			list := ui.Text(c, text).Key("list").FontSize(12).TextColor(t.Accent).Padding(0, 6).Cursor(ui.CursorPointer).
-				Label(text + " " + locales.ToolGroupLabel(fmt.Sprint(first), fmt.Sprint(last)))
-			if list.Clicked() {
+			count := locales.ToolGroupCount(len(group))
+			if live {
+				count = locales.ToolGroupLive(len(group))
+			}
+			action := locales.ListCalls()
+			if listed {
+				action = locales.HideCalls()
+			}
+			summary := ui.Text(c, count+" · "+groupSummary(msgs, group)).Key("summary").FontSize(12).TextColor(t.TextMuted).Padding(0, 6).
+				Cursor(ui.CursorPointer).Tooltip(action)
+			if summary.Hovered() {
+				summary.TextColor(t.Text)
+			}
+			if summary.Clicked() {
 				listed, picked = !listed, 0
 			}
 		})
@@ -200,7 +194,7 @@ func (s *Shell) toolGroup(c *ui.Context, v *sessionView, group []int, live bool)
 			}
 		}
 	})
-	v.open.tools[key+"/all"] = listed
+	v.open.tools[key] = listed
 	v.open.picked[key] = picked
 }
 
