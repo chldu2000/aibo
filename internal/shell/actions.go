@@ -22,8 +22,8 @@ func (s *Shell) messageActions(c *ui.Context, x model.Session, v *sessionView, m
 		if number {
 			ui.Text(c, "#"+seq).FontSize(11).TextColor(t.TextMuted).MaxLines(1).Padding(0, 4)
 		}
-		if text := copyable(m); text != "" && iconButton(c, "doc.on.doc", locales.CopyMessage(seq)).Clicked() {
-			c.WriteClipboard(text)
+		if text := copyable(m); text != "" {
+			s.copyButton(c, locales.CopyMessage(seq), text)
 		}
 		// Only what has ended can be referenced.
 		if m.State.Ended() && iconButton(c, "text.quote", locales.QuoteMessage(seq)).Clicked() {

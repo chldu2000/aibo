@@ -31,9 +31,7 @@ func (s *Shell) shownPath(x model.Session) (rel string, gone bool) {
 // draft. Of a file gone, only its path can be copied.
 func (s *Shell) pathActions(c *ui.Context, x model.Session, rel string, gone bool) {
 	ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-		if iconButton(c, "doc.on.doc", locales.CopyPath()).Clicked() {
-			c.WriteClipboard(rel)
-		}
+		s.copyButton(c, locales.CopyPath(), rel)
 		abs := s.absPath(x, rel)
 		if s.opts.ShowInFinder != nil && iconButton(c, "folder", showInLabel()).Disabled(gone).Clicked() && !gone {
 			s.opts.ShowInFinder(abs)

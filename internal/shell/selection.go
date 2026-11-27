@@ -159,9 +159,7 @@ func (s *Shell) selectionBar(c *ui.Context, x model.Session, v *sessionView) {
 			if ui.Button(c, locales.SelectTurns()).Disabled(n == 0).Clicked() && n > 0 {
 				v.wholeTurns()
 			}
-			if ui.Button(c, locales.Copy()).Disabled(n == 0).Clicked() && n > 0 {
-				c.WriteClipboard(s.copyText(x, v))
-			}
+			s.copyTextButton(c, locales.Copy(), n == 0, func() string { return s.copyText(x, v) })
 			ui.Spacer(c)
 			if ui.Button(c, locales.Cancel()).Clicked() {
 				s.stopSelecting(v)

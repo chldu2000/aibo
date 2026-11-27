@@ -86,6 +86,8 @@ type Shell struct {
 	views   map[string]*sessionView
 	notice  string // an error to show, until dismissed
 	md      markdown.Options
+	// copied is the copy control last clicked, which says so for a moment.
+	copied copied
 	// pull is the @ panel of the open session.
 	pull pull
 	// cmds is the "/" panel.

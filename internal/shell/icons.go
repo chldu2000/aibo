@@ -17,6 +17,7 @@ func glyph(body string) *ui.SVG {
 
 var iconFallbacks = map[string]*ui.SVG{
 	"checkmark.circle":                   glyph(`<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>`),
+	"checkmark":                          glyph(`<path d="m5 12.5 4.5 4.5L19 7"/>`),
 	"exclamationmark.circle":             glyph(`<circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3.5v.5"/>`),
 	"number":                             glyph(`<path d="M5 9h15M4 15h15M10 4 8 20m8-16-2 16"/>`),
 	"questionmark.circle":                glyph(`<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.4m0 3v.2"/>`),

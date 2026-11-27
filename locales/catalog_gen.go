@@ -3570,6 +3570,16 @@ func (msgs Messages) Copy() string {
 	return Catalog.Format(msgs.locale, "copy", nil)
 }
 
+// Copied says "Copied"
+// in the language the app shows.
+func Copied() string { return In(i18n.Locale()).Copied() }
+
+// Copied says "Copied"
+// in the language of msgs.
+func (msgs Messages) Copied() string {
+	return Catalog.Format(msgs.locale, "copied", nil)
+}
+
 // CopyMessage says "Copy #{seq}"
 // in the language the app shows.
 func CopyMessage(seq string) string { return In(i18n.Locale()).CopyMessage(seq) }

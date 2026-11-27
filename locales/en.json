@@ -460,6 +460,7 @@
   "selectAll": "Select the whole session",
   "selectTurns": "Select whole turns",
   "copy": "Copy",
+  "copied": "Copied",
   "copyMessage": "Copy #{seq}",
   "quoteMessage": "Quote #{seq}",
   "putBackMessage": "Put #{seq} back in the draft",

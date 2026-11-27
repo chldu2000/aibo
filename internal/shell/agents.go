@@ -168,9 +168,7 @@ func (s *Shell) terminalLogin(c *ui.Context, st agents.Status) {
 	d := s.describe(st.Kind)
 	ui.Text(c, locales.TerminalLogin(d.Command, d.Name)).FontSize(12).TextColor(t.Text)
 	ui.Row(c).Gap(6).Children(func() {
-		if ui.Button(c, locales.CopyCommand()).Clicked() {
-			c.WriteClipboard(st.TerminalPath())
-		}
+		s.copyTextButton(c, locales.CopyCommand(), false, st.TerminalPath)
 		if s.opts.OpenTerminal != nil && ui.Button(c, locales.OpenInTerminal(d.Command)).Clicked() {
 			s.opts.OpenTerminal(st.TerminalPath())
 		}

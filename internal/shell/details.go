@@ -365,9 +365,7 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 				id := ids[len(ids)-1]
 				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, id).Font("Menlo").FontSize(11).TextColor(t.Text).MaxLines(1).TruncateMiddle().Tooltip(id).Selectable().Grow(1).Shrink(1).MinWidth(0)
-					if iconButton(c, "doc.on.doc", locales.CopyNativeID()).Clicked() {
-						c.WriteClipboard(id)
-					}
+					s.copyButton(c, locales.CopyNativeID(), id)
 				})
 				if len(ids) > 1 {
 					note(locales.NativeCount(len(ids)), t.TextMuted)
