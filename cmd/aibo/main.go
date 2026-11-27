@@ -476,6 +476,12 @@ func newShellWindow(sh *shell.Shell, title string, width, height int) *mygo.Wind
 		w.Invalidate()
 	}
 	w.OnFocus(sh.RefreshVisibleWorkspace)
+	// Minimized or hidden, the window shows no session: one that ends a
+	// turn then is unread.
+	w.OnMinimize(func() { sh.SetVisible(false) })
+	w.OnHide(func() { sh.SetVisible(false) })
+	w.OnRestore(func() { sh.SetVisible(true) })
+	w.OnShow(func() { sh.SetVisible(true) })
 	return w
 }
 

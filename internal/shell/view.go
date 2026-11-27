@@ -18,11 +18,7 @@ import (
 // View builds the window's content.
 func (s *Shell) View(c *ui.Context) {
 	s.apply()
-	// What this window shows is read.
-	if id := s.current; id != s.viewed {
-		s.viewed = id
-		s.wb.Viewing(s.viewer, id)
-	}
+	s.reportViewing()
 	if c.Shortcut(ui.Cmd, ui.KeyComma) {
 		s.openSettings()
 	}

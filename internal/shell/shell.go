@@ -127,6 +127,9 @@ type Shell struct {
 	// viewer names this window to the workbench, viewed the session it
 	// last said the window shows (Viewing).
 	viewer, viewed string
+	// away is set while the window is minimized or hidden: it shows no
+	// session then, which stays unread.
+	away bool
 }
 
 // sessionView is what the shell keeps of an open session.
@@ -428,3 +431,24 @@ func (s *Shell) Open(sessionID string) {
 
 // OpenSettings opens the global settings, as ⌘, does.
 func (s *Shell) OpenSettings() { s.openSettings() }
+
+// SetVisible says whether the window shows, or is minimized or hidden, on
+// the window's thread. A window away shows no session: one that ends a
+// turn behind it is unread until the window comes back.
+func (s *Shell) SetVisible(visible bool) {
+	s.away = !visible
+	s.reportViewing()
+}
+
+// reportViewing tells the workbench what the window shows, when it
+// changed: what it shows is read.
+func (s *Shell) reportViewing() {
+	id := s.current
+	if s.away {
+		id = ""
+	}
+	if id != s.viewed {
+		s.viewed = id
+		s.wb.Viewing(s.viewer, id)
+	}
+}
