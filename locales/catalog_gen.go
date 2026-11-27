@@ -1928,6 +1928,56 @@ func (msgs Messages) PendingCount(count int) string {
 	return Catalog.Format(msgs.locale, "pendingCount", map[string]any{"count": count})
 }
 
+// RunningCount says "{count} running"
+// in the language the app shows.
+func RunningCount(count int) string { return In(i18n.Locale()).RunningCount(count) }
+
+// RunningCount says "{count} running"
+// in the language of msgs.
+func (msgs Messages) RunningCount(count int) string {
+	return Catalog.Format(msgs.locale, "runningCount", map[string]any{"count": count})
+}
+
+// FoldWorkspace says "Fold {name}"
+// in the language the app shows.
+func FoldWorkspace(name string) string { return In(i18n.Locale()).FoldWorkspace(name) }
+
+// FoldWorkspace says "Fold {name}"
+// in the language of msgs.
+func (msgs Messages) FoldWorkspace(name string) string {
+	return Catalog.Format(msgs.locale, "foldWorkspace", map[string]any{"name": name})
+}
+
+// UnfoldWorkspace says "Unfold {name}"
+// in the language the app shows.
+func UnfoldWorkspace(name string) string { return In(i18n.Locale()).UnfoldWorkspace(name) }
+
+// UnfoldWorkspace says "Unfold {name}"
+// in the language of msgs.
+func (msgs Messages) UnfoldWorkspace(name string) string {
+	return Catalog.Format(msgs.locale, "unfoldWorkspace", map[string]any{"name": name})
+}
+
+// ShowMoreSessions says "Show {count} more"
+// in the language the app shows.
+func ShowMoreSessions(count int) string { return In(i18n.Locale()).ShowMoreSessions(count) }
+
+// ShowMoreSessions says "Show {count} more"
+// in the language of msgs.
+func (msgs Messages) ShowMoreSessions(count int) string {
+	return Catalog.Format(msgs.locale, "showMoreSessions", map[string]any{"count": count})
+}
+
+// ShowFewerSessions says "Show fewer"
+// in the language the app shows.
+func ShowFewerSessions() string { return In(i18n.Locale()).ShowFewerSessions() }
+
+// ShowFewerSessions says "Show fewer"
+// in the language of msgs.
+func (msgs Messages) ShowFewerSessions() string {
+	return Catalog.Format(msgs.locale, "showFewerSessions", nil)
+}
+
 // FailedMark says "Failed"
 // in the language the app shows.
 func FailedMark() string { return In(i18n.Locale()).FailedMark() }

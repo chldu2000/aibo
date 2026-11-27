@@ -189,6 +189,13 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 	if _, err := wb.Pref(collapsedPref, &s.side.collapsed); err != nil {
 		s.notice = s.say(err)
 	}
+	s.side.folded, s.side.more = map[string]bool{}, map[string]bool{}
+	if _, err := wb.Pref(foldedPref, &s.side.folded); err != nil {
+		s.notice = s.say(err)
+	}
+	if s.side.folded == nil {
+		s.side.folded = map[string]bool{}
+	}
 	if _, err := wb.Pref(widthPref, &s.split); err != nil {
 		s.notice = s.say(err)
 	}

@@ -238,7 +238,26 @@
   "archive": "Archive",
   "deleteMenu": "Delete…",
   "pendingCount": "{count} pending",
+  "runningCount": "{count} running",
+  "foldWorkspace": "Fold {name}",
+  "unfoldWorkspace": "Unfold {name}",
+  "showMoreSessions": "Show {count} more",
+  "showFewerSessions": "Show fewer",
   "@pendingCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@runningCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@showMoreSessions": {
     "placeholders": {
       "count": {
         "type": "int"

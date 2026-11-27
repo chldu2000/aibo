@@ -33,7 +33,17 @@ type sidebarUI struct {
 	// resized is when the width last moved, until it is kept; zero
 	// when it is.
 	resized time.Time
+	// folded are the workspaces whose sessions are folded under their
+	// name, kept as a preference; more those showing all their sessions.
+	folded, more map[string]bool
 }
+
+// foldedPref is the preference keeping which workspaces are folded.
+const foldedPref = "foldedWorkspaces"
+
+// groupShows is how many of a workspace's sessions show, the most
+// recent, until it shows all.
+const groupShows = 8
 
 // collapsedPref is the preference keeping whether the sidebar is hidden.
 const collapsedPref = "sidebarCollapsed"
@@ -203,10 +213,32 @@ func (s *Shell) workspaceGroups(c *ui.Context) {
 	}
 	sessions := s.wb.Sessions()
 	for _, ws := range workspaces {
+		var group []model.Session
+		for _, x := range sessions {
+			if x.WorkspaceID == ws.ID && !x.Archived {
+				group = append(group, x)
+			}
+		}
+		folded := s.side.folded[ws.ID]
 		header := ui.Row(c).Padding(10, 6, 4).Gap(6).AlignItems(ui.Center).Key(ws.ID).Children(func() {
-			ui.Text(c, workspaceName(ws)).FontSize(12).Bold().TextColor(t.TextMuted).Tooltip(ws.Path).MaxLines(1).Grow(1)
+			name := workspaceName(ws)
+			label := locales.FoldWorkspace(name)
+			symbol := "chevron.down"
+			if folded {
+				label, symbol = locales.UnfoldWorkspace(name), "chevron.right"
+			}
+			toggle := ui.Row(c).Gap(4).AlignItems(ui.Center).Grow(1).MinWidth(0).Label(label).Cursor(ui.CursorPointer).Children(func() {
+				icon(c, symbol).Size(10).Color(t.TextMuted)
+				ui.Text(c, name).FontSize(12).Bold().TextColor(t.TextMuted).Tooltip(ws.Path).MaxLines(1).Shrink(1).MinWidth(0)
+			})
+			if toggle.Clicked() {
+				s.foldWorkspace(ws.ID, !folded)
+			}
 			if ws.Missing {
 				ui.Text(c, locales.FolderMissing()).FontSize(11).TextColor(t.Warning)
+			}
+			if folded {
+				s.groupBusy(c, group)
 			}
 			s.newSessionButton(c, ws)
 		})
@@ -225,10 +257,8 @@ func (s *Shell) workspaceGroups(c *ui.Context) {
 				}
 			}
 		})
-		for _, x := range sessions {
-			if x.WorkspaceID == ws.ID && !x.Archived {
-				s.sessionRow(c, x)
-			}
+		if !folded {
+			s.groupRows(c, ws, group)
 		}
 	}
 	var archived []model.Session
@@ -602,4 +632,72 @@ func sameDay(a, b time.Time) bool {
 	ay, am, ad := a.Date()
 	by, bm, bd := b.Date()
 	return ay == by && am == bm && ad == bd
+}
+
+// groupRows are a workspace's sessions: the most recent groupShows, and
+// any other that is open, running, waiting or unread, until the user
+// shows all; then a line to show the others, or fewer.
+func (s *Shell) groupRows(c *ui.Context, ws model.Workspace, group []model.Session) {
+	t := c.Theme()
+	all := s.side.more[ws.ID]
+	hidden := 0
+	for i, x := range group {
+		st := s.wb.Status(x.ID)
+		if all || i < groupShows || x.ID == s.current || st.Running || st.Approvals > 0 || st.Unread {
+			s.sessionRow(c, x)
+		} else {
+			hidden++
+		}
+	}
+	if hidden == 0 && (!all || len(group) <= groupShows) {
+		return
+	}
+	text := locales.ShowMoreSessions(hidden)
+	if all {
+		text = locales.ShowFewerSessions()
+	}
+	line := ui.Row(c).Key("more/"+ws.ID).Padding(4, 8).Radius(7).Label(text + " · " + workspaceName(ws)).Cursor(ui.CursorPointer).Children(func() {
+		ui.Text(c, text).FontSize(12).TextColor(t.TextMuted)
+	})
+	if line.Hovered() {
+		line.Background(t.SurfaceHover)
+	}
+	if line.Clicked() {
+		s.side.more[ws.ID] = !all
+	}
+}
+
+// groupBusy counts, by a folded workspace's name, its sessions running
+// and the approvals they wait on.
+func (s *Shell) groupBusy(c *ui.Context, group []model.Session) {
+	t := c.Theme()
+	running, approvals := 0, 0
+	for _, x := range group {
+		st := s.wb.Status(x.ID)
+		if st.Running {
+			running++
+		}
+		approvals += st.Approvals
+	}
+	if running > 0 {
+		label := locales.RunningCount(running)
+		ui.Text(c, label).FontSize(11).TextColor(t.TextMuted).NoWrap()
+	}
+	if approvals > 0 {
+		label := locales.PendingCount(approvals)
+		ui.Text(c, label).FontSize(11).Bold().TextColor(t.Warning).NoWrap()
+	}
+}
+
+// foldWorkspace folds a workspace's sessions under its name, or unfolds
+// them, and keeps it so.
+func (s *Shell) foldWorkspace(id string, fold bool) {
+	if fold {
+		s.side.folded[id] = true
+	} else {
+		delete(s.side.folded, id)
+	}
+	if err := s.wb.SetPref(foldedPref, s.side.folded); err != nil {
+		s.notice = s.say(err)
+	}
 }
