@@ -11,8 +11,9 @@ import (
 )
 
 func (s *Shell) openActivities(id string, kind workbench.ActivityKind, fromBadge bool) {
-	s.detail.open, s.detail.page, s.detail.selected = true, string(kind), ""
-	s.detail.confirming = ""
+	s.detail.open = true
+	s.showPage(string(kind))
+	s.detail.selected, s.detail.confirming = "", ""
 	if fromBadge {
 		for _, a := range workbench.Activities(s.view(id).msgs, kind) {
 			if a.Active {

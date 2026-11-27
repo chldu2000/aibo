@@ -106,6 +106,7 @@ func (s *Shell) pane(c *ui.Context) {
 	}
 	v := s.view(x.ID)
 	ws := s.workspaceOf(x)
+	s.detailsKeys(c, x.ID)
 	pane := ui.Box(c).Fill()
 	width, _ := c.Size()
 	if b := pane.Bounds(); b.W > 0 {
@@ -167,11 +168,7 @@ func (s *Shell) pane(c *ui.Context) {
 				s.opts.OpenWindow(x.ID)
 			}
 			if iconButton(c, "sidebar.trailing", locales.SessionDetails()).Clicked() {
-				if s.detail.open {
-					s.closeDetails(x.ID)
-				} else {
-					s.detail.open = true
-				}
+				s.toggleDetails(x.ID)
 			}
 		})
 		s.windowCapsule(c)

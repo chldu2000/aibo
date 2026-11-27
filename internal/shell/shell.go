@@ -183,6 +183,12 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 		s.notice = s.say(err)
 	}
 	s.split = min(max(s.split, sidebarMin), sidebarMax)
+	if _, err := wb.Pref(pagePref, &s.detail.page); err != nil {
+		s.notice = s.say(err)
+	}
+	if !knownPage(s.detail.page) {
+		s.detail.page = ""
+	}
 	if o.Only != "" {
 		s.current = o.Only
 	} else if all := wb.Sessions(); len(all) > 0 {

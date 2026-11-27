@@ -26,11 +26,66 @@ type detailsUI struct {
 	confirming string
 }
 
+// closeDetails closes the panel. It keeps the page, to open on it again,
+// but leaves what the page opened in itself.
 func (s *Shell) closeDetails(id string) {
 	s.closeChildHistory()
 	s.detail.open, s.detail.confirming = false, ""
-	s.detail.page, s.detail.selected = "", ""
+	s.detail.selected = ""
 	s.focusComposer = id
+}
+
+// pagePref is the preference keeping the page the panel last showed.
+const pagePref = "inspectorPage"
+
+// showPage turns the panel to a page, leaving what the page that showed
+// had opened, and keeps it for the next time the panel opens.
+func (s *Shell) showPage(page string) {
+	if page != s.detail.page {
+		s.closeChildHistory()
+		s.detail.page, s.detail.selected, s.detail.confirming = page, "", ""
+		if err := s.wb.SetPref(pagePref, page); err != nil {
+			s.notice = s.say(err)
+		}
+	}
+}
+
+// knownPage reports whether page is one of the panel's, as a kept
+// preference may not be after an update.
+func knownPage(page string) bool {
+	for _, tab := range inspectorTabs {
+		if tab.page == page {
+			return true
+		}
+	}
+	return false
+}
+
+// toggleDetails opens the panel on the page it last showed, or closes it.
+func (s *Shell) toggleDetails(id string) {
+	if s.detail.open {
+		s.closeDetails(id)
+	} else {
+		s.detail.open = true
+	}
+}
+
+// detailsKeys are the panel's shortcuts that work whether it shows or
+// not: ⌥⌘I opens or closes it, and ⌘1 to ⌘5 open it on a page.
+func (s *Shell) detailsKeys(c *ui.Context, id string) {
+	if s.settings.open {
+		return
+	}
+	if c.Shortcut(ui.Cmd|ui.Alt, ui.KeyI) {
+		s.toggleDetails(id)
+	}
+	digits := [...]ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9}
+	for i, tab := range inspectorTabs[:min(len(inspectorTabs), len(digits))] {
+		if c.Shortcut(ui.Cmd, digits[i]) {
+			s.detail.open = true
+			s.showPage(tab.page)
+		}
+	}
 }
 
 // inspectorTabs are the panel's pages, in the order of its tabs.
@@ -150,8 +205,7 @@ func (s *Shell) inspectorTabBar(c *ui.Context) {
 		}
 	})
 	if sel != cur {
-		s.closeChildHistory()
-		s.detail.page, s.detail.selected, s.detail.confirming = inspectorTabs[sel].page, "", ""
+		s.showPage(inspectorTabs[sel].page)
 	}
 }
 
