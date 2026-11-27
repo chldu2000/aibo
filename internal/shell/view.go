@@ -130,7 +130,7 @@ func (s *Shell) pane(c *ui.Context) {
 	pane.Children(func() {
 		rail := float32(0)
 		if s.detail.open && width >= 720 {
-			rail = min(400, width*0.42)
+			rail = s.railFor(width)
 		}
 		// Chosen rows show in a light tint with the theme's text, not the
 		// list's solid accent.
@@ -211,6 +211,7 @@ func (s *Shell) pane(c *ui.Context) {
 			panel := ui.Column(c).Absolute().Top(headerBottom + 8).Right(12).Bottom(16).Key("session-inspector").Transition(inspectorMotion)
 			if rail > 0 {
 				panel.Width(rail - 12)
+				defer s.railEdge(c, rail, width)
 			} else {
 				panel.Left(16).Bottom(composer.Bounds().H + 24)
 			}

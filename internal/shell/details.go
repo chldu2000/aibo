@@ -16,6 +16,10 @@ import (
 
 // detailsUI is the session details panel.
 type detailsUI struct {
+	// width is how wide the panel stands beside the messages, kept as a
+	// preference; resized is when it last moved, until it is kept.
+	width      float32
+	resized    time.Time
 	history    *childHistoryView
 	open       bool
 	session    string
@@ -482,4 +486,45 @@ func shiftCmdKey(key string) string {
 		return "⇧⌘" + key
 	}
 	return "Ctrl+Shift+" + key
+}
+
+// railPref is the preference keeping the panel's width beside the
+// messages, one for all its pages.
+const railPref = "inspectorWidth"
+
+// The panel's width beside the messages, with its margin: as it starts and
+// as a double click on its edge puts it back, and the least it takes. The
+// messages keep messagesMin at the most.
+const railWidth, railMin, messagesMin = 400, 300, 360
+
+// railFor is the panel's width in a pane width wide: the user's, within
+// what the pane leaves the messages.
+func (s *Shell) railFor(width float32) float32 {
+	return max(railMin, min(s.detail.width, width-messagesMin))
+}
+
+// railEdge is the panel's left edge, rail from the pane's right: dragged,
+// it resizes the panel; double-clicked, it puts it back. The width is kept
+// once it rests.
+func (s *Shell) railEdge(c *ui.Context, rail, width float32) {
+	edge := ui.Box(c).Key("inspector-edge").Absolute().Top(headerBottom + 8).Bottom(16).Right(rail - 3).Width(6).
+		Cursor(ui.CursorResizeEW).Label(locales.ResizeDetails())
+	now := c.Now()
+	if edge.DoubleClicked() {
+		s.detail.width, s.detail.resized = railWidth, now
+	} else if dx, _, ok := edge.Dragged(); ok && dx != 0 {
+		s.detail.width, s.detail.resized = s.railFor(width)-dx, now
+		s.detail.width = s.railFor(width)
+	}
+	if s.detail.resized.IsZero() {
+		return
+	}
+	if due := s.detail.resized.Add(widthRest); now.Before(due) {
+		c.After(due.Sub(now))
+		return
+	}
+	s.detail.resized = time.Time{}
+	if err := s.wb.SetPref(railPref, s.detail.width); err != nil {
+		s.notice = s.say(err)
+	}
 }

@@ -474,6 +474,7 @@
   "reference": "Reference",
   "referenceFailed": "Referencing failed",
   "detailsClose": "Close the session details",
+  "resizeDetails": "Drag to resize the details, double-click to reset",
   "detailModel": "Model",
   "effortLine": "{model} · Reasoning effort {effort}",
   "changeAfterTurn": "Change it at the bottom of the composer once this turn ends",

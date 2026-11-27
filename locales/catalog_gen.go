@@ -3714,6 +3714,16 @@ func (msgs Messages) DetailsClose() string {
 	return Catalog.Format(msgs.locale, "detailsClose", nil)
 }
 
+// ResizeDetails says "Drag to resize the details, double-click to reset"
+// in the language the app shows.
+func ResizeDetails() string { return In(i18n.Locale()).ResizeDetails() }
+
+// ResizeDetails says "Drag to resize the details, double-click to reset"
+// in the language of msgs.
+func (msgs Messages) ResizeDetails() string {
+	return Catalog.Format(msgs.locale, "resizeDetails", nil)
+}
+
 // DetailModel says "Model"
 // in the language the app shows.
 func DetailModel() string { return In(i18n.Locale()).DetailModel() }

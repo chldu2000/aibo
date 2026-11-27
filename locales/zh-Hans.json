@@ -365,6 +365,7 @@
   "reference": "引用",
   "referenceFailed": "引用失败",
   "detailsClose": "关闭会话详情",
+  "resizeDetails": "拖动调整详情面板宽度，双击还原",
   "detailModel": "模型",
   "effortLine": "{model} · 推理强度 {effort}",
   "changeAfterTurn": "这一轮结束后可以在输入框底部更换",

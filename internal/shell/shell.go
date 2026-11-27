@@ -202,6 +202,10 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 		s.notice = s.say(err)
 	}
 	s.split = min(max(s.split, sidebarMin), sidebarMax)
+	s.detail.width = railWidth
+	if _, err := wb.Pref(railPref, &s.detail.width); err != nil {
+		s.notice = s.say(err)
+	}
 	if _, err := wb.Pref(pagePref, &s.detail.page); err != nil {
 		s.notice = s.say(err)
 	}
@@ -222,6 +226,9 @@ func (s *Shell) Close() {
 	// A width moved just before is kept, though it did not rest.
 	if !s.side.resized.IsZero() {
 		_ = s.wb.SetPref(widthPref, s.split)
+	}
+	if !s.detail.resized.IsZero() {
+		_ = s.wb.SetPref(railPref, s.detail.width)
 	}
 	s.closeChildHistory()
 	s.watchPanel("")
