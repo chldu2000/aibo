@@ -1,6 +1,7 @@
 package shell_test
 
 import (
+	"runtime"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func TestSidebarCollapse(t *testing.T) {
 		}
 		return v
 	}
-	const hide, show = `隐藏侧栏（⌘\）`, `显示侧栏（⌘\）`
+	hide, show := keyed("隐藏侧栏", `\`), keyed("显示侧栏", `\`)
 	shown := func(tt *ui.Tester, want bool) {
 		t.Helper()
 		if got := tt.HasText("搜索会话"); got != want {
@@ -183,4 +184,21 @@ func TestSidebarWidth(t *testing.T) {
 	frame(tt)
 	near("reset", width(), 260)
 	near("kept reset", kept(), 260)
+}
+
+// keyed is a label with its shortcut, as the platform writes it: ⌘ on
+// macOS, Ctrl+ elsewhere.
+func keyed(label, key string) string {
+	if runtime.GOOS == "darwin" {
+		return label + "（⌘" + key + "）"
+	}
+	return label + "（Ctrl+" + key + "）"
+}
+
+// enKeyed is keyed, in English.
+func enKeyed(label, key string) string {
+	if runtime.GOOS == "darwin" {
+		return label + " (⌘" + key + ")"
+	}
+	return label + " (Ctrl+" + key + ")"
 }

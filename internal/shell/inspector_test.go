@@ -191,7 +191,7 @@ func TestInspectorKeys(t *testing.T) {
 	click("工作区文件")
 	click("file.txt")
 	wait("返回")
-	tt.Key(ui.Super, ui.KeyBracketLeft)
+	tt.Key(ui.Cmd, ui.KeyBracketLeft)
 	tt.Frame()
 	if tt.HasText("返回") {
 		t.Fatal("⌘[ did not leave the file")

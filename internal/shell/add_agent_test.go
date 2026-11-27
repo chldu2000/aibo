@@ -67,7 +67,7 @@ func TestAddAgentFromSettings(t *testing.T) {
 		}
 	}
 	frame()
-	tt.Key(ui.Super, ui.KeyComma)
+	tt.Key(ui.Cmd, ui.KeyComma)
 	frame()
 	click(locales.TabAgents())
 	click(locales.AddAgent())
@@ -107,7 +107,7 @@ func TestAddAgentFromSettings(t *testing.T) {
 	click(locales.CloseSettings())
 	click(locales.NewSessionIn(filepath.Base(ws.Path)))
 	click(locales.NewSessionWith("Local edited"))
-	tt.Key(ui.Super, ui.KeyComma)
+	tt.Key(ui.Cmd, ui.KeyComma)
 	frame()
 	click(locales.TabAgents())
 	click(locales.RemoveACPLabel("Local edited"))
@@ -170,7 +170,7 @@ func TestEditKeepsModeLabels(t *testing.T) {
 		frame()
 	}
 	frame()
-	tt.Key(ui.Super, ui.KeyComma)
+	tt.Key(ui.Cmd, ui.KeyComma)
 	frame()
 	click(locales.TabAgents())
 	click(locales.EditACPLabel("Labelled"))

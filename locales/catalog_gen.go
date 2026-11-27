@@ -1820,31 +1820,31 @@ func (msgs Messages) SearchSessions() string {
 	return Catalog.Format(msgs.locale, "searchSessions", nil)
 }
 
-// SettingsButton says "Settings (⌘,)"
+// SettingsButton says "Settings"
 // in the language the app shows.
 func SettingsButton() string { return In(i18n.Locale()).SettingsButton() }
 
-// SettingsButton says "Settings (⌘,)"
+// SettingsButton says "Settings"
 // in the language of msgs.
 func (msgs Messages) SettingsButton() string {
 	return Catalog.Format(msgs.locale, "settingsButton", nil)
 }
 
-// HideSidebar says "Hide the sidebar (⌘\\)"
+// HideSidebar says "Hide the sidebar"
 // in the language the app shows.
 func HideSidebar() string { return In(i18n.Locale()).HideSidebar() }
 
-// HideSidebar says "Hide the sidebar (⌘\\)"
+// HideSidebar says "Hide the sidebar"
 // in the language of msgs.
 func (msgs Messages) HideSidebar() string {
 	return Catalog.Format(msgs.locale, "hideSidebar", nil)
 }
 
-// ShowSidebar says "Show the sidebar (⌘\\)"
+// ShowSidebar says "Show the sidebar"
 // in the language the app shows.
 func ShowSidebar() string { return In(i18n.Locale()).ShowSidebar() }
 
-// ShowSidebar says "Show the sidebar (⌘\\)"
+// ShowSidebar says "Show the sidebar"
 // in the language of msgs.
 func (msgs Messages) ShowSidebar() string {
 	return Catalog.Format(msgs.locale, "showSidebar", nil)
@@ -2112,21 +2112,21 @@ func (msgs Messages) NoSessionsFound() string {
 	return Catalog.Format(msgs.locale, "noSessionsFound", nil)
 }
 
-// JumpToEnd says "Jump to the latest (⌘↓)"
+// JumpToEnd says "Jump to the latest"
 // in the language the app shows.
 func JumpToEnd() string { return In(i18n.Locale()).JumpToEnd() }
 
-// JumpToEnd says "Jump to the latest (⌘↓)"
+// JumpToEnd says "Jump to the latest"
 // in the language of msgs.
 func (msgs Messages) JumpToEnd() string {
 	return Catalog.Format(msgs.locale, "jumpToEnd", nil)
 }
 
-// NewBelow says "New messages below: jump to the latest (⌘↓)"
+// NewBelow says "New messages below: jump to the latest"
 // in the language the app shows.
 func NewBelow() string { return In(i18n.Locale()).NewBelow() }
 
-// NewBelow says "New messages below: jump to the latest (⌘↓)"
+// NewBelow says "New messages below: jump to the latest"
 // in the language of msgs.
 func (msgs Messages) NewBelow() string {
 	return Catalog.Format(msgs.locale, "newBelow", nil)

@@ -220,9 +220,9 @@
   "hours": "{h}h {m}m",
   "addWorkspace": "Add a workspace",
   "searchSessions": "Search sessions",
-  "settingsButton": "Settings (⌘,)",
-  "hideSidebar": "Hide the sidebar (⌘\\)",
-  "showSidebar": "Show the sidebar (⌘\\)",
+  "settingsButton": "Settings",
+  "hideSidebar": "Hide the sidebar",
+  "showSidebar": "Show the sidebar",
   "noWorkspaces": "No workspaces yet. Add a project folder (or drop one on the window) to talk with an Agent in it.",
   "addWorkspaceMenu": "Add a workspace…",
   "folderMissing": "Folder missing",
@@ -291,8 +291,8 @@
     }
   },
   "noSessionsFound": "No sessions found",
-  "jumpToEnd": "Jump to the latest (⌘↓)",
-  "newBelow": "New messages below: jump to the latest (⌘↓)",
+  "jumpToEnd": "Jump to the latest",
+  "newBelow": "New messages below: jump to the latest",
   "searching": "Searching…",
   "searchMore": "{count} more not shown. Narrow the search to find them.",
   "@searchMore": {

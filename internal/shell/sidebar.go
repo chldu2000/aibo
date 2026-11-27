@@ -115,6 +115,7 @@ func (s *Shell) sidebarButton(c *ui.Context) {
 	if s.side.hidden {
 		label = locales.ShowSidebar()
 	}
+	label = locales.WithShortcut(label, cmdKey(`\`))
 	if iconButton(c, "sidebar.leading", label).Clicked() {
 		s.toggleSidebar(c)
 	}
@@ -179,7 +180,7 @@ func (s *Shell) sidebar(c *ui.Context) {
 			})
 		})
 		ui.Row(c).Padding(8, 10).AlignItems(ui.Center).Children(func() {
-			if iconButton(c, "gearshape", locales.SettingsButton()).Clicked() {
+			if iconButton(c, "gearshape", locales.WithShortcut(locales.SettingsButton(), cmdKey(","))).Clicked() {
 				s.openSettings()
 			}
 			ui.Spacer(c)

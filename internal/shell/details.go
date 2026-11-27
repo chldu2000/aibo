@@ -178,7 +178,7 @@ func (s *Shell) inspectorKeys(c *ui.Context, x model.Session, v *sessionView) {
 		} else {
 			s.closeDetails(x.ID)
 		}
-	case nested && c.Shortcut(ui.Super, ui.KeyBracketLeft):
+	case nested && c.Shortcut(ui.Cmd, ui.KeyBracketLeft):
 		s.inspectorBack(x)
 	}
 }

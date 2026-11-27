@@ -23,7 +23,7 @@ func (s *Shell) View(c *ui.Context) {
 		s.viewed = id
 		s.wb.Viewing(s.viewer, id)
 	}
-	if c.Shortcut(ui.Super, ui.KeyComma) {
+	if c.Shortcut(ui.Cmd, ui.KeyComma) {
 		s.openSettings()
 	}
 	s.side.hidden = s.sidebarHidden(c)

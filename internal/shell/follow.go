@@ -51,6 +51,7 @@ func (s *Shell) jumpToEnd(c *ui.Context, v *sessionView, running bool, right, bo
 	if v.follow.fresh {
 		label = locales.NewBelow()
 	}
+	label = locales.WithShortcut(label, cmdKey("↓"))
 	b := ui.Box(c).Key("jump-to-end").Absolute().Right(right).Bottom(bottom).Size(34, 34).Radius(17).
 		AlignItems(ui.Center).Justify(ui.Center).Material(glass.Glass{}).Tooltip(label).Label(label).Transition(jumpMotion).Children(func() {
 		icon(c, "arrow.down").Size(14).Color(t.Text)

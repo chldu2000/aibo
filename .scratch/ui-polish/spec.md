@@ -7,6 +7,7 @@
 - 界面文字进 `locales/`，两种语言同时写；新控件的 Label 在同一画面内唯一。
 - 需要跨重启保留的界面状态（宽度、收起、上次的标签页）用工作台的 `Pref` / `SetPref`（`internal/workbench/settings.go`），外壳不碰 `store`。
 - 新快捷键用 `ui.Cmd`：macOS 上是 ⌘，Windows 上是 Ctrl。`ui.Super` 在 Windows 上是 Win 键，会和系统快捷键冲突（Win+↓ 最小化窗口），不要用。也不要和 MyGO 已有的快捷键冲突。
+- 提示里的快捷键用 `cmdKey`、`shiftCmdKey` 和 `locales.WithShortcut` 拼出来，按平台显示，文案里不写死 ⌘。
 - 交互用 MyGO Tester 测；涉及工作台的新状态（未读等）测在工作台层。
 
 ## 工单

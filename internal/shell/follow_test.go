@@ -45,7 +45,7 @@ func TestJumpToEnd(t *testing.T) {
 
 	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1000, 800)
 	frame(tt)
-	jump, fresh := locales.JumpToEnd(), locales.NewBelow()
+	jump, fresh := keyed(locales.JumpToEnd(), "↓"), keyed(locales.NewBelow(), "↓")
 	none := func(when string) {
 		t.Helper()
 		if tt.HasText(jump) || tt.HasText(fresh) {

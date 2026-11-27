@@ -33,7 +33,7 @@ func TestGeneralSettingsWithTwoAgents(t *testing.T) {
 	}
 	defer wb.Close()
 	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 900, 780)
-	if err := tt.Click("设置（⌘,）"); err != nil {
+	if err := tt.Click(keyed("设置", ",")); err != nil {
 		t.Fatal(err)
 	}
 	find := func(label string) ui.Rect {
@@ -110,7 +110,7 @@ func TestSettingsModal(t *testing.T) {
 		}
 	}
 
-	click("设置（⌘,）")
+	click(keyed("设置", ","))
 	shows("数据目录", dataDir, "新会话的默认权限模式", "有待审批时发系统通知")
 	click("打开日志目录")
 	if logsOpened != 1 {
@@ -186,7 +186,7 @@ func TestSettingsModal(t *testing.T) {
 	ws, _ := wb.AddWorkspace(t.TempDir())
 	s, _ := wb.NewSession(ws.ID, fake.Kind, "")
 	wb.Send(s.ID, "busy")
-	tt.Key(ui.Super, ui.KeyComma)
+	tt.Key(ui.Cmd, ui.KeyComma)
 	frame()
 	click("通用")
 	click("更改…")
