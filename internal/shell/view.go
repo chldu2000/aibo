@@ -258,9 +258,8 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 			// Keyed, the body stays the same element, its controls and
 			// what they hold, as the number comes and goes beside it.
 			defer func() {
-				if !gutter && v.hover == m.Seq {
-					ui.Textf(c, "#%d", m.Seq).Key("float").FontSize(11).TextColor(t.TextMuted).MaxLines(1).
-						Absolute().Top(4).Right(4).Padding(1, 6).Radius(6).Background(t.Surface)
+				if !v.sel.on && v.hover == m.Seq {
+					s.messageActions(c, x, v, m, !gutter)
 				}
 			}()
 			ui.Column(c).Key("body").Grow(1).MinWidth(0).MaxWidth(820).Gap(6).Children(func() {

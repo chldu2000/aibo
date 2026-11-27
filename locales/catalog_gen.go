@@ -3294,6 +3294,36 @@ func (msgs Messages) Copy() string {
 	return Catalog.Format(msgs.locale, "copy", nil)
 }
 
+// CopyMessage says "Copy #{seq}"
+// in the language the app shows.
+func CopyMessage(seq string) string { return In(i18n.Locale()).CopyMessage(seq) }
+
+// CopyMessage says "Copy #{seq}"
+// in the language of msgs.
+func (msgs Messages) CopyMessage(seq string) string {
+	return Catalog.Format(msgs.locale, "copyMessage", map[string]any{"seq": seq})
+}
+
+// QuoteMessage says "Quote #{seq}"
+// in the language the app shows.
+func QuoteMessage(seq string) string { return In(i18n.Locale()).QuoteMessage(seq) }
+
+// QuoteMessage says "Quote #{seq}"
+// in the language of msgs.
+func (msgs Messages) QuoteMessage(seq string) string {
+	return Catalog.Format(msgs.locale, "quoteMessage", map[string]any{"seq": seq})
+}
+
+// PutBackMessage says "Put #{seq} back in the draft"
+// in the language the app shows.
+func PutBackMessage(seq string) string { return In(i18n.Locale()).PutBackMessage(seq) }
+
+// PutBackMessage says "Put #{seq} back in the draft"
+// in the language of msgs.
+func (msgs Messages) PutBackMessage(seq string) string {
+	return Catalog.Format(msgs.locale, "putBackMessage", map[string]any{"seq": seq})
+}
+
 // SendTo says "Send to…"
 // in the language the app shows.
 func SendTo() string { return In(i18n.Locale()).SendTo() }
