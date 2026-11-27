@@ -164,6 +164,7 @@ type Workbench struct {
 	mu             sync.Mutex
 	closing        bool
 	modelLists     map[agent.Kind]*modelListEntry
+	commandLists   map[commandKey]*commandListEntry
 	listVersions   map[agent.Kind]int
 	browseReads    map[workspaceReadKey]*workspaceRead
 	watches        map[string]*workspaceWatch
@@ -183,9 +184,15 @@ type session struct {
 	markers    []model.Marker  // loaded with msgs
 	loaded     bool
 
-	native  agent.Session // nil while not connected
-	running bool
-	err     error
+	native agent.Session // nil while not connected
+	// starting is closed once a native session being started has, or
+	// failed to.
+	starting chan struct{}
+	// commands are the Agent commands the native session told, nil until
+	// it does.
+	commands []agent.Command
+	running  bool
+	err      error
 	// items maps the running turn's replies, tool calls and plans, by
 	// the keys of itemKey, to indexes in msgs.
 	items     map[string]int

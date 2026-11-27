@@ -197,6 +197,7 @@ func (w *Workbench) finishRun(id string, s *session) {
 func (w *Workbench) detach(id string, s *session) agent.Session {
 	n := s.native
 	s.native = nil
+	w.commandsGone(id, s)
 	w.mcp.Revoke(id)
 	return n
 }

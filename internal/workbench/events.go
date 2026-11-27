@@ -36,7 +36,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 	}
 	// Anything but another retry, or what it uses: the Agent got on.
 	switch ev.(type) {
-	case agent.Retrying, agent.SettingsReported, agent.ModeReported:
+	case agent.Retrying, agent.SettingsReported, agent.ModeReported, agent.CommandsChanged:
 	default:
 		s.retrying = nil
 	}
@@ -48,6 +48,10 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		}
 	case agent.SettingsReported:
 		s.reported = e
+	case agent.CommandsChanged:
+		w.log.Info("agent commands told", "session", id, "commands", len(e.Commands))
+		w.commandsTold(s, e.Commands)
+		defer w.notify(Change{})
 	case agent.ModeReported:
 		s.reportedMode = e.ID
 		// The Agent changed its mode itself, as Claude Code leaving plan

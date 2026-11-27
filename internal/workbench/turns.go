@@ -198,7 +198,36 @@ func (w *Workbench) startFailed(id string, err error) {
 
 // connect starts or resumes the session's native session and pumps its
 // events.
+//
+// Starts do not overlap: one that finds another under way waits for it,
+// and goes on in the native session it started, if it did.
 func (w *Workbench) connect(id string, info model.Session, ws model.Workspace) (agent.Session, error) {
+	w.mu.Lock()
+	for s := w.sessions[id]; s != nil && s.starting != nil; s = w.sessions[id] {
+		ch := s.starting
+		w.mu.Unlock()
+		<-ch
+		w.mu.Lock()
+	}
+	s := w.sessions[id]
+	if s != nil && s.native != nil {
+		native := s.native
+		w.mu.Unlock()
+		return native, nil
+	}
+	if s != nil {
+		started := make(chan struct{})
+		s.starting = started
+		defer func() {
+			w.mu.Lock()
+			if s.starting == started {
+				s.starting = nil
+			}
+			w.mu.Unlock()
+			close(started)
+		}()
+	}
+	w.mu.Unlock()
 	a := w.agent(info.Agent)
 	if a == nil {
 		return nil, fmt.Errorf("%s：%w", info.Agent, ErrUnknownAgent)
@@ -269,6 +298,7 @@ func (w *Workbench) pump(id string, native agent.Session) {
 		return
 	}
 	s.native = nil
+	w.commandsGone(id, s)
 	w.mcp.Revoke(id)
 	w.log.Warn("native session ended by itself", "session", id, "running", s.running)
 	changed := w.endTurn(id, s, model.Interrupted)

@@ -43,6 +43,68 @@ type Agent struct {
 	starts      []agent.StartOptions
 	modelSets   []ModelSet
 	nextID      int
+	// The Agent commands: commands, told without a session unless
+	// fromSession; commandsErr fails telling them; commandLists counts
+	// the asks; live are the sessions running, to tell changes to.
+	commands     []agent.Command
+	fromSession  bool
+	commandsErr  error
+	commandLists int
+	live         []*session
+}
+
+// SetCommands sets the fake's Agent commands. fromSession makes it tell
+// them only from a native session, as Claude Code does: as it starts.
+func (a *Agent) SetCommands(cmds []agent.Command, fromSession bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.commands, a.fromSession = append([]agent.Command(nil), cmds...), fromSession
+}
+
+// ChangeCommands changes the commands, which every running native
+// session then tells (CommandsChanged), as on a skill added.
+func (a *Agent) ChangeCommands(cmds []agent.Command) {
+	a.mu.Lock()
+	a.commands = append([]agent.Command(nil), cmds...)
+	live := append([]*session(nil), a.live...)
+	a.mu.Unlock()
+	for _, s := range live {
+		s.mu.Lock()
+		if !s.closed {
+			s.events <- agent.CommandsChanged{Commands: append([]agent.Command(nil), cmds...)}
+		}
+		s.mu.Unlock()
+	}
+}
+
+// FailCommands makes telling the commands without a session fail with
+// err; nil tells them again.
+func (a *Agent) FailCommands(err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.commandsErr = err
+}
+
+// CommandLists counts the asks for the commands without a session.
+func (a *Agent) CommandLists() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.commandLists
+}
+
+// Commands tells the commands set (SetCommands), or that only a session
+// tells them.
+func (a *Agent) Commands(context.Context, string) ([]agent.Command, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.commandLists++
+	if a.fromSession {
+		return nil, agent.ErrCommandsFromSession
+	}
+	if a.commandsErr != nil {
+		return nil, a.commandsErr
+	}
+	return append([]agent.Command(nil), a.commands...), nil
 }
 
 // New returns a fake Agent answering every turn with respond.
@@ -132,6 +194,12 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 	s.events <- agent.NativeSessionStarted{ID: id}
 	s.events <- reported(opts.Model, opts.Effort)
 	s.events <- modeOf(opts.Mode)
+	a.mu.Lock()
+	if a.fromSession {
+		s.events <- agent.CommandsChanged{Commands: append([]agent.Command(nil), a.commands...)}
+	}
+	a.live = append(a.live, s)
+	a.mu.Unlock()
 	return s, nil
 }
 
@@ -270,6 +338,14 @@ func (s *session) Close() error {
 		s.cancel()
 	}
 	s.mu.Unlock()
+	s.agent.mu.Lock()
+	for i, l := range s.agent.live {
+		if l == s {
+			s.agent.live = append(s.agent.live[:i], s.agent.live[i+1:]...)
+			break
+		}
+	}
+	s.agent.mu.Unlock()
 	s.turns.Wait()
 	close(s.events)
 	return nil

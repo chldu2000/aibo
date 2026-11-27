@@ -139,6 +139,7 @@ func (w *Workbench) watchLists(a agent.Agent) {
 
 // forgetLists drops what was read of an Agent's lists; w.mu is held.
 func (w *Workbench) forgetLists(kind agent.Kind) {
+	w.forgetCommands(kind)
 	if entry := w.modelLists[kind]; entry != nil {
 		entry.cancel()
 		delete(w.modelLists, kind)
