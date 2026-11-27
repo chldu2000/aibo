@@ -12,7 +12,7 @@ import (
 func watchWorkspace(ctx context.Context, dir string, changed func()) error {
 	watcher, err := mygo.WatchFiles(ctx, dir, mygo.FileWatchOptions{
 		Recursive: true, HintsOnly: true, Debounce: 150 * time.Millisecond, MaxDelay: time.Second,
-		Ignore: func(name string, isDir bool) bool { return isDir && strings.EqualFold(path.Base(name), ".git") },
+		Ignore: ignoreInWorkspace,
 	})
 	if err != nil {
 		return err
@@ -26,4 +26,18 @@ func watchWorkspace(ctx context.Context, dir string, changed func()) error {
 		}
 		changed()
 	}
+}
+
+// ignoreInWorkspace is what the workspace watch leaves alone: inside a
+// repository's .git, every directory but refs. Its HEAD, index and refs
+// say what the Git page shows, as a commit or a checkout changes them, and
+// .git appearing is a repository made; what git keeps of the history
+// (objects, logs) changes with every object it writes. The workbench's
+// own git commands take no optional locks, so they do not write there.
+func ignoreInWorkspace(name string, isDir bool) bool {
+	if !isDir {
+		return false
+	}
+	parent, base := path.Split(name)
+	return strings.EqualFold(path.Base(strings.TrimSuffix(parent, "/")), ".git") && !strings.EqualFold(base, "refs")
 }

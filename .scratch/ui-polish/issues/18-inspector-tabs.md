@@ -43,3 +43,17 @@ Status: resolved
 - **观察范围扩大带来的变化**：面板一打开就读 Git 状态，这时如果目录还不是仓库，结果会被缓存。之后在面板开着的情况下 `git init`，文件监视看不到 `.git` 的出现，要点“刷新工作区”才会更新。测试里 `git init` 后加了一次刷新。以前是切到 Git 页时才第一次读，所以没有这个问题。
 - **快捷键提示没统一**：其他地方写死的 ⌘（侧栏的“隐藏侧栏（⌘\）”、设置的“设置（⌘,）”）还没有改成按平台显示。⌘, 本身还在用 `ui.Super`，也没改，等你决定。
 - 角标、竖线、名称在真机上的大小和对齐没有看过。
+
+## 后续：监视 .git 的变化（2026-11-28）
+
+- **原来的问题**：应用的工作区监视（`cmd/aibo/workspace_watch.go`）忽略整个 `.git`。所以不只是 `git init`，在终端里提交、切分支这些只改 `.git` 的操作，理论上 Git 页都看不到。
+- **改法**：新的 `ignoreInWorkspace` 在 `.git` 里只忽略 `refs` 以外的子目录。也就是监视 `.git` 本身、它顶层的 `HEAD`、`index` 等文件和 `refs/`，`objects/`、`logs/`、`hooks/` 这类仍然忽略。
+- **不会自己触发自己**：工作台自己跑的 git 命令都带 `--no-optional-locks`，不会写 `.git/index`，所以不会形成刷新循环。
+- **测试**：
+  - `TestIgnoreInWorkspace` 覆盖各种路径，包括子目录里的仓库；
+  - `TestWatchSeesGit` 用真实的 `WatchFiles` 检查 `git init` 和 `git commit` 都会触发通知。
+
+### 没有验证
+
+- 在这台 Windows 机器上，旧规则也能通过 `TestWatchSeesGit`。可能是 Windows 的递归监视把目录树的变化都报上来了，所以这个测试在 Windows 上区分不出新旧规则。真正的差别应该在 macOS（FSEvents）上，没有在 macOS 上跑过。
+- 外壳测试不提供 `WatchWorkspace`，`TestInspectorFileSelectionFollowsWorkspace` 里 `git init` 后的那次刷新仍然需要。
