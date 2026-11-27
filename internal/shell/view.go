@@ -189,6 +189,11 @@ func (s *Shell) pane(c *ui.Context) {
 				s.composer(c, x, v)
 			}
 		})
+		if h := composer.Bounds().H; h != v.composerHeight {
+			// The messages take the new room in the next frame.
+			v.composerHeight = h
+			c.After(0)
+		}
 		if s.detail.open {
 			s.inspectorKeys(c, x, v)
 		}
@@ -279,7 +284,7 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 		if v.highlight[0] > 0 && m.Seq >= v.highlight[0] && m.Seq <= v.highlight[1] {
 			row.Background(tinted(c, ui.RGBA(40, 120, 255, 0.16)))
 		}
-	}).Padding(76, 20, 170).Gap(10).Children(func() {
+	}).Padding(76, 20, bottomRoom(v.composerHeight)).Gap(10).Children(func() {
 		if len(v.msgs) == 0 {
 			ui.Text(c, locales.StartConversation()).TextColor(t.TextMuted).Margin(ui.Auto)
 		}
@@ -374,7 +379,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 		svc := c.Services()
 		// Without a look of its own: the card's glass is the field. Keyed,
 		// so that chips appearing above it keep its focus and caret.
-		input := ui.TextAreaBase(c.Key("draft"+x.ID), &v.draft).Padding(4, 2).Placeholder(prompt).Label(prompt).MinHeight(44).Disabled(blocked).OnPaste(func(text string) bool {
+		input := ui.TextAreaBase(c.Key("draft"+x.ID), &v.draft).Padding(4, 2).Placeholder(prompt).Label(prompt).MinHeight(44).MaxHeight(draftMaxHeight(c)).Disabled(blocked).OnPaste(func(text string) bool {
 			if s.pasteFiles(svc, x.ID, text) {
 				return true
 			}
@@ -666,4 +671,21 @@ func elapsed(d time.Duration) string {
 	}
 	return locales.Hours(fmt.Sprint(sec/3600), fmt.Sprintf("%02d", sec/60%60))
 
+}
+
+// bottomRoom is the room under the last message: the composer's height,
+// with its margin from the window's edge and a gap above it. Before the
+// composer was laid out, about what it takes alone.
+func bottomRoom(composer float32) float32 {
+	if composer <= 0 {
+		return 170
+	}
+	return composer + 16 + 16
+}
+
+// draftMaxHeight is the most the composer's field grows to, 40% of the
+// window, past which the draft scrolls in it.
+func draftMaxHeight(c *ui.Context) float32 {
+	_, h := c.Size()
+	return max(44, h*0.4)
 }

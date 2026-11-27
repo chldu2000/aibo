@@ -153,6 +153,9 @@ type sessionView struct {
 	// highlight is the range of sequence numbers shown highlighted, as
 	// when jumping to what a reference covers; zero for none.
 	highlight [2]int
+	// composerHeight is how tall the composer and what floats above it were
+	// last frame, which the messages leave room for under their last.
+	composerHeight float32
 }
 
 // New returns the shell of wb.
