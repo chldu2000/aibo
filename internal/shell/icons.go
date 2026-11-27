@@ -42,6 +42,8 @@ var iconFallbacks = map[string]*ui.SVG{
 	"checkmark.circle.fill":              glyph(`<circle cx="12" cy="12" r="9"/><path d="m7 12 3.5 3.5L17 9"/>`),
 	"checkmark.shield":                   glyph(`<path d="M12 2 3 6v6c0 5 5 8 9 10 4-2 9-5 9-10V6Zm-4 10 3 3 5-6"/>`),
 	"chevron.left":                       glyph(`<path d="m15 4-8 8 8 8"/>`),
+	"chevron.down":                       glyph(`<path d="m4 9 8 8 8-8"/>`),
+	"chevron.up":                         glyph(`<path d="m4 15 8-8 8 8"/>`),
 	"circle":                             glyph(`<circle cx="12" cy="12" r="8"/>`),
 	"circle.dotted":                      glyph(`<path d="M11 3h2m5 2 1 1m2 5v2m-2 5-1 1m-5 2h-2m-5-2-1-1m-2-5v-2m2-5 1-1"/>`),
 	"cpu":                                glyph(`<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"/>`),

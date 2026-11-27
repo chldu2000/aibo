@@ -1312,6 +1312,26 @@ func (msgs Messages) ArchivedNote() string {
 	return Catalog.Format(msgs.locale, "archivedNote", nil)
 }
 
+// MoreNotices says "{count} more notices"
+// in the language the app shows.
+func MoreNotices(count int) string { return In(i18n.Locale()).MoreNotices(count) }
+
+// MoreNotices says "{count} more notices"
+// in the language of msgs.
+func (msgs Messages) MoreNotices(count int) string {
+	return Catalog.Format(msgs.locale, "moreNotices", map[string]any{"count": count})
+}
+
+// FewerNotices says "Show fewer notices"
+// in the language the app shows.
+func FewerNotices() string { return In(i18n.Locale()).FewerNotices() }
+
+// FewerNotices says "Show fewer notices"
+// in the language of msgs.
+func (msgs Messages) FewerNotices() string {
+	return Catalog.Format(msgs.locale, "fewerNotices", nil)
+}
+
 // Unarchive says "Unarchive"
 // in the language the app shows.
 func Unarchive() string { return In(i18n.Locale()).Unarchive() }

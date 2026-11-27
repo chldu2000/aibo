@@ -156,6 +156,11 @@ func (s *Shell) pane(c *ui.Context) {
 			}
 			s.agentGlyph(c, x.Agent, 20)
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1).Shrink(1).MinWidth(0)
+			if x.Archived {
+				// Unarchived from "…".
+				ui.Text(c, locales.Archived()).FontSize(11).TextColor(t.TextMuted).NoWrap().Padding(1, 6).Radius(6).
+					BorderWidth(1).BorderColor(t.Border).Tooltip(locales.ArchivedNote())
+			}
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Basis(0).Grow(1).MinWidth(0)
 			if iconButton(c, "arrowshape.turn.up.right", locales.SelectMessages()).Clicked() {
 				if v.sel.on {
@@ -312,7 +317,11 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 	})
 }
 
-// banners are notices above the composer, in orange-tinted glass.
+// banners are notices above the composer, in tinted glass: first those
+// that ask the user to decide (the native session cannot be resumed, the
+// Agent is signed out, the folder is gone), then those that tell (a
+// failure, a notice, a highlight). Past two, the first shows and the
+// others fold into a line that opens them.
 func (s *Shell) banners(c *ui.Context, id string) {
 	bar := func(text string, dismiss func()) {
 		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
@@ -324,45 +333,69 @@ func (s *Shell) banners(c *ui.Context, id string) {
 	}
 	st := s.wb.Status(id)
 	x, ok := s.wb.Session(id)
-	var failure *workbench.Failure
-	if errors.As(st.Error, &failure) {
-		bar(s.sayFailure(s.agentName(x.Agent), failure), nil)
+	v := s.views[id]
+	type banner struct {
+		key  string
+		draw func()
 	}
+	var all []banner
 	if st.ResumeFailed != nil {
-		s.resumeBanner(c, id, st)
+		all = append(all, banner{"resume", func() { s.resumeBanner(c, id, st) }})
 	}
-	if ok {
-		s.loginBanner(c, x, st)
-		ws := s.workspaceOf(x)
-		if ws.Missing {
+	if ok && s.signedOut(x, st) {
+		all = append(all, banner{"login", func() { s.loginBanner(c, x, st) }})
+	}
+	if ws := s.workspaceOf(x); ok && ws.Missing {
+		all = append(all, banner{"missing", func() {
 			ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(255, 150, 0, 0.25))}).Children(func() {
 				ui.Text(c, locales.WorkspaceMissing(ws.Path)).TextColor(c.Theme().Text).Grow(1)
 				if ui.Button(c, locales.Relocate()).Clicked() {
 					s.relocate(ws)
 				}
 			})
-		}
-		if x.Archived {
-			ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
-				ui.Text(c, locales.ArchivedNote()).FontSize(12).TextColor(c.Theme().Text).Grow(1)
-				if ui.Button(c, locales.Unarchive()).Clicked() {
-					if err := s.wb.SetArchived(x.ID, false); err != nil {
-						s.notice = s.say(err)
-					}
-				}
-			})
-		}
+		}})
+	}
+	var failure *workbench.Failure
+	if errors.As(st.Error, &failure) {
+		all = append(all, banner{"failure", func() { bar(s.sayFailure(s.agentName(x.Agent), failure), nil) }})
 	}
 	if s.notice != "" {
-		bar(s.notice, func() { s.notice = "" })
+		all = append(all, banner{"notice", func() { bar(s.notice, func() { s.notice = "" }) }})
 	}
-	if v := s.views[id]; v != nil && v.highlight[0] > 0 {
-		ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(40, 120, 255, 0.25))}).Children(func() {
-			ui.Text(c, locales.Highlighted(refs.Range(v.highlight[0], v.highlight[1]))).TextColor(c.Theme().Text).Grow(1)
-			if iconButton(c, "xmark", locales.ClearHighlight()).Clicked() {
-				v.highlight = [2]int{}
-			}
-		})
+	if v != nil && v.highlight[0] > 0 {
+		all = append(all, banner{"highlight", func() {
+			ui.Row(c).Gap(8).Padding(8, 12).Radius(14).AlignItems(ui.Center).Material(glass.Glass{Tint: tinted(c, ui.RGBA(40, 120, 255, 0.25))}).Children(func() {
+				ui.Text(c, locales.Highlighted(refs.Range(v.highlight[0], v.highlight[1]))).TextColor(c.Theme().Text).Grow(1)
+				if iconButton(c, "xmark", locales.ClearHighlight()).Clicked() {
+					v.highlight = [2]int{}
+				}
+			})
+		}})
+	}
+	if len(all) <= 2 && v != nil {
+		v.bannersOpen = false
+	}
+	folded := len(all) > 2 && (v == nil || !v.bannersOpen)
+	for i, b := range all {
+		if folded && i > 0 {
+			break
+		}
+		ui.Column(c).Key(b.key).Children(b.draw)
+	}
+	if len(all) <= 2 || v == nil {
+		return
+	}
+	text, symbol := locales.MoreNotices(len(all)-1), "chevron.down"
+	if !folded {
+		text, symbol = locales.FewerNotices(), "chevron.up"
+	}
+	t := c.Theme()
+	more := ui.Row(c).Key("more").Gap(6).Padding(6, 12).Radius(14).AlignItems(ui.Center).Label(text).Cursor(ui.CursorPointer).Material(glass.Glass{}).Children(func() {
+		icon(c, symbol).Size(11).Color(t.TextMuted)
+		ui.Text(c, text).FontSize(12).TextColor(t.TextMuted)
+	})
+	if more.Clicked() {
+		v.bannersOpen = folded
 	}
 }
 

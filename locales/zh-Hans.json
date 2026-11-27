@@ -127,6 +127,8 @@
   "workspaceMissing": "工作区目录不存在：{path}。会话可以浏览和被引用，但不能继续。",
   "relocate": "重新定位…",
   "archivedNote": "这个会话已归档：不在工作区里显示，仍可以继续、搜索和被引用。",
+  "moreNotices": "还有 {count} 条提示",
+  "fewerNotices": "收起提示",
   "unarchive": "取消归档",
   "highlighted": "已高亮被引用的范围 {range}",
   "clearHighlight": "取消高亮",

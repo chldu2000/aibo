@@ -40,9 +40,6 @@ func TestComposerClearance(t *testing.T) {
 			<-changes
 		}
 	}
-	// A banner above the composer.
-	wb.SetArchived(x.ID, true)
-
 	tt := ui.NewTester(shell.New(wb, shell.Options{}).View, 1000, 800)
 	frame(tt)
 	prompt := locales.MessageAgent("假 Agent")
@@ -62,9 +59,9 @@ func TestComposerClearance(t *testing.T) {
 		}
 		return r
 	}
-	last, banner := find("回复：消息 12"), find(locales.ArchivedNote())
-	if last.Y+last.H > banner.Y {
-		t.Errorf("the last message (to y=%v) is under the composer (from y=%v)", last.Y+last.H, banner.Y)
+	last, field := find("回复：消息 12"), find(prompt)
+	if last.Y+last.H > field.Y {
+		t.Errorf("the last message (to y=%v) is under the composer (from y=%v)", last.Y+last.H, field.Y)
 	}
 
 	for range 60 {
@@ -75,8 +72,8 @@ func TestComposerClearance(t *testing.T) {
 	if r := find(prompt); r.H > 800*0.4+1 {
 		t.Errorf("the draft grew to %v, past 40%% of the window", r.H)
 	}
-	last, banner = find("回复：消息 12"), find(locales.ArchivedNote())
-	if last.Y+last.H > banner.Y {
-		t.Errorf("with a long draft, the last message (to y=%v) is under the composer (from y=%v)", last.Y+last.H, banner.Y)
+	last, field = find("回复：消息 12"), find(prompt)
+	if last.Y+last.H > field.Y {
+		t.Errorf("with a long draft, the last message (to y=%v) is under the composer (from y=%v)", last.Y+last.H, field.Y)
 	}
 }

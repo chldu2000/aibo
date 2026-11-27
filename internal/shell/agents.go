@@ -251,15 +251,18 @@ func (s *Shell) setPath(kind agent.Kind, p string) {
 	go r.SetPath(context.Background(), kind, p)
 }
 
+// signedOut tells whether a session's Agent is signed out: as the session
+// found, or as the Agents' status says.
+func (s *Shell) signedOut(x model.Session, st workbench.Status) bool {
+	r := s.opts.Agents
+	return st.NeedsLogin || r != nil && r.Status(x.Agent).State == agents.NotLoggedIn
+}
+
 // loginBanner says a session's Agent is signed out, how to sign in, and
 // offers to send the last message again.
 func (s *Shell) loginBanner(c *ui.Context, x model.Session, st workbench.Status) {
 	r := s.opts.Agents
-	signedOut := st.NeedsLogin
-	if r != nil && r.Status(x.Agent).State == agents.NotLoggedIn {
-		signedOut = true
-	}
-	if !signedOut {
+	if !s.signedOut(x, st) {
 		return
 	}
 	t := c.Theme()

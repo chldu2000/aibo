@@ -127,6 +127,15 @@
   "workspaceMissing": "The workspace's folder is missing: {path}. Its sessions can be read and referenced, but not continued.",
   "relocate": "Relocate…",
   "archivedNote": "This session is archived: it is not listed in its workspace, and can still be continued, searched and referenced.",
+  "moreNotices": "{count} more notices",
+  "fewerNotices": "Show fewer notices",
+  "@moreNotices": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "unarchive": "Unarchive",
   "highlighted": "Highlighted the referenced range {range}",
   "clearHighlight": "Clear the highlight",
