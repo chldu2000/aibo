@@ -4574,14 +4574,24 @@ func (msgs Messages) ToolSteps(label string, count int) string {
 	return Catalog.Format(msgs.locale, "toolSteps", map[string]any{"label": label, "count": count})
 }
 
-// ToolArgs says "Arguments"
+// ShowArgs says "Show arguments"
 // in the language the app shows.
-func ToolArgs() string { return In(i18n.Locale()).ToolArgs() }
+func ShowArgs() string { return In(i18n.Locale()).ShowArgs() }
 
-// ToolArgs says "Arguments"
+// ShowArgs says "Show arguments"
 // in the language of msgs.
-func (msgs Messages) ToolArgs() string {
-	return Catalog.Format(msgs.locale, "toolArgs", nil)
+func (msgs Messages) ShowArgs() string {
+	return Catalog.Format(msgs.locale, "showArgs", nil)
+}
+
+// OpenInDetails says "Open #{id} in details"
+// in the language the app shows.
+func OpenInDetails(id string) string { return In(i18n.Locale()).OpenInDetails(id) }
+
+// OpenInDetails says "Open #{id} in details"
+// in the language of msgs.
+func (msgs Messages) OpenInDetails(id string) string {
+	return Catalog.Format(msgs.locale, "openInDetails", map[string]any{"id": id})
 }
 
 // ToolResult says "Result"

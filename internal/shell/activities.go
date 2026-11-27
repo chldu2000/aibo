@@ -27,6 +27,19 @@ func (s *Shell) openActivities(id string, kind workbench.ActivityKind, fromBadge
 	}
 }
 
+// openActivity opens the details on one call of a page.
+func (s *Shell) openActivity(id string, kind workbench.ActivityKind, activity string) {
+	s.openActivities(id, kind, false)
+	s.detail.selected = activity
+}
+
+// inspectorOutputHeight is how tall a big output stands in the details:
+// about as tall as the panel, and never shorter than in the conversation.
+func inspectorOutputHeight(c *ui.Context) float32 {
+	_, h := c.Size()
+	return max(outputHeight, h-240)
+}
+
 func callState(a workbench.Activity) string {
 	m, tool := a.Message, a.Message.Tool
 	if tool.Declined || tool.Approval != nil && tool.Approval.Answer != nil &&
@@ -179,7 +192,7 @@ func (s *Shell) delegationDetail(c *ui.Context, id string, v *sessionView, a wor
 				return
 			}
 			ui.Text(c, child.Tool.Name).Bold().TextColor(c.Theme().Text)
-			readOutput(c, &v.open, "input/"+key, pretty(child.Tool.Input))
+			readOutput(c, &v.open, "input/"+key, pretty(child.Tool.Input), outputHeight)
 			activityResult(c, v, workbench.Activity{ID: key, Message: child})
 		})
 	}
@@ -239,7 +252,7 @@ func activityResult(c *ui.Context, v *sessionView, a workbench.Activity) {
 	}
 	sectionTitle(c, label)
 	if tool.Output != "" {
-		readOutput(c, &v.open, "inspector/"+a.ID, tool.Output)
+		readOutput(c, &v.open, "inspector/"+a.ID, tool.Output, inspectorOutputHeight(c))
 	} else if tool.Done {
 		ui.Text(c, locales.CallEmptyOutput()).FontSize(12).TextColor(c.Theme().TextMuted).Padding(0, 6)
 	} else {

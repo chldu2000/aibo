@@ -268,7 +268,7 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 						ui.Text(c, m.Text).Selectable().TextColor(t.Text).Padding(8, 12).Radius(12).Background(t.Surface)
 					}
 				case model.ToolCall:
-					s.tool(c, v, fmt.Sprint(m.Seq), m)
+					s.tool(c, v, fmt.Sprint(m.Seq), fmt.Sprint(m.Seq), m)
 				case model.Plan:
 					plan(c, m)
 				default:

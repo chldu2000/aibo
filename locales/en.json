@@ -563,7 +563,8 @@
       }
     }
   },
-  "toolArgs": "Arguments",
+  "showArgs": "Show arguments",
+  "openInDetails": "Open #{id} in details",
   "toolResult": "Result",
   "toolResultError": "Result (error)",
   "toolTruncated": "{label} · over 1 MB: the rest was not kept",

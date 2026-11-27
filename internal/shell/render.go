@@ -10,6 +10,7 @@ import (
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/refs"
+	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/egoist/mygo/ui/markdown"
@@ -18,6 +19,15 @@ import (
 // bigOutput is the size from which a tool's output shows in a read-only
 // editor rather than as text.
 const bigOutput = 4 << 10
+
+// A call's arguments and small output scroll within these heights, and
+// a big output's editor is outputHeight tall, so that opening a call does
+// not stretch the conversation.
+const (
+	argsHeight   = 160
+	textHeight   = 240
+	outputHeight = 320
+)
 
 // open remembers which disclosures of a session's messages are open.
 type open struct {
@@ -95,9 +105,10 @@ func gist(input json.RawMessage) string {
 	return refs.Args(input, 80)
 }
 
-// tool shows a tool call, folded: open, its input, the subagent's steps
-// and its result.
-func (s *Shell) tool(c *ui.Context, v *sessionView, key string, m model.Message) {
+// tool shows a tool call, folded: open, the gist of its input with the
+// whole of it folded below, the subagent's steps and its result. id is the
+// call's activity ID, which a command or a subagent opens in the details.
+func (s *Shell) tool(c *ui.Context, v *sessionView, key, id string, m model.Message) {
 	t := c.Theme()
 	v.open.init()
 	if m.Tool == nil {
@@ -112,14 +123,20 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key string, m model.Message)
 	}()
 	ui.Collapsible(c, toolLabel(m), &o, func() {
 		ui.Column(c).Gap(6).Padding(4, 0, 4, 12).Children(func() {
-			ui.Text(c, locales.ToolArgs()).FontSize(11).TextColor(t.TextMuted)
-			ui.Text(c, pretty(m.Tool.Input)).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
+			ui.Text(c, gist(m.Tool.Input)).Font("Menlo").FontSize(11).TextColor(t.Text).MaxLines(1).Selectable()
+			args := v.open.tools[key+"/args"]
+			ui.Collapsible(c, locales.ShowArgs(), &args, func() {
+				ui.Scroll(c).MaxHeight(argsHeight).MinWidth(0).Children(func() {
+					ui.Text(c, pretty(m.Tool.Input)).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
+				})
+			})
+			v.open.tools[key+"/args"] = args
 			for i, ch := range m.Children {
 				ui.Row(c).Key(i).Gap(6).AlignItems(ui.Start).Children(func() {
 					icon(c, "arrow.turn.down.right").Size(11).Color(t.TextMuted)
 					ui.Column(c).Grow(1).Children(func() {
 						if ch.Kind == model.ToolCall {
-							s.tool(c, v, fmt.Sprintf("%s/%d", key, i), ch)
+							s.tool(c, v, fmt.Sprintf("%s/%d", key, i), fmt.Sprintf("%s.%d", id, i+1), ch)
 						} else {
 							ui.Text(c, ch.Text).FontSize(12).TextColor(t.Text).Selectable()
 						}
@@ -136,16 +153,28 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key string, m model.Message)
 			if m.Tool.Truncated {
 				label = locales.ToolTruncated(label)
 			}
-			ui.Text(c, label).FontSize(11).TextColor(t.TextMuted)
-			readOutput(c, &v.open, key, m.Tool.Output)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, label).FontSize(11).TextColor(t.TextMuted)
+				if kind := workbench.ActivityOf(m.Tool.Name); kind != "" {
+					ui.Spacer(c)
+					if iconButton(c, "sidebar.trailing", locales.OpenInDetails(id)).Clicked() {
+						s.openActivity(s.current, kind, id)
+					}
+				}
+			})
+			readOutput(c, &v.open, key, m.Tool.Output, outputHeight)
 		})
 	})
 	v.open.tools[key] = o
 }
 
-func readOutput(c *ui.Context, o *open, key, data string) {
+// readOutput shows a call's output: small, as text that scrolls past
+// textHeight; big, in a read-only editor height tall.
+func readOutput(c *ui.Context, o *open, key, data string, height float32) {
 	if len(data) < bigOutput {
-		ui.Text(c, strings.TrimRight(data, "\n")).Font("Menlo").FontSize(11).TextColor(c.Theme().Text).Selectable()
+		ui.Scroll(c).MaxHeight(textHeight).MinWidth(0).Children(func() {
+			ui.Text(c, strings.TrimRight(data, "\n")).Font("Menlo").FontSize(11).TextColor(c.Theme().Text).Selectable()
+		})
 		return
 	}
 	o.init()
@@ -154,7 +183,7 @@ func readOutput(c *ui.Context, o *open, key, data string) {
 		out = output{st: &editor.State{Buffer: editor.NewBuffer(data), ReadOnly: true}, n: len(data)}
 		o.outputs[key] = out
 	}
-	editor.View(c, out.st).Height(320).Radius(8)
+	editor.View(c, out.st).Height(height).Radius(8)
 }
 
 func pretty(input json.RawMessage) string {
