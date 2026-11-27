@@ -96,11 +96,14 @@ func (s *session) tellCommands(raw json.RawMessage) {
 // awaitCommands reports no commands unless the Agent tells some soon
 // after the session started.
 func (s *session) awaitCommands() {
+	// Read here, not in the goroutine: a test sets it, and restores it
+	// without waiting for a goroutine that already returned.
+	wait := noCommandsAfter
 	go func() {
 		select {
 		case <-s.commands.ch:
 		case <-s.stopping:
-		case <-time.After(noCommandsAfter):
+		case <-time.After(wait):
 			s.commands.tell(s, []agent.Command{}, true)
 		}
 	}()
