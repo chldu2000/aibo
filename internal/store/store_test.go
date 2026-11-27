@@ -74,7 +74,8 @@ func TestBackupBeforeUpgrade(t *testing.T) {
 // own permission modes; Codex's ask and edits were the same.
 func TestLevelsBecomeModes(t *testing.T) {
 	dir := t.TempDir()
-	if err := store.OpenVersion(dir, store.SchemaVersion()-1); err != nil {
+	// The schema before the modes, which the turns' ends came after.
+	if err := store.OpenVersion(dir, store.SchemaVersion()-2); err != nil {
 		t.Fatal(err)
 	}
 	db, _ := sql.Open("sqlite", "file:"+filepath.Join(dir, store.DBFile))

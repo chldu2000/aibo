@@ -386,6 +386,9 @@ func (w *Workbench) endTurn(id string, s *session, state model.MessageState) []m
 		changed = append(changed, m.Clone())
 	}
 	sort.Slice(changed, func(i, j int) bool { return changed[i].Seq < changed[j].Seq })
+	if s.running && !s.since.IsZero() {
+		w.addMarker(id, s, model.Marker{Kind: model.TurnEnded, Took: now.Sub(s.since), Stopped: state == model.Interrupted, At: now})
+	}
 	w.finishRun(id, s)
 	s.items, s.loose = nil, nil
 	return changed

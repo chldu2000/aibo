@@ -740,6 +740,26 @@ func (msgs Messages) CommandRan() string {
 	return Catalog.Format(msgs.locale, "commandRan", nil)
 }
 
+// TurnTook says "Took {time}"
+// in the language the app shows.
+func TurnTook(time_ string) string { return In(i18n.Locale()).TurnTook(time_) }
+
+// TurnTook says "Took {time}"
+// in the language of msgs.
+func (msgs Messages) TurnTook(time_ string) string {
+	return Catalog.Format(msgs.locale, "turnTook", map[string]any{"time": time_})
+}
+
+// TurnStopped says "Stopped after {time}"
+// in the language the app shows.
+func TurnStopped(time_ string) string { return In(i18n.Locale()).TurnStopped(time_) }
+
+// TurnStopped says "Stopped after {time}"
+// in the language of msgs.
+func (msgs Messages) TurnStopped(time_ string) string {
+	return Catalog.Format(msgs.locale, "turnStopped", map[string]any{"time": time_})
+}
+
 // ErrNothingToCompact says "The session is empty: there is nothing to compact."
 // in the language the app shows.
 func ErrNothingToCompact() string { return In(i18n.Locale()).ErrNothingToCompact() }

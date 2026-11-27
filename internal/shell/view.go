@@ -131,7 +131,7 @@ func (s *Shell) pane(c *ui.Context) {
 		}
 		ui.Themed(c, &th).Absolute().Top(0).Bottom(0).Left(0).Right(rail).Children(func() {
 			ui.Column(c).Fill().Children(func() {
-				s.messages(c, x, v, s.wb.Markers(x.ID)).Grow(1)
+				s.messages(c, x, v, append(s.wb.Markers(x.ID), s.wb.TurnEnds(x.ID)...)).Grow(1)
 			})
 		})
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(80).PassThrough().Material(glass.ScrollEdge{})
@@ -562,11 +562,20 @@ func (s *Shell) reveal(sessionID string, from, to int) {
 
 // divider shows a marker as a line across the session: where the Agent
 // compacted its context, or a new native session took over. A command
-// that said nothing is a line of its own, under its message.
+// that said nothing, and how long a turn took, are lines of their own,
+// under the last message.
 func divider(c *ui.Context, mk model.Marker) {
 	t := c.Theme()
-	if mk.Kind == model.CommandRan {
+	switch mk.Kind {
+	case model.CommandRan:
 		ui.Text(c, locales.CommandRan()).FontSize(11).TextColor(t.TextMuted).Padding(0, 0, 0, 58)
+		return
+	case model.TurnEnded:
+		text := locales.TurnTook(elapsed(mk.Took))
+		if mk.Stopped {
+			text = locales.TurnStopped(elapsed(mk.Took))
+		}
+		ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).Padding(0, 0, 0, 58)
 		return
 	}
 	text := locales.NewNativeSession()

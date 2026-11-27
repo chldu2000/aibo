@@ -182,6 +182,7 @@ type session struct {
 	info       model.Session
 	msgs       []model.Message // nil until loaded
 	markers    []model.Marker  // loaded with msgs
+	turns      []model.Marker  // the turns' ends, stored as markers
 	loaded     bool
 
 	native agent.Session // nil while not connected
@@ -595,7 +596,14 @@ func (w *Workbench) load(id string, s *session) error {
 	if err != nil {
 		return err
 	}
-	s.msgs, s.markers, s.loaded = msgs, markers, true
+	s.msgs, s.markers, s.turns, s.loaded = msgs, nil, nil, true
+	for _, m := range markers {
+		if m.Kind == model.TurnEnded {
+			s.turns = append(s.turns, m)
+		} else {
+			s.markers = append(s.markers, m)
+		}
+	}
 	return nil
 }
 
@@ -615,6 +623,19 @@ func (w *Workbench) Markers(id string) []model.Marker {
 	return append([]model.Marker(nil), s.markers...)
 }
 
+// TurnEnds returns where a session's turns ended, how long each took and
+// whether it was stopped, in order. Turns from before these were kept
+// have none.
+func (w *Workbench) TurnEnds(id string) []model.Marker {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	s, ok := w.sessions[id]
+	if !ok || w.load(id, s) != nil {
+		return nil
+	}
+	return append([]model.Marker(nil), s.turns...)
+}
+
 // addMarker marks something after the session's last message. w.mu is
 // held.
 func (w *Workbench) addMarker(id string, s *session, m model.Marker) {
@@ -623,6 +644,10 @@ func (w *Workbench) addMarker(id string, s *session, m model.Marker) {
 	}
 	if err := w.st.AddMarker(id, m); err != nil {
 		s.err = &Failure{StepSave, err}
+		return
+	}
+	if m.Kind == model.TurnEnded {
+		s.turns = append(s.turns, m)
 		return
 	}
 	s.markers = append(s.markers, m)

@@ -310,6 +310,9 @@ const (
 	// CommandRan marks an Agent command that ran and said nothing, after
 	// the message that invoked it.
 	CommandRan MarkerKind = "command_ran"
+	// TurnEnded marks where a turn ended: how long it took, and whether
+	// it was stopped.
+	TurnEnded MarkerKind = "turn_ended"
 )
 
 // Marker marks something that happened in a session after message
@@ -323,5 +326,9 @@ type Marker struct {
 	Trigger    string
 	PreTokens  int
 	PostTokens int
-	At         time.Time
+	// Took and Stopped are a turn's end: how long it ran, and whether it
+	// ended interrupted rather than done.
+	Took    time.Duration
+	Stopped bool
+	At      time.Time
 }

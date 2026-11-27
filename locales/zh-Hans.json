@@ -70,6 +70,8 @@
   "sentCommand": "命令 /{name}",
   "commandOutput": "命令输出",
   "commandRan": "命令已执行，没有输出",
+  "turnTook": "用时 {time}",
+  "turnStopped": "已停止 · 用时 {time}",
   "errNothingToCompact": "会话里还没有内容，无需压缩。",
   "errNeedsRecovery": "原生会话无法续接：请先选择新开原生会话，或暂不处理。",
   "errNoSuchReference": "引用不存在。",

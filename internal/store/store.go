@@ -163,6 +163,9 @@ var migrations = []string{
 	UPDATE sessions SET approval_level = CASE approval_level
 		WHEN 'ask' THEN 'ask-for-approval' WHEN 'edits' THEN 'ask-for-approval' WHEN 'auto' THEN 'full-access' ELSE approval_level END
 		WHERE agent = 'codex';`,
+	// How long a turn took, and whether it was stopped, at its end.
+	`ALTER TABLE markers ADD COLUMN took_ms INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE markers ADD COLUMN stopped INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // backupBeforeUpgrade copies the database of an older schema, before
@@ -645,14 +648,14 @@ func rulesValue(rules []agent.Rule) any {
 
 // AddMarker adds a marker to a session.
 func (s *Store) AddMarker(sessionID string, m model.Marker) error {
-	_, err := s.db.Exec(`INSERT INTO markers (session_id, after_seq, kind, trigger, pre_tokens, post_tokens, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		sessionID, m.AfterSeq, string(m.Kind), m.Trigger, m.PreTokens, m.PostTokens, ms(m.At))
+	_, err := s.db.Exec(`INSERT INTO markers (session_id, after_seq, kind, trigger, pre_tokens, post_tokens, took_ms, stopped, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, m.AfterSeq, string(m.Kind), m.Trigger, m.PreTokens, m.PostTokens, m.Took.Milliseconds(), m.Stopped, ms(m.At))
 	return err
 }
 
 // Markers returns a session's markers in order.
 func (s *Store) Markers(sessionID string) ([]model.Marker, error) {
-	rows, err := s.db.Query(`SELECT after_seq, kind, trigger, pre_tokens, post_tokens, at FROM markers WHERE session_id = ? ORDER BY after_seq, rowid`, sessionID)
+	rows, err := s.db.Query(`SELECT after_seq, kind, trigger, pre_tokens, post_tokens, took_ms, stopped, at FROM markers WHERE session_id = ? ORDER BY after_seq, rowid`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -661,11 +664,12 @@ func (s *Store) Markers(sessionID string) ([]model.Marker, error) {
 	for rows.Next() {
 		var m model.Marker
 		var kind string
+		var took int64
 		var at sql.NullInt64
-		if err := rows.Scan(&m.AfterSeq, &kind, &m.Trigger, &m.PreTokens, &m.PostTokens, &at); err != nil {
+		if err := rows.Scan(&m.AfterSeq, &kind, &m.Trigger, &m.PreTokens, &m.PostTokens, &took, &m.Stopped, &at); err != nil {
 			return nil, err
 		}
-		m.Kind, m.At = model.MarkerKind(kind), fromMS(at)
+		m.Kind, m.Took, m.At = model.MarkerKind(kind), time.Duration(took)*time.Millisecond, fromMS(at)
 		out = append(out, m)
 	}
 	return out, rows.Err()

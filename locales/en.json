@@ -70,6 +70,8 @@
   "sentCommand": "Command /{name}",
   "commandOutput": "Command output",
   "commandRan": "The command ran, and said nothing",
+  "turnTook": "Took {time}",
+  "turnStopped": "Stopped after {time}",
   "errNothingToCompact": "The session is empty: there is nothing to compact.",
   "errNeedsRecovery": "The native session cannot be resumed. Choose a new native session first, or leave it for now.",
   "errNoSuchReference": "The reference does not exist.",
