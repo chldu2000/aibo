@@ -25,11 +25,12 @@
 
 - [08 连续的工具调用合成一组](issues/08-group-tool-calls.md)
 - [09 展开的工具调用限高](issues/09-tool-output-caps.md)
-- [10 改文件的调用显示差异](issues/10-edit-diff.md)
+- [10 改文件的调用显示差异（Claude Code、Codex）](issues/10-edit-diff.md)
 - [11 一轮结束后留下耗时](issues/11-turn-summary.md)
 - [12 消息的悬停操作](issues/12-message-actions.md)
 - [13 输入区上方的横幅合并](issues/13-banner-stack.md)
 - [14 序号列只在需要时显示](issues/14-seq-gutter.md)
+- [23 改文件的调用显示差异（ACP）](issues/23-acp-edit-diff.md)
 
 第三批，结构：
 

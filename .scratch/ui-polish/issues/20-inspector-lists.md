@@ -2,6 +2,8 @@
 
 Status: needs-triage
 
+等实测：先在真实的大会话和大仓库里测现状是否卡，再定范围（2026-11-27）。
+
 **What to build:** 终端、子 Agent 和 Git 页在条目很多时仍然好找。
 
 现状：
