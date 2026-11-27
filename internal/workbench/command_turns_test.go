@@ -3,9 +3,11 @@ package workbench_test
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/agent/fake"
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/workbench"
 )
@@ -252,5 +254,59 @@ func TestContextReset(t *testing.T) {
 	}
 	if starts := b2.fake.Starts(); len(starts) != 1 || starts[0].ResumeID != "after-clear" {
 		t.Errorf("resumed %+v", starts)
+	}
+}
+
+// Read through a reference, a message that invoked a command says it as
+// written, with what the command was said to do; what a command printed
+// is named so. The brief quotes it as written too.
+func TestReferenceToCommands(t *testing.T) {
+	sc := newScript()
+	b := open(t, t.TempDir(), sc.respond)
+	defer b.Close()
+	ws, src := withCommandsIn(t, b, reviewCmd, initCmd, agent.Command{Name: "context", Builtin: true})
+	if err := b.SendMessage(src.ID, workbench.Outgoing{Command: "review", Text: "src/"}); err != nil {
+		t.Fatal(err)
+	}
+	sc.emit(agent.ReplyDelta{ReplyID: "a", Text: "看过了"}, agent.ReplyDone{ReplyID: "a"})
+	sc.endTurn()
+	b.idle(t, src.ID)
+	if err := b.SendMessage(src.ID, workbench.Outgoing{Command: "context"}); err != nil {
+		t.Fatal(err)
+	}
+	sc.emit(agent.ReplyDone{ReplyID: "o", Text: "Context: 12k tokens", CommandOutput: true})
+	sc.endTurn()
+	b.idle(t, src.ID)
+
+	tgt, _ := b.NewSession(ws.ID, fake.Kind, "")
+	r, err := b.ReferenceSession(src.ID, tgt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(r.Brief, "「/review src/」") {
+		t.Errorf("brief:\n%s", r.Brief)
+	}
+	converse(t, b, sc, tgt.ID, "看看引用")
+	_, opts := lastTurn(sc)
+	text, isErr := call(t, opts, "read_reference", map[string]any{"ref_id": r.ID})
+	if isErr {
+		t.Fatalf("read_reference failed: %s", text)
+	}
+	for _, want := range []string{
+		"### [1] 用户 · ",
+		"（调用了 假 Agent 的命令 /review：Review the diff）",
+		"/review src/",
+		"（调用了 假 Agent 的命令 /context）",
+		"### [4] 假 Agent 命令输出 · ",
+		"Context: 12k tokens",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("read_reference lacks %q:\n%s", want, text)
+		}
+	}
+	// Found by the command's name.
+	found, _ := call(t, opts, "search_reference", map[string]any{"query": "/review"})
+	if !strings.Contains(found, "#1") && !strings.Contains(found, "[1]") {
+		t.Errorf("search_reference = %s", found)
 	}
 }

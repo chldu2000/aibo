@@ -157,17 +157,30 @@ func message(m model.Message, q ReadRequest, limit int) string {
 
 func heading(m model.Message, agentName string) string {
 	role := roleName(m.Kind, agentName)
+	if m.CommandOutput {
+		role = agentName + " 命令输出"
+	}
 	if m.State == model.Interrupted {
 		role += "（已中断）"
 	}
-	return fmt.Sprintf("\n### [%d] %s · %s\n\n", m.Seq, role, m.CreatedAt.Local().Format("2006-01-02 15:04"))
+	h := fmt.Sprintf("\n### [%d] %s · %s\n\n", m.Seq, role, m.CreatedAt.Local().Format("2006-01-02 15:04"))
+	if c := m.Command; c != nil {
+		// What the command was said to do as it was sent: what it expanded
+		// to, the Agent alone knows.
+		if c.Description != "" {
+			h += fmt.Sprintf("（调用了 %s 的命令 /%s：%s）\n\n", agentName, c.Name, c.Description)
+		} else {
+			h += fmt.Sprintf("（调用了 %s 的命令 /%s）\n\n", agentName, c.Name)
+		}
+	}
+	return h
 }
 
 // body is a message's text, after its reasoning when asked for. A tool
 // call's is its name, a summary of its input and its result, with the
 // messages of the subagent it ran.
 func body(m model.Message, thinking bool) string {
-	text := strings.TrimRight(m.Text, "\n")
+	text := strings.TrimRight(said(m), "\n")
 	if m.Kind == model.ToolCall && m.Tool != nil {
 		text = toolText(m, thinking)
 	}

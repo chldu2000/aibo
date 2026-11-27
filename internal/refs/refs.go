@@ -115,7 +115,7 @@ func excerpts(ms []model.Message) []labeled {
 
 // excerpt is a message's text on one line, cut to n characters.
 func excerpt(m model.Message, n int) string {
-	text := strings.Join(strings.Fields(m.Text), " ")
+	text := strings.Join(strings.Fields(said(m)), " ")
 	if r := []rune(text); len(r) > n {
 		text = string(r[:n]) + "……"
 	}
@@ -175,4 +175,16 @@ func TurnText(briefs []string, text string) string {
 	}
 	parts := append(append([]string(nil), briefs...), text)
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+// said is a message's text as written: for one that invoked an Agent
+// command, the command first, as "/review src/".
+func said(m model.Message) string {
+	if m.Command == nil {
+		return m.Text
+	}
+	if m.Text == "" {
+		return "/" + m.Command.Name
+	}
+	return "/" + m.Command.Name + " " + m.Text
 }
