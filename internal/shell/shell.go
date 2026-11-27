@@ -96,8 +96,8 @@ type Shell struct {
 	focusComposer string
 	// side is the sidebar's state.
 	side sidebarUI
-	// glyphs are the Agents' icons, parsed once.
-	glyphs map[agent.Kind]*ui.SVG
+	// glyphs are the Agents' icons, worked out once per name.
+	glyphs map[agent.Kind]agentIcon
 	// modelMenu holds the composer's model and effort menus.
 	modelMenu modelState
 	// detail is the session details panel.

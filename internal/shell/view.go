@@ -472,25 +472,6 @@ func tinted(c *ui.Context, col ui.Color) ui.Color {
 	return ui.RGBA(col.R, col.G, col.B, float32(col.A)/255*0.45)
 }
 
-// genericGlyph is the icon of an Agent aibo has none for, as the fake.
-var genericGlyph = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#6e6e78"/><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="4"/><path d="M6 19c1.5-2.5 3.5-3.5 6-3.5s4.5 1 6 3.5"/></g></svg>`))
-
-// agentGlyph is an Agent's icon (agents.Spec.Glyph), its name on hover.
-func (s *Shell) agentGlyph(c *ui.Context, kind agent.Kind, size float32) ui.Element {
-	g, ok := s.glyphs[kind]
-	if !ok {
-		g = genericGlyph
-		if d := s.describe(kind); d.Glyph != nil {
-			g = ui.MustParseSVG(d.Glyph)
-		}
-		if s.glyphs == nil {
-			s.glyphs = map[agent.Kind]*ui.SVG{}
-		}
-		s.glyphs[kind] = g
-	}
-	return ui.Image(c, g).Size(size, size).Tooltip(s.agentName(kind))
-}
-
 // refLabel names a reference in one line: source, title and range.
 func (s *Shell) refLabel(r model.Reference) string {
 	if r.SourceID == r.TargetID {

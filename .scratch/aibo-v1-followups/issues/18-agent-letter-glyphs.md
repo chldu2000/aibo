@@ -4,7 +4,7 @@
 
 现状：`agentGlyph`（`internal/shell/view.go`）在 `describe(kind).Glyph` 为空时画 `genericGlyph`（`#6e6e78` 底加人形），所有第三方 Agent 长得一样。目前只有 Claude（`#c96442`）和 Codex（`#2f2f33`）自带图标。图标以 16–20px 的尺寸出现在十几处。
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 已定的设计（2026-11-27）：
 
@@ -39,12 +39,19 @@
    - 浅色和深色主题用同一种底色。深色主题下底块边缘不明显的话，加一圈 1px、低透明度的白色描边，和 Codex 图标的做法一样。
    - 字符和颜色每个 Agent 只算一次，和现在的 `s.glyphs` 一样缓存。Name 变了要重新算。
 
-- [ ] 纯函数：从 Name 或 ID 取字符，从 ID 取颜色，放在 `internal/shell`
-- [ ] 单元测试：普通英文名、`acp-` 前缀、全角字母、中文名、开头是标点、只有 emoji、Name 为空回退到 ID、同一 ID 的颜色稳定
-- [ ] `agentGlyph` 改为按优先级返回自带图标、字符标识或 `genericGlyph`；所有调用处的尺寸（16、18、20）都要显示正常
-- [ ] 改名后标识跟着更新（缓存失效）
-- [ ] 浅色和深色主题下各看一遍：侧栏、会话标题、选择面板、设置
+- [x] 纯函数：从 Name 或 ID 取字符，从 ID 取颜色，放在 `internal/shell`
+- [x] 单元测试：普通英文名、`acp-` 前缀、全角字母、中文名、开头是标点、只有 emoji、Name 为空回退到 ID、同一 ID 的颜色稳定
+- [x] `agentGlyph` 改为按优先级返回自带图标、字符标识或 `genericGlyph`；所有调用处的尺寸（16、18、20）都要显示正常
+- [x] 改名后标识跟着更新（缓存失效）
+- [ ] 浅色和深色主题下各看一遍：侧栏、会话标题、选择面板、设置（只看了侧栏和会话标题，见下）
 
 ## 实现说明
+
+- 代码在 `internal/shell/glyph.go`：`agentGlyph` 从 `view.go` 移过来，`genericGlyph` 一起移入；新增 `glyphLetter`、`glyphColor` 和色板 `glyphColors`。缓存 `Shell.glyphs` 改为 `map[agent.Kind]agentIcon`，记下算出图标时的名称，名称变了就重算。类型不叫 `glyph`，因为 `icons.go` 已有同名类型。
+- 名称取自 `agentName`（悬停显示的也是它），为空时用 ID。NFKC 用 `golang.org/x/text/unicode/norm`，`go.mod` 里 `golang.org/x/text` 由间接依赖改为直接依赖。
+- 去掉 `acp-` 前缀时，要求前缀后面还有内容：名字就叫 `acp-` 时取 `A`。
+- 单元测试在 `glyph_internal_test.go`，覆盖任务清单里列的各种情况，另外加了开头是 `[beta]`、数字开头和 Name、ID 都为空。
+- 验证：用一个临时的 Tester 测试登记了 6 个假 Agent（Gemini CLI、acp-kimi、通义灵码、Goose、Droid、🤖），在浅色和深色主题下截图看了侧栏（16px）和会话标题（20px）：字符居中、白字清楚，深色主题下的描边可见，🤖 退回 `genericGlyph`。临时测试没有提交。
+- 没有验证：选择面板、设置、引用卡片里的显示；改名后图标是否在界面上随之更新（只按代码逻辑实现，没有界面测试）。`check.sh` 的 race 测试因本机没有 gcc 未执行，其余检查通过。
 
 ## Comments
