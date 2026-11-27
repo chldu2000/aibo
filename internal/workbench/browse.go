@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/chldu2000/aibo/internal/proc"
 )
 
 var (
@@ -94,6 +96,7 @@ func (w *Workbench) BrowseDirectory(ctx context.Context, id, rel string) (Direct
 	ignored := map[string]bool{}
 	if candidates.Len() > 0 {
 		cmd := exec.CommandContext(ctx, "git", "-C", root.Name(), "check-ignore", "--stdin", "-z")
+		proc.Hide(cmd)
 		cmd.Stdin = &candidates
 		if out, err := cmd.Output(); err == nil {
 			for _, item := range bytes.Split(out, []byte{0}) {

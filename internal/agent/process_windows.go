@@ -5,16 +5,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/chldu2000/aibo/internal/proc"
 )
 
 // BoundProcess hides a local Agent's console and cancels its process tree.
 // The caller must create cmd with exec.CommandContext.
 func BoundProcess(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
+	proc.Hide(cmd)
 	cmd.WaitDelay = time.Second
 	cmd.Cancel = func() error {
 		dir, err := windows.GetSystemDirectory()
@@ -22,7 +23,7 @@ func BoundProcess(cmd *exec.Cmd) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			kill := exec.CommandContext(ctx, filepath.Join(dir, "taskkill.exe"), "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
-			kill.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
+			proc.Hide(kill)
 			if kill.Run() == nil {
 				return nil
 			}

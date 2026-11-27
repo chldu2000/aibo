@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/chldu2000/aibo/internal/proc"
 )
 
 // most is the most entries listed: beyond it the rest is left out.
@@ -55,6 +57,7 @@ func List(ctx context.Context, root string, all bool) ([]string, error) {
 // when root is not in a repository, or git cannot be run.
 func gitFiles(ctx context.Context, root string) ([]string, bool) {
 	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	proc.Hide(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, false

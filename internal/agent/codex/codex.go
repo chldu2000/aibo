@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/proc"
 )
 
 // Kind is Codex's kind.
@@ -195,6 +196,7 @@ type message struct {
 
 func startServer(ctx context.Context, path string, env []string, log *slog.Logger, onIdle func(*server), onAccount func(string, json.RawMessage)) (*server, error) {
 	cmd := exec.Command(path, "app-server")
+	proc.Hide(cmd)
 	cmd.Env = append(os.Environ(), env...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

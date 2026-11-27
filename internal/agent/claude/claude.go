@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/chldu2000/aibo/internal/agent"
+	"github.com/chldu2000/aibo/internal/proc"
 )
 
 // Kind is Claude Code's kind.
@@ -134,6 +135,7 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 		return nil, agent.ErrNotFound
 	}
 	cmd := exec.Command(path, a.args(opts)...)
+	proc.Hide(cmd)
 	cmd.Dir = opts.Workspace
 	cmd.Env = append(os.Environ(), env...)
 	if opts.MCP != nil {
@@ -509,6 +511,7 @@ func (a *Agent) Models(ctx context.Context) ([]agent.Model, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose")
+	proc.Hide(cmd)
 	cmd.Dir = os.TempDir()
 	cmd.Env = append(os.Environ(), env...)
 	stdin, err := cmd.StdinPipe()

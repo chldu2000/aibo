@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/chldu2000/aibo/internal/proc"
 )
 
 var (
@@ -63,6 +65,7 @@ func readGit(ctx context.Context, dir string, limit int, args ...string) (string
 	defer cancel()
 	base := []string{"--no-optional-locks", "--literal-pathspecs", "-c", "core.fsmonitor=false", "-C", dir}
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
+	proc.Hide(cmd)
 	cmd.Env = append(cmd.Environ(), "LC_ALL=C", "GIT_TERMINAL_PROMPT=0")
 	out, diag := gitBuffer{limit: limit}, gitBuffer{limit: 8192}
 	cmd.Stdout, cmd.Stderr = gitWriter{&out}, gitWriter{&diag}

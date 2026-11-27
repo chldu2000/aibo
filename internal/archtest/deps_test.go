@@ -15,21 +15,22 @@ const module = "github.com/chldu2000/aibo/"
 // module it may import (its non-test files). A package missing here fails:
 // a new package takes its place in the layers deliberately.
 var allowed = map[string][]string{
-	"internal/agent":        {},
+	"internal/agent":        {"internal/proc"},
 	"internal/agent/acp":    {"internal/agent"},
-	"internal/agent/claude": {"internal/agent"},
-	"internal/agent/codex":  {"internal/agent"},
+	"internal/agent/claude": {"internal/agent", "internal/proc"},
+	"internal/agent/codex":  {"internal/agent", "internal/proc"},
 	"internal/agent/fake":   {"internal/agent"},
 	"internal/agents":       {"internal/agent", "internal/agent/acp", "internal/agent/claude", "internal/agent/codex"},
 	"internal/appdata":      {},
 	"internal/diag":         {},
-	"internal/files":        {},
+	"internal/files":        {"internal/proc"},
 	"internal/images":       {},
+	"internal/proc":         {},
 	"internal/model":        {"internal/agent"},
 	"internal/refs":         {"internal/agent", "internal/model"},
 	"internal/store":        {"internal/agent", "internal/model"},
 	"internal/mcpserver":    {"internal/refs"},
-	"internal/workbench":    {"internal/agent", "internal/files", "internal/images", "internal/mcpserver", "internal/model", "internal/refs", "internal/store"},
+	"internal/workbench":    {"internal/agent", "internal/files", "internal/images", "internal/mcpserver", "internal/model", "internal/proc", "internal/refs", "internal/store"},
 	"internal/shell":        {"internal/agent", "internal/agents", "internal/appdata", "internal/model", "internal/refs", "internal/workbench", "locales"},
 	"internal/contract":     nil, // tests only
 	"internal/archtest":     nil, // tests only
