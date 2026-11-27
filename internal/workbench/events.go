@@ -251,6 +251,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 			touch(i, true)
 		}
 	case agent.ApprovalRequested:
+		w.attention(id, s)
 		a := &model.Approval{ID: e.ID, Action: e.Action, Tool: e.Tool, WriteRoot: e.WriteRoot, Command: e.Command, Cwd: e.Cwd, Reason: e.Reason, Diff: e.Diff, Plan: e.Plan,
 			Paths: e.Paths, Input: e.Input, Options: e.Options, Outside: w.outside(s, e.Paths)}
 		if i, ok := s.items[itemKey("t", e.ToolID)]; ok && !s.msgs[i].State.Ended() && s.msgs[i].Tool != nil {
@@ -388,6 +389,9 @@ func (w *Workbench) endTurn(id string, s *session, state model.MessageState) []m
 	sort.Slice(changed, func(i, j int) bool { return changed[i].Seq < changed[j].Seq })
 	if s.running && !s.since.IsZero() {
 		w.addMarker(id, s, model.Marker{Kind: model.TurnEnded, Took: now.Sub(s.since), Stopped: state == model.Interrupted, At: now})
+	}
+	if s.running {
+		w.attention(id, s)
 	}
 	w.finishRun(id, s)
 	s.items, s.loose = nil, nil

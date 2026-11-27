@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 	"time"
@@ -252,13 +253,23 @@ func (s *Shell) sessionRow(c *ui.Context, x model.Session) {
 	t := c.Theme()
 	row := ui.Row(c).Key(x.ID).Gap(8).Padding(6, 8).Radius(7).AlignItems(ui.Center).Children(func() {
 		s.agentGlyph(c, x.Agent, 18)
-		ui.Text(c, sessionTitle(x)).TextColor(t.Text).MaxLines(1).Grow(1)
+		ui.Text(c, sessionTitle(x)).TextColor(t.Text).MaxLines(1).Grow(1).MinWidth(0)
 		s.marks(c, x)
+		if !x.ActiveAt.IsZero() {
+			c.After(time.Minute) // the time shown moves on
+			ui.Text(c, ago(c.Now(), x.ActiveAt)).FontSize(11).TextColor(t.TextMuted).NoWrap().Tooltip(x.ActiveAt.Format("2006-01-02 15:04"))
+		}
 	})
 	if x.ID == s.current {
 		row.Background(t.SurfacePressed)
 	} else if row.Hovered() {
 		row.Background(t.SurfaceHover)
+	}
+	// The last words, read only for the row under the pointer.
+	if row.Hovered() {
+		if w := s.wb.LastWords(x.ID); w != "" {
+			row.Tooltip(oneLine(strings.ReplaceAll(strings.TrimSpace(w), "\n", " "), 160))
+		}
 	}
 	if row.Clicked() {
 		s.current = x.ID
@@ -301,13 +312,21 @@ func (s *Shell) sessionMenu(m *ui.Menu, x model.Session) {
 func (s *Shell) marks(c *ui.Context, x model.Session) {
 	t := c.Theme()
 	st := s.wb.Status(x.ID)
+	dot := func(ink ui.Color, label, tip string) {
+		ui.Box(c).Size(8, 8).Radius(4).Background(ink).Label(label).Tooltip(tip)
+	}
 	switch {
 	case st.Approvals > 0:
-		ui.Text(c, locales.PendingCount(st.Approvals)).FontSize(11).Bold().TextColor(t.Warning)
+		label := locales.PendingCount(st.Approvals)
+		ui.Box(c).Height(16).MinWidth(16).Padding(0, 5).Radius(8).AlignItems(ui.Center).Justify(ui.Center).Background(t.Warning).Label(label).Tooltip(label).Children(func() {
+			ui.Textf(c, "%d", st.Approvals).FontSize(10).Bold().TextColor(ui.RGBA(255, 255, 255, 1))
+		})
 	case st.Running:
-		ui.Text(c, locales.Running()).FontSize(11).TextColor(t.TextMuted)
+		ui.Spinner(c).FontSize(11).Label(locales.Running()).Tooltip(locales.Running())
 	case st.Error != nil || st.ResumeFailed != nil || st.NeedsLogin:
-		ui.Text(c, locales.FailedMark()).FontSize(11).Bold().TextColor(t.Danger).Tooltip(firstOf(s.say(st.ResumeFailed), s.say(st.Error), locales.AgentSignedOut(s.agentName(x.Agent))))
+		dot(t.Danger, locales.FailedMark(), firstOf(s.say(st.ResumeFailed), s.say(st.Error), locales.AgentSignedOut(s.agentName(x.Agent))))
+	case st.Unread:
+		dot(t.Accent, locales.Unread(), locales.Unread())
 	}
 	if m := s.modeOf(x); m.Risk == agent.Danger {
 		ui.Box(c).Label(m.Name + " · " + sessionTitle(x)).Tooltip(withDetail(m.Name, modeDescription(x.Agent, m))).Children(func() {
@@ -557,4 +576,30 @@ func (s *Shell) deleteDialog(c *ui.Context) {
 	if !open {
 		s.side.deleting = ""
 	}
+}
+
+// ago is how long ago then was, in short: just now, minutes, hours the
+// same day, yesterday, else its date, with its year when not this one.
+func ago(now, then time.Time) string {
+	d := now.Sub(then)
+	y, m, day := then.Date()
+	switch {
+	case d < time.Minute:
+		return locales.JustNow()
+	case d < time.Hour:
+		return locales.MinutesAgo(fmt.Sprint(int(d / time.Minute)))
+	case sameDay(now, then):
+		return locales.HoursAgo(fmt.Sprint(int(d / time.Hour)))
+	case sameDay(now.AddDate(0, 0, -1), then):
+		return locales.Yesterday()
+	case y == now.Year():
+		return locales.MonthDay(fmt.Sprint(int(m)), fmt.Sprint(day))
+	}
+	return locales.YearMonthDay(fmt.Sprint(y), fmt.Sprint(int(m)), fmt.Sprint(day))
+}
+
+func sameDay(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
 }

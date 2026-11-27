@@ -1938,6 +1938,78 @@ func (msgs Messages) FailedMark() string {
 	return Catalog.Format(msgs.locale, "failedMark", nil)
 }
 
+// Unread says "New"
+// in the language the app shows.
+func Unread() string { return In(i18n.Locale()).Unread() }
+
+// Unread says "New"
+// in the language of msgs.
+func (msgs Messages) Unread() string {
+	return Catalog.Format(msgs.locale, "unread", nil)
+}
+
+// JustNow says "Now"
+// in the language the app shows.
+func JustNow() string { return In(i18n.Locale()).JustNow() }
+
+// JustNow says "Now"
+// in the language of msgs.
+func (msgs Messages) JustNow() string {
+	return Catalog.Format(msgs.locale, "justNow", nil)
+}
+
+// MinutesAgo says "{n}m"
+// in the language the app shows.
+func MinutesAgo(n string) string { return In(i18n.Locale()).MinutesAgo(n) }
+
+// MinutesAgo says "{n}m"
+// in the language of msgs.
+func (msgs Messages) MinutesAgo(n string) string {
+	return Catalog.Format(msgs.locale, "minutesAgo", map[string]any{"n": n})
+}
+
+// HoursAgo says "{n}h"
+// in the language the app shows.
+func HoursAgo(n string) string { return In(i18n.Locale()).HoursAgo(n) }
+
+// HoursAgo says "{n}h"
+// in the language of msgs.
+func (msgs Messages) HoursAgo(n string) string {
+	return Catalog.Format(msgs.locale, "hoursAgo", map[string]any{"n": n})
+}
+
+// Yesterday says "Yesterday"
+// in the language the app shows.
+func Yesterday() string { return In(i18n.Locale()).Yesterday() }
+
+// Yesterday says "Yesterday"
+// in the language of msgs.
+func (msgs Messages) Yesterday() string {
+	return Catalog.Format(msgs.locale, "yesterday", nil)
+}
+
+// MonthDay says "{month}/{day}"
+// in the language the app shows.
+func MonthDay(month string, day string) string { return In(i18n.Locale()).MonthDay(month, day) }
+
+// MonthDay says "{month}/{day}"
+// in the language of msgs.
+func (msgs Messages) MonthDay(month string, day string) string {
+	return Catalog.Format(msgs.locale, "monthDay", map[string]any{"month": month, "day": day})
+}
+
+// YearMonthDay says "{year}/{month}/{day}"
+// in the language the app shows.
+func YearMonthDay(year string, month string, day string) string {
+	return In(i18n.Locale()).YearMonthDay(year, month, day)
+}
+
+// YearMonthDay says "{year}/{month}/{day}"
+// in the language of msgs.
+func (msgs Messages) YearMonthDay(year string, month string, day string) string {
+	return Catalog.Format(msgs.locale, "yearMonthDay", map[string]any{"year": year, "month": month, "day": day})
+}
+
 // RefsCount says "{count, plural, one {# reference} other {# references}}"
 // in the language the app shows.
 func RefsCount(count int) string { return In(i18n.Locale()).RefsCount(count) }

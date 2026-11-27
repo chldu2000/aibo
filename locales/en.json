@@ -246,6 +246,13 @@
     }
   },
   "failedMark": "Failed",
+  "unread": "New",
+  "justNow": "Now",
+  "minutesAgo": "{n}m",
+  "hoursAgo": "{n}h",
+  "yesterday": "Yesterday",
+  "monthDay": "{month}/{day}",
+  "yearMonthDay": "{year}/{month}/{day}",
   "refsCount": "{count, plural, one {# reference} other {# references}}",
   "@refsCount": {
     "placeholders": {

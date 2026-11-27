@@ -135,6 +135,9 @@ type Status struct {
 	// (agent.SettingsReported), Mode the permission mode it last said it
 	// is in (agent.ModeReported); empty until it says.
 	Model, Effort, Mode string
+	// Unread is set when the session ended a turn or asked for approval
+	// while no window showed it, until one does (Viewing).
+	Unread bool
 }
 
 // AgentInfo describes an available Agent.
@@ -161,7 +164,9 @@ type Workbench struct {
 	done      chan struct{} // closed when the workbench closes
 	pumps     sync.WaitGroup
 
-	mu             sync.Mutex
+	mu sync.Mutex
+	// viewing is the session each window shows, by window (Viewing).
+	viewing        map[string]string
 	closing        bool
 	modelLists     map[agent.Kind]*modelListEntry
 	commandLists   map[commandKey]*commandListEntry
@@ -183,6 +188,7 @@ type session struct {
 	msgs       []model.Message // nil until loaded
 	markers    []model.Marker  // loaded with msgs
 	turns      []model.Marker  // the turns' ends, stored as markers
+	unread     bool
 	loaded     bool
 
 	native agent.Session // nil while not connected
@@ -270,7 +276,7 @@ func Open(o Options) (*Workbench, error) {
 			l.SetLog(log.With("agent", string(a.Kind())))
 		}
 	}
-	w := &Workbench{log: log, st: st, agents: slices.Clone(o.Agents), now: o.Now, budgets: settings.Budgets, idle: settings.IdleTimeout, settings: settings, ready: o.Ready, loggedOut: o.OnNotLoggedIn, done: make(chan struct{}), sessions: map[string]*session{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
+	w := &Workbench{log: log, st: st, agents: slices.Clone(o.Agents), now: o.Now, budgets: settings.Budgets, idle: settings.IdleTimeout, settings: settings, ready: o.Ready, loggedOut: o.OnNotLoggedIn, done: make(chan struct{}), sessions: map[string]*session{}, viewing: map[string]string{}, refs: map[string]*model.Reference{}, listeners: map[int]func(Change){}}
 	w.watchWorkspace = o.WatchWorkspace
 	for _, a := range o.Agents {
 		w.watchLists(a)
@@ -562,7 +568,7 @@ func (w *Workbench) Status(id string) Status {
 	}
 	return Status{Connected: s.native != nil, Running: s.running, Error: s.err, Approvals: len(w.pending(s)),
 		ResumeFailed: s.resumeFailed, ReadOnly: s.readOnly, NeedsLogin: s.needsLogin, Since: s.since, Retrying: s.retrying,
-		Model: s.reported.Model, Effort: s.reported.Effort, Mode: s.reportedMode}
+		Model: s.reported.Model, Effort: s.reported.Effort, Mode: s.reportedMode, Unread: s.unread}
 }
 
 // Messages returns a session's messages in order.

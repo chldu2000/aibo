@@ -6,6 +6,7 @@ package shell
 
 import (
 	"errors"
+	"fmt"
 	"github.com/chldu2000/aibo/locales"
 	"path/filepath"
 	"sync"
@@ -121,6 +122,9 @@ type Shell struct {
 	thumbs map[string]*thumb
 	// unsubscribe stops the workbench's changes coming (Close).
 	unsubscribe func()
+	// viewer names this window to the workbench, viewed the session it
+	// last said the window shows (Viewing).
+	viewer, viewed string
 }
 
 // sessionView is what the shell keeps of an open session.
@@ -175,6 +179,7 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 	if o.Only != "" {
 		o.Notify = nil
 	}
+	s.viewer = fmt.Sprintf("%p", s)
 	s.unsubscribe = wb.Subscribe(func(c workbench.Change) {
 		s.mu.Lock()
 		s.pending = append(s.pending, c)
@@ -211,6 +216,7 @@ func (s *Shell) Close() {
 	}
 	s.closeChildHistory()
 	s.watchPanel("")
+	s.wb.Viewing(s.viewer, "")
 	s.unsubscribe()
 }
 
