@@ -3,6 +3,7 @@ package shell
 import (
 	"path"
 
+	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/chldu2000/aibo/locales"
 	"github.com/egoist/mygo/ui"
@@ -67,10 +68,11 @@ func readReady[T any](s *Shell, c *ui.Context, r workbench.Snapshot[T]) bool {
 	return false
 }
 
-func (s *Shell) filePage(c *ui.Context, id string) {
+func (s *Shell) filePage(c *ui.Context, x model.Session) {
+	id := x.WorkspaceID
 	p := s.workspacePanel(id)
 	if p.file == "" {
-		ui.Tree(c, func() { s.directoryRows(c, id, ".", p) })
+		ui.Tree(c, func() { s.directoryRows(c, x, ".", p) })
 		return
 	}
 	r := s.wb.FilePreview(id, p.file)
@@ -89,7 +91,8 @@ func (s *Shell) filePage(c *ui.Context, id string) {
 	editor.View(c, p.editor).Grow(1).MinHeight(120).Radius(8)
 }
 
-func (s *Shell) directoryRows(c *ui.Context, id, dir string, p *workspacePanel) {
+func (s *Shell) directoryRows(c *ui.Context, x model.Session, dir string, p *workspacePanel) {
+	id := x.WorkspaceID
 	r := s.wb.Directory(id, dir)
 	if !readReady(s, c, r) {
 		return
@@ -106,13 +109,18 @@ func (s *Shell) directoryRows(c *ui.Context, id, dir string, p *workspacePanel) 
 		c.Key(rel)
 		if entry.Directory {
 			open := p.expanded[rel]
-			row := ui.TreeItem(c, entry.Name, &open, func() { s.directoryRows(c, id, rel, p) })
+			row := ui.TreeItem(c, entry.Name, &open, func() { s.directoryRows(c, x, rel, p) })
+			row.ContextMenu(func(m *ui.Menu) { s.pathMenu(c, m, x, rel, true) })
 			if row.Clicked() {
 				open = !open
 			}
 			p.expanded[rel] = open
-		} else if ui.TreeItem(c, entry.Name, nil, nil).Clicked() {
-			p.file = rel
+		} else {
+			row := ui.TreeItem(c, entry.Name, nil, nil)
+			row.ContextMenu(func(m *ui.Menu) { s.pathMenu(c, m, x, rel, false) })
+			if row.Clicked() {
+				p.file = rel
+			}
 		}
 	}
 	if r.Value.Truncated {

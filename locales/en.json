@@ -227,6 +227,10 @@
   "addWorkspaceMenu": "Add a workspace…",
   "folderMissing": "Folder missing",
   "showInFinder": "Show in Finder",
+  "showInExplorer": "Show in File Explorer",
+  "copyPath": "Copy relative path",
+  "openWithDefault": "Open with the default app",
+  "mentionInDraft": "Mention in the draft",
   "removeWorkspace": "Remove the workspace (its sessions are archived)",
   "archivedCount": "Archived · {count}",
   "@archivedCount": {

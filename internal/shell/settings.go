@@ -110,7 +110,7 @@ func (s *Shell) generalSettings(c *ui.Context) {
 			return
 		}
 		ui.Row(c).Gap(6).Children(func() {
-			if s.opts.ShowInFinder != nil && ui.Button(c, locales.ShowInFinder()).Clicked() {
+			if s.opts.ShowInFinder != nil && ui.Button(c, showInLabel()).Clicked() {
 				s.opts.ShowInFinder(s.opts.DataDir)
 			}
 			if s.opts.MoveDataDir != nil && ui.Button(c, locales.Change()).Disabled(s.settings.moving).Clicked() {

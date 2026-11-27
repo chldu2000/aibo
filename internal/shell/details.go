@@ -131,6 +131,9 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 					s.inspectorBack(x)
 				}
 				ui.Text(c, crumb).Bold().FontSize(13).TextColor(t.Text).MaxLines(1).TruncateMiddle().Grow(1).MinWidth(0)
+				if rel, gone := s.shownPath(x); rel != "" {
+					s.pathActions(c, x, rel, gone)
+				}
 			})
 		}
 		// A file or a diff fills the panel and scrolls in its own view.
@@ -144,7 +147,7 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 			case "":
 				s.details(c, x)
 			case "files":
-				s.filePage(c, x.WorkspaceID)
+				s.filePage(c, x)
 			case "git":
 				s.gitPage(c, x.WorkspaceID)
 			default:
@@ -317,7 +320,7 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 			kv(locales.DetailWorkspace(), func() {
 				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, ws.Path).FontSize(12).TextColor(t.Text).MaxLines(1).TruncateMiddle().Tooltip(ws.Path).Grow(1).Shrink(1).MinWidth(0)
-					if s.opts.ShowInFinder != nil && !ws.Missing && iconButton(c, "folder", locales.ShowInFinder()).Clicked() {
+					if s.opts.ShowInFinder != nil && !ws.Missing && iconButton(c, "folder", showInLabel()).Clicked() {
 						s.opts.ShowInFinder(ws.Path)
 					}
 				})

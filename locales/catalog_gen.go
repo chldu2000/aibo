@@ -1890,6 +1890,46 @@ func (msgs Messages) ShowInFinder() string {
 	return Catalog.Format(msgs.locale, "showInFinder", nil)
 }
 
+// ShowInExplorer says "Show in File Explorer"
+// in the language the app shows.
+func ShowInExplorer() string { return In(i18n.Locale()).ShowInExplorer() }
+
+// ShowInExplorer says "Show in File Explorer"
+// in the language of msgs.
+func (msgs Messages) ShowInExplorer() string {
+	return Catalog.Format(msgs.locale, "showInExplorer", nil)
+}
+
+// CopyPath says "Copy relative path"
+// in the language the app shows.
+func CopyPath() string { return In(i18n.Locale()).CopyPath() }
+
+// CopyPath says "Copy relative path"
+// in the language of msgs.
+func (msgs Messages) CopyPath() string {
+	return Catalog.Format(msgs.locale, "copyPath", nil)
+}
+
+// OpenWithDefault says "Open with the default app"
+// in the language the app shows.
+func OpenWithDefault() string { return In(i18n.Locale()).OpenWithDefault() }
+
+// OpenWithDefault says "Open with the default app"
+// in the language of msgs.
+func (msgs Messages) OpenWithDefault() string {
+	return Catalog.Format(msgs.locale, "openWithDefault", nil)
+}
+
+// MentionInDraft says "Mention in the draft"
+// in the language the app shows.
+func MentionInDraft() string { return In(i18n.Locale()).MentionInDraft() }
+
+// MentionInDraft says "Mention in the draft"
+// in the language of msgs.
+func (msgs Messages) MentionInDraft() string {
+	return Catalog.Format(msgs.locale, "mentionInDraft", nil)
+}
+
 // RemoveWorkspace says "Remove the workspace (its sessions are archived)"
 // in the language the app shows.
 func RemoveWorkspace() string { return In(i18n.Locale()).RemoveWorkspace() }

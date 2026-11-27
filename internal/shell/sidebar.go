@@ -248,7 +248,7 @@ func (s *Shell) workspaceGroups(c *ui.Context) {
 			if m.Item(locales.Relocate()).Chosen() {
 				s.relocate(ws)
 			}
-			if s.opts.ShowInFinder != nil && m.Item(locales.ShowInFinder()).Disabled(ws.Missing).Chosen() {
+			if s.opts.ShowInFinder != nil && m.Item(showInLabel()).Disabled(ws.Missing).Chosen() {
 				s.opts.ShowInFinder(ws.Path)
 			}
 			m.Separator()
