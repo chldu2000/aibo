@@ -2160,6 +2160,50 @@ func (msgs Messages) NewSession() string {
 	return Catalog.Format(msgs.locale, "newSession", nil)
 }
 
+// NewSessionHere says "New session (⌘N)"
+// in the language the app shows.
+func NewSessionHere() string { return In(i18n.Locale()).NewSessionHere() }
+
+// NewSessionHere says "New session (⌘N)"
+// in the language of msgs.
+func (msgs Messages) NewSessionHere() string {
+	return Catalog.Format(msgs.locale, "newSessionHere", nil)
+}
+
+// NewSessionChoose says "New session in a workspace, with an Agent (⇧⌘N)"
+// in the language the app shows.
+func NewSessionChoose() string { return In(i18n.Locale()).NewSessionChoose() }
+
+// NewSessionChoose says "New session in a workspace, with an Agent (⇧⌘N)"
+// in the language of msgs.
+func (msgs Messages) NewSessionChoose() string {
+	return Catalog.Format(msgs.locale, "newSessionChoose", nil)
+}
+
+// NewSessionWithIn says "New {agent} session in {workspace}"
+// in the language the app shows.
+func NewSessionWithIn(agent string, workspace string) string {
+	return In(i18n.Locale()).NewSessionWithIn(agent, workspace)
+}
+
+// NewSessionWithIn says "New {agent} session in {workspace}"
+// in the language of msgs.
+func (msgs Messages) NewSessionWithIn(agent string, workspace string) string {
+	return Catalog.Format(msgs.locale, "newSessionWithIn", map[string]any{"agent": agent, "workspace": workspace})
+}
+
+// AgentUnusable says "{agent} cannot start a session now: {why}"
+// in the language the app shows.
+func AgentUnusable(agent string, why string) string {
+	return In(i18n.Locale()).AgentUnusable(agent, why)
+}
+
+// AgentUnusable says "{agent} cannot start a session now: {why}"
+// in the language of msgs.
+func (msgs Messages) AgentUnusable(agent string, why string) string {
+	return Catalog.Format(msgs.locale, "agentUnusable", map[string]any{"agent": agent, "why": why})
+}
+
 // NewSessionWith says "New session with {agent}"
 // in the language the app shows.
 func NewSessionWith(agent string) string { return In(i18n.Locale()).NewSessionWith(agent) }

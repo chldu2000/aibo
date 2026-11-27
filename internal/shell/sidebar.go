@@ -166,6 +166,7 @@ func (s *Shell) sidebar(c *ui.Context) {
 				}
 				s.sidebarButton(c)
 			})
+			s.newSessionBar(c)
 			ui.TextInput(c, &s.side.query).Placeholder(locales.SearchSessions()).Label(locales.SearchSessions())
 		})
 		ui.Scroll(c).Grow(1).Children(func() {
@@ -494,26 +495,10 @@ func (s *Shell) newSessionButton(c *ui.Context, ws model.Workspace) {
 	ui.Popover(c, plus, &open, func() {
 		ui.Column(c).Width(280).Gap(2).Padding(8).Children(func() {
 			ui.Text(c, locales.NewSession()).Bold().TextColor(t.Text).Padding(0, 6, 4)
-			for _, a := range s.wb.Agents() {
-				if ok, why := s.agentOK(a.Kind); !ok {
-					// Unavailable: grayed, with why.
-					ui.Row(c).Key(string(a.Kind)).Gap(8).Padding(6, 8).Opacity(0.5).Children(func() {
-						s.agentGlyph(c, a.Kind, 16)
-						ui.Column(c).Grow(1).Children(func() {
-							ui.Text(c, a.Name).TextColor(t.Text)
-							ui.Text(c, why).FontSize(11).TextColor(t.TextMuted)
-						})
-					})
-					continue
-				}
-				if pickRow(c, string(a.Kind), locales.NewSessionWith(a.Name), func() {
-					s.agentGlyph(c, a.Kind, 16)
-					ui.Text(c, a.Name).TextColor(t.Text).Grow(1)
-				}).Clicked() {
-					s.newSession(ws, a.Kind)
-					open = false
-				}
-			}
+			s.agentChoices(c, func(a workbench.AgentInfo) string { return locales.NewSessionWith(a.Name) }, func(kind agent.Kind) {
+				s.newSession(ws, kind)
+				open = false
+			})
 		})
 	})
 	if !open {
@@ -699,5 +684,29 @@ func (s *Shell) foldWorkspace(id string, fold bool) {
 	}
 	if err := s.wb.SetPref(foldedPref, s.side.folded); err != nil {
 		s.notice = s.say(err)
+	}
+}
+
+// agentChoices are the Agents to start a session with, each labelled by
+// label; those that cannot start are grayed, with why.
+func (s *Shell) agentChoices(c *ui.Context, label func(workbench.AgentInfo) string, pick func(agent.Kind)) {
+	t := c.Theme()
+	for _, a := range s.wb.Agents() {
+		if ok, why := s.agentOK(a.Kind); !ok {
+			ui.Row(c).Key(string(a.Kind)).Gap(8).Padding(6, 8).Opacity(0.5).Children(func() {
+				s.agentGlyph(c, a.Kind, 16)
+				ui.Column(c).Grow(1).Children(func() {
+					ui.Text(c, a.Name).TextColor(t.Text)
+					ui.Text(c, why).FontSize(11).TextColor(t.TextMuted)
+				})
+			})
+			continue
+		}
+		if pickRow(c, string(a.Kind), label(a), func() {
+			s.agentGlyph(c, a.Kind, 16)
+			ui.Text(c, a.Name).TextColor(t.Text).Grow(1)
+		}).Clicked() {
+			pick(a.Kind)
+		}
 	}
 }

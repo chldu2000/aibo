@@ -59,6 +59,8 @@ func (s *Shell) View(c *ui.Context) {
 		}).SplitReset(sidebarWidth).Fill()
 		s.sidebarResized(c, root.Changed())
 	}
+	s.newSessionKeys(c)
+	s.starterDialog(c)
 	s.renameDialog(c)
 	s.deleteDialog(c)
 	// Folders dropped on the window become workspaces.

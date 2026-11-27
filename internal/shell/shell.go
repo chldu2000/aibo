@@ -93,6 +93,8 @@ type Shell struct {
 	// choosingAgent is the workspace whose "+" shows the Agents to start
 	// a session with.
 	choosingAgent string
+	// starter is the new-session dialog.
+	starter starter
 	// focusComposer is the session to refocus once its reference picker closes.
 	focusComposer string
 	// side is the sidebar's state.
@@ -343,6 +345,7 @@ func (s *Shell) newSession(ws model.Workspace, kind agent.Kind) {
 		return
 	}
 	s.goTo(x.ID, 0, 0)
+	s.focusComposer = x.ID
 }
 
 // send sends the session's draft.
