@@ -208,6 +208,8 @@
   "addWorkspace": "Add a workspace",
   "searchSessions": "Search sessions",
   "settingsButton": "Settings (⌘,)",
+  "hideSidebar": "Hide the sidebar (⌘\\)",
+  "showSidebar": "Show the sidebar (⌘\\)",
   "noWorkspaces": "No workspaces yet. Add a project folder (or drop one on the window) to talk with an Agent in it.",
   "addWorkspaceMenu": "Add a workspace…",
   "folderMissing": "Folder missing",

@@ -172,6 +172,8 @@
   "addWorkspace": "添加工作区",
   "searchSessions": "搜索会话",
   "settingsButton": "设置（⌘,）",
+  "hideSidebar": "隐藏侧栏（⌘\\）",
+  "showSidebar": "显示侧栏（⌘\\）",
   "noWorkspaces": "还没有工作区。添加一个项目文件夹（也可以把文件夹拖进窗口），就可以在里面和 Agent 对话。",
   "addWorkspaceMenu": "添加工作区…",
   "folderMissing": "目录不存在",

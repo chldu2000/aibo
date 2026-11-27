@@ -21,6 +21,7 @@ func (s *Shell) View(c *ui.Context) {
 	if c.Shortcut(ui.Super, ui.KeyComma) {
 		s.openSettings()
 	}
+	s.side.hidden = s.sidebarHidden(c)
 	if s.opts.Only != "" {
 		// A session's own window: its area alone.
 		ui.Box(c).Fill().Background(c.Theme().Background).Children(func() {
@@ -30,17 +31,30 @@ func (s *Shell) View(c *ui.Context) {
 		s.deleteDialog(c)
 		return
 	}
-	if micaSidebar(c) {
-		c.Root().Background(ui.Transparent)
+	if c.Shortcut(ui.Super, ui.KeyBackslash) {
+		s.toggleSidebar(c)
 	}
+	s.side.hidden = s.sidebarHidden(c)
 	s.settingsModal(c)
-	root := ui.Split(c, &s.split, func() {
-		s.sidebar(c)
-	}, func() {
-		ui.Box(c).Fill().Margin(0, 0, 0, 4).Radius(14, 0, 0, 14).Clip().Background(c.Theme().Background).Children(func() {
+	var root ui.Element
+	if s.side.hidden {
+		root = ui.Box(c).Fill().Background(c.Theme().Background).Children(func() {
 			s.pane(c)
 		})
-	}).Fill()
+	} else {
+		if micaSidebar(c) {
+			c.Root().Background(ui.Transparent)
+		}
+		root = ui.Split(c, &s.split, func() {
+			s.sidebar(c)
+		}, func() {
+			ui.Box(c).Fill().Margin(0, 0, 0, 4).Radius(14, 0, 0, 14).Clip().Background(c.Theme().Background).Children(func() {
+				s.pane(c)
+			})
+		}).Fill()
+	}
+	s.renameDialog(c)
+	s.deleteDialog(c)
 	// Folders dropped on the window become workspaces.
 	for _, p := range root.DroppedFiles() {
 		if _, err := s.wb.AddWorkspace(p); err != nil {
@@ -80,6 +94,11 @@ func (s *Shell) pane(c *ui.Context) {
 			})
 			// Nothing to scroll here: the whole header band moves the window.
 			ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(max(bar.Height, headerBottom)).DragWindow()
+			if s.side.hidden && s.opts.Only == "" {
+				ui.Row(c).Absolute().Top(headerTop).Left(max(float32(16), bar.Left+12)).Height(headerBottom-headerTop).Padding(0, 8).Radius(23).AlignItems(ui.Center).Material(glass.Glass{}).Children(func() {
+					s.sidebarButton(c)
+				})
+			}
 			s.windowCapsule(c)
 		})
 		return
@@ -90,7 +109,7 @@ func (s *Shell) pane(c *ui.Context) {
 	width, _ := c.Size()
 	if b := pane.Bounds(); b.W > 0 {
 		width = b.W
-	} else if s.opts.Only == "" {
+	} else if !s.side.hidden {
 		width -= s.split
 	}
 	if s.detail.session != x.ID {
@@ -115,11 +134,12 @@ func (s *Shell) pane(c *ui.Context) {
 		})
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(80).PassThrough().Material(glass.ScrollEdge{})
 		// The window moves by the floating header and the gap above it;
-		// a session's own window has the traffic lights over its area,
-		// left of the header, and moves by that corner too. The messages
-		// under the rest of the header's band still scroll.
+		// a session's own window, and the main one with the sidebar
+		// hidden, have the traffic lights over its area, left of the
+		// header, and move by that corner too. The messages under the
+		// rest of the header's band still scroll.
 		left := float32(16)
-		if s.opts.Only != "" {
+		if s.side.hidden {
 			left = max(left, bar.Left+12)
 			ui.Box(c).Absolute().Top(0).Left(0).Width(left).Height(headerBottom).DragWindow()
 		}
@@ -129,6 +149,9 @@ func (s *Shell) pane(c *ui.Context) {
 			right = capsuleRight + capsuleWidth + 8
 		}
 		ui.Row(c).Absolute().Top(headerTop).Left(left).Right(right).Height(headerBottom-headerTop).Radius(23).Clip().Padding(0, 16).Gap(10).AlignItems(ui.Center).Material(glass.Glass{}).DragWindow().Children(func() {
+			if s.side.hidden && s.opts.Only == "" {
+				s.sidebarButton(c)
+			}
 			s.agentGlyph(c, x.Agent, 20)
 			ui.Text(c, sessionTitle(x)).Bold().TextColor(t.Text).MaxLines(1).Shrink(1).MinWidth(0)
 			ui.Text(c, ws.Path).FontSize(12).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Basis(0).Grow(1).MinWidth(0)

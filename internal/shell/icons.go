@@ -53,6 +53,7 @@ var iconFallbacks = map[string]*ui.SVG{
 	"person.2":                           glyph(`<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-8 14-8 14 0m0-15c5 0 5 7 0 7m2 2c3 1 4 3 4 6"/>`),
 	"plus":                               glyph(`<path d="M12 4v16M4 12h16"/>`),
 	"rectangle.on.rectangle":             glyph(`<rect x="8" y="8" width="13" height="12" rx="2"/><path d="M5 15H3V3h13v2"/>`),
+	"sidebar.leading":                    glyph(`<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M9 4v16"/>`),
 	"sidebar.trailing":                   glyph(`<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M15 4v16"/>`),
 	"stop.fill":                          glyph(`<rect x="5" y="5" width="14" height="14" rx="2" fill="black"/>`),
 	"terminal":                           glyph(`<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m5 8 4 4-4 4m7 0h5"/>`),

@@ -170,6 +170,9 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 		s.mu.Unlock()
 		o.Wake()
 	})
+	if _, err := wb.Pref(collapsedPref, &s.side.collapsed); err != nil {
+		s.notice = s.say(err)
+	}
 	if o.Only != "" {
 		s.current = o.Only
 	} else if all := wb.Sessions(); len(all) > 0 {

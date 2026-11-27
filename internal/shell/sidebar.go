@@ -23,6 +23,55 @@ type sidebarUI struct {
 	renaming, newTitle string
 	deleting           string
 	search             search
+	// collapsed is the user's choice to hide the sidebar, kept as a
+	// preference. A narrow window hides it too, without changing that
+	// choice; narrowOpen is set while the user shows it there anyway.
+	collapsed, narrowOpen bool
+	// hidden is whether this frame hides the sidebar.
+	hidden bool
+}
+
+// collapsedPref is the preference keeping whether the sidebar is hidden.
+const collapsedPref = "sidebarCollapsed"
+
+// narrowWindow is the width under which the window hides the sidebar.
+const narrowWindow = 640
+
+// sidebarHidden works out whether the sidebar is hidden this frame: as
+// the user chose, or for a narrow window, unless shown there anyway.
+func (s *Shell) sidebarHidden(c *ui.Context) bool {
+	if s.opts.Only != "" {
+		return true
+	}
+	if w, _ := c.Size(); w < narrowWindow {
+		return !s.side.narrowOpen
+	}
+	s.side.narrowOpen = false
+	return s.side.collapsed
+}
+
+// toggleSidebar hides the sidebar or shows it. In a narrow window that
+// is for now; otherwise it is kept for the next launch too.
+func (s *Shell) toggleSidebar(c *ui.Context) {
+	if w, _ := c.Size(); w < narrowWindow {
+		s.side.narrowOpen = !s.side.narrowOpen
+		return
+	}
+	s.side.collapsed = !s.side.collapsed
+	if err := s.wb.SetPref(collapsedPref, s.side.collapsed); err != nil {
+		s.notice = s.say(err)
+	}
+}
+
+// sidebarButton hides or shows the sidebar, as its symbol says.
+func (s *Shell) sidebarButton(c *ui.Context) {
+	label := locales.HideSidebar()
+	if s.side.hidden {
+		label = locales.ShowSidebar()
+	}
+	if iconButton(c, "sidebar.leading", label).Clicked() {
+		s.toggleSidebar(c)
+	}
 }
 
 // search is the sidebar's search: the query as last typed and when, and
@@ -55,7 +104,7 @@ const searchLimit = 50
 // Liquid Glass.
 func (s *Shell) sidebar(c *ui.Context) {
 	t := c.Theme()
-	side := ui.Column(c).Fill()
+	side := ui.Column(c).Fill().Key("sidebar").Transition(sidebarMotion)
 	if !micaSidebar(c) {
 		side.Material(glass.Glass{Native: true})
 	}
@@ -69,6 +118,7 @@ func (s *Shell) sidebar(c *ui.Context) {
 				if iconButton(c, "folder.badge.plus", locales.AddWorkspace()).Clicked() {
 					s.addWorkspace()
 				}
+				s.sidebarButton(c)
 			})
 			ui.TextInput(c, &s.side.query).Placeholder(locales.SearchSessions()).Label(locales.SearchSessions())
 		})
@@ -88,8 +138,12 @@ func (s *Shell) sidebar(c *ui.Context) {
 			ui.Spacer(c)
 		})
 	})
-	s.renameDialog(c)
-	s.deleteDialog(c)
+}
+
+// sidebarMotion slides the sidebar in from the left edge as it shows.
+var sidebarMotion = ui.ElementTransition{
+	Duration: 180 * time.Millisecond,
+	Enter:    &ui.Motion{X: -24},
 }
 
 // micaSidebar reports whether the sidebar shows the window's Mica: on

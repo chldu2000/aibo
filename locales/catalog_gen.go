@@ -1768,6 +1768,26 @@ func (msgs Messages) SettingsButton() string {
 	return Catalog.Format(msgs.locale, "settingsButton", nil)
 }
 
+// HideSidebar says "Hide the sidebar (⌘\\)"
+// in the language the app shows.
+func HideSidebar() string { return In(i18n.Locale()).HideSidebar() }
+
+// HideSidebar says "Hide the sidebar (⌘\\)"
+// in the language of msgs.
+func (msgs Messages) HideSidebar() string {
+	return Catalog.Format(msgs.locale, "hideSidebar", nil)
+}
+
+// ShowSidebar says "Show the sidebar (⌘\\)"
+// in the language the app shows.
+func ShowSidebar() string { return In(i18n.Locale()).ShowSidebar() }
+
+// ShowSidebar says "Show the sidebar (⌘\\)"
+// in the language of msgs.
+func (msgs Messages) ShowSidebar() string {
+	return Catalog.Format(msgs.locale, "showSidebar", nil)
+}
+
 // NoWorkspaces says "No workspaces yet. Add a project folder (or drop one on the window) to talk with an Agent in it."
 // in the language the app shows.
 func NoWorkspaces() string { return In(i18n.Locale()).NoWorkspaces() }
