@@ -191,7 +191,8 @@ func (s *Shell) pane(c *ui.Context) {
 				s.selectionBar(c, x, v)
 			} else {
 				s.badges(c, x, v)
-				s.composer(c, x, v)
+				// The composer is as wide as the messages at most, under them.
+				ui.Row(c).Justify(ui.Center).Children(func() { s.composer(c, x, v) })
 			}
 		})
 		s.jumpToEnd(c, v, s.wb.Status(x.ID).Running, rail+24, bottomRoom(v.composerHeight)-8)
@@ -446,7 +447,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 	t := c.Theme()
 	running := s.wb.Status(x.ID).Running
 	drafts := s.wb.Drafts(x.ID)
-	card := ui.Column(c).Gap(6).Padding(10, 12).Radius(18).Material(glass.Glass{})
+	card := ui.Column(c).Gap(6).Padding(10, 12).Radius(18).Grow(1).MaxWidth(streamWidth).Material(glass.Glass{})
 	card.Children(func() {
 		if v.command != nil || len(drafts) > 0 || len(v.mentions) > 0 || len(v.attachments) > 0 || v.attaching > 0 {
 			ui.Row(c).Gap(6).Wrap().Children(func() {
