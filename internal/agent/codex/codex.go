@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"strings"
@@ -90,14 +91,15 @@ func (a *Agent) Start(ctx context.Context, opts agent.StartOptions) (agent.Sessi
 			"default_tools_approval_mode": "approve",
 		}}}
 	}
+	// The effort goes with the first turn: thread/start takes none.
+	s := &session{srv: srv, events: make(chan agent.Event, 256), parse: newThread(), rules: opts.Rules, effort: opts.Effort,
+		cwd: opts.Workspace, start: maps.Clone(params), current: settings{opts.Mode, opts.Model, opts.Effort}}
 	method := "thread/start"
 	if opts.ResumeID != "" {
 		method, params["threadId"] = "thread/resume", opts.ResumeID
 	}
 	// Notifications before the session is attached (thread/started) are
 	// not needed: the call's result names the thread.
-	// The effort goes with the first turn: thread/start takes none.
-	s := &session{srv: srv, events: make(chan agent.Event, 256), parse: newThread(), rules: opts.Rules, effort: opts.Effort}
 	var raw json.RawMessage
 	if err := srv.call(ctx, method, params, &raw); err != nil {
 		if opts.ResumeID != "" {
@@ -398,6 +400,10 @@ func (s *server) notify(method string, params json.RawMessage) {
 		s.onAccount(method, params)
 		return
 	}
+	if method == "skills/changed" {
+		s.skillsChanged()
+		return
+	}
 	var p struct {
 		ThreadID string `json:"threadId"`
 	}
@@ -431,6 +437,11 @@ type session struct {
 	rules []agent.Rule
 	// mode, model and effort, when set, apply from the next turn.
 	mode, model, effort string
+	// cwd is the workspace; start the thread's thread/start params, and
+	// current the settings since, which a new thread ("/clear") takes.
+	cwd     string
+	start   map[string]any
+	current settings
 }
 
 // ask passes an approval request to the user; ok is false for requests
@@ -496,13 +507,21 @@ func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 		return err
 	}
 	s.running = true
-	text := turn.Text
+	if turn.Command != nil && turn.Command.Handling == agent.ByReset {
+		s.mu.Unlock()
+		go s.reset()
+		return nil
+	}
+	text := commandText(turn)
 	if s.note != "" {
 		// Codex's decline carries no reason: it comes now.
 		text = denyNote(s.note) + text
 		s.note = ""
 	}
 	params := s.turnParams(withFiles(text, turn.Files), turn.Images)
+	if item, ok := skillInput(turn.Command); ok {
+		params["input"] = append(params["input"].([]any), item)
+	}
 	s.mu.Unlock()
 	var res struct {
 		Turn struct {
@@ -611,79 +630,6 @@ func (s *session) RespondApproval(_ context.Context, id, optionID, note string) 
 	}
 	s.mu.Unlock()
 	return s.srv.send(map[string]any{"id": k.rpcID, "result": result})
-}
-
-// turnInput is turn/start's input: an image Codex reads itself from its
-// path (localImage, research/17) before the text, for each image.
-func turnInput(text string, images []agent.Image) []any {
-	var in []any
-	for _, img := range images {
-		in = append(in, map[string]any{"type": "localImage", "path": img.Path})
-	}
-	if text != "" || len(images) == 0 {
-		in = append(in, map[string]any{"type": "text", "text": text})
-	}
-	return in
-}
-
-// withFiles is text with the files the user mentioned after it: Codex
-// takes no file as input (a "mention" item shows the model nothing,
-// research/07), so it reads them itself.
-func withFiles(text string, files []agent.FileMention) string {
-	if len(files) == 0 {
-		return text
-	}
-	var b strings.Builder
-	b.WriteString(text)
-	b.WriteString("\n\n" + filesHeading)
-	for _, f := range files {
-		b.WriteString("\n- " + f.Name())
-		if f.Dir {
-			b.WriteString(dirMark)
-		}
-	}
-	return strings.TrimSpace(b.String())
-}
-
-// turnParams are turn/start's for text and images, with what changed
-// since the last turn, which Codex keeps from then on. Called with s.mu
-// held.
-func (s *session) turnParams(text string, images []agent.Image) map[string]any {
-	params := map[string]any{"threadId": s.id, "input": turnInput(text, images)}
-	if p, ok := presetOf(s.mode); ok {
-		params["approvalPolicy"], params["approvalsReviewer"] = p.policy, p.reviewer
-		params["sandboxPolicy"] = map[string]any{"type": sandboxTypes[p.sandbox]}
-		s.mode = ""
-	}
-	if s.model != "" {
-		params["model"], s.model = s.model, ""
-	}
-	if s.effort != "" {
-		params["effort"], s.effort = s.effort, ""
-	}
-	return params
-}
-
-// SetModel applies a model and an effort from the next turn, as SetMode
-// does; Codex then reports them (thread/settings/updated). Empty ones
-// leave what the thread uses: Codex's own cannot be asked for by name.
-func (s *session) SetModel(_ context.Context, model, effort string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.model, s.effort = model, effort
-	return nil
-}
-
-// SetMode applies a preset from the next turn: Codex takes its settings
-// with turn/start, and reports them (thread/settings/updated).
-func (s *session) SetMode(_ context.Context, mode string) error {
-	if _, ok := presetOf(mode); !ok {
-		return fmt.Errorf("no such permission mode: %s", mode)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.mode = mode
-	return nil
 }
 
 // Compact runs thread/compact/start: a turn of its own, with a

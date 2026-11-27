@@ -1,7 +1,7 @@
 # Codex 适配器报告、翻译 Agent 命令
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 05, 06
 
 ## What to build
@@ -20,7 +20,33 @@ Blocked by: 05, 06
 
 ## Acceptance criteria
 
-- [ ] 回放 `skills/list` 得到清单，来源齐全；`skills/changed` 会触发重新列出。
-- [ ] skill 命令的输入里，文本和 skill 项都对。
-- [ ] `/clear` 不经过模型：先 `ContextReset`，再新 ID，再 `TurnEnded`。
-- [ ] 契约测试（`AIBO_CONTRACT=1`），附上抓取数据：`skills/list`、skill 调用、`thread/start` 重置。
+- [x] 回放 `skills/list` 得到清单，来源齐全；`skills/changed` 会触发重新列出。
+- [x] skill 命令的输入里，文本和 skill 项都对。
+- [x] `/clear` 不经过模型：先 `ContextReset`，再新 ID，再 `TurnEnded`。
+- [x] 契约测试（`AIBO_CONTRACT=1`），附上抓取数据：`skills/list`、skill 调用、`thread/start` 重置。
+
+## 实现说明
+
+- `commands.go`：
+  - 合成的内置命令有 `model`、`permissions`、`compact`、`rename`、`new`、`clear`，说明照录 Codex TUI 的原话。
+  - `skills/list` 的结果转成命令：只要启用的 skill；`scope` 填进来源，路径放进 `Data`。和内置命令同名的 skill 不提供。
+  - `Agent.Commands` 在共用的 app-server 上调用 `skills/list`。如果是专为这次调用启动的 app-server，一分钟后还没有线程用它，就停掉（`stopIfIdle`）。
+- `skills/changed` 不带 threadId，现在由 server 层处理：每个线程重新调用 `skills/list`，再发 `CommandsChanged`。
+- 发 skill：文本写成 `$名字 参数`，外加 `{type:"skill", name, path}` 输入项。
+- `/clear`、`/new`：适配器用会话当前的设置调用 `thread/start`。“当前的设置”指启动时的参数，叠加之后 `SetMode`、`SetModel` 改过的权限模式、模型和推理强度。之后会话改在新线程上进行（`rekey`），旧线程 `thread/unsubscribe`。事件依次是 `ContextReset`、新 ID 的 `NativeSessionStarted`、设置，最后 `TurnEnded`，不经过模型。
+- `codex.go` 超过了 800 行：输入和设置相关的代码挪进了新文件 `input.go`。
+- 单元测试用一个按脚本应答的 app-server（`scripted`）。testdata 里的 `skills-0.169.0.json` 取自 research 01。
+
+### 契约测试（2026-11-27，codex-cli 0.172.0）
+
+- `TestContractSkillsAndReset` 通过：
+  - 不建线程就能拿到清单；
+  - 发 skill 时注入了正文，回复是 `GREET Bob`；
+  - 有线程时新增 skill，清单会跟着更新；
+  - `/clear` 留下重置标记，原生会话 ID 换了；新线程不记得之前的对话。
+- Codex 原有的契约测试全部通过。
+
+### 没有验证
+
+- 没有线程时新增 skill，Codex 会不会推送 `skills/changed`。不推送也没关系：打开面板时用 `RefreshCommands` 会重新取清单。
+- `-race`：本机没有 gcc，跑不了。
