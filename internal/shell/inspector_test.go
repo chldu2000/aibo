@@ -74,6 +74,9 @@ func TestInspectorFileSelectionFollowsWorkspace(t *testing.T) {
 	if out, err := exec.Command("git", "-C", root, "init", "-b", "sidebar-test").CombinedOutput(); err != nil {
 		t.Fatal(err, string(out))
 	}
+	// The open panel read the Git status for its tab's count before the
+	// repository was made; a refresh reads it again.
+	click("刷新工作区")
 	click("Git 状态")
 	wait("sidebar-test · 尚无提交")
 	wait("?  src/file.txt")

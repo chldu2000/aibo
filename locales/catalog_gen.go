@@ -294,6 +294,28 @@ func (msgs Messages) WorkspaceFiles() string {
 	return Catalog.Format(msgs.locale, "workspaceFiles", nil)
 }
 
+// WorkspaceScope says "Workspace · {name}"
+// in the language the app shows.
+func WorkspaceScope(name string) string { return In(i18n.Locale()).WorkspaceScope(name) }
+
+// WorkspaceScope says "Workspace · {name}"
+// in the language of msgs.
+func (msgs Messages) WorkspaceScope(name string) string {
+	return Catalog.Format(msgs.locale, "workspaceScope", map[string]any{"name": name})
+}
+
+// WithShortcut says "{label} ({keys})"
+// in the language the app shows.
+func WithShortcut(label string, keys string) string {
+	return In(i18n.Locale()).WithShortcut(label, keys)
+}
+
+// WithShortcut says "{label} ({keys})"
+// in the language of msgs.
+func (msgs Messages) WithShortcut(label string, keys string) string {
+	return Catalog.Format(msgs.locale, "withShortcut", map[string]any{"label": label, "keys": keys})
+}
+
 // WorkspaceLoading says "Loading…"
 // in the language the app shows.
 func WorkspaceLoading() string { return In(i18n.Locale()).WorkspaceLoading() }
@@ -2160,21 +2182,21 @@ func (msgs Messages) NewSession() string {
 	return Catalog.Format(msgs.locale, "newSession", nil)
 }
 
-// NewSessionHere says "New session (⌘N)"
+// NewSessionHere says "New session"
 // in the language the app shows.
 func NewSessionHere() string { return In(i18n.Locale()).NewSessionHere() }
 
-// NewSessionHere says "New session (⌘N)"
+// NewSessionHere says "New session"
 // in the language of msgs.
 func (msgs Messages) NewSessionHere() string {
 	return Catalog.Format(msgs.locale, "newSessionHere", nil)
 }
 
-// NewSessionChoose says "New session in a workspace, with an Agent (⇧⌘N)"
+// NewSessionChoose says "New session in a workspace, with an Agent"
 // in the language the app shows.
 func NewSessionChoose() string { return In(i18n.Locale()).NewSessionChoose() }
 
-// NewSessionChoose says "New session in a workspace, with an Agent (⇧⌘N)"
+// NewSessionChoose says "New session in a workspace, with an Agent"
 // in the language of msgs.
 func (msgs Messages) NewSessionChoose() string {
 	return Catalog.Format(msgs.locale, "newSessionChoose", nil)

@@ -1,6 +1,8 @@
 package shell
 
 import (
+	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/chldu2000/aibo/locales"
@@ -94,10 +96,10 @@ var inspectorTabs = []struct {
 	label        func() string
 }{
 	{"", "info.circle", locales.DetailsOverview},
-	{"files", "folder", locales.WorkspaceFiles},
-	{"git", "arrow.triangle.branch", locales.GitStatus},
 	{string(workbench.Commands), "terminal", locales.CommandHistory},
 	{string(workbench.Delegations), "person.2", locales.DelegationHistory},
+	{"files", "folder", locales.WorkspaceFiles},
+	{"git", "arrow.triangle.branch", locales.GitStatus},
 }
 
 // inspector keeps its tabs visible while the selected content scrolls.
@@ -107,7 +109,7 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 	t := c.Theme()
 	panel.Radius(16).Clip().Material(glass.Glass{}).Padding(12).Gap(10).Children(func() {
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-			s.inspectorTabBar(c)
+			s.inspectorTabBar(c, x, panel.Bounds().W)
 			ui.Spacer(c)
 			if s.detail.page == "files" || s.detail.page == "git" {
 				if iconButton(c, "arrow.clockwise", locales.WorkspaceRefresh()).Clicked() {
@@ -118,6 +120,11 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 				s.closeDetails(x.ID)
 			}
 		})
+		scope := sessionTitle(x)
+		if workspacePage(s.detail.page) {
+			scope = locales.WorkspaceScope(workspaceName(s.workspaceOf(x)))
+		}
+		ui.Text(c, scope).FontSize(11).TextColor(t.TextMuted).MaxLines(1).TruncateMiddle().Padding(0, 4)
 		if crumb := s.inspectorCrumb(x); crumb != "" {
 			ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 				if iconButton(c, "chevron.left", locales.Back()).Clicked() {
@@ -178,7 +185,7 @@ func (s *Shell) inspectorKeys(c *ui.Context, x model.Session, v *sessionView) {
 
 // inspectorTabBar is a segmented control of symbols, named by their
 // tooltips, on a faint track that reads on any glass.
-func (s *Shell) inspectorTabBar(c *ui.Context) {
+func (s *Shell) inspectorTabBar(c *ui.Context, x model.Session, width float32) {
 	t := c.Theme()
 	cur := 0
 	for i, tab := range inspectorTabs {
@@ -186,12 +193,25 @@ func (s *Shell) inspectorTabBar(c *ui.Context) {
 			cur = i
 		}
 	}
+	counts := s.tabCounts(x)
 	sel := cur
 	seg := ui.SegmentedBase(c.Key("inspector-tabs"), &sel, len(inspectorTabs))
-	seg.Track.Padding(2).Gap(2).Radius(9).Background(veil(c, 0.06)).Label(locales.DetailsTabs()).Children(func() {
+	seg.Track.Padding(2).Gap(2).Radius(9).AlignItems(ui.Center).Background(veil(c, 0.06)).Label(locales.DetailsTabs()).Children(func() {
 		for i, tab := range inspectorTabs {
+			// The session's pages, then the workspace's.
+			if i > 0 && workspacePage(tab.page) && !workspacePage(inspectorTabs[i-1].page) {
+				ui.Box(c).Key("divider").Size(1, 16).Margin(0, 3).Background(veil(c, 0.15))
+			}
 			label := tab.label()
-			sg := seg.Segment(i).Size(34, 26).Radius(7).AlignItems(ui.Center).Justify(ui.Center).Label(label).Tooltip(label)
+			// The name shows beside the chosen tab's symbol when there is
+			// room; the count is not in the label, which stays the same.
+			named := i == sel && width >= tabNamesWidth
+			sg := seg.Segment(i).Height(26).Radius(7).AlignItems(ui.Center).Justify(ui.Center).Gap(5).Label(label).Tooltip(locales.WithShortcut(label, cmdKey(fmt.Sprint(i+1))))
+			if named {
+				sg.Padding(0, 9)
+			} else {
+				sg.Width(34)
+			}
 			ink := t.TextMuted
 			switch {
 			case i == sel:
@@ -201,7 +221,16 @@ func (s *Shell) inspectorTabBar(c *ui.Context) {
 				sg.Background(veil(c, 0.08))
 				ink = t.Text
 			}
-			sg.Children(func() { icon(c, tab.symbol).Size(15).Color(ink) })
+			sg.Children(func() {
+				icon(c, tab.symbol).Size(15).Color(ink)
+				if named {
+					ui.Text(c, label).FontSize(12).TextColor(ink).NoWrap()
+				}
+				if n := counts[tab.page]; n > 0 {
+					ui.Text(c, fmt.Sprint(n)).FontSize(9).Bold().TextColor(ui.RGBA(255, 255, 255, 1)).
+						Absolute().Top(1).Right(1).Padding(0, 3).Radius(6).Background(t.Accent)
+				}
+			})
 		}
 	})
 	if sel != cur {
@@ -411,4 +440,43 @@ func (s *Shell) detailsMode(c *ui.Context, x model.Session) {
 		}
 	}
 	ui.Text(c, modeDescription(x.Agent, cur)).FontSize(11).TextColor(c.Theme().TextMuted)
+}
+
+// tabNamesWidth is how wide the panel is for the chosen tab to show its
+// name.
+const tabNamesWidth = 360
+
+// workspacePage tells the pages that follow the workspace, not the
+// session.
+func workspacePage(page string) bool { return page == "files" || page == "git" }
+
+// tabCounts are the counts on the tabs, by page: the terminals and the
+// subagents running, and the Git changes once the workspace is watched,
+// as while the panel is open.
+func (s *Shell) tabCounts(x model.Session) map[string]int {
+	terminals, subagents := running(s.view(x.ID).msgs)
+	counts := map[string]int{string(workbench.Commands): terminals, string(workbench.Delegations): subagents}
+	if s.detail.watched == x.WorkspaceID {
+		if r := s.wb.GitStatus(x.WorkspaceID); !r.Pending && r.Err == nil {
+			counts["git"] = len(r.Value.Changes)
+		}
+	}
+	return counts
+}
+
+// cmdKey is a shortcut with the platform's command key, as the user
+// reads it: ⌘1 on macOS, Ctrl+1 elsewhere.
+func cmdKey(key string) string {
+	if runtime.GOOS == "darwin" {
+		return "⌘" + key
+	}
+	return "Ctrl+" + key
+}
+
+// shiftCmdKey is cmdKey with Shift: ⇧⌘N on macOS, Ctrl+Shift+N elsewhere.
+func shiftCmdKey(key string) string {
+	if runtime.GOOS == "darwin" {
+		return "⇧⌘" + key
+	}
+	return "Ctrl+Shift+" + key
 }

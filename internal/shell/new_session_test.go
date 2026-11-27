@@ -3,6 +3,7 @@ package shell_test
 import (
 	"context"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -73,7 +74,11 @@ func TestNewSessionShortcut(t *testing.T) {
 	if tt.HasText(choice) {
 		t.Error("the choices stay")
 	}
-	click(t, tt, "选择工作区和 Agent 新建（⇧⌘N）")
+	keys := "Ctrl+Shift+N"
+	if runtime.GOOS == "darwin" {
+		keys = "⇧⌘N"
+	}
+	click(t, tt, "选择工作区和 Agent 新建（"+keys+"）")
 	if !tt.HasText(choice) {
 		t.Errorf("the button does not ask: %q", tt.Texts())
 	}

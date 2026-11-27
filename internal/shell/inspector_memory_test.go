@@ -68,13 +68,13 @@ func TestInspectorRemembersPage(t *testing.T) {
 	frame(tt)
 	shows(tt, commands, "after ⌥⌘I again")
 
-	// ⌘1 turns it to the overview; closed, ⌘4 opens it on the commands.
+	// ⌘1 turns it to the overview; closed, ⌘2 opens it on the commands.
 	tt.Key(ui.Cmd, ui.Key1)
 	frame(tt)
 	shows(tt, overview, "after ⌘1")
 	click(t, tt, closer)
-	tt.Key(ui.Cmd, ui.Key4)
+	tt.Key(ui.Cmd, ui.Key2)
 	frame(tt)
-	shows(tt, closer, "after ⌘4")
-	shows(tt, commands, "after ⌘4")
+	shows(tt, closer, "after ⌘2")
+	shows(tt, commands, "after ⌘2")
 }

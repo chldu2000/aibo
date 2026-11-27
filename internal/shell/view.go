@@ -84,7 +84,9 @@ func (s *Shell) pane(c *ui.Context) {
 		s.closeChildHistory()
 	}
 	watched := ""
-	if ok && s.detail.open && !s.settings.open && (s.detail.page == "files" || s.detail.page == "git") {
+	// The panel open, its workspace is watched: its pages and the Git
+	// tab's count read it.
+	if ok && s.detail.open && !s.settings.open {
 		watched = x.WorkspaceID
 	}
 	s.watchPanel(watched)

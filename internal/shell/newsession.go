@@ -22,7 +22,7 @@ func (s *Shell) newSessionBar(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 		b := ui.Row(c).Key("new").Gap(6).Padding(6, 10).Radius(8).Grow(1).AlignItems(ui.Center).
-			Background(veil(c, 0.05)).Label(locales.NewSessionHere()).Tooltip(locales.NewSessionHere()).Cursor(ui.CursorPointer).Children(func() {
+			Background(veil(c, 0.05)).Label(locales.WithShortcut(locales.NewSessionHere(), cmdKey("N"))).Tooltip(locales.WithShortcut(locales.NewSessionHere(), cmdKey("N"))).Cursor(ui.CursorPointer).Children(func() {
 			icon(c, "square.and.pencil").Size(14).Color(t.Text)
 			ui.Text(c, locales.NewSession()).FontSize(13).TextColor(t.Text)
 		})
@@ -32,7 +32,7 @@ func (s *Shell) newSessionBar(c *ui.Context) {
 		if b.Clicked() {
 			s.startLikeThis()
 		}
-		if iconButton(c, "chevron.down", locales.NewSessionChoose()).Clicked() {
+		if iconButton(c, "chevron.down", locales.WithShortcut(locales.NewSessionChoose(), shiftCmdKey("N"))).Clicked() {
 			s.starter = starter{open: true}
 		}
 	})
