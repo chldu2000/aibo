@@ -45,6 +45,9 @@ type parser struct {
 	// interruption comes between its whole text and its stop, and leaves
 	// it unfinished.
 	held []agent.Event
+	// printed are the messages of local commands' output already told:
+	// "/compact" tells the earlier ones again.
+	printed map[string]bool
 }
 
 // interruptedNote is the user message Claude Code adds when a turn is
@@ -52,11 +55,19 @@ type parser struct {
 const interruptedNote = "[Request interrupted by user]"
 
 func newParser() *parser {
-	return &parser{log: agent.Discard, started: map[string]bool{}, thought: map[string]string{}, plans: map[string]bool{}, asks: map[string]canUseTool{}}
+	return &parser{log: agent.Discard, started: map[string]bool{}, thought: map[string]string{}, plans: map[string]bool{}, asks: map[string]canUseTool{},
+		printed: map[string]bool{}}
 }
 
 type envelope struct {
-	Type            string          `json:"type"`
+	Type string `json:"type"`
+	// system/commands_changed: all the commands
+	Commands []command `json:"commands"`
+	// assistant: set on what a local command printed, as "/context", or
+	// said it could not run ("/help" isn't available in this
+	// environment)
+	LocalRun        json.RawMessage `json:"local_command_run"`
+	LocalOutcome    json.RawMessage `json:"local_command_outcome"`
 	Subtype         string          `json:"subtype"`
 	SessionID       string          `json:"session_id"`
 	ParentToolUseID string          `json:"parent_tool_use_id"`
@@ -160,11 +171,24 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 			m := e.CompactMetadata
 			return []agent.Event{agent.Compacted{Trigger: m.Trigger, PreTokens: m.PreTokens, PostTokens: m.PostTokens}}
 		}
-		// status says what it is busy with (compacting); commands_changed
-		// lists its slash commands, which aibo does not offer.
-		if e.Subtype != "status" && e.Subtype != "commands_changed" {
+		if e.Subtype == "commands_changed" {
+			return []agent.Event{agent.CommandsChanged{Commands: offered(e.Commands)}}
+		}
+		switch e.Subtype {
+		case "status":
+			// What it is busy with (compacting).
+		case "session_title_changed":
+			// Its own title, after "/rename" (aibo's controls carry that
+			// out) or "/clear": aibo keeps its own.
+		case "background_tasks_changed":
+			// Its background tasks, which aibo does not show.
+		default:
 			p.unknown(e, raw)
 		}
+	case "conversation_reset":
+		// "/clear": the system/init of the turn that follows names the
+		// new native session (its new_conversation_id does not).
+		return []agent.Event{agent.ContextReset{}}
 	case "rate_limit_event":
 		// Its plan's limits; a limit hit fails the turn, which says so.
 	case "stream_event":
@@ -278,6 +302,13 @@ func (p *parser) assistant(e envelope, raw []byte) []agent.Event {
 		return nil
 	}
 	parent := e.ParentToolUseID
+	local := len(e.LocalRun) > 0 || len(e.LocalOutcome) > 0
+	if local {
+		if p.printed[m.ID] {
+			return nil // told again, as "/compact" does
+		}
+		p.printed[m.ID] = true
+	}
 	var out []agent.Event
 	if parent == "" && m.ID != p.msg {
 		// Not streamed (or the stream lost its start): key by this message.
@@ -292,7 +323,7 @@ func (p *parser) assistant(e envelope, raw []byte) []agent.Event {
 				continue
 			}
 			if b.Text != "" {
-				p.held = append(p.held, agent.ReplyDone{ReplyID: p.reply(), Text: b.Text, Raw: raw})
+				p.held = append(p.held, agent.ReplyDone{ReplyID: p.reply(), Text: b.Text, Raw: raw, CommandOutput: local})
 			}
 		case "thinking":
 			if b.Thinking == "" {

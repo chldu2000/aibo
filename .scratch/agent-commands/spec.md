@@ -153,6 +153,12 @@ Status: ready-for-agent
   - 先例：各适配器的 `parse_test.go`、`models_test.go`、`notices_test.go`。
 - **契约测试**（`AIBO_CONTRACT=1`），按约定附上抓取数据：
   - Claude：清单字段；只做 `initialize` 时不产生原生会话 ID、不写会话记录、不执行 SessionStart hook；续接的进程在 `initialize` 应答里同样带清单；`/clear` 换 ID；发现白名单外的新内置命令时报出来。
+    - **实测（Claude Code 2.1.332，2026-11-27）**：不产生原生会话 ID，成立；续接的进程照样带清单，成立；`/clear` 换 ID，成立。另外两项不成立，但影响有限：
+      - `initialize` 时就会写一个会话记录文件，里面只有元数据（`session-owner`、`derived-from`），发出第一条消息后才有对话内容；
+      - SessionStart hook 在进程启动时就跑，第一条消息时不再跑。每个进程只跑一次，只是提前了，不是多跑一次。
+      
+      所以，提前启动后用户没有发消息，就会留下一个只有元数据的记录文件，并且 hook 已经跑过一次。契约测试按实测行为断言。
+    - 2.1.332 新增了 9 条内置命令（`design`、`design-sync`、`design-consent`、`design-revoke`、`claude-approvals`、`advisor`、`import`、`ultrareview`、`skill-doctor`），按“没测过的先拦下”记为拦下。`code-review` 不再报告了。
   - Codex：`skills/list`；skill 调用；`thread/start` 重置；`review/start` 的事件形态。`review/start` 的测试过不了，Codex 的 `/review` 就改为拦下。
   - 先例：现有的 `contract_test.go`。
 - **外壳**（MyGO Tester，只测交互）：打出 `/` 打开面板、筛选、选中后变成 chip、退格删掉 chip、手打名字自动变成 chip、时间线上的 chip 与命令输出样式、拦下时的提示文字、不带参数的 `/model` 打开模型菜单。两种语言的冒烟测试检查新增 Label 不重复。先例：`mentions_test.go`、`models_test.go`。

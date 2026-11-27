@@ -308,6 +308,9 @@ func (s *session) read(stdout io.Reader) {
 				if m := e.Response.Response.Mode; m != "" {
 					s.events <- agent.ModeReported{ID: m}
 				}
+				if cmds, ok := initCommands(sc.Bytes()); ok {
+					s.events <- agent.CommandsChanged{Commands: cmds}
+				}
 				close(s.ready)
 			case e.Type == "result":
 				s.startErr = strings.Join(e.Errors, "\n")
@@ -464,14 +467,16 @@ func turnContent(turn agent.Turn) (any, error) {
 	return blocks, nil
 }
 
-// withFiles is a turn's text with its files after it, as Claude Code
-// reads them itself: @path, quoted when it has a space (research/07).
+// withFiles is a turn's text, after the command it invokes, with its
+// files after it, as Claude Code reads them itself: @path, quoted when it
+// has a space (research/07).
 func withFiles(turn agent.Turn) string {
+	text := commandText(turn)
 	if len(turn.Files) == 0 {
-		return turn.Text
+		return text
 	}
 	var b strings.Builder
-	b.WriteString(turn.Text)
+	b.WriteString(text)
 	// Each on a line of its own: Claude Code reads an @ only after a
 	// space or at the start of a line, not after "：".
 	b.WriteString("\n\n" + filesHeading)

@@ -145,7 +145,8 @@ func TestUnknownMessagesLogged(t *testing.T) {
 		`{"type":"control_request","request_id":"r","request":{"subtype":"elicit","prompt":"walrus"}}`,
 		`{"type":"system","subtype":"status","status":"compacting"}`,
 		`{"type":"rate_limit_event","rate_limit_info":{}}`,
-		`{"type":"system","subtype":"commands_changed","commands":[]}`,
+		`{"type":"system","subtype":"session_title_changed","title":"walrus"}`,
+		`{"type":"system","subtype":"background_tasks_changed","tasks":[]}`,
 	} {
 		if evs := p.line([]byte(l)); len(evs) != 0 {
 			t.Errorf("%s → %v", l, evs)
