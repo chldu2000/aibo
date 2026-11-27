@@ -156,6 +156,9 @@ type sessionView struct {
 	// composerHeight is how tall the composer and what floats above it were
 	// last frame, which the messages leave room for under their last.
 	composerHeight float32
+	// hover is the message the pointer was over last frame, by its seq,
+	// which shows its number then; 0 when none.
+	hover int
 	// follow is what the view knows of the messages' end, for the button
 	// back to it.
 	follow follow

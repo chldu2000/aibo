@@ -225,27 +225,45 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 	if st.Running && !v.sel.on {
 		n++
 	}
+	// The numbers take a column of their own only while they are needed,
+	// to choose a range or to see the one highlighted; else a message's
+	// shows over its corner while the pointer is on it.
+	gutter := v.sel.on || v.highlight[0] > 0
+	indent := float32(4)
+	if gutter {
+		indent += gutterWidth + 10
+	}
 	return ui.List(c, &v.list, n, func(i int) {
 		if i >= len(v.msgs) {
-			s.working(c, x, st)
+			s.working(c, x, st, indent)
 			return
 		}
 		m := v.msgs[i]
 		if i == 0 {
 			for _, mk := range after[0] {
-				divider(c, mk)
+				divider(c, mk, indent)
 			}
 		}
 		defer func() {
 			for _, mk := range after[m.Seq] {
-				divider(c, mk)
+				divider(c, mk, indent)
 			}
 		}()
 		// In selection mode a press anywhere on a message chooses it,
 		// rather than selecting its text or pressing its buttons.
 		row := ui.Row(c).Gap(10).AlignItems(ui.Start).Padding(4).Radius(10).IgnoreInput(v.sel.on).Children(func() {
-			ui.Textf(c, "#%d", m.Seq).FontSize(11).TextColor(t.TextMuted).Width(44).MaxLines(1)
-			ui.Column(c).Grow(1).MinWidth(0).MaxWidth(820).Gap(6).Children(func() {
+			if gutter {
+				ui.Textf(c, "#%d", m.Seq).Key("seq").FontSize(11).TextColor(t.TextMuted).Width(gutterWidth).MaxLines(1)
+			}
+			// Keyed, the body stays the same element, its controls and
+			// what they hold, as the number comes and goes beside it.
+			defer func() {
+				if !gutter && v.hover == m.Seq {
+					ui.Textf(c, "#%d", m.Seq).Key("float").FontSize(11).TextColor(t.TextMuted).MaxLines(1).
+						Absolute().Top(4).Right(4).Padding(1, 6).Radius(6).Background(t.Surface)
+				}
+			}()
+			ui.Column(c).Key("body").Grow(1).MinWidth(0).MaxWidth(820).Gap(6).Children(func() {
 				switch m.Kind {
 				case model.UserMessage:
 					for _, id := range m.Refs {
@@ -281,6 +299,14 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 		})
 		if v.highlight[0] > 0 && m.Seq >= v.highlight[0] && m.Seq <= v.highlight[1] {
 			row.Background(tinted(c, ui.RGBA(40, 120, 255, 0.16)))
+		}
+		// The number shows from the next frame.
+		if hovered := row.Hovered(); hovered && v.hover != m.Seq {
+			v.hover = m.Seq
+			c.After(0)
+		} else if !hovered && v.hover == m.Seq {
+			v.hover = 0
+			c.After(0)
 		}
 	}).Padding(76, 20, bottomRoom(v.composerHeight)).Gap(10).Children(func() {
 		if len(v.msgs) == 0 {
@@ -564,18 +590,18 @@ func (s *Shell) reveal(sessionID string, from, to int) {
 // compacted its context, or a new native session took over. A command
 // that said nothing, and how long a turn took, are lines of their own,
 // under the last message.
-func divider(c *ui.Context, mk model.Marker) {
+func divider(c *ui.Context, mk model.Marker, indent float32) {
 	t := c.Theme()
 	switch mk.Kind {
 	case model.CommandRan:
-		ui.Text(c, locales.CommandRan()).FontSize(11).TextColor(t.TextMuted).Padding(0, 0, 0, 58)
+		ui.Text(c, locales.CommandRan()).FontSize(11).TextColor(t.TextMuted).Padding(0, 0, 0, indent)
 		return
 	case model.TurnEnded:
 		text := locales.TurnTook(elapsed(mk.Took))
 		if mk.Stopped {
 			text = locales.TurnStopped(elapsed(mk.Took))
 		}
-		ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).Padding(0, 0, 0, 58)
+		ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).Padding(0, 0, 0, indent)
 		return
 	}
 	text := locales.NewNativeSession()
@@ -637,10 +663,9 @@ func (s *Shell) resumeBanner(c *ui.Context, id string, st workbench.Status) {
 
 // working is the last row of a session whose turn runs: who works and for
 // how long, or that it waits on the user, or why the Agent retries.
-func (s *Shell) working(c *ui.Context, x model.Session, st workbench.Status) {
+func (s *Shell) working(c *ui.Context, x model.Session, st workbench.Status, indent float32) {
 	t := c.Theme()
-	ui.Row(c).Gap(10).AlignItems(ui.Start).Padding(4).Children(func() {
-		ui.Box(c).Width(44)
+	ui.Row(c).AlignItems(ui.Start).Padding(4, 4, 4, indent).Children(func() {
 		ui.Column(c).Grow(1).MaxWidth(820).Gap(4).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Spinner(c).Label(locales.Running())
@@ -696,3 +721,6 @@ func draftMaxHeight(c *ui.Context) float32 {
 	_, h := c.Size()
 	return max(44, h*0.4)
 }
+
+// gutterWidth is the width of the messages' numbers, in their column.
+const gutterWidth = 44
