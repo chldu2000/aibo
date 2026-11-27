@@ -29,10 +29,45 @@ type sidebarUI struct {
 	collapsed, narrowOpen bool
 	// hidden is whether this frame hides the sidebar.
 	hidden bool
+	// resized is when the width last moved, until it is kept; zero
+	// when it is.
+	resized time.Time
 }
 
 // collapsedPref is the preference keeping whether the sidebar is hidden.
 const collapsedPref = "sidebarCollapsed"
+
+// widthPref is the preference keeping the sidebar's width.
+const widthPref = "sidebarWidth"
+
+// The sidebar's width: as it starts and as a double click on its divider
+// puts it back, and the least and most it takes.
+const sidebarWidth, sidebarMin, sidebarMax = 260, 200, 480
+
+// widthRest is how long the width has to rest after a move before it is
+// kept, so that a drag is kept once, as it ends.
+const widthRest = 300 * time.Millisecond
+
+// sidebarResized keeps the sidebar's width within its bounds and, once it
+// rests after a move, as a preference.
+func (s *Shell) sidebarResized(c *ui.Context, moved bool) {
+	s.split = min(max(s.split, sidebarMin), sidebarMax)
+	now := c.Now()
+	if moved {
+		s.side.resized = now
+	}
+	if s.side.resized.IsZero() {
+		return
+	}
+	if due := s.side.resized.Add(widthRest); now.Before(due) {
+		c.After(due.Sub(now))
+		return
+	}
+	s.side.resized = time.Time{}
+	if err := s.wb.SetPref(widthPref, s.split); err != nil {
+		s.notice = s.say(err)
+	}
+}
 
 // narrowWindow is the width under which the window hides the sidebar.
 const narrowWindow = 640

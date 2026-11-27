@@ -51,7 +51,8 @@ func (s *Shell) View(c *ui.Context) {
 			ui.Box(c).Fill().Margin(0, 0, 0, 4).Radius(14, 0, 0, 14).Clip().Background(c.Theme().Background).Children(func() {
 				s.pane(c)
 			})
-		}).Fill()
+		}).SplitReset(sidebarWidth).Fill()
+		s.sidebarResized(c, root.Changed())
 	}
 	s.renameDialog(c)
 	s.deleteDialog(c)

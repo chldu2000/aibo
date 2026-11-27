@@ -160,7 +160,7 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 	if o.Wake == nil {
 		o.Wake = func() {}
 	}
-	s := &Shell{wb: wb, opts: o, split: 260, views: map[string]*sessionView{}, openCards: map[string]bool{}}
+	s := &Shell{wb: wb, opts: o, split: sidebarWidth, views: map[string]*sessionView{}, openCards: map[string]bool{}}
 	if o.Only != "" {
 		o.Notify = nil
 	}
@@ -173,6 +173,10 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 	if _, err := wb.Pref(collapsedPref, &s.side.collapsed); err != nil {
 		s.notice = s.say(err)
 	}
+	if _, err := wb.Pref(widthPref, &s.split); err != nil {
+		s.notice = s.say(err)
+	}
+	s.split = min(max(s.split, sidebarMin), sidebarMax)
 	if o.Only != "" {
 		s.current = o.Only
 	} else if all := wb.Sessions(); len(all) > 0 {
@@ -183,7 +187,15 @@ func New(wb *workbench.Workbench, o Options) *Shell {
 
 // Close stops the shell following the workbench, as when its window
 // closes.
-func (s *Shell) Close() { s.closeChildHistory(); s.watchPanel(""); s.unsubscribe() }
+func (s *Shell) Close() {
+	// A width moved just before is kept, though it did not rest.
+	if !s.side.resized.IsZero() {
+		_ = s.wb.SetPref(widthPref, s.split)
+	}
+	s.closeChildHistory()
+	s.watchPanel("")
+	s.unsubscribe()
+}
 
 // goTo shows a session, messages from..to highlighted (none when zero).
 // A session's own window shows no other: the main window does.
