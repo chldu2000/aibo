@@ -174,11 +174,8 @@ Status: ready-for-agent
 - 现在 `SendMessage` 会先修剪掉首尾空白，再匹配 `/单词`，所以“开头加空格”这条逃生路实际上走不通。实现时要改成：先在未修剪的原文上判断开头是不是 `/`，再修剪。
 - Claude 的 `model`、`effort` 改走控件，是因为 Claude 执行它们时不发结构化事件。改走控件后，控件显示的始终是 Agent 用 `SettingsReported` 报回的实际值。
 - 时间线的 chip 说明用的是消息里的快照，不依赖清单缓存，所以清单过期或拿不到时，历史消息照样能显示。
-- 建议的拆分顺序：
-  1. 工作台加 `Outgoing.Command`，接上假 Agent，打通“交给 Agent”这条路，记下命令快照；
-  2. 命令清单与缓存（先接 Codex 的清单接口，再做 Claude 的提前启动）；
-  3. Claude 适配器（清单、翻译、重置、命令输出）；
-  4. Codex 适配器（skills、重置、`review` 的契约测试）；
-  5. 改走控件的分流；
-  6. 外壳的面板、chip、时间线；
-  7. 会话引用。
+- 实现 issue（05–13）：
+  - 工作台：[05 命令清单](issues/05-workbench-command-list.md)、[06 发送与记录](issues/06-workbench-send-command.md)、[07 改走控件](issues/07-workbench-control-routes.md)；
+  - 适配器：[08 Claude](issues/08-claude-adapter-commands.md)、[09 Codex](issues/09-codex-adapter-commands.md)、[10 Codex 的 review](issues/10-codex-review.md)；
+  - 外壳：[11 / 面板与 chip](issues/11-shell-command-panel.md)、[12 时间线与菜单](issues/12-shell-timeline-and-menus.md)；
+  - 会话引用：[13](issues/13-references-commands.md)。
