@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chldu2000/aibo/locales"
+	"strconv"
 	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -56,7 +57,7 @@ func (s *Shell) reply(c *ui.Context, v *sessionView, m model.Message) {
 	v.open.init()
 	if strings.TrimSpace(m.Thinking) != "" {
 		o := v.open.thinking[m.Seq]
-		ui.Collapsible(c, locales.Thinking(), &o, func() {
+		fold(c, locales.Thinking(), locales.ThinkingLabel(strconv.Itoa(m.Seq)), &o, func() {
 			ui.Text(c, m.Thinking).FontSize(12).TextColor(t.TextMuted).Selectable().Padding(0, 0, 0, 12)
 		})
 		v.open.thinking[m.Seq] = o
@@ -127,7 +128,7 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key, id string, m model.Mess
 		ui.Column(c).Gap(6).Padding(4, 0, 4, 12).Children(func() {
 			ui.Text(c, gist(m.Tool.Input)).Font("Menlo").FontSize(11).TextColor(t.Text).MaxLines(1).Selectable()
 			args := v.open.tools[key+"/args"]
-			ui.Collapsible(c, locales.ShowArgs(), &args, func() {
+			fold(c, locales.ShowArgs(), locales.ShowArgsLabel(id), &args, func() {
 				ui.Scroll(c).MaxHeight(argsHeight).MinWidth(0).Children(func() {
 					ui.Text(c, pretty(m.Tool.Input)).Font("Menlo").FontSize(11).TextColor(t.Text).Selectable()
 				})

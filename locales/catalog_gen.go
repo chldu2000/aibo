@@ -4880,6 +4880,16 @@ func (msgs Messages) Thinking() string {
 	return Catalog.Format(msgs.locale, "thinking", nil)
 }
 
+// ThinkingLabel says "Thinking #{seq}"
+// in the language the app shows.
+func ThinkingLabel(seq string) string { return In(i18n.Locale()).ThinkingLabel(seq) }
+
+// ThinkingLabel says "Thinking #{seq}"
+// in the language of msgs.
+func (msgs Messages) ThinkingLabel(seq string) string {
+	return Catalog.Format(msgs.locale, "thinkingLabel", map[string]any{"seq": seq})
+}
+
 // ToolRunning says "{label} · running"
 // in the language the app shows.
 func ToolRunning(label string) string { return In(i18n.Locale()).ToolRunning(label) }
@@ -4928,6 +4938,16 @@ func ShowArgs() string { return In(i18n.Locale()).ShowArgs() }
 // in the language of msgs.
 func (msgs Messages) ShowArgs() string {
 	return Catalog.Format(msgs.locale, "showArgs", nil)
+}
+
+// ShowArgsLabel says "Show arguments #{id}"
+// in the language the app shows.
+func ShowArgsLabel(id string) string { return In(i18n.Locale()).ShowArgsLabel(id) }
+
+// ShowArgsLabel says "Show arguments #{id}"
+// in the language of msgs.
+func (msgs Messages) ShowArgsLabel(id string) string {
+	return Catalog.Format(msgs.locale, "showArgsLabel", map[string]any{"id": id})
 }
 
 // OpenInDetails says "Open #{id} in details"

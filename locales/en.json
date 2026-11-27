@@ -604,6 +604,7 @@
   "effortRow": "Reasoning effort {effort}",
   "modelFailed": "Changing the model failed",
   "thinking": "Thinking",
+  "thinkingLabel": "Thinking #{seq}",
   "toolRunning": "{label} · running",
   "toolInterrupted": "{label} · interrupted",
   "toolFailed": "{label} · failed",
@@ -619,6 +620,7 @@
     }
   },
   "showArgs": "Show arguments",
+  "showArgsLabel": "Show arguments #{id}",
   "openInDetails": "Open #{id} in details",
   "toolResult": "Result",
   "callsRead": "read {count} files",
