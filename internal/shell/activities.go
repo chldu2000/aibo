@@ -33,11 +33,18 @@ func (s *Shell) openActivity(id string, kind workbench.ActivityKind, activity st
 	s.detail.selected = activity
 }
 
-// inspectorOutputHeight is how tall a big output stands in the details:
-// about as tall as the panel, and never shorter than in the conversation.
-func inspectorOutputHeight(c *ui.Context) float32 {
-	_, h := c.Size()
-	return max(outputHeight, h-240)
+// selectedActivity is the call the details show on its own, if any.
+func (s *Shell) selectedActivity(x model.Session) (workbench.Activity, bool) {
+	kind := workbench.ActivityKind(s.detail.page)
+	if s.detail.selected == "" || kind != workbench.Commands && kind != workbench.Delegations {
+		return workbench.Activity{}, false
+	}
+	for _, a := range workbench.Activities(s.view(x.ID).msgs, kind) {
+		if a.ID == s.detail.selected {
+			return a, true
+		}
+	}
+	return workbench.Activity{}, false
 }
 
 func callState(a workbench.Activity) string {
@@ -109,18 +116,26 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 	v := s.view(x.ID)
 	kind := workbench.ActivityKind(s.detail.page)
 	items := workbench.Activities(v.msgs, kind)
-	for _, a := range items {
-		if a.ID == s.detail.selected {
-			ui.Column(c).Gap(12).Children(func() {
-				callStatus(c, a)
-				if kind == workbench.Delegations {
-					s.delegationDetail(c, x.ID, v, a)
-				} else {
-					s.commandDetail(c, x.ID, v, a)
-				}
+	if a, ok := s.selectedActivity(x); ok {
+		// What the call was scrolls above its result, whose output takes
+		// the rest of the panel; a child's history, the whole of it.
+		ui.Column(c).Gap(12).Grow(1).MinHeight(0).Children(func() {
+			result := true
+			ui.Scroll(c).Shrink(1).MinHeight(0).Children(func() {
+				ui.Column(c).Gap(12).Children(func() {
+					callStatus(c, a)
+					if kind == workbench.Delegations {
+						result = s.delegationDetail(c, x.ID, v, a)
+					} else {
+						s.commandDetail(c, x.ID, a)
+					}
+				})
 			})
-			return
-		}
+			if result {
+				activityResult(c, v, a, 0)
+			}
+		})
+		return
 	}
 	s.detail.selected = ""
 	if len(items) == 0 {
@@ -157,13 +172,14 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 }
 
 // delegationDetail shows the recorded timeline without the actionable
-// approval controls of a live conversation.
-func (s *Shell) delegationDetail(c *ui.Context, id string, v *sessionView, a workbench.Activity) {
+// approval controls of a live conversation, and reports whether the
+// result shows below it: not under the child's history.
+func (s *Shell) delegationDetail(c *ui.Context, id string, v *sessionView, a workbench.Activity) bool {
 	m := a.Message
 	if h := s.detail.history; h != nil {
 		s.childPage(c, h)
 		if h.err == nil {
-			return
+			return false
 		}
 	} else if m.Tool.ChildThread != "" && m.Tool.NativeThread != "" {
 		if ui.Button(c, locales.ChildHistoryOpen()).Clicked() {
@@ -193,15 +209,15 @@ func (s *Shell) delegationDetail(c *ui.Context, id string, v *sessionView, a wor
 			}
 			ui.Text(c, child.Tool.Name).Bold().TextColor(c.Theme().Text)
 			readOutput(c, &v.open, "input/"+key, pretty(child.Tool.Input), outputHeight)
-			activityResult(c, v, workbench.Activity{ID: key, Message: child})
+			activityResult(c, v, workbench.Activity{ID: key, Message: child}, outputHeight)
 		})
 	}
-	activityResult(c, v, a)
+	return true
 }
 
 // commandDetail shows the command in a block of its own, then where it
 // ran, how it ended and whether its terminal is still there.
-func (s *Shell) commandDetail(c *ui.Context, id string, v *sessionView, a workbench.Activity) {
+func (s *Shell) commandDetail(c *ui.Context, id string, a workbench.Activity) {
 	t := c.Theme()
 	tool := a.Message.Tool
 	var cmd struct{ Command, Cwd string }
@@ -241,10 +257,12 @@ func (s *Shell) commandDetail(c *ui.Context, id string, v *sessionView, a workbe
 		}
 		line("terminal", label, t.TextMuted, false)
 	})
-	activityResult(c, v, a)
 }
 
-func activityResult(c *ui.Context, v *sessionView, a workbench.Activity) {
+// activityResult shows a call's result: a big output height tall, or, of
+// no height, taking the rest of what holds it, at least as tall as in the
+// conversation.
+func activityResult(c *ui.Context, v *sessionView, a workbench.Activity, height float32) {
 	tool := a.Message.Tool
 	label := locales.ToolResult()
 	if tool.Truncated {
@@ -252,7 +270,7 @@ func activityResult(c *ui.Context, v *sessionView, a workbench.Activity) {
 	}
 	sectionTitle(c, label)
 	if tool.Output != "" {
-		readOutput(c, &v.open, "inspector/"+a.ID, tool.Output, inspectorOutputHeight(c))
+		readOutput(c, &v.open, "inspector/"+a.ID, tool.Output, height)
 	} else if tool.Done {
 		ui.Text(c, locales.CallEmptyOutput()).FontSize(12).TextColor(c.Theme().TextMuted).Padding(0, 6)
 	} else {

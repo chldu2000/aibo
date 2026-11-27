@@ -172,7 +172,8 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key, id string, m model.Mess
 }
 
 // readOutput shows a call's output: small, as text that scrolls past
-// textHeight; big, in a read-only editor height tall.
+// textHeight; big, in a read-only editor height tall, or, of no height,
+// taking the rest of what holds it, at least outputHeight.
 func readOutput(c *ui.Context, o *open, key, data string, height float32) {
 	if len(data) < bigOutput {
 		ui.Scroll(c).MaxHeight(textHeight).MinWidth(0).Children(func() {
@@ -186,7 +187,12 @@ func readOutput(c *ui.Context, o *open, key, data string, height float32) {
 		out = output{st: &editor.State{Buffer: editor.NewBuffer(data), ReadOnly: true}, n: len(data)}
 		o.outputs[key] = out
 	}
-	editor.View(c, out.st).Height(height).Radius(8)
+	view := editor.View(c, out.st).Radius(8)
+	if height > 0 {
+		view.Height(height)
+	} else {
+		view.Grow(1).MinHeight(outputHeight)
+	}
 }
 
 func pretty(input json.RawMessage) string {

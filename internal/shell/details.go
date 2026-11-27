@@ -140,10 +140,12 @@ func (s *Shell) inspector(c *ui.Context, panel ui.Element, x model.Session) {
 				}
 			})
 		}
-		// A file or a diff fills the panel and scrolls in its own view.
+		// A file or a diff fills the panel and scrolls in its own view; a
+		// call scrolls above its output, which fills the rest.
 		p := s.workspacePanel(x.WorkspaceID)
 		body := ui.Scroll(c)
-		if s.detail.page == "files" && p.file != "" || s.detail.page == "git" && p.change != nil {
+		_, call := s.selectedActivity(x)
+		if s.detail.page == "files" && p.file != "" || s.detail.page == "git" && p.change != nil || call {
 			body = ui.Column(c).Gap(8)
 		}
 		body.Key(string(s.detail.page) + "/" + s.detail.selected).Grow(1).MinHeight(0).Children(func() {
