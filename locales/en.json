@@ -59,6 +59,8 @@
   "errNotACommand": "“/{command}” is not a command of {agent}. To send it to the model as it is, start the message with a space.",
   "errCommandsUnknown": "The commands of {agent} are not available right now, so “/{command}” cannot be checked. Try again in a moment, or start the message with a space to send it to the model as it is.",
   "errNoCommands": "{agent} has no commands aibo can invoke. To send “/{command}” to the model as it is, start the message with a space.",
+  "errPickModel": "Choose the model and the reasoning effort in the composer’s model menu.",
+  "errPickMode": "Choose the permission mode in the composer’s menu.",
   "errNothingToCompact": "The session is empty: there is nothing to compact.",
   "errNeedsRecovery": "The native session cannot be resumed. Choose a new native session first, or leave it for now.",
   "errNoSuchReference": "The reference does not exist.",

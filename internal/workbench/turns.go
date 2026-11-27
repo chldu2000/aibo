@@ -90,6 +90,10 @@ func (w *Workbench) SendMessage(id string, o Outgoing) error {
 			w.mu.Unlock()
 			return err
 		}
+		if controlled(c) {
+			w.mu.Unlock()
+			return w.control(id, c, text)
+		}
 		cmd = &c
 	}
 	ws, _ := w.workspace(s.info.WorkspaceID)

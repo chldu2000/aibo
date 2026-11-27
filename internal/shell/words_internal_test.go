@@ -42,3 +42,14 @@ func TestSaySlashCommand(t *testing.T) {
 		t.Errorf("in Chinese: %q", got)
 	}
 }
+
+// A command given no choice names the control to choose with.
+func TestSayPick(t *testing.T) {
+	s := &Shell{}
+	if got := s.say(&workbench.PickError{Control: agent.ByEffort}); got != locales.ErrPickModel() {
+		t.Errorf("effort: %q", got)
+	}
+	if got := s.say(&workbench.PickError{Control: agent.ByMode}); got != locales.ErrPickMode() {
+		t.Errorf("mode: %q", got)
+	}
+}

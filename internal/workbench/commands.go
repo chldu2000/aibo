@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
 )
@@ -267,15 +268,88 @@ func (w *Workbench) invoked(s *session, name string) (agent.Command, error) {
 	}
 	c := cmds[i]
 	c.Aliases = slices.Clone(c.Aliases)
-	switch c.Handling {
-	case agent.ByAgent, agent.ByReset:
-		return c, nil
-	}
-	return agent.Command{}, errControlCommand
+	return c, nil
 }
 
-// errControlCommand: a command the workbench's own controls carry out.
-var errControlCommand = errors.New("the command is carried out by the workbench's controls")
+// controlled reports whether the workbench's own controls carry out a
+// command, not the Agent (ADR 0007).
+func controlled(c agent.Command) bool {
+	switch c.Handling {
+	case agent.ByModel, agent.ByEffort, agent.ByCompact, agent.ByRename, agent.ByMode:
+		return true
+	}
+	return false
+}
+
+// ErrPick is what a command that sets a model, an effort or a permission
+// mode returns when given none: the user chooses it with the control
+// instead, which PickError names.
+var ErrPick = errors.New("the command needs a choice")
+
+// PickError names the control to choose with. It is ErrPick.
+type PickError struct {
+	// Control is the command's handling: agent.ByModel, ByEffort (both
+	// the model control) or ByMode.
+	Control agent.Handling
+}
+
+func (e *PickError) Error() string { return string(e.Control) + ": " + ErrPick.Error() }
+func (e *PickError) Unwrap() error { return ErrPick }
+
+// control carries out a command with the workbench's own controls, as
+// they would be used: no turn, no message, and their own errors. arg is
+// what followed the command.
+func (w *Workbench) control(id string, c agent.Command, arg string) error {
+	w.log.Info("agent command by control", "session", id, "command", c.Name, "handling", string(c.Handling))
+	w.mu.Lock()
+	s, ok := w.sessions[id]
+	if !ok {
+		w.mu.Unlock()
+		return ErrNoSuchSession
+	}
+	info := s.info
+	w.mu.Unlock()
+	switch c.Handling {
+	case agent.ByModel, agent.ByEffort, agent.ByMode:
+		if arg == "" {
+			return &PickError{Control: c.Handling}
+		}
+	}
+	switch c.Handling {
+	case agent.ByModel:
+		// The Agent says what it takes, and reports what it runs.
+		return w.SetModel(id, arg, info.Effort)
+	case agent.ByEffort:
+		return w.SetModel(id, info.Model, arg)
+	case agent.ByCompact:
+		return w.Compact(id)
+	case agent.ByRename:
+		// Without a title, the title goes back to the first message's.
+		return w.Rename(id, arg)
+	case agent.ByMode:
+		mode, err := w.modeNamed(info.Agent, arg)
+		if err != nil {
+			return err
+		}
+		return w.SetMode(id, mode)
+	}
+	return nil
+}
+
+// modeNamed is the ID of an Agent's permission mode, by its ID or its
+// name in any case.
+func (w *Workbench) modeNamed(kind agent.Kind, name string) (string, error) {
+	modes, err := w.PermissionModes(context.Background(), kind)
+	if err != nil {
+		return "", err
+	}
+	for _, m := range modes {
+		if m.ID == name || strings.EqualFold(m.Name, name) || strings.EqualFold(m.ID, name) {
+			return m.ID, nil
+		}
+	}
+	return "", ErrNoSuchMode
+}
 
 // commandText is a user message as written, with its command.
 func commandText(cmd *agent.Command, text string) string {

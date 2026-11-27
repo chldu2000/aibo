@@ -59,6 +59,8 @@
   "errNotACommand": "“/{command}”不是 {agent} 的可用命令。想原样发给模型，请在开头加一个空格。",
   "errCommandsUnknown": "暂时拿不到 {agent} 的命令清单，无法核对“/{command}”。请稍后再试；想原样发给模型，请在开头加一个空格。",
   "errNoCommands": "{agent} 没有 aibo 能调用的命令。想把“/{command}”原样发给模型，请在开头加一个空格。",
+  "errPickModel": "请在输入框的模型菜单里选择模型和推理强度。",
+  "errPickMode": "请在输入框的权限模式菜单里选择。",
   "errNothingToCompact": "会话里还没有内容，无需压缩。",
   "errNeedsRecovery": "原生会话无法续接：请先选择新开原生会话，或暂不处理。",
   "errNoSuchReference": "引用不存在。",

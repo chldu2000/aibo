@@ -1,7 +1,7 @@
 # 改走控件的 Agent 命令
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 06
 
 ## What to build
@@ -18,7 +18,22 @@ Blocked by: 06
 
 ## Acceptance criteria
 
-- [ ] 每一种改走控件的命令，效果都和直接调用对应方法一样，而且不产生轮次和消息。
-- [ ] 有轮次在跑时，返回 `ErrTurnRunning`。
-- [ ] 不带参数时返回“打开菜单”的哨兵错误，并说明是哪个菜单。
-- [ ] 模型名或模式名对不上时，返回带类型的错误；外壳在 `words.go` 里措辞，中英文同时写。
+- [x] 每一种改走控件的命令，效果都和直接调用对应方法一样，而且不产生轮次和消息。
+- [x] 有轮次在跑时，返回 `ErrTurnRunning`。
+- [x] 不带参数时返回“打开菜单”的哨兵错误，并说明是哪个菜单。
+- [x] 模型名或模式名对不上时，返回带类型的错误；外壳在 `words.go` 里措辞，中英文同时写。
+
+## 实现说明
+
+- `SendMessage` 在核对命令后检查处理方式。改走控件的，交给 `control`，直接调用 `SetModel`、`Compact`、`Rename`、`SetMode`：不发轮次、不记消息，控件自己的错误照常返回（运行中 `SetModel` 返回 `ErrTurnRunning`，空会话 `Compact` 返回 `ErrNothingToCompact`）。附带的文件提及和图片忽略掉。
+- 不带参数的模型、推理强度和权限模式命令返回 `*PickError`（`errors.Is(err, ErrPick)`），`Control` 字段说明是哪个控件。外壳目前只提示去对应的菜单里选，12 改成直接打开菜单。
+
+和规格不一样的地方：
+
+- **模型名和推理强度不在 aibo 这边核对**，原样交给 `SetModel`。Claude 认 `haiku` 这类不在模型清单里的别名，核对的话反而会误拒。Agent 会用 `SettingsReported` 报回实际值。
+- **权限模式按 ID 或名称匹配**（名称不区分大小写），对不上时返回现有的 `ErrNoSuchMode`。
+- **`/rename` 不带参数时，标题恢复成第一条消息的开头**，也就是 `Rename(id, "")` 的现有行为，不需要打开菜单。
+
+### 没有验证
+
+- `-race`：本机没有 gcc，跑不了。

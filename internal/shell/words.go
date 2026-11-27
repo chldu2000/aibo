@@ -88,6 +88,13 @@ func (s *Shell) say(err error) string {
 	if errors.As(err, &unusable) {
 		return problem(unusable.Status)
 	}
+	var pick *workbench.PickError
+	if errors.As(err, &pick) {
+		if pick.Control == agent.ByMode {
+			return locales.ErrPickMode()
+		}
+		return locales.ErrPickModel()
+	}
 	var slash *workbench.SlashCommandError
 	if errors.As(err, &slash) {
 		return saySlash(slash)

@@ -630,6 +630,26 @@ func (msgs Messages) ErrNoCommands(agent string, command string) string {
 	return Catalog.Format(msgs.locale, "errNoCommands", map[string]any{"agent": agent, "command": command})
 }
 
+// ErrPickModel says "Choose the model and the reasoning effort in the composer’s model menu."
+// in the language the app shows.
+func ErrPickModel() string { return In(i18n.Locale()).ErrPickModel() }
+
+// ErrPickModel says "Choose the model and the reasoning effort in the composer’s model menu."
+// in the language of msgs.
+func (msgs Messages) ErrPickModel() string {
+	return Catalog.Format(msgs.locale, "errPickModel", nil)
+}
+
+// ErrPickMode says "Choose the permission mode in the composer’s menu."
+// in the language the app shows.
+func ErrPickMode() string { return In(i18n.Locale()).ErrPickMode() }
+
+// ErrPickMode says "Choose the permission mode in the composer’s menu."
+// in the language of msgs.
+func (msgs Messages) ErrPickMode() string {
+	return Catalog.Format(msgs.locale, "errPickMode", nil)
+}
+
 // ErrNothingToCompact says "The session is empty: there is nothing to compact."
 // in the language the app shows.
 func ErrNothingToCompact() string { return In(i18n.Locale()).ErrNothingToCompact() }
