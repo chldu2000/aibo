@@ -20,6 +20,9 @@ var builtins = []agent.Command{
 	{Name: "model", Description: "choose what model and reasoning effort to use", ArgumentHint: "<model>", Builtin: true, Handling: agent.ByModel},
 	{Name: "permissions", Description: "choose what Codex is allowed to do", ArgumentHint: "<mode>", Builtin: true, Handling: agent.ByMode},
 	{Name: "compact", Description: "summarize conversation to prevent hitting the context limit", Builtin: true, Handling: agent.ByCompact},
+	// review/start: the uncommitted changes, or what the words after it ask
+	// for (its "custom" target).
+	{Name: "review", Description: "review my current changes and find issues", ArgumentHint: "[instructions]", Builtin: true},
 	{Name: "rename", Description: "rename the current thread", ArgumentHint: "<name>", Builtin: true, Handling: agent.ByRename},
 	{Name: "new", Description: "start a new chat during a conversation", Builtin: true, Handling: agent.ByReset},
 	{Name: "clear", Description: "clear the terminal and start a new chat", Builtin: true, Handling: agent.ByReset},
@@ -212,4 +215,19 @@ func (s *server) rekey(sess *session, old, id string) {
 	defer s.mu.Unlock()
 	delete(s.sessions, old)
 	s.sessions[id] = sess
+}
+
+// isReview reports whether a turn invokes "/review", which the adapter
+// carries out with review/start, not a skill of that name.
+func isReview(c *agent.Command) bool { return c != nil && c.Builtin && c.Name == "review" }
+
+// reviewParams are review/start's: the uncommitted changes, as the TUI's
+// first choice, or what instructions ask for. The review runs inline, in
+// the thread, as a turn.
+func reviewParams(thread, instructions string) map[string]any {
+	target := map[string]any{"type": "uncommittedChanges"}
+	if instructions != "" {
+		target = map[string]any{"type": "custom", "instructions": instructions}
+	}
+	return map[string]any{"threadId": thread, "target": target}
 }

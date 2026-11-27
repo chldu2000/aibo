@@ -117,7 +117,7 @@ func TestSkillCommands(t *testing.T) {
 	for _, c := range cmds[:len(builtins)] {
 		names = append(names, c.Name)
 	}
-	if !slices.Equal(names, []string{"model", "permissions", "compact", "rename", "new", "clear"}) {
+	if !slices.Equal(names, []string{"model", "permissions", "compact", "review", "rename", "new", "clear"}) {
 		t.Errorf("built-ins = %v", names)
 	}
 	i := slices.IndexFunc(cmds, func(c agent.Command) bool { return c.Name == "probe-greet" })
@@ -239,5 +239,82 @@ func TestSkillsChanged(t *testing.T) {
 	}
 	if p := sc.called("skills/list"); len(p) != 1 || !bytes.Contains(p[0], []byte(`"cwds":["/w"]`)) {
 		t.Errorf("skills/list = %s", p)
+	}
+}
+
+// A review is a turn: its commands, and its findings as the reply, once
+// (codex-cli 0.172.0, on an uncommitted change).
+func TestReviewEvents(t *testing.T) {
+	b, err := os.ReadFile("testdata/review-0.172.0.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := newThread()
+	var replies []string
+	tools, ends := 0, 0
+	for _, l := range bytes.Split(bytes.TrimSpace(b), []byte("\n")) {
+		var m struct {
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		json.Unmarshal(l, &m)
+		for _, e := range th.handle(m.Method, m.Params) {
+			switch e := e.(type) {
+			case agent.ReplyDone:
+				if e.Text != "" {
+					replies = append(replies, e.Text)
+				}
+			case agent.ToolStarted:
+				tools++
+			case agent.TurnEnded:
+				ends++
+			}
+		}
+	}
+	if len(replies) != 1 || !bytes.Contains([]byte(replies[0]), []byte("[P1] Restore addition")) {
+		t.Errorf("replies = %q", replies)
+	}
+	if tools != 2 || ends != 1 {
+		t.Errorf("%d tools, %d ends", tools, ends)
+	}
+}
+
+// "/review" goes as review/start: the uncommitted changes, or what the
+// words after it ask for; what was set waits for the next turn.
+func TestSendReview(t *testing.T) {
+	sc := newScripted(func(string, json.RawMessage) any { return map[string]any{"turn": map[string]any{"id": "review-turn"}} })
+	s := newTestSession(sc)
+	s.SetModel(t.Context(), "gpt-x", "")
+	review := &agent.Command{Name: "review", Builtin: true}
+	if err := s.Send(t.Context(), agent.Turn{Command: review}); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	turn := s.turn
+	s.running = false // as turn/completed would
+	s.mu.Unlock()
+	if turn != "review-turn" {
+		t.Errorf("turn = %q", turn)
+	}
+	if err := s.Send(t.Context(), agent.Turn{Command: review, Text: "focus on errors"}); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.running = false
+	s.mu.Unlock()
+	got := sc.called("review/start")
+	if len(got) != 2 || !bytes.Contains(got[0], []byte(`"target":{"type":"uncommittedChanges"}`)) ||
+		!bytes.Contains(got[1], []byte(`"target":{"instructions":"focus on errors","type":"custom"}`)) || !bytes.Contains(got[0], []byte(`"threadId":"T1"`)) {
+		t.Errorf("review/start = %s", got)
+	}
+	// A skill named review is not the review.
+	if isReview(&agent.Command{Name: "review"}) {
+		t.Error("a skill is the review")
+	}
+	if err := s.Send(t.Context(), agent.Turn{Text: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	if p := sc.called("turn/start"); len(p) != 1 || !bytes.Contains(p[0], []byte(`"model":"gpt-x"`)) {
+		t.Errorf("turn/start = %s", p)
 	}
 }

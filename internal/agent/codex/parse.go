@@ -309,6 +309,13 @@ func (t *thread) completed(it item, nativeThread string, raw json.RawMessage) []
 			return nil
 		}
 		return []agent.Event{agent.ReplyDone{ReplyID: it.ID, Text: it.Text, Raw: raw}}
+	case "enteredReviewMode", "exitedReviewMode":
+		// A review's start, with what it reviews, and its end, with the
+		// findings an agentMessage then says as the reply.
+		return nil
+	case "userMessage":
+		// What the user sent, or the prompt a review sends for them.
+		return nil
 	case "contextCompaction":
 		trigger := "auto"
 		if t.compacting {

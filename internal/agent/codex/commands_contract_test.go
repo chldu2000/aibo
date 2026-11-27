@@ -5,6 +5,7 @@ package codex_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -64,13 +65,10 @@ func TestContractSkillsAndReset(t *testing.T) {
 	if !ok || greet.Source != "repo" || !strings.HasPrefix(greet.Description, "Probe skill") || len(greet.Data) == 0 {
 		t.Fatalf("the project's skill = %+v, %v", greet, ok)
 	}
-	for _, name := range []string{"model", "permissions", "compact", "rename", "new", "clear"} {
+	for _, name := range []string{"model", "permissions", "compact", "review", "rename", "new", "clear"} {
 		if c, ok := named(cmds, name); !ok || !c.Builtin {
 			t.Errorf("%s = %+v, %v", name, c, ok)
 		}
-	}
-	if _, ok := named(cmds, "review"); ok {
-		t.Error("/review is offered before its contract test")
 	}
 	if st := e.Status(s.ID); st.Connected {
 		t.Error("a thread started for the commands")
@@ -115,5 +113,60 @@ func TestContractSkillsAndReset(t *testing.T) {
 	}
 	if r := lastReply(e.idle(t, s.ID)); !strings.Contains(strings.ToUpper(r.Text), "NO") {
 		t.Errorf("the new thread remembers: %q", r.Text)
+	}
+}
+
+// "/review" runs Codex's own review, as a turn of the thread: of the
+// uncommitted changes, its findings the reply.
+func TestContractReview(t *testing.T) {
+	path := contract(t)
+	ws := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=aibo", "-c", "user.email=aibo@example.com"}, args...)...)
+		cmd.Dir = ws
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	os.WriteFile(filepath.Join(ws, "calc.py"), []byte("def add(a, b):\n    return a + b\n"), 0o644)
+	git("add", ".")
+	git("commit", "-qm", "init")
+	os.WriteFile(filepath.Join(ws, "calc.py"), []byte("def add(a, b):\n    return a - b\n"), 0o644)
+
+	e := openEnv(t, t.TempDir(), path)
+	defer e.Close()
+	w, _ := e.AddWorkspace(ws)
+	s, _ := e.NewSession(w.ID, codex.Kind, "")
+	if err := e.SetMode(s.ID, "read-only"); err != nil {
+		t.Fatal(err)
+	}
+	if c, ok := named(e.commandList(t, s.ID, workbench.LoadCommands), "review"); !ok || !c.Builtin {
+		t.Fatalf("review = %+v, %v", c, ok)
+	}
+	if err := e.SendMessage(s.ID, workbench.Outgoing{Command: "review"}); err != nil {
+		t.Fatal(err)
+	}
+	ms := e.idle(t, s.ID)
+	replies := 0
+	for _, m := range ms {
+		if m.Kind == model.AgentReply && m.Text != "" {
+			replies++
+		}
+	}
+	r := lastReply(ms)
+	if replies != 1 || !strings.Contains(r.Text, "calc.py") {
+		t.Errorf("%d replies; the review = %q", replies, r.Text)
+	}
+	if ms[0].Command == nil || ms[0].Command.Name != "review" {
+		t.Errorf("the message = %+v", ms[0])
+	}
+	// The thread goes on after it.
+	if err := e.Send(s.ID, "Reply with just OK"); err != nil {
+		t.Fatal(err)
+	}
+	if r := lastReply(e.idle(t, s.ID)); !strings.Contains(r.Text, "OK") {
+		t.Errorf("after the review: %q", r.Text)
 	}
 }

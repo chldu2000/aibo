@@ -45,7 +45,14 @@ Blocked by: 01
 | 改走 aibo 控件 | `compact` | 调用 `Compact`（`thread/compact/start`） |
 | 改走 aibo 控件 | `rename` | 调用 aibo 的 `Rename` |
 | 上下文重置 | `clear`、`new` | 调用 `thread/start` 并加重置标记 |
-| 映射，前提是契约测试先跑通 | `review` | 调用 `review/start`。实现时抓取审查模式的条目、加契约测试；测试过不了就拦下 |
+| 映射（契约测试已通过，见 10） | `review` | 调用 `review/start`：不带参数时审查未提交的改动，带参数时把参数当作自定义说明 |
 | 拦下 | 其余全部，例如：`init`（没有协议方法，复现要复制 Codex 写死的提示词）、`fork`（aibo 没有分叉会话）、`archive`、`delete`、`resume`（用 aibo 自己的菜单）、`plan`（aibo 的权限模式里没有协作模式）、`status`、`usage`、`mcp`、`debug-config`（只返回数据，没有文字输出）、`goal`（会自己发起轮次）、`skills`（`/` 面板已替代）、账号与配置类、TUI 界面类、`ps`、`stop`、`side`、`agents`、`subagents`、`worktree`、`cd` | — |
 
 `!命令`（`thread/shellCommand`）不是 Agent 命令；它不经沙箱，不提供。
+
+## Comments
+
+- 2026-11-27（实现 08、10 时）：
+  - Codex 的 `review` 契约测试已在 codex-cli 0.172.0 上通过，改为放行。
+  - Claude Code 2.1.332 新增的 9 条内置命令（`design`、`design-sync`、`design-consent`、`design-revoke`、`claude-approvals`、`advisor`、`import`、`ultrareview`、`skill-doctor`）还没测过，按默认规则拦下。
+  - 2.1.332 不再报告 `code-review`。

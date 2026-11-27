@@ -512,15 +512,22 @@ func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 		go s.reset()
 		return nil
 	}
-	text := commandText(turn)
-	if s.note != "" {
-		// Codex's decline carries no reason: it comes now.
-		text = denyNote(s.note) + text
-		s.note = ""
-	}
-	params := s.turnParams(withFiles(text, turn.Files), turn.Images)
-	if item, ok := skillInput(turn.Command); ok {
-		params["input"] = append(params["input"].([]any), item)
+	var method string
+	var params map[string]any
+	if isReview(turn.Command) {
+		// It takes no settings, nor a note: they wait for the next turn.
+		method, params = "review/start", reviewParams(s.id, withFiles(turn.Text, turn.Files))
+	} else {
+		text := commandText(turn)
+		if s.note != "" {
+			// Codex's decline carries no reason: it comes now.
+			text = denyNote(s.note) + text
+			s.note = ""
+		}
+		method, params = "turn/start", s.turnParams(withFiles(text, turn.Files), turn.Images)
+		if item, ok := skillInput(turn.Command); ok {
+			params["input"] = append(params["input"].([]any), item)
+		}
 	}
 	s.mu.Unlock()
 	var res struct {
@@ -528,7 +535,7 @@ func (s *session) Send(ctx context.Context, turn agent.Turn) error {
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	err := s.srv.call(ctx, "turn/start", params, &res)
+	err := s.srv.call(ctx, method, params, &res)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
