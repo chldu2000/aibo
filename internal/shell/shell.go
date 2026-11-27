@@ -87,6 +87,8 @@ type Shell struct {
 	md      markdown.Options
 	// pull is the @ panel of the open session.
 	pull pull
+	// cmds is the "/" panel.
+	cmds commandPanel
 	// choosingAgent is the workspace whose "+" shows the Agents to start
 	// a session with.
 	choosingAgent string
@@ -132,6 +134,12 @@ type sessionView struct {
 	typed string
 	// mentions are the files the draft mentions.
 	mentions []model.Mention
+	// command is the Agent command the draft invokes, its chip; the
+	// draft is then what follows it.
+	command *agent.Command
+	// caretEnd puts the caret at the end of the draft as the composer is
+	// next built, after the draft changed under it.
+	caretEnd bool
 	// attachments are the images the draft carries; attaching counts
 	// those still being added, which the draft waits for.
 	attachments []model.Attachment
@@ -296,6 +304,9 @@ func (s *Shell) send(id string, text string) bool {
 	o := workbench.Outgoing{Text: text}
 	if v := s.views[id]; v != nil {
 		o.Mentions, o.Attachments = v.mentions, v.attachments
+		if v.command != nil {
+			o.Command = v.command.Name
+		}
 	}
 	if err := s.wb.SendMessage(id, o); err != nil {
 		// A native session that cannot be resumed has its own banner.
@@ -305,7 +316,7 @@ func (s *Shell) send(id string, text string) bool {
 		return false
 	}
 	if v := s.views[id]; v != nil {
-		v.mentions, v.attachments = nil, nil
+		v.mentions, v.attachments, v.command = nil, nil, nil
 	}
 	return true
 }

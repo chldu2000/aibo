@@ -650,6 +650,66 @@ func (msgs Messages) ErrPickMode() string {
 	return Catalog.Format(msgs.locale, "errPickMode", nil)
 }
 
+// CommandsOf says "Commands of {agent}"
+// in the language the app shows.
+func CommandsOf(agent string) string { return In(i18n.Locale()).CommandsOf(agent) }
+
+// CommandsOf says "Commands of {agent}"
+// in the language of msgs.
+func (msgs Messages) CommandsOf(agent string) string {
+	return Catalog.Format(msgs.locale, "commandsOf", map[string]any{"agent": agent})
+}
+
+// CommandsLoading says "Loading the commands…"
+// in the language the app shows.
+func CommandsLoading() string { return In(i18n.Locale()).CommandsLoading() }
+
+// CommandsLoading says "Loading the commands…"
+// in the language of msgs.
+func (msgs Messages) CommandsLoading() string {
+	return Catalog.Format(msgs.locale, "commandsLoading", nil)
+}
+
+// CommandsFailed says "The commands could not be loaded"
+// in the language the app shows.
+func CommandsFailed() string { return In(i18n.Locale()).CommandsFailed() }
+
+// CommandsFailed says "The commands could not be loaded"
+// in the language of msgs.
+func (msgs Messages) CommandsFailed() string {
+	return Catalog.Format(msgs.locale, "commandsFailed", nil)
+}
+
+// NoCommandsFound says "No command matches"
+// in the language the app shows.
+func NoCommandsFound() string { return In(i18n.Locale()).NoCommandsFound() }
+
+// NoCommandsFound says "No command matches"
+// in the language of msgs.
+func (msgs Messages) NoCommandsFound() string {
+	return Catalog.Format(msgs.locale, "noCommandsFound", nil)
+}
+
+// UseCommand says "Use /{name}"
+// in the language the app shows.
+func UseCommand(name string) string { return In(i18n.Locale()).UseCommand(name) }
+
+// UseCommand says "Use /{name}"
+// in the language of msgs.
+func (msgs Messages) UseCommand(name string) string {
+	return Catalog.Format(msgs.locale, "useCommand", map[string]any{"name": name})
+}
+
+// RemoveCommand says "Remove the command /{name}"
+// in the language the app shows.
+func RemoveCommand(name string) string { return In(i18n.Locale()).RemoveCommand(name) }
+
+// RemoveCommand says "Remove the command /{name}"
+// in the language of msgs.
+func (msgs Messages) RemoveCommand(name string) string {
+	return Catalog.Format(msgs.locale, "removeCommand", map[string]any{"name": name})
+}
+
 // ErrNothingToCompact says "The session is empty: there is nothing to compact."
 // in the language the app shows.
 func ErrNothingToCompact() string { return In(i18n.Locale()).ErrNothingToCompact() }

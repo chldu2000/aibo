@@ -66,7 +66,7 @@ func TestCompactionSlashAndSelfReference(t *testing.T) {
 	tt.Type("/clear")
 	tt.Key(0, ui.KeyEnter)
 	frame()
-	shows("暂时拿不到 假 Agent 的命令清单，无法核对“/clear”。请稍后再试；想原样发给模型，请在开头加一个空格。")
+	shows("“/clear”不是 假 Agent 的可用命令。想原样发给模型，请在开头加一个空格。")
 	if ms, _ := wb.Messages(s.ID); len(ms) != 2 {
 		t.Errorf("a slash command was sent: %+v", ms)
 	}

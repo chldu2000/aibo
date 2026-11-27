@@ -318,8 +318,9 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 	drafts := s.wb.Drafts(x.ID)
 	card := ui.Column(c).Gap(6).Padding(10, 12).Radius(18).Material(glass.Glass{})
 	card.Children(func() {
-		if len(drafts) > 0 || len(v.mentions) > 0 || len(v.attachments) > 0 || v.attaching > 0 {
+		if v.command != nil || len(drafts) > 0 || len(v.mentions) > 0 || len(v.attachments) > 0 || v.attaching > 0 {
 			ui.Row(c).Gap(6).Wrap().Children(func() {
+				s.commandChip(c, v)
 				s.draftAttachments(c, v)
 				s.draftMentions(c, x, v)
 				for _, r := range drafts {
@@ -350,10 +351,13 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			v.pasted = true
 			return false
 		}).OnTextKey(func(k ui.TextKey) bool {
+			if s.commandKey(x.ID, v, k) {
+				return true
+			}
 			if k.Key != ui.KeyEnter || k.Mods != 0 {
 				return false
 			}
-			if !running && v.attaching == 0 && (strings.TrimSpace(k.Text()) != "" || len(drafts) > 0 || len(v.mentions) > 0 || len(v.attachments) > 0) && s.send(x.ID, k.Text()) {
+			if !running && v.attaching == 0 && (strings.TrimSpace(k.Text()) != "" || v.command != nil || len(drafts) > 0 || len(v.mentions) > 0 || len(v.attachments) > 0) && s.send(x.ID, k.Text()) {
 				k.SetText("")
 			}
 			return true
@@ -361,12 +365,17 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 		if s.focusComposer == x.ID {
 			input.Focus()
 		}
+		if v.caretEnd {
+			input.SetTextSelection(1<<30, 1<<30)
+			v.caretEnd = false
+		}
 		s.focusComposer = ""
 		// Typing "@" opens the @ panel too; a paste with one does not.
 		if at, ok := typedAt(v.typed, v.draft); ok && !v.pasted {
 			s.openPull(x.ID, at)
 		}
 		v.typed, v.pasted = v.draft, false
+		s.draftCommand(x, v)
 		var atButton ui.Element
 		toolbar := ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 			if s.opts.ChooseImages != nil && !blocked && iconButton(c, "paperclip", locales.Attach()).Clicked() {
@@ -393,7 +402,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 				return
 			}
 			bg := t.Accent
-			empty := strings.TrimSpace(v.draft) == "" && len(drafts) == 0 && len(v.mentions) == 0 && len(v.attachments) == 0 || v.attaching > 0
+			empty := strings.TrimSpace(v.draft) == "" && v.command == nil && len(drafts) == 0 && len(v.mentions) == 0 && len(v.attachments) == 0 || v.attaching > 0
 			if empty {
 				bg = t.Border
 			}
@@ -407,6 +416,7 @@ func (s *Shell) composer(c *ui.Context, x model.Session, v *sessionView) {
 			s.pull = pull{}
 		}
 		s.pullPanel(c, x, card)
+		s.commandPanelView(c, x, v, card)
 	})
 	// Files dropped on the composer: images attached, others mentioned.
 	if s.wb.Status(x.ID).ResumeFailed == nil {
