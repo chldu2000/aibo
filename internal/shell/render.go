@@ -34,6 +34,8 @@ type open struct {
 	thinking map[int]bool
 	tools    map[string]bool // by seq, and child index under it
 	outputs  map[string]output
+	// picked is the call a group shows open, by its seq, by the group's key.
+	picked map[string]int
 }
 
 // output is a big tool output's editor, and the length it was made for.
@@ -44,7 +46,7 @@ type output struct {
 
 func (o *open) init() {
 	if o.thinking == nil {
-		o.thinking, o.tools, o.outputs = map[int]bool{}, map[string]bool{}, map[string]output{}
+		o.thinking, o.tools, o.outputs, o.picked = map[int]bool{}, map[string]bool{}, map[string]output{}, map[string]int{}
 	}
 }
 

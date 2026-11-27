@@ -4950,6 +4950,126 @@ func (msgs Messages) ToolResult() string {
 	return Catalog.Format(msgs.locale, "toolResult", nil)
 }
 
+// CallsRead says "read {count} files"
+// in the language the app shows.
+func CallsRead(count int) string { return In(i18n.Locale()).CallsRead(count) }
+
+// CallsRead says "read {count} files"
+// in the language of msgs.
+func (msgs Messages) CallsRead(count int) string {
+	return Catalog.Format(msgs.locale, "callsRead", map[string]any{"count": count})
+}
+
+// CallsSearch says "searched {count} times"
+// in the language the app shows.
+func CallsSearch(count int) string { return In(i18n.Locale()).CallsSearch(count) }
+
+// CallsSearch says "searched {count} times"
+// in the language of msgs.
+func (msgs Messages) CallsSearch(count int) string {
+	return Catalog.Format(msgs.locale, "callsSearch", map[string]any{"count": count})
+}
+
+// CallsEdit says "edited {count} files"
+// in the language the app shows.
+func CallsEdit(count int) string { return In(i18n.Locale()).CallsEdit(count) }
+
+// CallsEdit says "edited {count} files"
+// in the language of msgs.
+func (msgs Messages) CallsEdit(count int) string {
+	return Catalog.Format(msgs.locale, "callsEdit", map[string]any{"count": count})
+}
+
+// CallsRun says "ran {count} commands"
+// in the language the app shows.
+func CallsRun(count int) string { return In(i18n.Locale()).CallsRun(count) }
+
+// CallsRun says "ran {count} commands"
+// in the language of msgs.
+func (msgs Messages) CallsRun(count int) string {
+	return Catalog.Format(msgs.locale, "callsRun", map[string]any{"count": count})
+}
+
+// CallsDelegate says "{count} subagents"
+// in the language the app shows.
+func CallsDelegate(count int) string { return In(i18n.Locale()).CallsDelegate(count) }
+
+// CallsDelegate says "{count} subagents"
+// in the language of msgs.
+func (msgs Messages) CallsDelegate(count int) string {
+	return Catalog.Format(msgs.locale, "callsDelegate", map[string]any{"count": count})
+}
+
+// CallsWeb says "fetched {count} pages"
+// in the language the app shows.
+func CallsWeb(count int) string { return In(i18n.Locale()).CallsWeb(count) }
+
+// CallsWeb says "fetched {count} pages"
+// in the language of msgs.
+func (msgs Messages) CallsWeb(count int) string {
+	return Catalog.Format(msgs.locale, "callsWeb", map[string]any{"count": count})
+}
+
+// CallsOther says "{count} others"
+// in the language the app shows.
+func CallsOther(count int) string { return In(i18n.Locale()).CallsOther(count) }
+
+// CallsOther says "{count} others"
+// in the language of msgs.
+func (msgs Messages) CallsOther(count int) string {
+	return Catalog.Format(msgs.locale, "callsOther", map[string]any{"count": count})
+}
+
+// ToolGroupCount says "{count} tool calls"
+// in the language the app shows.
+func ToolGroupCount(count int) string { return In(i18n.Locale()).ToolGroupCount(count) }
+
+// ToolGroupCount says "{count} tool calls"
+// in the language of msgs.
+func (msgs Messages) ToolGroupCount(count int) string {
+	return Catalog.Format(msgs.locale, "toolGroupCount", map[string]any{"count": count})
+}
+
+// ToolGroupLive says "Calling tools · {count} done"
+// in the language the app shows.
+func ToolGroupLive(count int) string { return In(i18n.Locale()).ToolGroupLive(count) }
+
+// ToolGroupLive says "Calling tools · {count} done"
+// in the language of msgs.
+func (msgs Messages) ToolGroupLive(count int) string {
+	return Catalog.Format(msgs.locale, "toolGroupLive", map[string]any{"count": count})
+}
+
+// ToolGroupLabel says "Tool calls #{from}–#{to}"
+// in the language the app shows.
+func ToolGroupLabel(from string, to string) string { return In(i18n.Locale()).ToolGroupLabel(from, to) }
+
+// ToolGroupLabel says "Tool calls #{from}–#{to}"
+// in the language of msgs.
+func (msgs Messages) ToolGroupLabel(from string, to string) string {
+	return Catalog.Format(msgs.locale, "toolGroupLabel", map[string]any{"from": from, "to": to})
+}
+
+// ListCalls says "List them"
+// in the language the app shows.
+func ListCalls() string { return In(i18n.Locale()).ListCalls() }
+
+// ListCalls says "List them"
+// in the language of msgs.
+func (msgs Messages) ListCalls() string {
+	return Catalog.Format(msgs.locale, "listCalls", nil)
+}
+
+// HideCalls says "Hide the list"
+// in the language the app shows.
+func HideCalls() string { return In(i18n.Locale()).HideCalls() }
+
+// HideCalls says "Hide the list"
+// in the language of msgs.
+func (msgs Messages) HideCalls() string {
+	return Catalog.Format(msgs.locale, "hideCalls", nil)
+}
+
 // ToolResultError says "Result (error)"
 // in the language the app shows.
 func ToolResultError() string { return In(i18n.Locale()).ToolResultError() }

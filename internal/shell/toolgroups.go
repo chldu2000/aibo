@@ -1,0 +1,229 @@
+package shell
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/workbench"
+	"github.com/chldu2000/aibo/locales"
+	"github.com/egoist/mygo/ui"
+)
+
+// row is a row of the conversation: the message at first, or the tool
+// calls of group, which ended well and fold into one line.
+type row struct {
+	first int
+	group []int // indexes into the messages; nil for one message
+}
+
+// messageRows folds the tool calls between two replies into a group; the
+// running, waiting, failed and interrupted ones show after it, on their
+// own. A lone call that ended well stays as it is. Choosing messages, or
+// a highlight among the calls, leaves them as they are: a range is chosen
+// and shown by its messages.
+func messageRows(msgs []model.Message, choosing bool, highlight [2]int) []row {
+	var rows []row
+	for i := 0; i < len(msgs); {
+		if choosing || msgs[i].Kind != model.ToolCall {
+			rows = append(rows, row{first: i})
+			i++
+			continue
+		}
+		j := i
+		for j < len(msgs) && msgs[j].Kind == model.ToolCall {
+			j++
+		}
+		lit := false
+		var ended, apart []int
+		for k := i; k < j; k++ {
+			lit = lit || highlight[0] > 0 && msgs[k].Seq >= highlight[0] && msgs[k].Seq <= highlight[1]
+			if standsApart(msgs[k]) {
+				apart = append(apart, k)
+			} else {
+				ended = append(ended, k)
+			}
+		}
+		if lit || len(ended) < 2 {
+			for k := i; k < j; k++ {
+				rows = append(rows, row{first: k})
+			}
+		} else {
+			rows = append(rows, row{first: ended[0], group: ended})
+			for _, k := range apart {
+				rows = append(rows, row{first: k})
+			}
+		}
+		i = j
+	}
+	return rows
+}
+
+// standsApart tells the calls that stay out of a group, as the user may
+// have to look at them: running, waiting, failed, interrupted, or denied.
+func standsApart(m model.Message) bool {
+	tl := m.Tool
+	if tl == nil || m.State == model.Streaming || m.State == model.Interrupted || tl.IsError || tl.Declined || tl.Approval.Pending() {
+		return true
+	}
+	return tl.Approval != nil && tl.Approval.Answer != nil && tl.Approval.Answer.Kind.Denies()
+}
+
+// callKind is what a tool call does, by its tool's name, for the eye: its
+// symbol, its color, and how a group counts it.
+type callKind struct {
+	symbol string
+	tint   ui.Color
+	count  func(int) string
+}
+
+var callKinds = []callKind{
+	{"doc.text", ui.RGBA(40, 120, 255, 1), locales.CallsRead},
+	{"magnifyingglass", ui.RGBA(20, 160, 160, 1), locales.CallsSearch},
+	{"pencil", ui.RGBA(230, 130, 0, 1), locales.CallsEdit},
+	{"terminal", ui.RGBA(110, 110, 120, 1), locales.CallsRun},
+	{"person.2", ui.RGBA(150, 80, 255, 1), locales.CallsDelegate},
+	{"globe", ui.RGBA(20, 150, 90, 1), locales.CallsWeb},
+	{"wrench", ui.RGBA(120, 120, 130, 1), locales.CallsOther},
+}
+
+// kindOf is the index in callKinds of what a tool does.
+func kindOf(name string) int {
+	switch strings.ToLower(name) {
+	case "read", "read_file", "view", "notebookread":
+		return 0
+	case "grep", "glob", "search", "ls", "find", "list_files":
+		return 1
+	case "edit", "write", "multiedit", "apply_patch", "notebookedit", "str_replace":
+		return 2
+	case "bash", "shell", "exec":
+		return 3
+	case "agent", "task":
+		return 4
+	case "webfetch", "websearch", "fetch":
+		return 5
+	}
+	return 6
+}
+
+// groupSummary counts a group's calls by what they do.
+func groupSummary(msgs []model.Message, group []int) string {
+	counts := make([]int, len(callKinds))
+	for _, i := range group {
+		counts[kindOf(msgs[i].Tool.Name)]++
+	}
+	var parts []string
+	for k, n := range counts {
+		if n > 0 {
+			parts = append(parts, callKinds[k].count(n))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// toolGroup is a group of calls: a line that counts what they did, and,
+// open, a symbol for each, which opens its call under them; or all of
+// them, listed. live is set while the turn goes on with the calls.
+func (s *Shell) toolGroup(c *ui.Context, v *sessionView, group []int, live bool) {
+	t := c.Theme()
+	v.open.init()
+	msgs := v.msgs
+	first, last := msgs[group[0]].Seq, msgs[group[len(group)-1]].Seq
+	key := fmt.Sprint("group/", first)
+	open := v.open.tools[key]
+	head := ui.Row(c).Key("head").Gap(8).Padding(6, 10).Radius(9).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+		Label(locales.ToolGroupLabel(fmt.Sprint(first), fmt.Sprint(last))).Children(func() {
+		if live {
+			ui.Spinner(c).FontSize(12)
+		} else {
+			symbol := "chevron.right"
+			if open {
+				symbol = "chevron.down"
+			}
+			icon(c, symbol).Size(11).Color(t.TextMuted)
+		}
+		title := locales.ToolGroupCount(len(group))
+		if live {
+			title = locales.ToolGroupLive(len(group))
+		}
+		ui.Text(c, title).FontSize(13).Bold().TextColor(t.Text).NoWrap()
+		ui.Text(c, groupSummary(msgs, group)).FontSize(12).TextColor(t.TextMuted).MaxLines(1).Shrink(1).MinWidth(0)
+	})
+	if head.Hovered() {
+		head.Background(veil(c, 0.05))
+	}
+	if head.Clicked() {
+		open = !open
+	}
+	v.open.tools[key] = open
+	if !open {
+		return
+	}
+	listed := v.open.tools[key+"/all"]
+	picked := v.open.picked[key]
+	ui.Column(c).Key("open").Gap(4).Padding(0, 0, 0, 10).Children(func() {
+		ui.Row(c).Key("symbols").Gap(3).Padding(2, 0).AlignItems(ui.Center).Wrap().Children(func() {
+			for _, i := range group {
+				m := msgs[i]
+				k := callKinds[kindOf(m.Tool.Name)]
+				label := toolLabel(m) + " #" + fmt.Sprint(m.Seq)
+				chip := ui.Box(c).Key(m.Seq).Size(22, 22).Radius(6).AlignItems(ui.Center).Justify(ui.Center).
+					Tooltip(toolLabel(m)).Label(label).Cursor(ui.CursorPointer).Background(tinted(c, ui.RGBA(k.tint.R, k.tint.G, k.tint.B, 0.16))).Children(func() {
+					icon(c, k.symbol).Size(12).Color(k.tint)
+				})
+				if m.Seq == picked && !listed {
+					chip.BorderWidth(1.5).BorderColor(k.tint)
+				}
+				if chip.Clicked() {
+					if picked == m.Seq && !listed {
+						picked = 0
+					} else {
+						picked, listed = m.Seq, false
+					}
+				}
+			}
+			text := locales.ListCalls()
+			if listed {
+				text = locales.HideCalls()
+			}
+			list := ui.Text(c, text).Key("list").FontSize(12).TextColor(t.Accent).Padding(0, 6).Cursor(ui.CursorPointer).
+				Label(text + " " + locales.ToolGroupLabel(fmt.Sprint(first), fmt.Sprint(last)))
+			if list.Clicked() {
+				listed, picked = !listed, 0
+			}
+		})
+		for _, i := range group {
+			if listed || msgs[i].Seq == picked {
+				ui.Column(c).Key(msgs[i].Seq).Children(func() {
+					s.tool(c, v, fmt.Sprint(msgs[i].Seq), fmt.Sprint(msgs[i].Seq), msgs[i])
+				})
+			}
+		}
+	})
+	v.open.tools[key+"/all"] = listed
+	v.open.picked[key] = picked
+}
+
+// groupRow is a group's row in the conversation, aligned with the
+// messages; what was marked after its calls follows it.
+func (s *Shell) groupRow(c *ui.Context, v *sessionView, group []int, st workbench.Status, after map[int][]model.Marker, gutter bool, indent float32) {
+	// The calls go on while the turn runs, not waiting on the user, and
+	// nothing came after them.
+	live := st.Running && st.Approvals == 0
+	for k := group[len(group)-1] + 1; k < len(v.msgs) && live; k++ {
+		live = v.msgs[k].Kind == model.ToolCall
+	}
+	ui.Row(c).Key(fmt.Sprint("group/", v.msgs[group[0]].Seq)).Gap(10).AlignItems(ui.Start).Padding(4).Children(func() {
+		if gutter {
+			ui.Box(c).Width(gutterWidth)
+		}
+		ui.Column(c).Grow(1).MinWidth(0).MaxWidth(820).Children(func() {
+			s.toolGroup(c, v, group, live)
+		})
+	})
+	for _, k := range group {
+		for _, mk := range after[v.msgs[k].Seq] {
+			divider(c, mk, indent)
+		}
+	}
+}

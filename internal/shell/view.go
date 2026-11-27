@@ -230,7 +230,8 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 	// While a turn runs, a last row says so (working), so that it shows
 	// where the reply comes, not only in the sidebar.
 	st := s.wb.Status(x.ID)
-	n := len(v.msgs)
+	rows := messageRows(v.msgs, v.sel.on, v.highlight)
+	n := len(rows)
 	if st.Running && !v.sel.on {
 		n++
 	}
@@ -243,11 +244,15 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 		indent += gutterWidth + 10
 	}
 	return ui.List(c, &v.list, n, func(i int) {
-		if i >= len(v.msgs) {
+		if i >= len(rows) {
 			s.working(c, x, st, indent)
 			return
 		}
-		m := v.msgs[i]
+		if r := rows[i]; r.group != nil {
+			s.groupRow(c, v, r.group, st, after, gutter, indent)
+			return
+		}
+		m := v.msgs[rows[i].first]
 		if i == 0 {
 			for _, mk := range after[0] {
 				divider(c, mk, indent)

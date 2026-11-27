@@ -621,6 +621,81 @@
   "showArgs": "Show arguments",
   "openInDetails": "Open #{id} in details",
   "toolResult": "Result",
+  "callsRead": "read {count} files",
+  "callsSearch": "searched {count} times",
+  "callsEdit": "edited {count} files",
+  "callsRun": "ran {count} commands",
+  "callsDelegate": "{count} subagents",
+  "callsWeb": "fetched {count} pages",
+  "callsOther": "{count} others",
+  "toolGroupCount": "{count} tool calls",
+  "toolGroupLive": "Calling tools · {count} done",
+  "toolGroupLabel": "Tool calls #{from}–#{to}",
+  "listCalls": "List them",
+  "hideCalls": "Hide the list",
+  "@callsRead": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@callsSearch": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@callsEdit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@callsRun": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@callsDelegate": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@callsWeb": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@callsOther": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@toolGroupCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@toolGroupLive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "toolResultError": "Result (error)",
   "toolTruncated": "{label} · over 1 MB: the rest was not kept",
   "planHeading": "Plan",

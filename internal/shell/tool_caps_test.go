@@ -62,6 +62,9 @@ func TestToolCallCaps(t *testing.T) {
 	}
 	const call, delegation, child = "Bash · seq 100", "Agent · count again · 子代理 1 步", "Bash · seq 100 again"
 
+	// The two calls fold into a line; listed, they show as they are.
+	click(t, tt, "2 个工具调用")
+	click(t, tt, startingWith(tt, "逐条列出"))
 	click(t, tt, call)
 	if !tt.HasText("line 1") || !tt.HasText("显示参数") {
 		t.Fatalf("the call did not open: %q", tt.Texts())
