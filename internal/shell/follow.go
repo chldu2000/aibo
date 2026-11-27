@@ -58,7 +58,7 @@ func (s *Shell) jumpToEnd(c *ui.Context, v *sessionView, running bool, right, bo
 			ui.Box(c).Absolute().Top(3).Right(3).Size(8, 8).Radius(4).Background(t.Accent)
 		}
 	})
-	if b.Clicked() || c.Shortcut(ui.Super, ui.KeyDown) || c.Shortcut(ui.Super, ui.KeyEnd) {
+	if b.Clicked() || c.Shortcut(ui.Cmd, ui.KeyDown) || c.Shortcut(ui.Cmd, ui.KeyEnd) {
 		v.list.ScrollToEnd()
 	}
 }

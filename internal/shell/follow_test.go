@@ -80,7 +80,7 @@ func TestJumpToEnd(t *testing.T) {
 	tt.Scroll(600, 400, 0, -600)
 	frame(tt)
 	shows(jump, "scrolled up again")
-	tt.Key(ui.Super, ui.KeyDown)
+	tt.Key(ui.Cmd, ui.KeyDown)
 	frame(tt)
 	none("after ⌘↓")
 
@@ -88,7 +88,7 @@ func TestJumpToEnd(t *testing.T) {
 	click(t, tt, locales.MessageAgent("假 Agent"))
 	tt.Scroll(600, 400, 0, -600)
 	frame(tt)
-	tt.Key(ui.Super, ui.KeyDown)
+	tt.Key(ui.Cmd, ui.KeyDown)
 	frame(tt)
 	shows(jump, "after ⌘↓ in the composer")
 }

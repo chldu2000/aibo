@@ -17,7 +17,7 @@ Status: resolved
 
 - 新文件 `internal/shell/follow.go`。`sessionView.follow` 记下列表上次显示末尾时末尾的样子（`endMark`：消息条数、最后一条的 seq、最后一条的内容长度，运行中再加一），以及之后有没有新内容（`fresh`）。
 - `jumpToEnd` 每帧读 `ListState.AtEnd()`（上一帧是否显示了末尾）：在末尾或没有消息时不显示按钮，并更新记录；不在末尾时显示圆形玻璃按钮（`arrow.down`），末尾的样子变了就加一个强调色圆点，Label 从“回到最新”改为“下面有新消息：回到最新”。
-- 点按钮、⌘↓ 或 ⌘End（`ui.Super`，Windows 上是 Ctrl）调用 `ListState.ScrollToEnd()`，`FollowEnd` 随之恢复跟随。`c.Shortcut` 让获得焦点的控件先处理按键，所以焦点在输入框时这两个键留给输入框移动光标。
+- 点按钮、⌘↓ 或 ⌘End（`ui.Cmd`，Windows 上是 Ctrl；最初误用了 `ui.Super`，在 Windows 上是 Win 键，Win+↓ 会最小化窗口，已改正）调用 `ListState.ScrollToEnd()`，`FollowEnd` 随之恢复跟随。`c.Shortcut` 让获得焦点的控件先处理按键，所以焦点在输入框时这两个键留给输入框移动光标。
 - 按钮在消息区右下、输入区上方 8 处（`bottomRoom(composerHeight) - 8`），让开并排的详情面板；进出有淡入和小幅上移。
 - 选择模式和高亮跳转关掉了 `FollowEnd`，离开末尾时按钮同样出现，符合清单最后一条。
 - 新图标 `arrow.down` 补了 SVG 后备；新文字 `jumpToEnd`、`newBelow`。

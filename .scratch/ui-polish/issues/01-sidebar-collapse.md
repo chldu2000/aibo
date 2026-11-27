@@ -22,7 +22,7 @@ Status: resolved
 
 - `sidebarUI` 加了 `collapsed`（用户的选择，存为偏好 `sidebarCollapsed`）、`narrowOpen`（窄窗口里临时展开）、`hidden`（这一帧是否隐藏）。`New` 时读偏好。
 - `sidebarHidden`：独立窗口总是隐藏；窗口宽度小于 640（`narrowWindow`）时隐藏，除非用户临时展开；变宽后清掉临时展开，回到用户的选择。
-- `toggleSidebar`：窄窗口里只切换临时展开，不写偏好；否则切换并保存。按钮和 ⌘\ / Ctrl+\（`ui.Super` + `KeyBackslash`）都调用它。
+- `toggleSidebar`：窄窗口里只切换临时展开，不写偏好；否则切换并保存。按钮和 ⌘\ / Ctrl+\（`ui.Cmd` + `KeyBackslash`；最初误用了 `ui.Super`，在 Windows 上是 Win 键，已改正）都调用它。
 - `View`：隐藏时不画 `Split`，会话区直接占满窗口（没有左边距和圆角，也不把根背景设成透明，Windows 上不露 Mica）。重命名和删除的对话框从 `sidebar` 移到 `View`，侧栏隐藏时也能弹出。
 - `pane`：侧栏隐藏时，浮动标题栏和独立窗口一样让开红绿灯（`bar.Left + 12`），左上角也能拖动窗口；标题栏最左边是“显示侧栏”。没有打开会话时，这个按钮单独浮在标题栏的位置。
 - 侧栏头部加“隐藏侧栏”，放在“添加工作区”右边。新图标 `sidebar.leading` 补了 SVG 后备。

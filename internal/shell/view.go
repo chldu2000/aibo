@@ -31,7 +31,7 @@ func (s *Shell) View(c *ui.Context) {
 		s.deleteDialog(c)
 		return
 	}
-	if c.Shortcut(ui.Super, ui.KeyBackslash) {
+	if c.Shortcut(ui.Cmd, ui.KeyBackslash) {
 		s.toggleSidebar(c)
 	}
 	s.side.hidden = s.sidebarHidden(c)

@@ -60,7 +60,7 @@ func TestSidebarCollapse(t *testing.T) {
 	wb.NewSession(ws.ID, fake.Kind, "")
 	frame(tt)
 	click(t, tt, "新会话")
-	tt.Key(ui.Super, ui.KeyBackslash)
+	tt.Key(ui.Cmd, ui.KeyBackslash)
 	frame(tt)
 	shown(tt, false)
 	if !tt.HasText("新会话") {
@@ -70,7 +70,7 @@ func TestSidebarCollapse(t *testing.T) {
 	// The next launch keeps it hidden; ⌘\ shows it again, kept too.
 	tt = newTester(1100, 800)
 	shown(tt, false)
-	tt.Key(ui.Super, ui.KeyBackslash)
+	tt.Key(ui.Cmd, ui.KeyBackslash)
 	frame(tt)
 	shown(tt, true)
 	if collapsed() {
