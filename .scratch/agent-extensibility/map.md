@@ -21,6 +21,8 @@ Label: wayfinder:map
 
 ## Not yet specified
 
+- [ACP Agent 的命令怎样接入](issues/06-acp-agent-commands.md)：协议上由 Agent 一侧适配器筛选命令（Zed 不做白名单），建议全部交给 Agent；另发现 `session/new` 应答之前到达的 `session/update` 会被丢掉。
+
 只支持回放式续接的测试程序已覆盖配置登记、取消、退出和 `session/load`。另一款真实产品能否通过同一组模型与引用场景，仍需单独验收。[配置测试](../../internal/agents/config_test.go)
 
 ## Out of scope

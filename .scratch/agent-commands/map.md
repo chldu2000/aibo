@@ -37,4 +37,4 @@ Label: wayfinder:map
 - 参数补全、Codex 一条消息带多个 skill、Claude 本地命令附带的结构化数据（`context_usage`、`usage_report`）的专门渲染：都是第一版之后的增强，第一版的规格用不到。
 - Agent 主动发起的轮次（Claude 的 `loop`、`goal`，Codex 的 `goal`）、分叉会话（Codex `fork`）、Codex 的 plan 协作模式：都是工作台的独立功能，相关命令在[内置命令裁定](issues/03-builtin-verdicts.md)里先拦下，等这些功能做出来再改裁定。
 - MCP 提供的 prompts：aibo 启动 Claude 时带 `--strict-mcp-config`，用户自己的 MCP 服务器不会接进来，所以这些 prompts 在 aibo 里本来就看不到；Codex 不把 MCP prompts 作为命令报告。
-- ACP Agent 的 available commands：属于[接入第三个及后续 Agent](../agent-extensibility/map.md)，在那张地图里处理；本地图的命令模型（结构化命令、白名单裁定）要能容纳它。
+- ACP Agent 的 available commands：属于[接入第三个及后续 Agent](../agent-extensibility/map.md)，在那张地图里处理（[issue 06](../agent-extensibility/issues/06-acp-agent-commands.md)）；本地图的命令模型（结构化命令、白名单裁定）要能容纳它。
