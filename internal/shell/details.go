@@ -348,39 +348,6 @@ func (s *Shell) details(c *ui.Context, x model.Session) {
 				})
 			})
 		})
-		s.detailsActions(c, x, st.Running)
-	})
-}
-
-// detailsActions lists what can be done with the session, the one that
-// cannot be undone last, apart and in red.
-func (s *Shell) detailsActions(c *ui.Context, x model.Session, running bool) {
-	t := c.Theme()
-	ui.Column(c).Gap(6).Children(func() {
-		sectionTitle(c, locales.DetailsActions())
-		ui.Column(c).Radius(10).Background(veil(c, 0.035)).Padding(4).Gap(1).Children(func() {
-			if s.wb.CanCompact(x.Agent) && actionRow(c, "arrow.down.right.and.arrow.up.left", locales.Compact(), t.Text, running).Clicked() && !running {
-				if err := s.wb.Compact(x.ID); err != nil {
-					s.notice = s.say(err)
-				}
-			}
-			if actionRow(c, "pencil", locales.RenameMenu(), t.Text, false).Clicked() {
-				s.side.renaming, s.side.newTitle = x.ID, x.Title
-			}
-			archive, symbol := locales.Archive(), "archivebox"
-			if x.Archived {
-				archive, symbol = locales.Unarchive(), "tray.and.arrow.up"
-			}
-			if actionRow(c, symbol, archive, t.Text, false).Clicked() {
-				if err := s.wb.SetArchived(x.ID, !x.Archived); err != nil {
-					s.notice = s.say(err)
-				}
-			}
-			hairline(c).Margin(3, 6)
-			if actionRow(c, "trash", locales.DeleteMenu(), t.Danger, false).Clicked() {
-				s.side.deleting = x.ID
-			}
-		})
 	})
 }
 
@@ -414,19 +381,6 @@ func sectionTitle(c *ui.Context, title string) {
 // hairline divides the rows of a card.
 func hairline(c *ui.Context) ui.Element {
 	return ui.Box(c).Height(1).Background(veil(c, 0.07))
-}
-
-// actionRow is a row of an action list, its symbol and its name in ink,
-// lit on hover.
-func actionRow(c *ui.Context, symbol, label string, ink ui.Color, disabled bool) ui.Element {
-	row := ui.Row(c).Key(symbol).Gap(10).Padding(7, 8).Radius(7).AlignItems(ui.Center).Label(label).Disabled(disabled).Children(func() {
-		icon(c, symbol).Size(14).Color(ink)
-		ui.Text(c, label).FontSize(13).TextColor(ink)
-	})
-	if !disabled && row.Hovered() {
-		row.Background(veil(c, 0.06))
-	}
-	return row
 }
 
 // detailsMode chooses the permission mode, among those that can be, a

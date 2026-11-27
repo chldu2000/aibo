@@ -356,6 +356,7 @@
   "detailReadDirs": "可读的源工作区",
   "readOnlyDir": "{path}（只读）",
   "compact": "压缩上下文",
+  "sessionMore": "会话的更多操作",
   "modeSelect": "权限模式（选择）",
   "defaultMode": "默认模式",
   "modeTip": "权限模式：点击更改",
@@ -477,8 +478,6 @@
   "badgeApprovalsLabel": "待审批",
   "badgeRefs": "收到 {count} 个引用",
   "badgeRefsLabel": "收到的引用",
-  "referenceSession": "引用会话…",
-  "referenceSessionLabel": "引用会话",
   "dataRetry": "重试",
   "dataReselect": "重新选择位置",
   "quit": "退出",
@@ -498,7 +497,6 @@
   "detailsTabs": "详情页面",
   "detailsSession": "会话",
   "detailsRuntime": "运行",
-  "detailsActions": "操作",
   "detailProcess": "进程",
   "copyNativeID": "复制原生会话 ID"
 }

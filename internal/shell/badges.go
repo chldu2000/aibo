@@ -42,17 +42,16 @@ func chip(c *ui.Context, symbol, text, label string, tint ui.Color) ui.Element {
 }
 
 // Tints of the badges: blue for processes, purple for subagents, orange
-// for what waits on the user, green for references, gray for actions.
+// for what waits on the user, green for references.
 var (
 	tintTerminal = ui.RGBA(40, 120, 255, 0.55)
 	tintSubagent = ui.RGBA(150, 80, 255, 0.55)
 	tintApproval = ui.RGBA(255, 150, 0, 0.6)
 	tintRefs     = ui.RGBA(20, 170, 120, 0.55)
-	tintAction   = ui.RGBA(120, 120, 130, 0.45)
 )
 
-// badges are above the composer: how the session runs (hidden at zero)
-// on the left, quick actions on the right.
+// badges are above the composer: how the session runs, each hidden at
+// zero. What can be done with the session is in the header.
 func (s *Shell) badges(c *ui.Context, x model.Session, v *sessionView) {
 	st := s.wb.Status(x.ID)
 	terminals, subagents := running(v.msgs)
@@ -73,16 +72,6 @@ func (s *Shell) badges(c *ui.Context, x model.Session, v *sessionView) {
 		}
 		if refs > 0 {
 			chip(c, "paperclip", locales.BadgeRefs(refs), locales.BadgeRefsLabel(), tintRefs)
-		}
-		ui.Spacer(c)
-		if s.wb.CanCompact(x.Agent) && chip(c, "arrow.down.right.and.arrow.up.left", locales.Compact(), locales.Compact(), tintAction).Clicked() {
-			if err := s.wb.Compact(x.ID); err != nil {
-				s.notice = s.say(err)
-
-			}
-		}
-		if chip(c, "arrowshape.turn.up.right", locales.ReferenceSession(), locales.ReferenceSessionLabel(), tintAction).Clicked() {
-			s.startSelecting(v)
 		}
 	})
 }

@@ -451,6 +451,7 @@
   "detailReadDirs": "Source workspaces it reads",
   "readOnlyDir": "{path} (read only)",
   "compact": "Compact context",
+  "sessionMore": "More for this session",
   "modeSelect": "Permission mode (choose)",
   "defaultMode": "Default mode",
   "modeTip": "Permission mode: click to change",
@@ -617,8 +618,6 @@
     }
   },
   "badgeRefsLabel": "References received",
-  "referenceSession": "Reference a session…",
-  "referenceSessionLabel": "Reference a session",
   "dataRetry": "Retry",
   "dataReselect": "Choose where it is",
   "quit": "Quit",
@@ -645,7 +644,6 @@
   "detailsTabs": "Details pages",
   "detailsSession": "Session",
   "detailsRuntime": "Runtime",
-  "detailsActions": "Actions",
   "detailProcess": "Process",
   "copyNativeID": "Copy the native session ID"
 }

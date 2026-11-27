@@ -55,7 +55,11 @@ func TestCompactionSlashAndSelfReference(t *testing.T) {
 		}
 	}
 
-	click("压缩上下文")
+	click("会话的更多操作")
+	if err := tt.ChooseMenuItem("压缩上下文"); err != nil {
+		t.Fatal(err)
+	}
+	frame()
 	for wb.Status(s.ID).Running || len(wb.Markers(s.ID)) == 0 {
 		<-changes
 	}

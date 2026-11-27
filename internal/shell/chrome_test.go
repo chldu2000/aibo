@@ -3,6 +3,7 @@ package shell_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,9 +98,10 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 	if tt.HasText("2 个命令调用中") || tt.HasText("1 个委派调用中") {
 		t.Errorf("badges stay after the tools ended: %q", tt.Texts())
 	}
-	for _, w := range []string{"压缩上下文", "引用会话…"} {
-		if !tt.HasText(w) {
-			t.Errorf("no quick action %q: %q", w, tt.Texts())
+	// What can be done with the session is in the header, not by the badges.
+	for _, no := range []string{"压缩上下文", "引用会话"} {
+		if tt.HasText(no) {
+			t.Errorf("a quick action %q stays by the badges: %q", no, tt.Texts())
 		}
 	}
 	click := func(s string) {
@@ -109,12 +111,19 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 		}
 		settle()
 	}
-	click("引用会话")
+	click("选择消息以引用或复制")
 	if !tt.HasText("取消") {
 		t.Errorf("quoting does not select: %q", tt.Texts())
 	}
 	click("取消")
-	click("在新窗口打开")
+	click("会话的更多操作")
+	if got, want := strings.Join(tt.Menu(), "|"), "压缩上下文|重命名…|归档|在新窗口打开|-|删除…"; got != want {
+		t.Errorf("the menu is %q, want %q", got, want)
+	}
+	if err := tt.ChooseMenuItem("在新窗口打开"); err != nil {
+		t.Fatal(err)
+	}
+	settle()
 	if opened != s.ID {
 		t.Errorf("opened %q in a window, want %q", opened, s.ID)
 	}
@@ -126,9 +135,15 @@ func TestStatusBadgesAndDetails(t *testing.T) {
 	}
 	click("返回")
 	click("概览")
-	for _, w := range []string{"权限模式", "原生会话", "工作区", "归档"} {
+	for _, w := range []string{"权限模式", "原生会话", "工作区"} {
 		if !tt.HasText(w) {
 			t.Errorf("details lack %q: %q", w, tt.Texts())
+		}
+	}
+	// The overview tells; what can be done is in the header's menu.
+	for _, no := range []string{"归档", "重命名…", "删除…"} {
+		if tt.HasText(no) {
+			t.Errorf("the overview offers %q: %q", no, tt.Texts())
 		}
 	}
 	click("关闭会话详情")
@@ -244,7 +259,10 @@ func TestSessionWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame()
-	if err := main.Click("在新窗口打开"); err != nil {
+	if err := main.Click("会话的更多操作"); err != nil {
+		t.Fatal(err)
+	}
+	if err := main.ChooseMenuItem("在新窗口打开"); err != nil {
 		t.Fatal(err)
 	}
 	if opened != s.ID {

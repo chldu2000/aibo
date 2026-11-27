@@ -103,7 +103,7 @@ func TestEnglish(t *testing.T) {
 	smoke(t, map[string][]string{
 		"asked":    {"Needs approval · Run a command", "Allow once", "Always allow in this session", "Deny…", "Show the rules it will allow", "1 approval pending", "Message 假 Agent"},
 		"answer":   {"Allow once"},
-		"answered": {"Approval: Allow once", "Compact context"},
+		"answered": {"Approval: Allow once", "More for this session"},
 		"settings": {"Settings (⌘,)", "Data directory", "Default permission mode for new sessions", "Notify when an approval is waiting", "General", "Advanced"},
 	})
 }
@@ -112,7 +112,7 @@ func TestChinese(t *testing.T) {
 	smoke(t, map[string][]string{
 		"asked":    {"需要审批 · 执行命令", "批准本次", "本会话内始终允许", "拒绝…", "查看将允许的规则", "1 个待审批", "给 假 Agent 发消息"},
 		"answer":   {"批准本次"},
-		"answered": {"审批：批准本次", "压缩上下文"},
+		"answered": {"审批：批准本次", "会话的更多操作"},
 		"settings": {"设置（⌘,）", "数据目录", "新会话的默认权限模式", "有待审批时发系统通知", "通用", "高级"},
 	})
 }

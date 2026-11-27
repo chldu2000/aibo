@@ -263,25 +263,37 @@ func (s *Shell) sessionRow(c *ui.Context, x model.Session) {
 	if row.Clicked() {
 		s.current = x.ID
 	}
-	row.ContextMenu(func(m *ui.Menu) {
-		if m.Item(locales.RenameMenu()).Chosen() {
-			s.side.renaming, s.side.newTitle = x.ID, x.Title
-		}
-		archive := locales.Archive()
-		if x.Archived {
-			archive = locales.Unarchive()
-		}
-		if m.Item(archive).Chosen() {
-			if err := s.wb.SetArchived(x.ID, !x.Archived); err != nil {
-				s.notice = s.say(err)
+	row.ContextMenu(func(m *ui.Menu) { s.sessionMenu(m, x) })
+}
 
-			}
+// sessionMenu is what can be done with a session, the same in its row's
+// menu and the header's "…": what its Agent or the app cannot do is left
+// out, and compacting waits for the turn to end.
+func (s *Shell) sessionMenu(m *ui.Menu, x model.Session) {
+	if s.wb.CanCompact(x.Agent) && m.Item(locales.Compact()).Disabled(s.wb.Status(x.ID).Running).Chosen() {
+		if err := s.wb.Compact(x.ID); err != nil {
+			s.notice = s.say(err)
 		}
-		m.Separator()
-		if m.Item(locales.DeleteMenu()).Chosen() {
-			s.side.deleting = x.ID
+	}
+	if m.Item(locales.RenameMenu()).Chosen() {
+		s.side.renaming, s.side.newTitle = x.ID, x.Title
+	}
+	archive := locales.Archive()
+	if x.Archived {
+		archive = locales.Unarchive()
+	}
+	if m.Item(archive).Chosen() {
+		if err := s.wb.SetArchived(x.ID, !x.Archived); err != nil {
+			s.notice = s.say(err)
 		}
-	})
+	}
+	if s.opts.OpenWindow != nil && m.Item(locales.OpenInWindow()).Chosen() {
+		s.opts.OpenWindow(x.ID)
+	}
+	m.Separator()
+	if m.Item(locales.DeleteMenu()).Chosen() {
+		s.side.deleting = x.ID
+	}
 }
 
 // marks are how a session stands, in the sidebar: waiting for approval,

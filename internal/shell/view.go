@@ -164,9 +164,7 @@ func (s *Shell) pane(c *ui.Context) {
 					s.startSelecting(v)
 				}
 			}
-			if s.opts.OpenWindow != nil && iconButton(c, "rectangle.on.rectangle", locales.OpenInWindow()).Clicked() {
-				s.opts.OpenWindow(x.ID)
-			}
+			iconButton(c, "ellipsis", locales.SessionMore()).Menu(func(m *ui.Menu) { s.sessionMenu(m, x) })
 			if iconButton(c, "sidebar.trailing", locales.SessionDetails()).Clicked() {
 				s.toggleDetails(x.ID)
 			}

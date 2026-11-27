@@ -3618,6 +3618,16 @@ func (msgs Messages) Compact() string {
 	return Catalog.Format(msgs.locale, "compact", nil)
 }
 
+// SessionMore says "More for this session"
+// in the language the app shows.
+func SessionMore() string { return In(i18n.Locale()).SessionMore() }
+
+// SessionMore says "More for this session"
+// in the language of msgs.
+func (msgs Messages) SessionMore() string {
+	return Catalog.Format(msgs.locale, "sessionMore", nil)
+}
+
 // ModeSelect says "Permission mode (choose)"
 // in the language the app shows.
 func ModeSelect() string { return In(i18n.Locale()).ModeSelect() }
@@ -4834,26 +4844,6 @@ func (msgs Messages) BadgeRefsLabel() string {
 	return Catalog.Format(msgs.locale, "badgeRefsLabel", nil)
 }
 
-// ReferenceSession says "Reference a session…"
-// in the language the app shows.
-func ReferenceSession() string { return In(i18n.Locale()).ReferenceSession() }
-
-// ReferenceSession says "Reference a session…"
-// in the language of msgs.
-func (msgs Messages) ReferenceSession() string {
-	return Catalog.Format(msgs.locale, "referenceSession", nil)
-}
-
-// ReferenceSessionLabel says "Reference a session"
-// in the language the app shows.
-func ReferenceSessionLabel() string { return In(i18n.Locale()).ReferenceSessionLabel() }
-
-// ReferenceSessionLabel says "Reference a session"
-// in the language of msgs.
-func (msgs Messages) ReferenceSessionLabel() string {
-	return Catalog.Format(msgs.locale, "referenceSessionLabel", nil)
-}
-
 // DataRetry says "Retry"
 // in the language the app shows.
 func DataRetry() string { return In(i18n.Locale()).DataRetry() }
@@ -5042,16 +5032,6 @@ func DetailsRuntime() string { return In(i18n.Locale()).DetailsRuntime() }
 // in the language of msgs.
 func (msgs Messages) DetailsRuntime() string {
 	return Catalog.Format(msgs.locale, "detailsRuntime", nil)
-}
-
-// DetailsActions says "Actions"
-// in the language the app shows.
-func DetailsActions() string { return In(i18n.Locale()).DetailsActions() }
-
-// DetailsActions says "Actions"
-// in the language of msgs.
-func (msgs Messages) DetailsActions() string {
-	return Catalog.Format(msgs.locale, "detailsActions", nil)
 }
 
 // DetailProcess says "Process"
