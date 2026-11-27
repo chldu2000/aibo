@@ -160,6 +160,9 @@ Status: ready-for-agent
       所以，提前启动后用户没有发消息，就会留下一个只有元数据的记录文件，并且 hook 已经跑过一次。契约测试按实测行为断言。
     - 2.1.332 新增了 9 条内置命令（`design`、`design-sync`、`design-consent`、`design-revoke`、`claude-approvals`、`advisor`、`import`、`ultrareview`、`skill-doctor`），按“没测过的先拦下”记为拦下。`code-review` 不再报告了。
   - Codex：`skills/list`；skill 调用；`thread/start` 重置；`review/start` 的事件形态。`review/start` 的测试过不了，Codex 的 `/review` 就改为拦下。
+    - **实测（codex-cli 0.172.0，2026-11-27）**：以上各项都成立。
+    - `/review` 不带参数时审查未提交的改动，带参数时把参数当作自定义说明（`custom`）。审查在原线程里作为一个轮次进行，结论以一条回复出现。
+    - 会话进行中新增 skill，会推送 `skills/changed`；没有会话在运行时会不会推送，没有验证。
   - 先例：现有的 `contract_test.go`。
 - **外壳**（MyGO Tester，只测交互）：打出 `/` 打开面板、筛选、选中后变成 chip、退格删掉 chip、手打名字自动变成 chip、时间线上的 chip 与命令输出样式、拦下时的提示文字、不带参数的 `/model` 打开模型菜单。两种语言的冒烟测试检查新增 Label 不重复。先例：`mentions_test.go`、`models_test.go`。
 
