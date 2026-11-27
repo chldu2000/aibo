@@ -127,6 +127,19 @@ func (s *Shell) selectionBar(c *ui.Context, x model.Session, v *sessionView) {
 	t := c.Theme()
 	v.normalize()
 	sel := &v.sel
+	// Esc leaves what is open, the innermost first: the preview, the
+	// targets, then selection mode.
+	if c.Shortcut(0, ui.KeyEscape) {
+		switch {
+		case sel.target != nil:
+			sel.target = nil
+		case sel.sending:
+			sel.sending = false
+		default:
+			s.stopSelecting(v)
+			return
+		}
+	}
 	n := sel.chosen.Len()
 	ui.Column(c).Gap(8).Padding(10, 12).Radius(18).Material(glass.Glass{}).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {

@@ -75,6 +75,23 @@ func TestSeqGutter(t *testing.T) {
 	click(t, tt, "取消")
 	numbers(false)
 
+	// Esc leaves the targets first, then selection mode.
+	click(t, tt, "选择消息以引用或复制")
+	click(t, tt, "选中整个会话")
+	click(t, tt, "发给…")
+	targets := len(tt.Texts())
+	tt.Key(0, ui.KeyEscape)
+	frame(tt)
+	if !tt.HasText("取消") || len(tt.Texts()) >= targets {
+		t.Errorf("Esc did not close the targets alone: %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEscape)
+	frame(tt)
+	numbers(false)
+	if tt.HasText("取消") {
+		t.Errorf("Esc did not leave selection mode: %q", tt.Texts())
+	}
+
 	// So with a range highlighted.
 	sh.Reveal(s.ID, 1, 1)
 	frame(tt)
