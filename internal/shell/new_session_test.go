@@ -130,3 +130,47 @@ func TestNewSessionUnusable(t *testing.T) {
 		t.Errorf("⌘N does not ask, or say why: %q", tt.Texts())
 	}
 }
+
+// In the new-session dialog, ↑ and ↓ choose the workspace, and Enter
+// starts the session there with the open session's Agent.
+func TestNewSessionKeys(t *testing.T) {
+	quiet := func(context.Context, agent.StartOptions, agent.Turn, func(agent.Event)) {}
+	wb, err := workbench.Open(workbench.Options{DataDir: t.TempDir(), Agents: []agent.Agent{
+		named{fake.New(quiet), "alpha", "Alpha"}, named{fake.New(quiet), "beta", "Beta"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wb.Close()
+	one, _ := wb.AddWorkspace(t.TempDir())
+	two, _ := wb.AddWorkspace(t.TempDir())
+	x, _ := wb.NewSession(two.ID, "beta", "")
+	tt := ui.NewTester(shell.New(wb, shell.Options{Only: ""}).View, 1100, 800)
+	frame(tt)
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyN)
+	frame(tt)
+	if !tt.HasText("按 Enter 用 Beta 新建") {
+		t.Fatalf("no word on what Enter does: %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyUp)
+	frame(tt)
+	if !tt.HasText(one.Path) {
+		t.Fatalf("↑ did not choose the workspace above: %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyDown)
+	frame(tt)
+	tt.Key(0, ui.KeyUp)
+	frame(tt)
+	before := len(wb.Sessions())
+	tt.Key(0, ui.KeyEnter)
+	frame(tt)
+	all := wb.Sessions()
+	if len(all) != before+1 {
+		t.Fatalf("Enter made %d sessions", len(all)-before)
+	}
+	for _, y := range all {
+		if y.ID != x.ID && (y.WorkspaceID != one.ID || y.Agent != "beta") {
+			t.Errorf("Enter made a %s session in %s, want beta in %s", y.Agent, y.WorkspaceID, one.ID)
+		}
+	}
+}

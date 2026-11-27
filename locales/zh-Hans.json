@@ -220,6 +220,7 @@
   "newSessionHere": "新会话",
   "newSessionChoose": "选择工作区和 Agent 新建",
   "filterWorkspaces": "筛选工作区",
+  "enterStarts": "按 Enter 用 {agent} 新建",
   "pickWorkspace": "选择工作区 {name}",
   "noWorkspaceMatches": "没有匹配的工作区",
   "agentUnusable": "{agent} 现在不能新建会话：{why}",

@@ -140,9 +140,27 @@ func (s *Shell) starterDialog(c *ui.Context) {
 				chosen, ok = shown[0], true
 				st.workspace = chosen.ID
 			}
+			// ↑ and ↓ move through the workspaces shown, Enter starts the
+			// session with the Agent at hand.
+			if ok {
+				if step := keyStep(c); step != 0 {
+					for i, ws := range shown {
+						if ws.ID == chosen.ID {
+							chosen = shown[min(max(i+step, 0), len(shown)-1)]
+							break
+						}
+					}
+					st.workspace = chosen.ID
+				}
+			}
+			kind, usable := s.starterAgent()
 			ui.Row(c).Gap(12).AlignItems(ui.Stretch).Height(320).Children(func() {
 				ui.Column(c).Width(220).Gap(6).Children(func() {
-					ui.TextInput(c, &st.filter).Placeholder(locales.FilterWorkspaces()).Label(locales.FilterWorkspaces()).AutoFocus()
+					filter := ui.TextInput(c, &st.filter).Placeholder(locales.FilterWorkspaces()).Label(locales.FilterWorkspaces()).AutoFocus()
+					if filter.Submitted() && ok && usable {
+						s.newSession(chosen, kind)
+						open = false
+					}
 					ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 						ui.Column(c).Gap(1).Children(func() {
 							if len(shown) == 0 {
@@ -181,6 +199,9 @@ func (s *Shell) starterDialog(c *ui.Context) {
 							})
 						})
 					})
+					if usable {
+						ui.Text(c, locales.EnterStarts(s.agentName(kind))).FontSize(11).TextColor(t.TextMuted)
+					}
 				})
 			})
 			ui.Row(c).Children(func() {
@@ -194,4 +215,31 @@ func (s *Shell) starterDialog(c *ui.Context) {
 	if !open {
 		s.starter = starter{}
 	}
+}
+
+// keyStep is -1 for ↑ and 1 for ↓ this frame, else 0.
+func keyStep(c *ui.Context) int {
+	switch {
+	case c.Shortcut(0, ui.KeyUp):
+		return -1
+	case c.Shortcut(0, ui.KeyDown):
+		return 1
+	}
+	return 0
+}
+
+// starterAgent is the Agent Enter starts a session with: the open
+// session's, else the first that can.
+func (s *Shell) starterAgent() (agent.Kind, bool) {
+	if x, ok := s.wb.Session(s.current); ok {
+		if usable, _ := s.agentOK(x.Agent); usable {
+			return x.Agent, true
+		}
+	}
+	for _, a := range s.wb.Agents() {
+		if usable, _ := s.agentOK(a.Kind); usable {
+			return a.Kind, true
+		}
+	}
+	return "", false
 }

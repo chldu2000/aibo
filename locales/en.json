@@ -312,6 +312,7 @@
   "newSessionHere": "New session",
   "newSessionChoose": "New session in a workspace, with an Agent",
   "filterWorkspaces": "Filter workspaces",
+  "enterStarts": "Press Enter to start with {agent}",
   "pickWorkspace": "Choose the workspace {name}",
   "noWorkspaceMatches": "No workspace matches",
   "agentUnusable": "{agent} cannot start a session now: {why}",

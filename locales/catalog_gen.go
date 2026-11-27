@@ -2252,6 +2252,16 @@ func (msgs Messages) FilterWorkspaces() string {
 	return Catalog.Format(msgs.locale, "filterWorkspaces", nil)
 }
 
+// EnterStarts says "Press Enter to start with {agent}"
+// in the language the app shows.
+func EnterStarts(agent string) string { return In(i18n.Locale()).EnterStarts(agent) }
+
+// EnterStarts says "Press Enter to start with {agent}"
+// in the language of msgs.
+func (msgs Messages) EnterStarts(agent string) string {
+	return Catalog.Format(msgs.locale, "enterStarts", map[string]any{"agent": agent})
+}
+
 // PickWorkspace says "Choose the workspace {name}"
 // in the language the app shows.
 func PickWorkspace(name string) string { return In(i18n.Locale()).PickWorkspace(name) }
