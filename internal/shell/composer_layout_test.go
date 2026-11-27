@@ -97,12 +97,24 @@ func TestComposerWidth(t *testing.T) {
 		}
 	})
 	ws, _ := wb.AddWorkspace(t.TempDir())
+	y, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	wb.Send(y.ID, "source")
+	for wb.Status(y.ID).Running {
+		<-changes
+	}
 	x, _ := wb.NewSession(ws.ID, fake.Kind, "")
+	// A reference sent along, for a badge above the composer.
+	if _, err := wb.ReferenceRange(y.ID, 1, 2, x.ID); err != nil {
+		t.Fatal(err)
+	}
 	wb.Send(x.ID, "go")
 	for wb.Status(x.ID).Running {
 		<-changes
 	}
-	tt := ui.NewTester(shell.New(wb, shell.Options{Only: x.ID}).View, 1600, 800)
+	sh := shell.New(wb, shell.Options{Only: x.ID})
+	tt := ui.NewTester(sh.View, 1600, 800)
+	// The highlight, for a banner.
+	sh.Reveal(x.ID, 1, 1)
 	frame(tt)
 	prompt := locales.MessageAgent("假 Agent")
 	find := func(label string) ui.Rect {
@@ -119,6 +131,17 @@ func TestComposerWidth(t *testing.T) {
 	}
 	if d := field.X - reply.X; d < 0 || d > 20 {
 		t.Errorf("the composer's field starts at %v, the messages at %v", field.X, reply.X)
+	}
+
+	// So are the banners and the badges above it, on the composer's edges
+	// (the messages' text is a little in from theirs).
+	for _, r := range []ui.Rect{findPart(t, tt, "已高亮被引用的范围"), find("收到的引用")} {
+		if d := r.X - reply.X; d < -8 || d > 20 {
+			t.Errorf("above the composer, %v starts at %v, the messages at %v", r, r.X, reply.X)
+		}
+		if r.X+r.W > reply.X+828 {
+			t.Errorf("above the composer, %v runs past the messages (to %v)", r, reply.X+828)
+		}
 	}
 
 	// So is the selection bar in its place.
