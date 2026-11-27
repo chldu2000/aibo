@@ -221,6 +221,7 @@ func (s *Shell) apply() {
 			v.upsert(*c.Message)
 		}
 	}
+	s.searchChanged(pending)
 	s.notifyApprovals(pending)
 }
 

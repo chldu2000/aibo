@@ -347,10 +347,7 @@ func TestTitleBarBand(t *testing.T) {
 		t.Fatal(err)
 	}
 	main.Type("无此会话")
-	main.Frame()
-	if !main.HasText("没有找到") {
-		t.Errorf("the sidebar's search took no text: %q", main.Texts())
-	}
+	waitText(t, main, "没有找到") // the search took the text
 
 	own := ui.NewTester(shell.New(wb, shell.Options{Only: s.ID}).View, 860, 760)
 	own.SetTitleBar(bar)

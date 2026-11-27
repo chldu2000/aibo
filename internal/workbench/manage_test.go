@@ -129,15 +129,15 @@ func TestRenameArchiveSearchAndReferenceCount(t *testing.T) {
 		t.Error("not archived")
 	}
 	// Archived, it is still found, and referenced.
-	found, _ := b.SearchSessions("TIMESTAMPTZ")
+	found, _, _ := b.SearchSessions("TIMESTAMPTZ", 0)
 	if len(found) != 1 || found[0].Session.ID != s.ID || !strings.Contains(found[0].Snippet, "timestamptz") {
 		t.Errorf("search by text = %+v", found)
 	}
-	found, _ = b.SearchSessions("迁移")
+	found, _, _ = b.SearchSessions("迁移", 0)
 	if len(found) != 1 || found[0].Snippet != "" {
 		t.Errorf("search by title = %+v", found)
 	}
-	if found, _ := b.SearchSessions("  "); found != nil {
+	if found, _, _ := b.SearchSessions("  ", 0); found != nil {
 		t.Errorf("an empty search found %+v", found)
 	}
 	if _, err := b.ReferenceSession(s.ID, other.ID); err != nil {
@@ -157,5 +157,45 @@ func TestModels(t *testing.T) {
 	// The fake tells no models.
 	if ms, err := b.Models(context.Background(), fake.Kind); ms != nil || err != nil {
 		t.Errorf("models = %v, %v", ms, err)
+	}
+}
+
+// A search shows, for each session, its first message that holds the
+// words, and at most as many sessions as asked, saying how many more.
+func TestSearchLimitAndFirstMatch(t *testing.T) {
+	sc := newScript()
+	b := open(t, t.TempDir(), sc.respond)
+	defer b.Close()
+	ws, first := newSession(t, b)
+	ids := []string{first.ID}
+	for range 2 {
+		x, err := b.NewSession(ws.ID, fake.Kind, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, x.ID)
+	}
+	for i, id := range ids {
+		converse(t, b, sc, id, "开场 "+string(rune('A'+i)))
+		converse(t, b, sc, id, "先问 needle 一次", "再答 needle 一次")
+	}
+
+	found, more, err := b.SearchSessions("NEEDLE", 0)
+	if err != nil || len(found) != 3 || more != 0 {
+		t.Fatalf("all: %+v, %d more, %v", found, more, err)
+	}
+	for _, f := range found {
+		if !strings.Contains(f.Snippet, "先问") {
+			t.Errorf("snippet of %s = %q, not of the first match", f.Session.ID, f.Snippet)
+		}
+	}
+
+	found, more, _ = b.SearchSessions("needle", 2)
+	if len(found) != 2 || more != 1 {
+		t.Fatalf("limited: %d found, %d more", len(found), more)
+	}
+	// The most recent first.
+	if found[0].Session.ID != ids[2] || found[1].Session.ID != ids[1] {
+		t.Errorf("order = %s, %s; want %s, %s", found[0].Session.ID, found[1].Session.ID, ids[2], ids[1])
 	}
 }

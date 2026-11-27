@@ -105,8 +105,7 @@ func TestSidebarManagement(t *testing.T) {
 	// Search finds it, archived, by its words.
 	click("搜索会话")
 	tt.Type("timestamptz")
-	frame()
-	shows("迁移方案 timestamptz") // the snippet
+	waitText(t, tt, "迁移方案 timestamptz") // the snippet
 	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Key(0, ui.KeyBackspace)
 	frame()

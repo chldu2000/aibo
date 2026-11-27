@@ -250,6 +250,15 @@
     }
   },
   "noSessionsFound": "No sessions found",
+  "searching": "Searching…",
+  "searchMore": "{count} more not shown. Narrow the search to find them.",
+  "@searchMore": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "archived": "Archived",
   "newSessionIn": "New session in {workspace}",
   "newSession": "New session",

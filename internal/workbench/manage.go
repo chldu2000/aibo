@@ -221,34 +221,44 @@ type Found struct {
 }
 
 // SearchSessions finds the sessions, archived too, whose titles or
-// messages hold text, those by title first, then the most recent.
-func (w *Workbench) SearchSessions(text string) ([]Found, error) {
+// messages hold text, those by title first, then the most recent: at
+// most limit of them (all when limit is zero or less), and how many more
+// there were. The messages are searched without holding w.mu, so that a
+// long search does not hold up the sessions' events.
+func (w *Workbench) SearchSessions(text string, limit int) (found []Found, more int, err error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return nil, nil
+		return nil, 0, nil
 	}
-	w.mu.Lock()
 	byText, err := w.st.SearchMessages(text)
-	var out []Found
+	if err != nil {
+		return nil, 0, err
+	}
 	lower := strings.ToLower(text)
+	w.mu.Lock()
 	for _, s := range w.sessions {
 		if strings.Contains(strings.ToLower(s.info.Title), lower) {
-			out = append(out, Found{Session: s.info})
+			found = append(found, Found{Session: s.info})
 		} else if t, ok := byText[s.info.ID]; ok {
-			out = append(out, Found{Session: s.info, Snippet: around(t, text)})
+			found = append(found, Found{Session: s.info, Snippet: t})
 		}
 	}
 	w.mu.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if (out[i].Snippet == "") != (out[j].Snippet == "") {
-			return out[i].Snippet == ""
+	sort.SliceStable(found, func(i, j int) bool {
+		if (found[i].Snippet == "") != (found[j].Snippet == "") {
+			return found[i].Snippet == ""
 		}
-		return out[i].Session.ActiveAt.After(out[j].Session.ActiveAt)
+		return found[i].Session.ActiveAt.After(found[j].Session.ActiveAt)
 	})
-	return out, nil
+	if limit > 0 && len(found) > limit {
+		found, more = found[:limit], len(found)-limit
+	}
+	for i := range found {
+		if found[i].Snippet != "" {
+			found[i].Snippet = around(found[i].Snippet, text)
+		}
+	}
+	return found, more, nil
 }
 
 // around is about 60 characters of text around where q is, on one line.

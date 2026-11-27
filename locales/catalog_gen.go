@@ -1908,6 +1908,26 @@ func (msgs Messages) NoSessionsFound() string {
 	return Catalog.Format(msgs.locale, "noSessionsFound", nil)
 }
 
+// Searching says "Searching…"
+// in the language the app shows.
+func Searching() string { return In(i18n.Locale()).Searching() }
+
+// Searching says "Searching…"
+// in the language of msgs.
+func (msgs Messages) Searching() string {
+	return Catalog.Format(msgs.locale, "searching", nil)
+}
+
+// SearchMore says "{count} more not shown. Narrow the search to find them."
+// in the language the app shows.
+func SearchMore(count int) string { return In(i18n.Locale()).SearchMore(count) }
+
+// SearchMore says "{count} more not shown. Narrow the search to find them."
+// in the language of msgs.
+func (msgs Messages) SearchMore(count int) string {
+	return Catalog.Format(msgs.locale, "searchMore", map[string]any{"count": count})
+}
+
 // Archived says "Archived"
 // in the language the app shows.
 func Archived() string { return In(i18n.Locale()).Archived() }

@@ -692,7 +692,9 @@ func (s *Store) ArchiveWorkspace(workspaceID string) error {
 // SearchMessages returns the sessions with messages containing text (in
 // any case, for Latin letters), with the first such message's text.
 func (s *Store) SearchMessages(text string) (map[string]string, error) {
-	rows, err := s.db.Query(`SELECT session_id, text FROM messages WHERE instr(lower(text), lower(?)) > 0 ORDER BY session_id, seq`, text)
+	// One row a session: with min(), SQLite takes the bare text from the
+	// row of the least seq.
+	rows, err := s.db.Query(`SELECT session_id, text, min(seq) FROM messages WHERE instr(lower(text), lower(?)) > 0 GROUP BY session_id`, text)
 	if err != nil {
 		return nil, err
 	}
@@ -700,12 +702,11 @@ func (s *Store) SearchMessages(text string) (map[string]string, error) {
 	out := map[string]string{}
 	for rows.Next() {
 		var id, t string
-		if err := rows.Scan(&id, &t); err != nil {
+		var seq int
+		if err := rows.Scan(&id, &t, &seq); err != nil {
 			return nil, err
 		}
-		if _, ok := out[id]; !ok {
-			out[id] = t
-		}
+		out[id] = t
 	}
 	return out, rows.Err()
 }

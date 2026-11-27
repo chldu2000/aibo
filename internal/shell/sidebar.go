@@ -2,11 +2,14 @@ package shell
 
 import (
 	"runtime"
+	"strings"
+	"time"
 
 	"github.com/chldu2000/aibo/locales"
 
 	"github.com/chldu2000/aibo/internal/agent"
 	"github.com/chldu2000/aibo/internal/model"
+	"github.com/chldu2000/aibo/internal/workbench"
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 )
@@ -19,7 +22,32 @@ type sidebarUI struct {
 	// the one whose deletion waits for confirmation.
 	renaming, newTitle string
 	deleting           string
+	search             search
 }
+
+// search is the sidebar's search: the query as last typed and when, and
+// the results of the last query asked, which show until the next one's
+// come.
+type search struct {
+	typed   string
+	typedAt time.Time
+	// asked is the query searched for, or being searched for while busy;
+	// stale is set when sessions changed after it was asked.
+	asked       string
+	busy, stale bool
+	// found are the results for shown, more how many more there were.
+	shown string
+	found []workbench.Found
+	more  int
+	err   error
+}
+
+// searchDelay is how long the query has to rest before it is searched
+// for, so that typing a word does not search for each of its letters.
+const searchDelay = 200 * time.Millisecond
+
+// searchLimit is the most sessions the search shows.
+const searchLimit = 50
 
 // sidebar is the sidebar, from edge to edge of the window: search, the
 // workspaces with their sessions, and the archived ones. Where the window
@@ -199,18 +227,79 @@ func firstOf(xs ...string) string {
 	return ""
 }
 
+// searchFor searches for the query once it has rested for searchDelay,
+// off the main thread, one search at a time; and again when sessions
+// changed since. Until the results come, the last ones show.
+func (s *Shell) searchFor(c *ui.Context) {
+	q := &s.side.search
+	text := strings.TrimSpace(s.side.query)
+	now := c.Now()
+	if text != q.typed {
+		q.typed, q.typedAt = text, now
+	}
+	if q.busy || q.asked == text && !q.stale {
+		return
+	}
+	if due := q.typedAt.Add(searchDelay); now.Before(due) {
+		c.After(due.Sub(now))
+		return
+	}
+	q.asked, q.busy, q.stale = text, true, false
+	go func() {
+		found, more, err := s.wb.SearchSessions(text, searchLimit)
+		s.later(func() {
+			q.busy = false
+			q.shown, q.found, q.more, q.err = text, found, more, err
+		})
+	}()
+}
+
+// searchChanged marks the search's results stale after sessions or their
+// finished messages changed; a message still streaming leaves them, so
+// that a reply coming does not search again for each of its words.
+func (s *Shell) searchChanged(pending []workbench.Change) {
+	q := &s.side.search
+	if q.asked == "" || q.stale {
+		return
+	}
+	for _, ch := range pending {
+		if ch.Message == nil || ch.Message.State != model.Streaming {
+			// Searched again at once: the query has rested.
+			q.stale = true
+			return
+		}
+	}
+}
+
 // searchResults are the sessions whose titles or messages hold the
 // query, archived ones too.
 func (s *Shell) searchResults(c *ui.Context) {
 	t := c.Theme()
-	found, err := s.wb.SearchSessions(s.side.query)
-	if err != nil {
-		ui.Text(c, s.say(err)).FontSize(12).TextColor(t.Warning)
+	s.searchFor(c)
+	q := &s.side.search
+	text := strings.TrimSpace(s.side.query)
+	if q.shown != text || q.busy {
+		ui.Row(c).Gap(6).Padding(6, 6).AlignItems(ui.Center).Children(func() {
+			ui.Spinner(c)
+			ui.Text(c, locales.Searching()).FontSize(11).TextColor(t.TextMuted)
+		})
+		if q.shown == "" {
+			return
+		}
+	}
+	if q.err != nil {
+		ui.Text(c, s.say(q.err)).FontSize(12).TextColor(t.Warning)
 		return
 	}
-	if len(found) == 0 {
+	found := q.found
+	if len(found) == 0 && q.shown == text {
 		ui.Text(c, locales.NoSessionsFound()).FontSize(12).TextColor(t.TextMuted).Padding(10, 6)
 	}
+	defer func() {
+		if q.more > 0 {
+			ui.Text(c, locales.SearchMore(q.more)).FontSize(11).TextColor(t.TextMuted).Padding(8, 6)
+		}
+	}()
 	for _, f := range found {
 		x := f.Session
 		row := ui.Column(c).Key(x.ID).Gap(2).Padding(6, 8).Radius(7).Children(func() {

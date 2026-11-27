@@ -186,6 +186,8 @@
   "refsCount": "引用 {count}",
   "refsReceived": "收到 {count} 个引用",
   "noSessionsFound": "没有找到会话",
+  "searching": "正在搜索…",
+  "searchMore": "还有 {count} 个会话没有显示，换个更具体的词再搜。",
   "archived": "已归档",
   "newSessionIn": "在 {workspace} 新建会话",
   "newSession": "新建会话",
