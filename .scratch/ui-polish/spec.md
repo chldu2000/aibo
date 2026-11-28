@@ -51,7 +51,7 @@
 - [26 “显示参数”和“思考”的折叠标签不重复](issues/26-collapsible-labels.md)
 - [27 徽章行和横幅跟输入区一样宽](issues/27-badges-width.md)
 
-进度（2026-11-28）：除 20（needs-triage，等实测）和 22（ready-for-agent，优先级最低）外都已完成。
+进度（2026-11-28）：全部完成。
 
 ## 不做
 

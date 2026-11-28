@@ -326,7 +326,7 @@ func (s *Shell) messages(c *ui.Context, x model.Session, v *sessionView, markers
 		}
 	}).Padding(76, streamRight(v.listWidth), bottomRoom(v.composerHeight), streamLeft(v.listWidth, gutter)).Gap(10).Children(func() {
 		if len(v.msgs) == 0 {
-			ui.Text(c, locales.StartConversation()).TextColor(t.TextMuted).Margin(ui.Auto)
+			s.emptySession(c, x, v)
 		}
 	})
 	// The messages center in the next frame, as the list's width changed.

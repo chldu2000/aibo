@@ -121,6 +121,8 @@
   "sessionDetails": "Session details",
   "interrupted": "Interrupted",
   "startConversation": "Send a message to start the conversation",
+  "starterMention": "@ Mention a file or session",
+  "starterCommand": "Start with /{name}",
   "close": "Close",
   "minimizeWindow": "Minimize window",
   "maximizeWindow": "Maximize window",

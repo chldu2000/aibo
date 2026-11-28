@@ -121,6 +121,8 @@
   "sessionDetails": "会话详情",
   "interrupted": "已中断",
   "startConversation": "发一条消息开始对话",
+  "starterMention": "@ 提及文件或会话",
+  "starterCommand": "以 /{name} 开始",
   "close": "关闭",
   "minimizeWindow": "最小化窗口",
   "maximizeWindow": "最大化窗口",

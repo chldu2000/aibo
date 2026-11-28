@@ -1254,6 +1254,26 @@ func (msgs Messages) StartConversation() string {
 	return Catalog.Format(msgs.locale, "startConversation", nil)
 }
 
+// StarterMention says "@ Mention a file or session"
+// in the language the app shows.
+func StarterMention() string { return In(i18n.Locale()).StarterMention() }
+
+// StarterMention says "@ Mention a file or session"
+// in the language of msgs.
+func (msgs Messages) StarterMention() string {
+	return Catalog.Format(msgs.locale, "starterMention", nil)
+}
+
+// StarterCommand says "Start with /{name}"
+// in the language the app shows.
+func StarterCommand(name string) string { return In(i18n.Locale()).StarterCommand(name) }
+
+// StarterCommand says "Start with /{name}"
+// in the language of msgs.
+func (msgs Messages) StarterCommand(name string) string {
+	return Catalog.Format(msgs.locale, "starterCommand", map[string]any{"name": name})
+}
+
 // Close says "Close"
 // in the language the app shows.
 func Close() string { return In(i18n.Locale()).Close() }
