@@ -3,6 +3,7 @@ package shell
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/chldu2000/aibo/internal/agent"
@@ -37,7 +38,21 @@ func changesLabel(chs []agent.FileChange) string {
 			what += " → " + baseName(chs[0].MovedTo)
 		}
 	}
-	return fmt.Sprintf("%s +%d −%d", what, added, deleted)
+	plus, minus := stats(added, deleted)
+	return strings.Join(slices.DeleteFunc([]string{what, plus, minus}, func(s string) bool { return s == "" }), " ")
+}
+
+// stats are the lines added and deleted as "+N" and "−N", the one that
+// is none left out, as of a file created: "+2", not "+2 −0". Both show
+// when both are none.
+func stats(added, deleted int) (plus, minus string) {
+	if added > 0 || deleted == 0 {
+		plus = fmt.Sprintf("+%d", added)
+	}
+	if deleted > 0 || added == 0 {
+		minus = fmt.Sprintf("−%d", deleted)
+	}
+	return plus, minus
 }
 
 // baseName is a path's last element, of a Windows path too.
@@ -109,8 +124,13 @@ func (s *Shell) fileChanges(c *ui.Context, v *sessionView, key string, chs []age
 					tag(c, locales.FileMovedTo(ch.MovedTo), t.TextMuted)
 				}
 				added, deleted := agent.PatchStats(ch.Patch)
-				ui.Text(c, fmt.Sprintf("+%d", added)).FontSize(11).TextColor(t.Success).NoWrap()
-				ui.Text(c, fmt.Sprintf("−%d", deleted)).FontSize(11).TextColor(t.Danger).NoWrap()
+				plus, minus := stats(added, deleted)
+				if plus != "" {
+					ui.Text(c, plus).FontSize(11).TextColor(t.Success).NoWrap()
+				}
+				if minus != "" {
+					ui.Text(c, minus).FontSize(11).TextColor(t.Danger).NoWrap()
+				}
 			})
 			s.patchView(c, v, k, ch.Patch)
 		})

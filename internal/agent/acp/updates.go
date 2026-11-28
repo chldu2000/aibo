@@ -16,7 +16,9 @@ type toolCall struct {
 	Locations                       []struct{ Path string }
 	Content                         []struct {
 		Type, Path, NewText string
-		Content             struct{ Type, Text string }
+		// OldText is a diff's text before; none for a file created.
+		OldText *string
+		Content struct{ Type, Text string }
 	}
 }
 
@@ -118,7 +120,7 @@ func (s *session) tool(raw json.RawMessage) {
 	if !s.tools[id] {
 		s.tools[id] = true
 		s.interrupt()
-		s.emit(agent.ToolStarted{ToolID: id, Name: t.Title, Input: t.RawInput, Raw: raw})
+		s.emit(agent.ToolStarted{ToolID: id, Name: t.Title, Input: t.RawInput, Changes: fileChanges(t), Raw: raw})
 	} else {
 		updated.Name, updated.Input = t.Title, t.RawInput
 	}
@@ -158,7 +160,7 @@ func (s *session) tool(raw json.RawMessage) {
 	s.mu.Lock()
 	denied := s.declined[id]
 	s.mu.Unlock()
-	s.emit(agent.ToolFinished{ToolID: id, Output: result.Output, KeepStreamedOutput: !hasOutput, ExitCode: result.Metadata.Exit, IsError: t.Status == "failed", Declined: denied, Raw: raw})
+	s.emit(agent.ToolFinished{ToolID: id, Output: result.Output, KeepStreamedOutput: !hasOutput, ExitCode: result.Metadata.Exit, IsError: t.Status == "failed", Declined: denied, Changes: fileChanges(t), Raw: raw})
 }
 
 type permission struct {

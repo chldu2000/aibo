@@ -71,6 +71,7 @@
 | 审批与停止 | 显示 Agent 给出的选项，用原选项 ID 答复。等待审批时停止，会同时通知 Agent 取消轮次并取消挂起的审批。Agent 提前退出时，工作台结束该轮并保留已收到的内容。 |
 | 重启续聊 | 优先使用 `session/resume`。只支持 `session/load` 时，在其响应前跳过历史回放，已有时间线由 aibo 保管。如果 Agent 无法恢复原生会话，工作台进入已有的恢复流程。 |
 | 模型、推理强度与模式 | 按 ACP 的 `configOptions` 读取和切换：category 为 `model`、`thought_level`、`mode` 的配置项分别对应输入框底部的模型、推理强度和权限模式菜单，名称和取值沿用 Agent 的原文（例如 OpenCode 的 `default`）。只提供旧接口 `modes` 的 Agent 用 `session/set_mode` 切换模式。列表要在会话里才能拿到：Agent 声明支持 `session/delete` 时，aibo 第一次需要列表时在空的临时目录里建一个探测会话，逐个模型读出推理强度，然后删除它；不支持删除的 Agent 不探测，先用它新建一个会话后菜单才有内容（预置 Cursor 例外，见上）。之后每个会话看到的列表也会更新菜单。模式的风险等级来自 `modes` 字段（见上），没有标注的按“注意”显示。OpenCode 的 `build`、`plan` 是 Agent 角色，实际权限由 `opencode.json` 决定；预置 OpenCode 在自己的配置没有 `modes` 时，把 `plan` 标为安全、只读，`build` 标为注意、默认。写了 `modes` 就只用写出的标注。预置 Cursor 同样有内置标注，并请求参数化的模型列表（见“使用 Cursor CLI”）。 |
+| 改文件的调用 | 工具结果里 `type: "diff"` 的内容按文件交给工作台，会话里显示为“文件名 +N −M”，展开是差异。ACP 只给改前改后的全文（`oldText`、`newText`），差异由 aibo 逐行算出，带 3 行上下文；没有 `oldText` 的按新建文件处理。OpenCode 2.4.2 新建文件时不给 `diff`，这类调用照旧显示结果文字。Cursor CLI 2026.11.22 新建文件时 `oldText` 是 `"-- /dev/null"`、`newText` 以 `"++ b/路径"` 一行开头，aibo 去掉这一行后按新建处理。抓取数据见 `internal/agent/acp/testdata/*-edit.jsonl`。 |
 | 附件 | 文件以路径发送，图片仅在对端声明支持时发送。 |
 | Agent 命令 | 在输入框开头打出 `/` 时，列出 Agent 用 `available_commands_update` 报告的命令（[ADR 0009](adr/0009-acp-agents-rule-on-their-own-commands.md)）。Agent 报告什么就列什么，不做筛选；选中后，`/名字 参数` 作为提示词的开头发给 Agent，由它执行。清单只能从会话里拿到：还没有原生会话时，打出 `/` 会先启动这个会话的进程（Cursor 启动较慢，第一次要等一会儿）。Agent 在会话启动后 5 秒内没有报告的，按没有命令处理，之后报告了再更新。ACP 没有上下文重置的事件，清空上下文的命令不会在时间线上画重置分隔线。 |
 | 登录 | 登录、模型供应商和工具权限规则由本机 Agent 管理。任何 ACP Agent 在启动会话或一轮对话中返回 `-32000`（ACP 的 `auth_required`）时，aibo 按未登录处理：提示先登录，消息不发出。只有预置 Cursor 能事先检查登录状态。 |
@@ -97,5 +98,7 @@ go test ./internal/contract -run '^TestContractCursor' -count=1 -v -timeout 20m
 ```
 
 Windows Cursor CLI 2026.11.22 已用这两个测试验证。
+
+`TestContractACPFileChanges` 让 OpenCode 和 Cursor 各改一个文件、新建一个文件，检查改动和差异，**会用掉一轮额度**。OpenCode 这一项用你自己的 OpenCode 配置（登录和模型在里面），只在临时工作区里改文件。2026-11-28 在 Windows 上通过。
 
 Windows OpenCode 2.4.2 已用工作台契约验证对话、实际读取引用、同目录双会话隔离、批准、拒绝、等待审批时中断和重启续接。另一个只提供历史回放的测试程序通过 `agents.json` 登记，覆盖 `session/load`、字符串请求 ID 和进程异常退出。该程序用于验证协议差异，其他商用或开源 Agent 仍需各自的实机验收。[Windows 协议记录](../.scratch/agent-extensibility/research/opencode-windows.md) · [macOS OpenCode 1.19.6 协议记录](../.scratch/agent-extensibility/research/opencode-local.md) · [ACP 会话协议](https://agentclientprotocol.com/protocol/v1/session-setup)

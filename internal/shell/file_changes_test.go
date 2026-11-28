@@ -75,6 +75,13 @@ func TestFileChangeCalls(t *testing.T) {
 	if tt.HasText("在文件页打开 c.txt") {
 		t.Error("a file deleted opens")
 	}
+	// A file created deletes nothing, a file deleted adds nothing.
+	if _, ok := tt.Find("−0"); ok {
+		t.Errorf("a side of none shows: %q", tt.Texts())
+	}
+	if _, ok := tt.Find("+0"); ok {
+		t.Errorf("a side of none shows: %q", tt.Texts())
+	}
 	click(t, tt, "2 个文件 +1 −1")
 
 	click(t, tt, "a.txt +1 −1")
