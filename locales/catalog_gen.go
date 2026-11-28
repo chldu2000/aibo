@@ -2040,6 +2040,78 @@ func (msgs Messages) ShowFewerSessions() string {
 	return Catalog.Format(msgs.locale, "showFewerSessions", nil)
 }
 
+// MoreItems says "{count} more"
+// in the language the app shows.
+func MoreItems(count int) string { return In(i18n.Locale()).MoreItems(count) }
+
+// MoreItems says "{count} more"
+// in the language of msgs.
+func (msgs Messages) MoreItems(count int) string {
+	return Catalog.Format(msgs.locale, "moreItems", map[string]any{"count": count})
+}
+
+// MoreItemsLabel says "{count} more in {group}"
+// in the language the app shows.
+func MoreItemsLabel(count int, group string) string {
+	return In(i18n.Locale()).MoreItemsLabel(count, group)
+}
+
+// MoreItemsLabel says "{count} more in {group}"
+// in the language of msgs.
+func (msgs Messages) MoreItemsLabel(count int, group string) string {
+	return Catalog.Format(msgs.locale, "moreItemsLabel", map[string]any{"count": count, "group": group})
+}
+
+// FewerItems says "Show fewer"
+// in the language the app shows.
+func FewerItems() string { return In(i18n.Locale()).FewerItems() }
+
+// FewerItems says "Show fewer"
+// in the language of msgs.
+func (msgs Messages) FewerItems() string {
+	return Catalog.Format(msgs.locale, "fewerItems", nil)
+}
+
+// FewerItemsLabel says "Show fewer in {group}"
+// in the language the app shows.
+func FewerItemsLabel(group string) string { return In(i18n.Locale()).FewerItemsLabel(group) }
+
+// FewerItemsLabel says "Show fewer in {group}"
+// in the language of msgs.
+func (msgs Messages) FewerItemsLabel(group string) string {
+	return Catalog.Format(msgs.locale, "fewerItemsLabel", map[string]any{"group": group})
+}
+
+// FilterCalls says "Filter by command or description"
+// in the language the app shows.
+func FilterCalls() string { return In(i18n.Locale()).FilterCalls() }
+
+// FilterCalls says "Filter by command or description"
+// in the language of msgs.
+func (msgs Messages) FilterCalls() string {
+	return Catalog.Format(msgs.locale, "filterCalls", nil)
+}
+
+// FailedOnly says "Failed only"
+// in the language the app shows.
+func FailedOnly() string { return In(i18n.Locale()).FailedOnly() }
+
+// FailedOnly says "Failed only"
+// in the language of msgs.
+func (msgs Messages) FailedOnly() string {
+	return Catalog.Format(msgs.locale, "failedOnly", nil)
+}
+
+// NoMatchingCalls says "No calls match"
+// in the language the app shows.
+func NoMatchingCalls() string { return In(i18n.Locale()).NoMatchingCalls() }
+
+// NoMatchingCalls says "No calls match"
+// in the language of msgs.
+func (msgs Messages) NoMatchingCalls() string {
+	return Catalog.Format(msgs.locale, "noMatchingCalls", nil)
+}
+
 // FailedMark says "Failed"
 // in the language the app shows.
 func FailedMark() string { return In(i18n.Locale()).FailedMark() }

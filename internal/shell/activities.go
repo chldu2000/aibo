@@ -3,6 +3,7 @@ package shell
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/chldu2000/aibo/internal/model"
 	"github.com/chldu2000/aibo/internal/workbench"
@@ -146,8 +147,27 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 		emptyState(c, symbol, locales.NoActivities())
 		return
 	}
+	f := &s.detail.list
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(0, 0, 6).Children(func() {
+		ui.TextInput(c, &f.query).Placeholder(locales.FilterCalls()).Label(locales.FilterCalls()).Grow(1).MinWidth(0)
+		if kind == workbench.Commands {
+			ui.Switch(c, &f.failed).Label(locales.FailedOnly())
+			// Its words turn it too.
+			words := ui.Box(c).Cursor(ui.CursorPointer).Children(func() {
+				ui.Text(c, locales.FailedOnly()).FontSize(12).TextColor(t.TextMuted).NoWrap()
+			})
+			if words.Clicked() {
+				f.failed = !f.failed
+			}
+		}
+	})
+	items = filterCalls(items, f.query, kind == workbench.Commands && f.failed)
+	if len(items) == 0 {
+		emptyState(c, "magnifyingglass", locales.NoMatchingCalls())
+		return
+	}
 	ui.Column(c).Gap(1).Children(func() {
-		for _, a := range items {
+		for _, a := range items[:shownOf(len(items), f.all)] {
 			title := gist(a.Message.Tool.Input)
 			label := "#" + a.ID + " · " + title
 			symbol, ink := callTone(c, a)
@@ -168,7 +188,41 @@ func (s *Shell) activityPage(c *ui.Context, x model.Session) {
 				s.detail.selected = a.ID
 			}
 		}
+		if moreLine(c, "more", len(items), f.all, inspectorPageName(string(kind))) {
+			f.all = !f.all
+		}
 	})
+}
+
+// callList is how an activity page's list is narrowed: by words, to the
+// failed commands, and whether all of it shows. It resets as the page
+// changes (showPage).
+type callList struct {
+	query       string
+	failed, all bool
+}
+
+// filterCalls are the calls running first, then the others newest first,
+// as Activities gives them; of them, those whose gist holds the query,
+// in any case, and only the failed when failed is set.
+func filterCalls(items []workbench.Activity, query string, failed bool) []workbench.Activity {
+	q := strings.ToLower(strings.TrimSpace(query))
+	var running, rest []workbench.Activity
+	for _, a := range items {
+		tl := a.Message.Tool
+		if q != "" && !strings.Contains(strings.ToLower(gist(tl.Input)), q) {
+			continue
+		}
+		if failed && !(tl.IsError || tl.ExitCode != nil && *tl.ExitCode != 0) {
+			continue
+		}
+		if a.Active {
+			running = append(running, a)
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	return append(running, rest...)
 }
 
 // delegationDetail shows the recorded timeline without the actionable

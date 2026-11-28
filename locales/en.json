@@ -249,6 +249,28 @@
   "unfoldWorkspace": "Unfold {name}",
   "showMoreSessions": "Show {count} more",
   "showFewerSessions": "Show fewer",
+  "moreItems": "{count} more",
+  "@moreItems": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "moreItemsLabel": "{count} more in {group}",
+  "@moreItemsLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "group": {}
+    }
+  },
+  "fewerItems": "Show fewer",
+  "fewerItemsLabel": "Show fewer in {group}",
+  "filterCalls": "Filter by command or description",
+  "failedOnly": "Failed only",
+  "noMatchingCalls": "No calls match",
   "@pendingCount": {
     "placeholders": {
       "count": {

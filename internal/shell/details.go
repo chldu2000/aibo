@@ -30,6 +30,8 @@ type detailsUI struct {
 	release    func()
 	// confirming is a dangerous mode waiting for a second click.
 	confirming string
+	// list narrows an activity page's list.
+	list callList
 }
 
 // closeDetails closes the panel. It keeps the page, to open on it again,
@@ -50,6 +52,7 @@ func (s *Shell) showPage(page string) {
 	if page != s.detail.page {
 		s.closeChildHistory()
 		s.detail.page, s.detail.selected, s.detail.confirming = page, "", ""
+		s.detail.list = callList{}
 		if err := s.wb.SetPref(pagePref, page); err != nil {
 			s.notice = s.say(err)
 		}
@@ -92,6 +95,16 @@ func (s *Shell) detailsKeys(c *ui.Context, id string) {
 			s.showPage(tab.page)
 		}
 	}
+}
+
+// inspectorPageName is what a page's tab is called.
+func inspectorPageName(page string) string {
+	for _, tab := range inspectorTabs {
+		if tab.page == page {
+			return tab.label()
+		}
+	}
+	return page
 }
 
 // inspectorTabs are the panel's pages, in the order of its tabs.

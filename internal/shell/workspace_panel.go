@@ -19,6 +19,9 @@ type workspacePanel struct {
 	file                     string
 	editor                   *editor.State
 	previewPath, previewText string
+	// folded and all are the Git page's groups folded and shown whole,
+	// by their names.
+	folded, all map[string]bool
 }
 
 func (s *Shell) workspacePanel(id string) *workspacePanel {
@@ -27,7 +30,7 @@ func (s *Shell) workspacePanel(id string) *workspacePanel {
 	}
 	p := s.detail.workspaces[id]
 	if p == nil {
-		p = &workspacePanel{expanded: make(map[string]bool)}
+		p = &workspacePanel{expanded: map[string]bool{}, folded: map[string]bool{}, all: map[string]bool{}}
 		s.detail.workspaces[id] = p
 	}
 	return p

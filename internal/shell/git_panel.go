@@ -108,15 +108,23 @@ func (s *Shell) gitPage(c *ui.Context, id string) {
 			if len(changes) == 0 {
 				continue
 			}
-			ui.Column(c).Key(label).Gap(2).Children(func() {
-				ui.Row(c).Gap(6).Padding(0, 6, 2).Children(func() {
-					ui.Text(c, label).Bold().FontSize(11).TextColor(t.TextMuted)
-					ui.Text(c, strconv.Itoa(len(changes))).FontSize(11).TextColor(t.TextMuted)
+			// A group folds by its heading; past listShows, a line shows
+			// the others.
+			open := !p.folded[label]
+			ui.Column(c).Key(label).Children(func() {
+				fold(c, label+" · "+strconv.Itoa(len(changes)), label, &open, func() {
+					ui.Column(c).Gap(2).Children(func() {
+						all := p.all[label]
+						for _, ch := range changes[:shownOf(len(changes), all)] {
+							s.changeRow(c, label, ch, p)
+						}
+						if moreLine(c, "more", len(changes), all, label) {
+							p.all[label] = !all
+						}
+					})
 				})
-				for _, ch := range changes {
-					s.changeRow(c, label, ch, p)
-				}
 			})
+			p.folded[label] = !open
 		}
 	})
 }
