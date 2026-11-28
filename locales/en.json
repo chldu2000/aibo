@@ -631,6 +631,19 @@
   "callsDelegate": "{count} subagents",
   "callsWeb": "fetched {count} pages",
   "callsOther": "{count} others",
+  "filesChanged": "{count, plural, one {# file} other {# files}}",
+  "@filesChanged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fileAdded": "New",
+  "fileDeleted": "Deleted",
+  "fileMovedTo": "Moved to {path}",
+  "openChangedFile": "Open {path} in Files",
+  "changeNoPatch": "The Agent told no diff for this file.",
   "toolGroupCount": "{count} tool calls",
   "toolGroupLive": "Calling tools · {count} done",
   "toolGroupLabel": "Tool calls #{from}–#{to}",

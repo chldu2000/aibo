@@ -98,6 +98,9 @@ type envelope struct {
 	Response json.RawMessage `json:"response"`
 	// system/init
 	PermissionMode string `json:"permissionMode"`
+	// user: the result of its tool_result, as Claude Code keeps it: for a
+	// file changed, its patch (changes)
+	ToolUseResult json.RawMessage `json:"tool_use_result"`
 }
 
 type streamEvent struct {
@@ -182,6 +185,9 @@ func (p *parser) event(e envelope, raw []byte) []agent.Event {
 			// out) or "/clear": aibo keeps its own.
 		case "background_tasks_changed":
 			// Its background tasks, which aibo does not show.
+		case "thinking_tokens":
+			// About how many tokens its reasoning took so far
+			// (testdata/edit.jsonl), which aibo does not show.
 		default:
 			p.unknown(e, raw)
 		}
@@ -386,11 +392,19 @@ func (p *parser) user(e envelope, raw []byte) []agent.Event {
 		return nil
 	}
 	var out []agent.Event
+	var results []block
 	for _, b := range blocks(m.Content) {
-		if b.Type != "tool_result" || p.plans[b.ToolUseID] {
-			continue
+		if b.Type == "tool_result" && !p.plans[b.ToolUseID] {
+			results = append(results, b)
 		}
-		out = append(out, agent.ToolFinished{ToolID: b.ToolUseID, Parent: e.ParentToolUseID, Output: resultText(b.Content), IsError: b.IsError, Raw: raw})
+	}
+	for _, b := range results {
+		f := agent.ToolFinished{ToolID: b.ToolUseID, Parent: e.ParentToolUseID, Output: resultText(b.Content), IsError: b.IsError, Raw: raw}
+		// The message's tool_use_result is of its one result.
+		if len(results) == 1 && !b.IsError {
+			f.Changes = changes(e.ToolUseResult)
+		}
+		out = append(out, f)
 	}
 	return out
 }

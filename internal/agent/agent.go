@@ -363,7 +363,9 @@ type ToolStarted struct {
 	Parent       string
 	Name         string
 	Input        json.RawMessage
-	Raw          json.RawMessage
+	// Changes are the files the call changes, when the Agent tells.
+	Changes []FileChange
+	Raw     json.RawMessage
 }
 
 // ToolOutputDelta appends a chunk of output to an active tool call.
@@ -388,7 +390,10 @@ type ToolFinished struct {
 	IsError            bool
 	Declined           bool
 	ExitCode           *int
-	Raw                json.RawMessage
+	// Changes are the files the call changed, replacing ToolStarted's
+	// when set.
+	Changes []FileChange
+	Raw     json.RawMessage
 }
 
 // PlanUpdated reports the Agent's plan, whole; a later update of the same

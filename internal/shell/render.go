@@ -37,6 +37,8 @@ type open struct {
 	outputs  map[string]output
 	// picked is the call a group shows open, by its seq, by the group's key.
 	picked map[string]int
+	// diffs are the diff viewers of files changed, by call and file.
+	diffs map[string]patchDiff
 }
 
 // output is a big tool output's editor, and the length it was made for.
@@ -48,6 +50,7 @@ type output struct {
 func (o *open) init() {
 	if o.thinking == nil {
 		o.thinking, o.tools, o.outputs, o.picked = map[int]bool{}, map[string]bool{}, map[string]output{}, map[string]int{}
+		o.diffs = map[string]patchDiff{}
 	}
 }
 
@@ -78,6 +81,9 @@ func (s *Shell) reply(c *ui.Context, v *sessionView, m model.Message) {
 func toolLabel(m model.Message) string {
 	tl := m.Tool
 	label := tl.Name + " · " + gist(tl.Input)
+	if len(tl.Changes) > 0 {
+		label = changesLabel(tl.Changes)
+	}
 	switch {
 	case m.State == model.Streaming:
 		label = locales.ToolRunning(label)
@@ -145,6 +151,13 @@ func (s *Shell) tool(c *ui.Context, v *sessionView, key, id string, m model.Mess
 						}
 					})
 				})
+			}
+			if chs := m.Tool.Changes; len(chs) > 0 {
+				s.fileChanges(c, v, key, chs)
+				// Its result only says it went well, or repeats the diffs.
+				if !m.Tool.IsError {
+					return
+				}
 			}
 			if !m.Tool.Done {
 				return

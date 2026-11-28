@@ -128,7 +128,7 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 		m.State, m.FinishedAt = model.Done, now
 		touch(i, true)
 	case agent.ToolStarted:
-		tool := &model.Tool{Name: e.Name, Input: e.Input, ChildThread: e.ChildThread}
+		tool := &model.Tool{Name: e.Name, Input: e.Input, ChildThread: e.ChildThread, Changes: e.Changes}
 		if e.NativeThread != "" {
 			tool.NativeThread, tool.NativeItem = e.NativeThread, e.ToolID
 		}
@@ -207,6 +207,9 @@ func (w *Workbench) handle(id string, from agent.Session, ev agent.Event) {
 				m.Tool.Approval.Expired = true
 			}
 			m.Tool.Declined, m.Tool.ExitCode = e.Declined, e.ExitCode
+			if e.Changes != nil {
+				m.Tool.Changes = e.Changes
+			}
 			m.State, m.FinishedAt = model.Done, now
 		}
 		if e.Parent != "" {

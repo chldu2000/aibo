@@ -160,10 +160,12 @@ type Tool struct {
 	Name         string
 	Input        json.RawMessage
 	// Output is the result, cut to MaxToolOutput bytes (Truncated).
-	Output    string
-	IsError   bool
-	Declined  bool `json:",omitempty"`
-	ExitCode  *int `json:",omitempty"`
+	Output   string
+	IsError  bool
+	Declined bool `json:",omitempty"`
+	ExitCode *int `json:",omitempty"`
+	// Changes are the files the call changes (agent.FileChange).
+	Changes   []agent.FileChange `json:",omitempty"`
 	Truncated bool
 	// Done is set once the result came.
 	Done bool
@@ -260,6 +262,7 @@ func (m Message) Clone() Message {
 			code := *t.ExitCode
 			t.ExitCode = &code
 		}
+		t.Changes = append([]agent.FileChange(nil), t.Changes...)
 		if t.Approval != nil {
 			a := *t.Approval
 			if a.Answer != nil {

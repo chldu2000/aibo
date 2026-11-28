@@ -106,11 +106,23 @@ func kindOf(name string) int {
 	return 6
 }
 
-// groupSummary counts a group's calls by what they do.
+// groupSummary counts a group's calls by what they do; the calls that
+// tell the files they changed, by the files, each once.
 func groupSummary(msgs []model.Message, group []int) string {
 	counts := make([]int, len(callKinds))
+	files := map[string]bool{}
 	for _, i := range group {
-		counts[kindOf(msgs[i].Tool.Name)]++
+		tl := msgs[i].Tool
+		if len(tl.Changes) == 0 {
+			counts[kindOf(tl.Name)]++
+			continue
+		}
+		for _, ch := range tl.Changes {
+			if !files[ch.Path] {
+				files[ch.Path] = true
+				counts[2]++
+			}
+		}
 	}
 	var parts []string
 	for k, n := range counts {

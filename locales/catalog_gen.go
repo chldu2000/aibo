@@ -5050,6 +5050,66 @@ func (msgs Messages) CallsOther(count int) string {
 	return Catalog.Format(msgs.locale, "callsOther", map[string]any{"count": count})
 }
 
+// FilesChanged says "{count, plural, one {# file} other {# files}}"
+// in the language the app shows.
+func FilesChanged(count int) string { return In(i18n.Locale()).FilesChanged(count) }
+
+// FilesChanged says "{count, plural, one {# file} other {# files}}"
+// in the language of msgs.
+func (msgs Messages) FilesChanged(count int) string {
+	return Catalog.Format(msgs.locale, "filesChanged", map[string]any{"count": count})
+}
+
+// FileAdded says "New"
+// in the language the app shows.
+func FileAdded() string { return In(i18n.Locale()).FileAdded() }
+
+// FileAdded says "New"
+// in the language of msgs.
+func (msgs Messages) FileAdded() string {
+	return Catalog.Format(msgs.locale, "fileAdded", nil)
+}
+
+// FileDeleted says "Deleted"
+// in the language the app shows.
+func FileDeleted() string { return In(i18n.Locale()).FileDeleted() }
+
+// FileDeleted says "Deleted"
+// in the language of msgs.
+func (msgs Messages) FileDeleted() string {
+	return Catalog.Format(msgs.locale, "fileDeleted", nil)
+}
+
+// FileMovedTo says "Moved to {path}"
+// in the language the app shows.
+func FileMovedTo(path string) string { return In(i18n.Locale()).FileMovedTo(path) }
+
+// FileMovedTo says "Moved to {path}"
+// in the language of msgs.
+func (msgs Messages) FileMovedTo(path string) string {
+	return Catalog.Format(msgs.locale, "fileMovedTo", map[string]any{"path": path})
+}
+
+// OpenChangedFile says "Open {path} in Files"
+// in the language the app shows.
+func OpenChangedFile(path string) string { return In(i18n.Locale()).OpenChangedFile(path) }
+
+// OpenChangedFile says "Open {path} in Files"
+// in the language of msgs.
+func (msgs Messages) OpenChangedFile(path string) string {
+	return Catalog.Format(msgs.locale, "openChangedFile", map[string]any{"path": path})
+}
+
+// ChangeNoPatch says "The Agent told no diff for this file."
+// in the language the app shows.
+func ChangeNoPatch() string { return In(i18n.Locale()).ChangeNoPatch() }
+
+// ChangeNoPatch says "The Agent told no diff for this file."
+// in the language of msgs.
+func (msgs Messages) ChangeNoPatch() string {
+	return Catalog.Format(msgs.locale, "changeNoPatch", nil)
+}
+
 // ToolGroupCount says "{count} tool calls"
 // in the language the app shows.
 func ToolGroupCount(count int) string { return In(i18n.Locale()).ToolGroupCount(count) }

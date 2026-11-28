@@ -55,6 +55,8 @@ type item struct {
 		Diff string `json:"diff"`
 		Kind struct {
 			Type string `json:"type"`
+			// MovePath is where an update moves the file.
+			MovePath *string `json:"move_path"`
 		} `json:"kind"`
 	} `json:"changes"`
 	// mcpToolCall, dynamicToolCall
@@ -231,7 +233,8 @@ func (t *thread) handle(method string, params json.RawMessage) []agent.Event {
 		}
 		if name, input, ok := tool(n.Item); ok {
 			b, _ := json.Marshal(input)
-			return []agent.Event{agent.ToolStarted{NativeThread: n.ThreadID, ChildThread: n.Item.AgentThreadID, ToolID: n.Item.ID, Name: name, Input: b, Raw: params}}
+			return []agent.Event{agent.ToolStarted{NativeThread: n.ThreadID, ChildThread: n.Item.AgentThreadID, ToolID: n.Item.ID, Name: name, Input: b,
+				Changes: fileChanges(n.Item), Raw: params}}
 		}
 	case "item/completed":
 		delete(t.commands, n.Item.ID)
@@ -334,6 +337,7 @@ func (t *thread) completed(it item, nativeThread string, raw json.RawMessage) []
 	if _, _, ok := tool(it); ok {
 		out, failed := result(it)
 		e := agent.ToolFinished{ToolID: it.ID, Output: out, IsError: failed, Raw: raw}
+		e.Changes = fileChanges(it)
 		if it.Type == "commandExecution" {
 			e.ExitCode, e.Declined = it.ExitCode, it.Status == "declined"
 			e.NativeThread = nativeThread
