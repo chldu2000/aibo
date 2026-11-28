@@ -44,6 +44,15 @@
 - [21 文件预览的操作](issues/21-file-preview-actions.md)
 - [22 空会话的引导](issues/22-empty-session.md)
 
+第四批，第二、三批做完后发现的小问题（2026-11-28）：
+
+- [24 详情面板里的大输出贴合面板高度](issues/24-inspector-output-fit.md)
+- [25 复制后给出“已复制”反馈](issues/25-copy-feedback.md)
+- [26 “显示参数”和“思考”的折叠标签不重复](issues/26-collapsible-labels.md)
+- [27 徽章行和横幅跟输入区一样宽](issues/27-badges-width.md)
+
+进度（2026-11-28）：除 20（needs-triage，等实测）和 22（ready-for-agent，优先级最低）外都已完成。
+
 ## 不做
 
 - 编辑工作区文件、Git 写操作、向终端或子 Agent 发输入：属于只读侧栏之后的规划（`../session-workspace-sidebar/map.md`）。

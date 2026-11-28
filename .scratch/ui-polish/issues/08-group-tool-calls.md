@@ -7,8 +7,8 @@ Type: prototype
 
 现状：每个工具调用是 `messages` 列表里的一行 `Collapsible`（`internal/shell/render.go` 的 `tool`），一轮跑十几个 Read/Grep 时会话里就是十几行，回复正文被挤散。
 
-- [ ] 先做原型（`prototype` 技能），按下面的决定看措辞和视觉效果
-- [ ] 原型定稿后补实现清单，状态改为 ready-for-agent
+- [x] 先做原型（`prototype` 技能），按下面的决定看措辞和视觉效果
+- [x] 原型定稿后补实现清单，状态改为 ready-for-agent
 
 ## 决定（2026-11-27）
 
